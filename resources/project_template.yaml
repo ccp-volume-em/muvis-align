@@ -1,0 +1,58 @@
+citations:
+  - name: "muvis-align"
+    license: "GPL 3"
+    description: "Image registration"
+
+docker_image:
+  org: ccp-volume-em
+  name: muvis-align
+  tag: "1.0.0"
+  platform: "linux/amd64"
+
+inputs: 
+  # Files Parameter Test Cases
+  # 1. files correct version
+  - name: input_images
+    type: file
+    label: "files_optional_true_correct"
+    description: "Files correct version. with optional flag True"
+    file_count: "single"
+    unique_string:
+      - "*"
+    default: "single"
+    cli_tag: "--files_correct_true"
+    cli_order: 0
+    optional: True
+    section_id: ""
+    folder_name: "/bilayers/input_images"
+    mode: "beginner"
+
+outputs:
+  - name: output_array 
+    type: array
+    label: "Output Data"
+    description: "output data"
+    cli_tag: "--output_data"
+    cli_order: 1
+    default: "single"
+    optional: True
+    format:
+      - zarr
+    folder_name: "/path/to/array"
+    file_count: "single"
+    unique_string:
+      - "*"
+    section_id: "outputs"
+    mode: "beginner"
+
+parameters:
+  - name: t_input_path
+    type: textbox
+    label: "input path"
+    description: "Textbox with input_path"
+    cli_tag: "--textbox_input_path"
+    cli_order: 0
+    default: ""
+    optional: False
+    section_id: "input-args"
+    mode: "beginner"

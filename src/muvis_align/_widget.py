@@ -30,21 +30,71 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import napari
 
-from qtpy.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from qtpy.QtWidgets import QWidget, QTabWidget, QGridLayout, QLabel, QLineEdit, QPushButton
+from qtpy.QtCore import Qt
+
+from muvis_align.bilayers_util import get_section_ids, get_with_secion_id
+from muvis_align.resources import get_project_template
 
 
-class MainWidget(QWidget):
+class MainWidget(QTabWidget):
     # your QWidget.__init__ can optionally request the napari viewer instance
     # use a type annotation of 'napari.viewer.Viewer' for any parameter
     def __init__(self, viewer: "napari.viewer.Viewer"):
         super().__init__()
         self.viewer = viewer
 
-        btn = QPushButton("Click me!")
-        btn.clicked.connect(self._on_click)
+        self.template = get_project_template()
+        if not self.template:
+            raise FileNotFoundError('Project template not found')
+        self.params = {}
 
-        self.setLayout(QHBoxLayout())
-        self.layout().addWidget(btn)
+        self.widgets = self.create_widgets()
+        for label, widget in self.widgets.items():
+            self.addTab(widget, label)
+        #viewer.window.add_dock_widget(self.main_output_widget, name='MASS', area='left')
+
+    def create_widgets(self):
+        params = self.template['parameters']
+        section_ids = get_section_ids(params)
+        widgets = {section_id: self.create_section_widget(get_with_secion_id(params, section_id))
+                   for section_id in section_ids}
+        return widgets
+
+    def create_section_widget(self, params):
+        section_widget = QWidget()
+        layout = QGridLayout()
+        layout.setAlignment(Qt.AlignTop)
+        section_widget.setLayout(layout)
+
+        for index, param in enumerate(params):
+            label = param.get('label')
+            param_type = param.get('type').lower()
+            value = param.get('value')
+            description = param.get('description')
+
+            label_widget = QLabel(label)
+            if 'text' in param_type:
+                var_widget = QLineEdit()
+            else:
+                var_widget = None
+
+            if value is not None:
+                var_widget.setText(value)
+
+            if label_widget:
+                layout.addWidget(label_widget, index, 0)
+                layout.addWidget(var_widget, index, 1)
+            else:
+                layout.addWidget(var_widget, index, 0, 1, -1)
+
+            if description:
+                if label_widget is not None:
+                    label_widget.setToolTip(description)
+                if var_widget is not None:
+                    var_widget.setToolTip(description)
+
+        return section_widget
 
     def _on_click(self):
         print("napari has", len(self.viewer.layers), "layers")

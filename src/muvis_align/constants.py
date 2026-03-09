@@ -14,3 +14,5 @@ original_positions_name = 'positions_original.pdf'
 metrics_name = 'metrics.json'
 metrics_tabular_name = 'mappings.csv'
 registered_positions_name = 'positions_registered.pdf'
+
+NAPARI_PROJECT_TEMPLATE = 'project_template.yaml'
