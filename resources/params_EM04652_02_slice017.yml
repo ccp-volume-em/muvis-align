@@ -71,7 +71,7 @@ operations:
     #input:
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s00000/registered.ome.zarr
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s00001/registered.ome.zarr
-    #source_metadata: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/aligned/ov_mappings.json
+    source_metadata: {'position': {'y': 0, 'x': 0}, rotation: null}
     mappings: ov_mappings.json
     output_spacing: mean
     n_parallel_pairwise_regs: 64
