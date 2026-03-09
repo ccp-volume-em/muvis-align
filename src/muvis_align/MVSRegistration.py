@@ -812,13 +812,17 @@ class MVSRegistration:
                 saving_zarr = output_filename is not None
                 if saving_zarr and not output_filename.lower().endswith('.zarr'):
                     output_filename += '.ome.zarr'
+                    ome_version = str(self.params_general.get('output', {}).get('ome_version', '0.4'))
+                    zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
+                else:
+                    zarr_options = None
                 fused_image = fusion.fuse(
                     sims,
                     fusion_func=fuse_func,
                     transform_key=transform_key,
                     output_stack_properties=output_stack_properties,
                     output_zarr_url=output_filename,
-                    zarr_options={'ome_zarr': saving_zarr}
+                    zarr_options=zarr_options
                 )
                 if saving_zarr:
                     open(output_filename.rstrip('.zarr').rstrip('.ome'), 'w')
