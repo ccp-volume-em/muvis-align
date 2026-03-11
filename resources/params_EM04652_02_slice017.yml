@@ -50,6 +50,7 @@ operations:
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00000.ome.tif
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00001.ome.tif
     source_metadata: {'position': {'y': 0, 'x': 0}, rotation: null}
+    extra_metadata: {scale: {z: 0.05}}
     normalisation: global
     gaussian_sigma: 2.5
     transform_type: affine
@@ -71,6 +72,7 @@ operations:
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s00000/registered.ome.zarr
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s00001/registered.ome.zarr
     source_metadata: {'position': {'y': 0, 'x': 0}, rotation: null}
+    extra_metadata: {scale: {z: 0.05}}
     mappings: ov_mappings.json
     output_spacing: mean
     n_parallel_pairwise_regs: 64
