@@ -250,7 +250,8 @@ class MVSRegistration:
                                             transform_key=self.reg_transform_key)
 
                 with Timer('fuse image', self.logging_time):
-                    fused_image, is_saved = self.fuse(sims, output_filename=registered_fused_filename)
+                    #fused_image, is_saved = self.fuse(sims, output_filename=registered_fused_filename)
+                    fused_image, is_saved = self.fuse(sims)
 
                 if not is_saved or 'tif' in output_params.get('format'):
                     logging.info('Saving fused image...')
@@ -814,18 +815,15 @@ class MVSRegistration:
                     output_filename += '.ome.zarr'
                     ome_version = str(self.params_general.get('output', {}).get('ome_version', '0.4'))
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
-                    batch_options = {'n_batch': output_stack_properties['shape'].get('z', 1)}
                 else:
                     zarr_options = None
-                    batch_options = None
                 fused_image = fusion.fuse(
                     sims,
                     fusion_func=fuse_func,
                     transform_key=transform_key,
                     output_stack_properties=output_stack_properties,
                     output_zarr_url=output_filename,
-                    zarr_options=zarr_options,
-                    batch_options=batch_options
+                    zarr_options=zarr_options
                 )
                 if saving_zarr:
                     open(output_filename.rstrip('.zarr').rstrip('.ome'), 'w')
