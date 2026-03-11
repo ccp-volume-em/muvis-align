@@ -21,50 +21,50 @@ general:
     thumbnail_scale: 1um
 
 operations:
-  - operation: register match s
-    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/**/*.ome.tif
-    #input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/**/*_s00400.ome.tif
-    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/**/*_s00500.ome.tif
-    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/**/*_s00012.ome.tif
-    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/tiles_slice394/*.ome.tif
-    source_metadata: sbem
-    normalisation: global
-    #pairing: overlay
-    transform_type: translation
-    #method: phase_correlation
-    method:
-      name: orb
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    #fusion: compose
-    n_set_workers: 64
-    n_parallel_pairwise_regs: 64
-    output: ../../stitched/s{s}/
-
-  - operation: register stack
-    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/*.ome.tif
-    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/*.ome.tif
-    #input:
-    #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00000.ome.tif
-    #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00001.ome.tif
-    source_metadata: {'position': {'y': 0, 'x': 0}, rotation: null}
-    extra_metadata: {scale: {z: 0.05}}
-    normalisation: global
-    gaussian_sigma: 2.5
-    transform_type: affine
-    #method: phase_correlation
-    method:
-      name: orb
-      gaussian_sigma: 5
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output_spacing: mean
-    n_parallel_pairwise_regs: 64
-    output: ../../aligned/ov_
+#  - operation: register match s
+#    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/**/*.ome.tif
+#    #input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/**/*_s00400.ome.tif
+#    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/**/*_s00500.ome.tif
+#    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/**/*_s00012.ome.tif
+#    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/tiles_slice394/*.ome.tif
+#    source_metadata: sbem
+#    normalisation: global
+#    #pairing: overlay
+#    transform_type: translation
+#    #method: phase_correlation
+#    method:
+#      name: orb
+#      max_keypoints: 5000
+#      inlier_threshold_factor: 0.05
+#      max_trials: 1000
+#      ransac_iterations: 3
+#    #fusion: compose
+#    n_set_workers: 64
+#    n_parallel_pairwise_regs: 64
+#    output: ../../stitched/s{s}/
+#
+#  - operation: register stack
+#    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/*.ome.tif
+#    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/*.ome.tif
+#    #input:
+#    #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00000.ome.tif
+#    #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00001.ome.tif
+#    source_metadata: {'position': {'y': 0, 'x': 0}, rotation: null}
+#    extra_metadata: {scale: {z: 0.05}}
+#    normalisation: global
+#    gaussian_sigma: 2.5
+#    transform_type: affine
+#    #method: phase_correlation
+#    method:
+#      name: orb
+#      gaussian_sigma: 5
+#      max_keypoints: 5000
+#      inlier_threshold_factor: 0.05
+#      max_trials: 1000
+#      ransac_iterations: 3
+#    output_spacing: mean
+#    n_parallel_pairwise_regs: 64
+#    output: ../../aligned/ov_
 
   - operation: stack
     input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s*/registered.ome.zarr
