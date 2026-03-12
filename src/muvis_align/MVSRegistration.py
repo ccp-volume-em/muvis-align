@@ -250,8 +250,7 @@ class MVSRegistration:
                                             transform_key=self.reg_transform_key)
 
                 with Timer('fuse image', self.logging_time):
-                    #fused_image, is_saved = self.fuse(sims, output_filename=registered_fused_filename)
-                    fused_image, is_saved = self.fuse(sims)
+                    fused_image, is_saved = self.fuse(sims, output_filename=registered_fused_filename)
 
                 if not is_saved or 'tif' in output_params.get('format'):
                     logging.info('Saving fused image...')
