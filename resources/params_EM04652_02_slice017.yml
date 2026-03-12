@@ -13,6 +13,7 @@ general:
     clear: False
     overwrite: False
     format: ome.zarr
+    ome_version: 0.5
     tile_size: [10240, 10240]
     compression:
     npyramid_add: 4
