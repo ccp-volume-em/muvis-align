@@ -817,7 +817,12 @@ class MVSRegistration:
                     ome_version = str(output_params.get('ome_version', '0.4'))
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
                     if 'tile_size' in output_params:
-                        output_chunksize = xyz_to_dict(output_params['tile_size'])
+                        tile_size = output_params['tile_size']
+                        if not isinstance(tile_size, (list, tuple)):
+                            tile_size = [tile_size] * 2
+                        output_chunksize = xyz_to_dict(tile_size)
+                        if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
+                            output_chunksize['z'] = 1
                 else:
                     zarr_options = None
                 fused_image = fusion.fuse(
