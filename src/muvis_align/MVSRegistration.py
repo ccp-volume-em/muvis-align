@@ -810,15 +810,16 @@ class MVSRegistration:
             fuse_func = self.create_fusion_method(sim0)
             if fuse_func:
                 saving_zarr = output_filename is not None
+                output_chunksize = None
                 if saving_zarr and not output_filename.lower().endswith('.zarr'):
                     output_filename += '.ome.zarr'
                     output_params = self.params_general.get('output', {})
                     ome_version = str(output_params.get('ome_version', '0.4'))
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
-                    output_chunksize = xyz_to_dict(output_params.get('chunk_size'))
+                    if 'tile_size' in output_params:
+                        output_chunksize = xyz_to_dict(output_params['tile_size'])
                 else:
                     zarr_options = None
-                    output_chunksize = None
                 fused_image = fusion.fuse(
                     sims,
                     fusion_func=fuse_func,
