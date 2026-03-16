@@ -832,7 +832,7 @@ class MVSRegistration:
                     output_stack_properties=output_stack_properties,
                     output_zarr_url=output_filename,
                     zarr_options=zarr_options,
-#                    output_chunksize=output_chunksize
+                    output_chunksize=output_chunksize
                 )
                 if saving_zarr:
                     open(output_filename.rstrip('.zarr').rstrip('.ome'), 'w')
