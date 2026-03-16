@@ -7,7 +7,7 @@ def get_section_ids(parameters):
     return section_ids
 
 
-def get_with_secion_id(parameters, section_id):
+def get_section_params(parameters, section_id):
     section_params = []
     for param in parameters:
         if param.get('section_id') == section_id:

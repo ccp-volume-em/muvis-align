@@ -768,3 +768,22 @@ def adjust_sbemimage_properties(translation, scale, size, filename, sbemimage_co
     translation['y'] = dy - physical_size['y'] / 2
 
     return translation, scale
+
+
+def get_label_element(elements, label):
+    for element in elements:
+        if element.get('label') == label:
+            return element
+    return None
+
+
+def get_path_type(label):
+    path_type = None
+    label = label.lower()
+    if 'directory' in label or 'folder' in label:
+        path_type = 'dir'
+    elif 'files' in label:
+        path_type = 'files'
+    elif 'file' in label or 'path' in label:
+        path_type = 'file'
+    return path_type
