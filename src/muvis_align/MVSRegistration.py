@@ -810,10 +810,19 @@ class MVSRegistration:
             fuse_func = self.create_fusion_method(sim0)
             if fuse_func:
                 saving_zarr = output_filename is not None
+                output_chunksize = None
                 if saving_zarr and not output_filename.lower().endswith('.zarr'):
                     output_filename += '.ome.zarr'
-                    ome_version = str(self.params_general.get('output', {}).get('ome_version', '0.4'))
+                    output_params = self.params_general.get('output', {})
+                    ome_version = str(output_params.get('ome_version', '0.4'))
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
+                    if 'tile_size' in output_params:
+                        tile_size = output_params['tile_size']
+                        if not isinstance(tile_size, (list, tuple)):
+                            tile_size = [tile_size] * 2
+                        output_chunksize = xyz_to_dict(tile_size)
+                        if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
+                            output_chunksize['z'] = 1
                 else:
                     zarr_options = None
                 fused_image = fusion.fuse(
@@ -822,7 +831,8 @@ class MVSRegistration:
                     transform_key=transform_key,
                     output_stack_properties=output_stack_properties,
                     output_zarr_url=output_filename,
-                    zarr_options=zarr_options
+                    zarr_options=zarr_options,
+                    output_chunksize=output_chunksize
                 )
                 if saving_zarr:
                     open(output_filename.rstrip('.zarr').rstrip('.ome'), 'w')
