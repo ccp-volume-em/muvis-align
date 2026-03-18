@@ -1,13 +1,14 @@
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     import napari
 
 import os.path
-from qtpy.QtWidgets import QWidget, QTabWidget, QGridLayout, QLabel, QLineEdit
+from qtpy.QtWidgets import QWidget, QTabWidget, QGridLayout, QLabel, QLineEdit, QPushButton
 from qtpy.QtCore import Qt
-import yaml
 
 from muvis_align.bilayers_util import get_section_ids, get_section_params
+from muvis_align.file.project_yaml import read_params, write_params
 from muvis_align.PathControl import PathControl
 from muvis_align.resources import get_project_template
 
@@ -31,30 +32,13 @@ class MainWidget(QTabWidget):
 
     def set_params_path(self, path):
         if os.path.exists(path):
-            self.read_params(path)
+            self.params = read_params(path)
         else:
-            self.write_params(path, self.params)
-
-    def read_params(self, path):
-        with open(path, 'r') as infile:
-            self.params = yaml.load(infile, Loader=yaml.Loader)
-
-    def write_params(self, path, params):
-        template = self.template['parameters']
-        all_params = {}
-        for section_id in get_section_ids(template):
-            for template_param in get_section_params(template, section_id):
-                if template_param.get('label') and template_param.get('default'):
-                    params[template_param['label']] = template_param['default']
-            if params:
-                all_params[section_id] = params
-        with open(path, 'w') as outfile:
-            yaml.dump(all_params, outfile, default_flow_style=False)
-
+            write_params(path, self.template['parameters'], self.params)
 
     def create_widgets(self):
         widgets = {'project': self.create_project_widget()}
-        template = self.template['parameters']
+        template = self.template.get('inputs', []) + self.template.get('parameters', []) + self.template.get('outputs', [])
         for section_id in get_section_ids(template):
             section_template = get_section_params(template, section_id)
             section_params = self.params.get(section_id, {})
@@ -72,11 +56,13 @@ class MainWidget(QTabWidget):
         return self.create_section_widget(project_template, {})
 
     def create_section_widget(self, section_template, section_params):
+        # https://bilayers.org/understanding-config
         section_widget = QWidget()
         layout = QGridLayout()
         layout.setAlignment(Qt.AlignTop)
         section_widget.setLayout(layout)
 
+        index = 0
         for index, template in enumerate(section_template):
             param_label = template.get('label')
             param_type = template.get('type').lower()
@@ -86,15 +72,23 @@ class MainWidget(QTabWidget):
 
             label_widget = QLabel(param_label)
             var_widget = None
-            if 'text' in param_type:
+            if param_type == 'checkbox':
+                pass
+            elif param_type == 'radio':
+                pass
+            elif param_type == 'dropdown':
+                pass
+            elif param_type == 'button':
+                var_widget = QPushButton(param_label)
+            else:
                 var_widget = QLineEdit()
-                if 'path' or 'file' in param_type:
+                if param_type in ['files', 'image']:
                     path_control = PathControl(template, var_widget, section_template, param_label, function=function)
                     for button_index, button in enumerate(path_control.get_button_widgets()):
                         layout.addWidget(button, index, 2 + button_index)
                     self.path_controls[param_label] = path_control
 
-            if value is not None:
+            if var_widget and value is not None:
                 var_widget.setText(value)
 
             if label_widget:
@@ -108,6 +102,8 @@ class MainWidget(QTabWidget):
                     label_widget.setToolTip(description)
                 if var_widget is not None:
                     var_widget.setToolTip(description)
+
+        layout.addWidget(QPushButton('run'), index + 1, 0, 1, -1)
 
         return section_widget
 
