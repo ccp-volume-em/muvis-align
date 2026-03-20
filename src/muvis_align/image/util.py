@@ -722,6 +722,12 @@ def calc_output_properties(sims, transform_key, output_spacing=None, z_scale=Non
         output_spacing,
         mode='union',
     )
+    if 'z' in output_properties['shape']:
+        z_positions = sorted(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims]))
+        z_shape = len(z_positions)
+        if z_shape <= 1:
+            z_shape = len(sims)
+        output_properties['shape']['z'] = z_shape
     return output_properties
 
 
