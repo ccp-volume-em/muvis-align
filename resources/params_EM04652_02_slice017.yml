@@ -68,8 +68,8 @@ operations:
 #    output: ../../aligned/ov2_
 
   - operation: stack
-    #input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s*/registered.ome.zarr
-    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s0050?/registered.ome.zarr
+    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s*/registered.ome.zarr
+    #input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s0050?/registered.ome.zarr
     #input:
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched_hpc/s00000/registered.ome.zarr
     #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched_hpc/s00001/registered.ome.zarr
@@ -79,4 +79,4 @@ operations:
     mappings: ov_mappings.json
     output_spacing: mean
     n_parallel_pairwise_regs: 64
-    output: ../../aligned2/
+    output: ../../aligned/
