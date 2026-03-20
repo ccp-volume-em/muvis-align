@@ -784,12 +784,6 @@ class MVSRegistration:
 
         output_stack_properties = calc_output_properties(sims, transform_key,
                                                          output_spacing=output_spacing, z_scale=z_scale)
-        if 'z' in output_stack_properties['shape']:
-            z_positions = sorted(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims]))
-            z_shape = len(z_positions)
-            if z_shape <= 1:
-                z_shape = len(sims)
-            output_stack_properties['shape']['z'] = z_shape
 
         if self.verbose:
             logging.info(f'Output stack: {numpy_to_native(output_stack_properties)}')

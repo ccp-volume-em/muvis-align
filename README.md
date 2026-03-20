@@ -16,9 +16,9 @@ Image registration pipeline using multiview-stitcher and napari plugin
 
 ## Documentation
 
-Main documentation: [franciscrickinstitute.github.io/muvis-align](https://franciscrickinstitute.github.io/muvis-align/)
+Main documentation: [ccp-volume-em.github.io/muvis-align](https://ccp-volume-em.github.io/muvis-align/)
 
-Generated documentation: [deepwiki.com/FrancisCrickInstitute/muvis-align](https://deepwiki.com/FrancisCrickInstitute/muvis-align)
+Generated documentation: [deepwiki.com/ccp-volume-em/muvis-align](https://deepwiki.com/ccp-volume-em/muvis-align)
 
 ----------------------------------
 
