@@ -1,7 +1,7 @@
-import os
+import os.path
 from qtpy.QtWidgets import QPushButton, QFileDialog, QStyle
 
-from muvis_align.util import get_label_element, get_path_type
+from muvis_align.util import get_label_element
 
 
 class PathControl:
@@ -12,7 +12,7 @@ class PathControl:
         self.param_label = param_label
         self.function = function
         self.description = template.get('description')
-        self.path_type = template.get('path_type', get_path_type(param_label))
+        self.path_type = 'dir' if template.get('file_count', '') == 'multiple' else 'file'
 
         parts = template.get('default').split('.')
         self.default_ext = parts[1] if len(parts) > 1 else ''

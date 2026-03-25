@@ -1,6 +1,6 @@
 import yaml
 
-from muvis_align.bilayers_util import get_section_ids, get_section_params
+from muvis_align.ui.bilayers_util import get_section_dict
 
 
 def read_params(path):
@@ -10,8 +10,9 @@ def read_params(path):
 
 def write_params(path, template, params):
     all_params = {}
-    for section_id in get_section_ids(template):
-        for template_param in get_section_params(template, section_id):
+    template = get_section_dict(template, 'inputs') | get_section_dict(template, 'parameters')
+    for section_id, section_items in template.items():
+        for param_id, template_param in section_items.items():
             if template_param.get('label') and template_param.get('default'):
                 params[template_param['label']] = template_param['default']
         if params:

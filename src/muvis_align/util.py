@@ -7,7 +7,7 @@ import glob
 import json
 import math
 import numpy as np
-import os
+import os.path
 import re
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
@@ -775,15 +775,3 @@ def get_label_element(elements, label):
         if element.get('label') == label:
             return element
     return None
-
-
-def get_path_type(label):
-    path_type = None
-    label = label.lower()
-    if 'directory' in label or 'folder' in label:
-        path_type = 'dir'
-    elif 'files' in label:
-        path_type = 'files'
-    elif 'file' in label or 'path' in label:
-        path_type = 'file'
-    return path_type
