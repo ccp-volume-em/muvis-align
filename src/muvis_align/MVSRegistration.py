@@ -6,6 +6,7 @@ import dask
 from dask.diagnostics import ProgressBar
 import logging
 from multiview_stitcher import registration, vis_utils
+from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.mv_graph import NotEnoughOverlapError
 from multiview_stitcher.registration import get_overlap_bboxes, sims_to_intrinsic_coord_system
 import numpy as np
