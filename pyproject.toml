@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 # napari can be included in dependencies if napari imports are required.
 # However, you should not include napari[all], napari[qt],
 # or any other Qt bindings directly (e.g. PyQt5, PySide2).
@@ -31,7 +31,15 @@ requires-python = ">=3.10"
 dependencies = [
     "numpy",
     "qtpy",
+    "scipy",
     "scikit-image",
+    "scikit-learn",
+    "dask",
+    "tifffile>=2023.9.26",
+    "zarr",
+    "ome-zarr",
+    "matplotlib",
+    "tqdm",
 ]
 
 [project.optional-dependencies]

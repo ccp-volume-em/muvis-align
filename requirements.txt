@@ -1,4 +1,4 @@
-multiview-stitcher[ants]
+multiview-stitcher
 opencv-python
 spatial-image
 multiscale-spatial-image
