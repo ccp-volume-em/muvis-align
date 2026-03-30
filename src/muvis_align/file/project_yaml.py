@@ -8,14 +8,15 @@ def read_params(path):
         return yaml.load(infile, Loader=yaml.Loader)
 
 
-def write_params(path, template, params):
-    all_params = {}
-    template = get_section_dict(template, 'inputs') | get_section_dict(template, 'parameters')
+def write_params(path, template0, params):
+    # copy template default values to unset param values
+    template = get_section_dict(template0)
     for section_id, section_items in template.items():
-        for param_id, template_param in section_items.items():
-            if template_param.get('label') and template_param.get('default'):
-                params[template_param['label']] = template_param['default']
-        if params:
-            all_params[section_id] = params
+        section_params = params.get(section_id, {})
+        for section_item in section_items:
+            if section_item.get('label') and section_item.get('default'):
+                label = section_item['name']
+                if section_params.get(label) is None:
+                    section_params[label] = section_item['default']
     with open(path, 'w') as outfile:
-        yaml.dump(all_params, outfile, default_flow_style=False)
+        yaml.dump(params, outfile, default_flow_style=False)

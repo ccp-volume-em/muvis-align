@@ -1,78 +1,86 @@
-from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QWidget, QGridLayout, QLabel, QLineEdit, QPushButton
+# https://bilayers.org/understanding-config
+# https://forum.image.sc/t/napari-widgets-from-bilayers/119800
 
-from muvis_align.PathControl import PathControl
+
+from magicgui.widgets import Container, create_widget
+
 from muvis_align.ui.bilayers_util import get_section_dict
 
 
-def create_project_widget(set_params_path):
+map_bilayers_to_widget_type = {
+    'textbox': 'LineEdit',
+    'checkbox': 'CheckBox',
+    'radio': 'Radio',
+    'dropdown': 'Dropdown',
+    'integer': 'SpinBox',
+    'float': 'FloatSpinBox',
+    'table': 'Table',
+    'file': 'FileEdit',
+    'image': 'FileEdit',
+    'array': 'FileEdit',
+    'measurement': 'FileEdit'
+}
+
+
+def create_project_widget(interface):
     project_template = [
-        {'label': 'project_path',
-         'type': 'textbox',
-         'path_type': 'set',
-         'default': 'muvis_align_project.yml',
-         'function': set_params_path}
+        {'name': 'project_path',
+         'label': 'Project path',
+         'type': 'file',
+         'output_dir_set': True,
+         'default': 'muvis_align_project.yml'}
     ]
-    return create_section_widget(project_template, {})
+    return create_section_widget('', project_template, {}, interface)
 
 
-def create_widgets(template, params):
+def create_widgets(interface):
     widgets = {}
-    template = get_section_dict(template, 'inputs') | get_section_dict(template, 'parameters')
-    for section_id, section_items in template.items():
-        section_params = params.get(section_id, {})
-        widgets[section_id] = create_section_widget(section_items, section_params)
+    sections = get_section_dict(interface.template, ['inputs', 'parameters', 'display_only', 'outputs'])
+    for section_id, section_items in sections.items():
+        section_params = interface.params.get(section_id, {})
+        widgets[section_id] = create_section_widget(section_id, section_items, section_params, interface)
     return widgets
 
 
-def create_section_widget(section_template, section_params):
-    # https://bilayers.org/understanding-config
-    section_widget = QWidget()
-    layout = QGridLayout()
-    layout.setAlignment(Qt.AlignTop)
-    section_widget.setLayout(layout)
-
-    index = 0
+def create_section_widget(section_id, section_template, section_params, interface):
+    # https://pyapp-kit.github.io/magicgui/widgets/
+    widgets = []
     for index, template in enumerate(section_template):
+        param_name = template.get('name')
         param_label = template.get('label')
         param_type = template.get('type').lower()
-        value = section_params.get('label', template.get('default'))
+        value = section_params.get(param_label, template.get('default'))
+        is_output = (section_id == 'output' or template.get('output_dir_set'))
         description = template.get('description')
-        function = template.get('function')
+        choices = template.get('options')
+        has_action = False
 
-        label_widget = QLabel(param_label)
-        var_widget = None
-        if param_type == 'checkbox':
-            pass
-        elif param_type == 'radio':
-            pass
-        elif param_type == 'dropdown':
-            pass
-        elif param_type == 'button':
-            var_widget = QPushButton(param_label)
-        else:
-            var_widget = QLineEdit()
-            if param_type in ['files', 'image']:
-                path_control = PathControl(template, var_widget, section_template, param_label, function=function)
-                for button_index, button in enumerate(path_control.get_button_widgets()):
-                    layout.addWidget(button, index, 2 + button_index)
-                #path_controls[param_label] = path_control
-
-        if var_widget and value is not None:
-            var_widget.setText(value)
-
-        if label_widget:
-            layout.addWidget(label_widget, index, 0)
-            layout.addWidget(var_widget, index, 1)
-        else:
-            layout.addWidget(var_widget, index, 0, 1, -1)
-
+        widget_type = map_bilayers_to_widget_type.get(param_type)
+        if widget_type is None:
+            print(f'Unsupported type {param_type}')
+        options = {}
+        if choices is not None:
+            options['choices'] = list(choices)
+        if widget_type == 'FileEdit':
+            file_count = template.get('file_count')
+            options['mode'] = get_file_dialog_mode(is_output, file_count)
+            has_action = True
+        widget = create_widget(name=param_name, value=value, label=param_label, widget_type=widget_type, options=options)
         if description:
-            if label_widget is not None:
-                label_widget.setToolTip(description)
-            if var_widget is not None:
-                var_widget.setToolTip(description)
+            widget.tooltip = description
+        if has_action:
+            interface_function = interface.get_function(param_name)
+            if interface_function is not None:
+                widget.changed.connect(interface_function)
+        widgets.append(widget)
+    return Container(widgets=widgets)
 
-    layout.addWidget(QPushButton('run'), index + 1, 0, 1, -1)
 
-    return section_widget
+def get_file_dialog_mode(is_output, file_count):
+    if file_count and 'multiple' in file_count:
+        mode = 'd'
+    elif is_output:
+        mode = 'w'
+    else:
+        mode = 'r'
+    return mode

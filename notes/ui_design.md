@@ -2,7 +2,7 @@
 
 input / metadata overview
 - set input path
-- load metadata button
+- (load metadata button)
 - panel (for results)
 - show layout
 - checkbox preview image data
@@ -29,7 +29,7 @@ layout preview / pair registration
 - show overview button, or overview/pair view selection
 - checkbox preview image data
 - pair selection (combobox)
-- store button
+- (store button)
 - output:
 	- colourbar
 	- metrics

@@ -17,7 +17,7 @@ inputs:
     file_count: "multiple"
     unique_string:
       - "*"
-    default: "single"
+#    default: "single"
     cli_tag: "--input_images"
     cli_order: 0
     optional: False
@@ -26,7 +26,7 @@ inputs:
       - ometiff
       - zarr
       - omezarr
-    section_id: ""
+    section_id: "input_data"
     folder_name: "/data"
     mode: "beginner"
 
@@ -37,7 +37,7 @@ outputs:
     description: "output data"
     cli_tag: "--output_data"
     cli_order: 1
-    default: "single"
+#    default: "single"
     optional: True
     format:
       - omezarr
@@ -52,13 +52,11 @@ outputs:
     tiled: True
     pyramidal: True
 
-parameters:
-  - name: button_load_metadata
-    type: button
-    label: "Load Metadata"
-    description: "Button to load metadata"
-    cli_tag: "--button_load_metadata"
-    cli_order: 1
-    optional: True
-    section_id: "input-args"
-    mode: "beginner"
+#parameters:
+
+display_only:
+  - name: metadata
+    type: table
+    label: "Metadata"
+    description: "Metadata"
+    section_id: "input_data"
