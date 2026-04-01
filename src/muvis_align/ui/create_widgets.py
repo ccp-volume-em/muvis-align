@@ -4,6 +4,7 @@
 
 from magicgui.widgets import Container, create_widget
 
+from muvis_align.ui.ParamWidget import ParamWidget
 
 map_bilayers_to_widget_type = {
     'textbox': 'LineEdit',
@@ -28,21 +29,21 @@ def create_project_widget(interface):
          'output_dir_set': True,
          'default': 'muvis_align_project.yml'}
     ]
-    return create_section_widget('', project_template, {}, interface)
+    return create_section_widget('project', project_template, interface, connect_changed=False)
 
 
 def create_widgets(interface):
     widgets = {}
     for section_id, section_items in interface.template.items():
-        section_params = interface.params.get(section_id, {})
-        widgets[section_id] = create_section_widget(section_id, section_items, section_params, interface)
+        widgets[section_id] = create_section_widget(section_id, section_items, interface)
     return widgets
 
 
-def create_section_widget(section_id, section_template, section_params, interface):
+def create_section_widget(section_id, section_template, interface, connect_changed=True):
     # https://pyapp-kit.github.io/magicgui/widgets/
     widgets = []
     for index, template in enumerate(section_template):
+        section_params = interface.params.get(section_id, {})
         param_name = template.get('name')
         param_label = template.get('label')
         param_type = template.get('type').lower()
@@ -53,24 +54,28 @@ def create_section_widget(section_id, section_template, section_params, interfac
         has_action = False
 
         widget_type = map_bilayers_to_widget_type.get(param_type)
+        is_file_type = (widget_type == 'FileEdit')
         if widget_type is None:
             print(f'Unsupported type {param_type}')
         options = {}
         if choices is not None:
             options['choices'] = list(choices)
-        if widget_type == 'FileEdit':
+        if is_file_type:
             file_count = template.get('file_count')
             options['mode'] = get_file_dialog_mode(is_output, file_count)
             has_action = True
-        widget = create_widget(name=section_id + '.' + param_name, value=value, label=param_label, widget_type=widget_type, options=options)
+        full_name = section_id + '.' + param_name
+        widget = create_widget(name=full_name, value=value, label=param_label, widget_type=widget_type, options=options)
         if description:
             widget.tooltip = description
         if has_action:
             interface_function = interface.get_function(param_name)
             if interface_function is not None:
                 widget.changed.connect(interface_function)
-        #widget.bind(interface.param)
-        widget.changed.connect(interface.param_changed)
+        if connect_changed:
+            param_widget = ParamWidget(full_name, widget, interface, to_str=is_file_type)
+            interface.param_widgets[full_name] = param_widget
+            widget.changed.connect(param_widget.value_changed)
         widgets.append(widget)
     return Container(widgets=widgets)
 
