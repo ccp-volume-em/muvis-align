@@ -52,7 +52,29 @@ outputs:
     tiled: True
     pyramidal: True
 
-#parameters:
+parameters:
+  - name: show_shapes
+    type: checkbox
+    label: "Show shape data"
+    description: "If enabled, tiles will be displayed as shapes"
+    default: True
+    cli_tag: "--show_shapes"
+    cli_order: 1
+    optional: True
+    append_value: False
+    section_id: "layout_preview"
+    mode: "beginner"
+  - name: show_preview
+    type: checkbox
+    label: "Preview image data"
+    description: "If enabled, tiles will be previewed as images"
+    default: True
+    cli_tag: "--show_preview"
+    cli_order: 1
+    optional: True
+    append_value: False
+    section_id: "layout_preview"
+    mode: "beginner"
 
 display_only:
   - name: metadata

@@ -14,4 +14,7 @@ def get_section_dict(template, keys=None):
             if section_id not in sections:
                 sections[section_id] = []
             sections[section_id].append(item)
-    return sections
+    sorted_sections = {}
+    for section_id, section_items in sections.items():
+        sorted_sections[section_id] = sorted(section_items, key=lambda item: item.get('section_id'))
+    return sorted_sections

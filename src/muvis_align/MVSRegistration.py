@@ -5,6 +5,7 @@ from contextlib import nullcontext
 import dask
 from dask.diagnostics import ProgressBar
 import logging
+import multiview_stitcher
 from multiview_stitcher import registration, vis_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.mv_graph import NotEnoughOverlapError
@@ -46,6 +47,8 @@ class MVSRegistration:
         self.reg_transform_key = 'registered'
         self.transition_transform_key = 'transition'
         self.sources = None
+
+        logging.info(f'Multiview-stitcher version: {multiview_stitcher.__version__}')
 
     def init_operation(self, fileset_label, filenames, params, global_rotation=None, global_center=None):
         self.fileset_label = fileset_label

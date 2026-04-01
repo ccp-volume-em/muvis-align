@@ -4,7 +4,10 @@ input / metadata overview
 - set input path
 - (load metadata button)
 - panel (for results)
-- show layout
+- (show layout)
+
+[*split up] layout preview:
+- checkbox show shape data
 - checkbox preview image data
 
 feature explorer
@@ -25,9 +28,9 @@ feature explorer
 - select registration operation
 - run pair registration button
 
-layout preview / pair registration
-- show overview button, or overview/pair view selection
-- checkbox preview image data
+pair registration
+X show overview button, or overview/pair view selection
+X checkbox preview image data
 - pair selection (combobox)
 - (store button)
 - output:
