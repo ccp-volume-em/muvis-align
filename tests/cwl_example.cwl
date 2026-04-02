@@ -40,11 +40,6 @@ inputs:
       prefix: --pretrained_model
     doc: type of model to use
     default: cyto
-    symbols:
-      - cyto
-      - nuclei
-      - cyto2
-      - ignore
   diameter:
     type: float?
     inputBinding:
