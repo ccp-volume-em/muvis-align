@@ -113,6 +113,15 @@ def print_dict(dct: dict, indent: int = 0) -> str:
     return s
 
 
+def print_dict_simple(dct: dict) -> str:
+    items = []
+    for key, value in dct.items():
+        if isinstance(value, float):
+            value = f'{value:.3f}'
+        items.append(f'{key}: {value}')
+    return ' '.join(items)
+
+
 def print_dict_xyz(dct: dict, dims='xyz', decimals=3, as_tuple=False) -> str:
     s = ''
     for dim in dims:

@@ -35,16 +35,17 @@ def create_project_widget(interface):
 def create_widgets(interface):
     widgets = {}
     for section_id, section_items in interface.template.items():
-        connect_changed = (section_id != 'display_only')
-        widgets[section_id] = create_section_widget(section_id, section_items, interface, connect_changed=connect_changed)
+        widgets[section_id] = create_section_widget(section_id, section_items, interface)
     return widgets
 
 
 def create_section_widget(section_id, section_template, interface, connect_changed=True):
     # https://pyapp-kit.github.io/magicgui/widgets/
+    # https://pyapp-kit.github.io/magicgui/api/widgets/create_widget/
     widgets = []
     for index, template in enumerate(section_template):
         section_params = interface.params.get(section_id, {})
+        section_key = template.get('section_key')
         param_name = template.get('name')
         param_label = template.get('label')
         param_type = template.get('type').lower()
@@ -73,9 +74,9 @@ def create_section_widget(section_id, section_template, interface, connect_chang
             interface_function = interface.get_function(param_name)
             if interface_function is not None:
                 widget.changed.connect(interface_function)
-        if connect_changed:
-            param_widget = ParamWidget(full_name, widget, interface, to_str=is_file_type)
-            interface.param_widgets[full_name] = param_widget
+        param_widget = ParamWidget(full_name, widget, interface, to_str=is_file_type)
+        interface.param_widgets[full_name] = param_widget
+        if connect_changed and section_key != 'display_only':
             widget.changed.connect(param_widget.value_changed)
         widgets.append(widget)
     return Container(widgets=widgets)

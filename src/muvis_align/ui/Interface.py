@@ -7,7 +7,7 @@ from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
 from muvis_align.image.util import get_sim_physical_size
 from muvis_align.resources import get_project_template
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import dir_regex, find_all_numbers, print_dict
+from muvis_align.util import dir_regex, find_all_numbers, print_dict_simple
 
 
 class Interface:
@@ -74,16 +74,13 @@ class Interface:
         self.populate_metadata_table(sims)
 
     def populate_metadata_table(self, sims):
+        # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
+        # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
         table_widget = self.param_widgets.get('input_data.metadata_table')
-        #data = {
-        #    'label': self.reg.file_labels,
-        #    'position': [print_dict(si_utils.get_origin_from_sim(sim)) for sim in sims],
-        #    'size': [print_dict(get_sim_physical_size(sim)) for sim in sims]
-        #}
         data = {
-            "data": [[1, 2, 3], [4, 5, 6]],
-            "index": ("r1", "r2"),
-            "columns": ("c1", "c2", "c3"),
+           'label': ["'" + label + "'" for label in self.reg.file_labels],
+           'position': [print_dict_simple(si_utils.get_origin_from_sim(sim)) for sim in sims],
+           'size': [print_dict_simple(get_sim_physical_size(sim)) for sim in sims]
         }
         table_widget.set_value(data)
-        table_widget.read_only = True
+        table_widget.read_only = True   # https://github.com/pyapp-kit/magicgui/issues/348

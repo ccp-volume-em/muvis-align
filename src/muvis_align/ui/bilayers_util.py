@@ -9,6 +9,7 @@ def get_section_dict(template, keys=None):
             items = template
         for item in items:
             section_id = item.get('section_id')
+            item['section_key'] = key
             if not section_id:
                 section_id = key
             if section_id not in sections:
