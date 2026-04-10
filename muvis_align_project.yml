@@ -1,0 +1,12 @@
+input_data:
+  input_images: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
+  metadata_table:
+    column: 2
+    column_header: c3
+    data: null
+    row: 0
+    row_header: r1
+layout_preview:
+  show_preview: true
+  show_shapes: true
+outputs: {}

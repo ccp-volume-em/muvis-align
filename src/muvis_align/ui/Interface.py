@@ -1,11 +1,13 @@
 import logging
+from multiview_stitcher import spatial_image_utils as si_utils
 import os.path
 
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params
 from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
+from muvis_align.image.util import get_sim_physical_size
 from muvis_align.resources import get_project_template
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import dir_regex, find_all_numbers
+from muvis_align.util import dir_regex, find_all_numbers, print_dict
 
 
 class Interface:
@@ -68,4 +70,20 @@ class Interface:
         elif self.verbose:
             logging.info(f'# total files: {len(filenames)}')
         self.reg.init_operation(fileset_label, filenames, self.params_operation)
-        self.reg.init_sims()
+        sims = self.reg.init_sims()
+        self.populate_metadata_table(sims)
+
+    def populate_metadata_table(self, sims):
+        table_widget = self.param_widgets.get('input_data.metadata_table')
+        #data = {
+        #    'label': self.reg.file_labels,
+        #    'position': [print_dict(si_utils.get_origin_from_sim(sim)) for sim in sims],
+        #    'size': [print_dict(get_sim_physical_size(sim)) for sim in sims]
+        #}
+        data = {
+            "data": [[1, 2, 3], [4, 5, 6]],
+            "index": ("r1", "r2"),
+            "columns": ("c1", "c2", "c3"),
+        }
+        table_widget.set_value(data)
+        table_widget.read_only = True

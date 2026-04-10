@@ -77,8 +77,8 @@ parameters:
     mode: "beginner"
 
 display_only:
-  - name: metadata
+  - name: metadata_table
     type: table
-    label: "Metadata"
+    label: " "
     description: "Metadata"
     section_id: "input_data"

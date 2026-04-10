@@ -35,7 +35,8 @@ def create_project_widget(interface):
 def create_widgets(interface):
     widgets = {}
     for section_id, section_items in interface.template.items():
-        widgets[section_id] = create_section_widget(section_id, section_items, interface)
+        connect_changed = (section_id != 'display_only')
+        widgets[section_id] = create_section_widget(section_id, section_items, interface, connect_changed=connect_changed)
     return widgets
 
 
@@ -81,6 +82,7 @@ def create_section_widget(section_id, section_template, interface, connect_chang
 
 
 def get_file_dialog_mode(is_output, file_count):
+    # https://pyapp-kit.github.io/magicgui/api/widgets/FileEdit/
     if file_count and 'multiple' in file_count:
         mode = 'd'
     elif is_output:
