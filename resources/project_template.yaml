@@ -53,6 +53,70 @@ outputs:
     pyramidal: True
 
 parameters:
+  - name: source_position_z
+    type: textbox
+    label: "Source position Z"
+    description: "Metadata source for Z position"
+    default: "source"
+    cli_tag: "--source_position_z"
+    optional: True
+    section_id: "input_data"
+    mode: "advanced"
+  - name: source_position_y
+    type: textbox
+    label: "Source position Y"
+    description: "Metadata source for Y position"
+    default: "source"
+    cli_tag: "--source_position_y"
+    optional: True
+    section_id: "input_data"
+    mode: "advanced"
+  - name: source_position_x
+    type: textbox
+    label: "Source position X"
+    description: "Metadata source for X position"
+    default: "source"
+    cli_tag: "--source_position_x"
+    optional: True
+    section_id: "input_data"
+    mode: "advanced"
+  - name: source_size_
+    type: textbox
+    label: "Source size Z"
+    description: "Metadata source for Z size"
+    default: "source"
+    cli_tag: "--source_size_z"
+    optional: True
+    section_id: "input_data"
+    mode: "advanced"
+  - name: source_size_y
+    type: textbox
+    label: "Source size Y"
+    description: "Metadata source for Y size"
+    default: "source"
+    cli_tag: "--source_size_y"
+    optional: True
+    section_id: "input_data"
+    mode: "advanced"
+  - name: source_size_x
+    type: textbox
+    label: "Source size X"
+    description: "Metadata source for X size"
+    default: "source"
+    cli_tag: "--source_size_x"
+    optional: True
+    section_id: "input_data"
+    mode: "advanced"
+  - name: source_rotation
+    type: textbox
+    label: "Source rotation"
+    description: "Metadata source for rotation"
+    default: "source"
+    cli_tag: "--source_rotation"
+    optional: True
+    section_id: "input_data"
+    mode: "advanced"
+
   - name: show_shapes
     type: checkbox
     label: "Show shape data"

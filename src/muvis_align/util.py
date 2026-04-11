@@ -53,6 +53,24 @@ def numpy_to_native(value):
         return value
 
 
+def is_valid_value(value):
+    return value is not None and value != ''
+
+
+def set_dict_value(dct, keys, value):
+    try:
+        value = float(value)
+    except:
+        pass
+    for index, key in enumerate(keys):
+        if index == len(keys) - 1:
+            dct[key] = value
+        else:
+            if key not in dct:
+                dct[key] = {}
+            dct = dct[key]
+
+
 def filter_dict(dict0: dict) -> dict:
     new_dict = {}
     for key, value0 in dict0.items():
@@ -348,6 +366,8 @@ def eval_context(data, key, default_value, context):
             value = eval(value, context)
         except:
             pass
+    if not isinstance(value, (float, int)):
+        value = default_value
     return value
 
 

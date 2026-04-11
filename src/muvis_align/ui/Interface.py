@@ -7,7 +7,7 @@ from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
 from muvis_align.image.util import get_sim_physical_size
 from muvis_align.resources import get_project_template
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import dir_regex, find_all_numbers, print_dict_simple
+from muvis_align.util import dir_regex, find_all_numbers, print_dict_simple, set_dict_value, is_valid_value
 
 
 class Interface:
@@ -70,7 +70,44 @@ class Interface:
         elif self.verbose:
             logging.info(f'# total files: {len(filenames)}')
         self.reg.init_operation(fileset_label, filenames, self.params_operation)
-        sims = self.reg.init_sims()
+        self.update_metadata_source()
+
+    def source_position_z(self, value):
+        if is_valid_value(value):
+            set_dict_value(self.params_operation, ['source_metadata', 'position', 'z'], value)
+            self.update_metadata_source()
+
+    def source_position_y(self, value):
+        if is_valid_value(value):
+            set_dict_value(self.params_operation, ['source_metadata', 'position', 'y'], value)
+            self.update_metadata_source()
+
+    def source_position_x(self, value):
+        if is_valid_value(value):
+            set_dict_value(self.params_operation, ['source_metadata', 'position', 'x'], value)
+            self.update_metadata_source()
+
+    def source_size_z(self, value):
+        if is_valid_value(value):
+            set_dict_value(self.params_operation, ['source_metadata', 'size', 'z'], value)
+            self.update_metadata_source()
+
+    def source_size_y(self, value):
+        if is_valid_value(value):
+            set_dict_value(self.params_operation, ['source_metadata', 'size', 'y'], value)
+            self.update_metadata_source()
+
+    def source_size_x(self, value):
+        if is_valid_value(value):
+            set_dict_value(self.params_operation, ['source_metadata', 'size', 'x'], value)
+            self.update_metadata_source()
+
+    def source_rotation(self, value):
+        if is_valid_value(value):
+            set_dict_value(self.params_operation, ['source_metadata', 'rotation'], value)
+
+    def update_metadata_source(self):
+        sims = self.reg.init_sims(reinit_sources=True)
         self.populate_metadata_table(sims)
 
     def populate_metadata_table(self, sims):

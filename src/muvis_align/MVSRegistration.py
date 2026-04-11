@@ -291,7 +291,7 @@ class MVSRegistration:
                     source_metadata['rotation'] = source_metadata0['rotation']
             self.sources.append(create_dask_source(filename, source_metadata))
 
-    def init_sims(self, target_scale=None):
+    def init_sims(self, target_scale=None, reinit_sources=False):
         operation = self.params['operation']
         source_metadata = import_metadata(self.params.get('source_metadata', 'source'), input_path=self.params['input'])
         chunk_size = self.params_general.get('chunk_size', [1024, 1024])
@@ -302,7 +302,7 @@ class MVSRegistration:
             raise ValueError('No input files')
 
         logging.info('Initialising sims...')
-        if self.sources is None:
+        if self.sources is None or reinit_sources:
             self.init_sources()
         sources = self.sources
         source0 = sources[0]

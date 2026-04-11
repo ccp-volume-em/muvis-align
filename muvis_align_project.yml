@@ -1,5 +1,8 @@
 input_data:
   input_images: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
+  source_position_x: source
+  source_position_y: source
+  source_position_z: source
 layout_preview:
   show_preview: true
   show_shapes: true

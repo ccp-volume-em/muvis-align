@@ -25,6 +25,7 @@ class MainWidget(QTabWidget):
         self.widgets = self.create_widgets()
         for label, widget in self.widgets.items():
             self.addTab(widget.native, label.replace('_', ' '))
+        self.enable_tabs(False, 1)
         #viewer.window.add_dock_widget(self.main_output_widget, name='MASS', area='left')
 
     def init_logging(self, verbose=False):
@@ -57,6 +58,14 @@ class MainWidget(QTabWidget):
         logging.info(f'muvis-align version {__version__}')
 
     def create_widgets(self):
-        project_widget = {'project': create_project_widget(self.interface)}
+        project_widget = {'project': create_project_widget(self.interface, self.project_path_set)}
         section_widgets = create_widgets(self.interface)
         return project_widget | section_widgets
+
+    def enable_tabs(self, set=True, tab_index=-1):
+        for index in range(self.count()):
+            if (set and (tab_index < 0 or index <= tab_index)) or (not set and index >= tab_index):
+                self.setTabEnabled(index, set)
+
+    def project_path_set(self):
+        self.enable_tabs()

@@ -21,7 +21,7 @@ map_bilayers_to_widget_type = {
 }
 
 
-def create_project_widget(interface):
+def create_project_widget(interface, function):
     project_template = [
         {'name': 'project_path',
          'label': 'Project path',
@@ -29,7 +29,8 @@ def create_project_widget(interface):
          'output_dir_set': True,
          'default': 'muvis_align_project.yml'}
     ]
-    return create_section_widget('project', project_template, interface, connect_changed=False)
+    return create_section_widget('project', project_template, interface, connect_changed=False,
+                                 function=function)
 
 
 def create_widgets(interface):
@@ -39,7 +40,7 @@ def create_widgets(interface):
     return widgets
 
 
-def create_section_widget(section_id, section_template, interface, connect_changed=True):
+def create_section_widget(section_id, section_template, interface, connect_changed=True, function=None):
     # https://pyapp-kit.github.io/magicgui/widgets/
     # https://pyapp-kit.github.io/magicgui/api/widgets/create_widget/
     widgets = []
@@ -53,7 +54,6 @@ def create_section_widget(section_id, section_template, interface, connect_chang
         is_output = (section_id == 'output' or template.get('output_dir_set'))
         description = template.get('description')
         choices = template.get('options')
-        has_action = False
 
         widget_type = map_bilayers_to_widget_type.get(param_type)
         is_file_type = (widget_type == 'FileEdit')
@@ -65,15 +65,16 @@ def create_section_widget(section_id, section_template, interface, connect_chang
         if is_file_type:
             file_count = template.get('file_count')
             options['mode'] = get_file_dialog_mode(is_output, file_count)
-            has_action = True
         full_name = section_id + '.' + param_name
         widget = create_widget(name=full_name, value=value, label=param_label, widget_type=widget_type, options=options)
         if description:
             widget.tooltip = description
-        if has_action:
-            interface_function = interface.get_function(param_name)
-            if interface_function is not None:
-                widget.changed.connect(interface_function)
+        if function is not None:
+            widget.changed.connect(function)
+        # check if function with same name exists
+        interface_function = interface.get_function(param_name)
+        if interface_function is not None:
+            widget.changed.connect(interface_function)
         param_widget = ParamWidget(full_name, widget, interface, to_str=is_file_type)
         interface.param_widgets[full_name] = param_widget
         if connect_changed and section_key != 'display_only':
