@@ -17,5 +17,5 @@ def get_section_dict(template, keys=None):
             sections[section_id].append(item)
     sorted_sections = {}
     for section_id, section_items in sections.items():
-        sorted_sections[section_id] = sorted(section_items, key=lambda item: item.get('section_id'))
+        sorted_sections[section_id] = sorted(section_items, key=lambda item: item.get('cli_order'))
     return sorted_sections

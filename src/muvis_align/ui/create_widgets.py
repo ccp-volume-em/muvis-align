@@ -29,18 +29,19 @@ def create_project_widget(interface, function):
          'output_dir_set': True,
          'default': 'muvis_align_project.yml'}
     ]
-    return create_section_widget('project', project_template, interface, connect_changed=False,
-                                 function=function)
+    return create_section_container('project', project_template, interface,
+                                    connect_changed=False, function=function, add_button=False)
 
 
-def create_widgets(interface):
+def create_template_widgets(interface):
     widgets = {}
     for section_id, section_items in interface.template.items():
-        widgets[section_id] = create_section_widget(section_id, section_items, interface)
+        widgets[section_id] = create_section_container(section_id, section_items, interface)
     return widgets
 
 
-def create_section_widget(section_id, section_template, interface, connect_changed=True, function=None):
+def create_section_container(section_id, section_template, interface,
+                             connect_changed=True, function=None, add_button=True):
     # https://pyapp-kit.github.io/magicgui/widgets/
     # https://pyapp-kit.github.io/magicgui/api/widgets/create_widget/
     widgets = []
@@ -60,8 +61,11 @@ def create_section_widget(section_id, section_template, interface, connect_chang
         if widget_type is None:
             print(f'Unsupported type {param_type}')
         options = {}
-        if choices is not None:
-            options['choices'] = list(choices)
+        if widget_type == 'Dropdown':
+            #options['choices'] = {item['label']: item['value'] for item in choices}
+            #options['choices'] = get_choices
+            options['choices'] = ['source_metadata']
+
         if is_file_type:
             file_count = template.get('file_count')
             options['mode'] = get_file_dialog_mode(is_output, file_count)
@@ -80,6 +84,15 @@ def create_section_widget(section_id, section_template, interface, connect_chang
         if connect_changed and section_key != 'display_only':
             widget.changed.connect(param_widget.value_changed)
         widgets.append(widget)
+
+    if add_button:
+        name = section_id + '_process'
+        widget = create_widget(name=name, label='Process', widget_type='PushButton')
+        interface_function = interface.get_function(name)
+        if interface_function is not None:
+            widget.clicked.connect(interface_function)
+        widgets.append(widget)
+
     return Container(widgets=widgets)
 
 

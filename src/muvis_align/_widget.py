@@ -7,7 +7,7 @@ import logging
 import os.path
 from qtpy.QtWidgets import QTabWidget
 
-from muvis_align.ui.create_widgets import create_project_widget, create_widgets
+from muvis_align.ui.create_widgets import create_project_widget, create_template_widgets
 from muvis_align.ui.Interface import Interface
 from muvis_align._version import __version__
 
@@ -59,7 +59,7 @@ class MainWidget(QTabWidget):
 
     def create_widgets(self):
         project_widget = {'project': create_project_widget(self.interface, self.project_path_set)}
-        section_widgets = create_widgets(self.interface)
+        section_widgets = create_template_widgets(self.interface)
         return project_widget | section_widgets
 
     def enable_tabs(self, set=True, tab_index=-1):

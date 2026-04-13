@@ -26,7 +26,7 @@ inputs:
       - ometiff
       - zarr
       - omezarr
-    section_id: "input_data"
+    section_id: "overview"
     folder_name: "/data"
     mode: "beginner"
 
@@ -59,8 +59,9 @@ parameters:
     description: "Metadata source for Z position"
     default: "source"
     cli_tag: "--source_position_z"
+    cli_order: 1
     optional: True
-    section_id: "input_data"
+    section_id: "overview"
     mode: "advanced"
   - name: source_position_y
     type: textbox
@@ -68,8 +69,9 @@ parameters:
     description: "Metadata source for Y position"
     default: "source"
     cli_tag: "--source_position_y"
+    cli_order: 2
     optional: True
-    section_id: "input_data"
+    section_id: "overview"
     mode: "advanced"
   - name: source_position_x
     type: textbox
@@ -77,8 +79,9 @@ parameters:
     description: "Metadata source for X position"
     default: "source"
     cli_tag: "--source_position_x"
+    cli_order: 3
     optional: True
-    section_id: "input_data"
+    section_id: "overview"
     mode: "advanced"
   - name: source_size_
     type: textbox
@@ -86,8 +89,9 @@ parameters:
     description: "Metadata source for Z size"
     default: "source"
     cli_tag: "--source_size_z"
+    cli_order: 4
     optional: True
-    section_id: "input_data"
+    section_id: "overview"
     mode: "advanced"
   - name: source_size_y
     type: textbox
@@ -95,8 +99,9 @@ parameters:
     description: "Metadata source for Y size"
     default: "source"
     cli_tag: "--source_size_y"
+    cli_order: 5
     optional: True
-    section_id: "input_data"
+    section_id: "overview"
     mode: "advanced"
   - name: source_size_x
     type: textbox
@@ -104,8 +109,9 @@ parameters:
     description: "Metadata source for X size"
     default: "source"
     cli_tag: "--source_size_x"
+    cli_order: 6
     optional: True
-    section_id: "input_data"
+    section_id: "overview"
     mode: "advanced"
   - name: source_rotation
     type: textbox
@@ -113,36 +119,44 @@ parameters:
     description: "Metadata source for rotation"
     default: "source"
     cli_tag: "--source_rotation"
+    cli_order: 7
     optional: True
-    section_id: "input_data"
+    section_id: "overview"
     mode: "advanced"
 
-  - name: show_shapes
+  - name: preview_shapes
     type: checkbox
-    label: "Show shape data"
+    label: "Preview shape data"
     description: "If enabled, tiles will be displayed as shapes"
     default: True
-    cli_tag: "--show_shapes"
-    cli_order: 1
+    cli_tag: "--preview_shapes"
+    cli_order: 10
     optional: True
     append_value: False
-    section_id: "layout_preview"
+    section_id: "overview"
     mode: "beginner"
-  - name: show_preview
+  - name: preview_images
     type: checkbox
     label: "Preview image data"
     description: "If enabled, tiles will be previewed as images"
     default: True
-    cli_tag: "--show_preview"
-    cli_order: 1
+    cli_tag: "--preview_images"
+    cli_order: 11
     optional: True
     append_value: False
-    section_id: "layout_preview"
+    section_id: "overview"
     mode: "beginner"
 
 display_only:
+  - name: coordinate_system
+    type: dropdown
+    label: "Select coordinate system"
+    description: "Select coordinate system to preview"
+    section_id: "overview"
+    cli_order: 8
   - name: metadata_table
     type: table
     label: " "
     description: "Metadata"
-    section_id: "input_data"
+    section_id: "overview"
+    cli_order: 9

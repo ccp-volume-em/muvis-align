@@ -70,50 +70,55 @@ class Interface:
         elif self.verbose:
             logging.info(f'# total files: {len(filenames)}')
         self.reg.init_operation(fileset_label, filenames, self.params_operation)
-        self.update_metadata_source()
 
     def source_position_z(self, value):
         if is_valid_value(value):
             set_dict_value(self.params_operation, ['source_metadata', 'position', 'z'], value)
-            self.update_metadata_source()
 
     def source_position_y(self, value):
         if is_valid_value(value):
             set_dict_value(self.params_operation, ['source_metadata', 'position', 'y'], value)
-            self.update_metadata_source()
 
     def source_position_x(self, value):
         if is_valid_value(value):
             set_dict_value(self.params_operation, ['source_metadata', 'position', 'x'], value)
-            self.update_metadata_source()
 
     def source_size_z(self, value):
         if is_valid_value(value):
             set_dict_value(self.params_operation, ['source_metadata', 'size', 'z'], value)
-            self.update_metadata_source()
 
     def source_size_y(self, value):
         if is_valid_value(value):
             set_dict_value(self.params_operation, ['source_metadata', 'size', 'y'], value)
-            self.update_metadata_source()
 
     def source_size_x(self, value):
         if is_valid_value(value):
             set_dict_value(self.params_operation, ['source_metadata', 'size', 'x'], value)
-            self.update_metadata_source()
 
     def source_rotation(self, value):
         if is_valid_value(value):
             set_dict_value(self.params_operation, ['source_metadata', 'rotation'], value)
 
+    def overview_process(self):
+        self.update_metadata_source()
+
     def update_metadata_source(self):
-        sims = self.reg.init_sims(reinit_sources=True)
+        if not self.reg.is_registered:
+            sims = self.reg.init_sims(reinit_sources=True)
+        else:
+            sims = self.reg.sims
+        coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+        self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
+
+    def populate_coordinate_systems(self, coord_systems):
+        param_widget = self.param_widgets.get('overview.coordinate_system')
+        param_widget.widget.choices = coord_systems
 
     def populate_metadata_table(self, sims):
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
         # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
-        table_widget = self.param_widgets.get('input_data.metadata_table')
+        table_widget = self.param_widgets.get('overview.metadata_table')
         data = {
            'label': ["'" + label + "'" for label in self.reg.file_labels],
            'position': [print_dict_simple(si_utils.get_origin_from_sim(sim)) for sim in sims],

@@ -57,6 +57,7 @@ class MVSRegistration:
         self.params = params
         self.global_rotation = global_rotation
         self.global_center = global_center
+        self.is_registered = False
 
         if filenames:
             input_dir = os.path.dirname(filenames[0])
@@ -122,6 +123,7 @@ class MVSRegistration:
 
         with Timer('init sims', self.logging_time):
             sims = self.init_sims(target_scale=target_scale)
+        self.sims = sims
 
         if not z_scale:
             z_scale = self.scales[0].get('z', 1)
@@ -234,6 +236,7 @@ class MVSRegistration:
                         summary_plot_filename = output + f'{reg_label}.pdf'
                         figure.savefig(summary_plot_filename)
 
+        self.sims = sims
         registered_positions_filename = output + registered_positions_name
         if self.reg_transform_key in sims[0].transforms:
             with Timer('plot positions', self.logging_time):
@@ -756,6 +759,7 @@ class MVSRegistration:
         # re-index from subset of sims
         mappings_dict = {index: mapping for index, mapping in zip(indices, mappings)}
 
+        self.is_registered = True
         return {'reg_result': reg_result,
                 'mappings': mappings_dict,
                 'residual_errors': residual_error_dict,
