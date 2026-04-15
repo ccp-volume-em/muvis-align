@@ -40,7 +40,10 @@ dependencies = [
     "ome-zarr",
     "matplotlib",
     "tqdm",
-    {file = ["requirements.txt"]}
+    "multiview-stitcher",
+    "opencv-python",
+    "spatial-image",
+    "multiscale-spatial-image",
 ]
 
 [project.optional-dependencies]

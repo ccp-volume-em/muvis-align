@@ -5,7 +5,7 @@ import os.path
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params
 from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
 from muvis_align.image.util import get_sim_physical_size
-from muvis_align.resources import get_project_template
+from muvis_align.file.resources import get_project_template
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import dir_regex, find_all_numbers, print_dict_simple, set_dict_value, is_valid_value
 

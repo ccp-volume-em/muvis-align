@@ -17,7 +17,7 @@ def get_project_template():
 
     # method 3: importlib.resources (new)
     project_template_res = importlib.resources.files('muvis_align')
-    project_template_file_res = project_template_res.joinpath('../../resources/' + NAPARI_PROJECT_TEMPLATE)
+    project_template_file_res = project_template_res.joinpath('ui/' + NAPARI_PROJECT_TEMPLATE)
     file = project_template_file_res.read_text()
 
     # load file content
