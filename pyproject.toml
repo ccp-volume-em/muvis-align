@@ -40,7 +40,7 @@ dependencies = [
     "ome-zarr",
     "matplotlib",
     "tqdm",
-    "multiview-stitcher"
+    {file = ["requirements.txt"]}
 ]
 
 [project.optional-dependencies]
