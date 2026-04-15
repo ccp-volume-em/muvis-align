@@ -5,6 +5,7 @@ from contextlib import nullcontext
 import dask
 from dask.diagnostics import ProgressBar
 import logging
+import multiview_stitcher
 from multiview_stitcher import registration, vis_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.mv_graph import NotEnoughOverlapError
@@ -47,6 +48,8 @@ class MVSRegistration:
         self.transition_transform_key = 'transition'
         self.sources = None
 
+        logging.info(f'Multiview-stitcher version: {multiview_stitcher.__version__}')
+
     def init_operation(self, fileset_label, filenames, params, global_rotation=None, global_center=None):
         self.fileset_label = fileset_label
         self.filenames = filenames
@@ -54,6 +57,7 @@ class MVSRegistration:
         self.params = params
         self.global_rotation = global_rotation
         self.global_center = global_center
+        self.is_registered = False
 
         if filenames:
             input_dir = os.path.dirname(filenames[0])
@@ -119,6 +123,7 @@ class MVSRegistration:
 
         with Timer('init sims', self.logging_time):
             sims = self.init_sims(target_scale=target_scale)
+        self.sims = sims
 
         if not z_scale:
             z_scale = self.scales[0].get('z', 1)
@@ -231,6 +236,7 @@ class MVSRegistration:
                         summary_plot_filename = output + f'{reg_label}.pdf'
                         figure.savefig(summary_plot_filename)
 
+        self.sims = sims
         registered_positions_filename = output + registered_positions_name
         if self.reg_transform_key in sims[0].transforms:
             with Timer('plot positions', self.logging_time):
@@ -288,7 +294,7 @@ class MVSRegistration:
                     source_metadata['rotation'] = source_metadata0['rotation']
             self.sources.append(create_dask_source(filename, source_metadata))
 
-    def init_sims(self, target_scale=None):
+    def init_sims(self, target_scale=None, reinit_sources=False):
         operation = self.params['operation']
         source_metadata = import_metadata(self.params.get('source_metadata', 'source'), input_path=self.params['input'])
         chunk_size = self.params_general.get('chunk_size', [1024, 1024])
@@ -299,7 +305,7 @@ class MVSRegistration:
             raise ValueError('No input files')
 
         logging.info('Initialising sims...')
-        if self.sources is None:
+        if self.sources is None or reinit_sources:
             self.init_sources()
         sources = self.sources
         source0 = sources[0]
@@ -753,6 +759,7 @@ class MVSRegistration:
         # re-index from subset of sims
         mappings_dict = {index: mapping for index, mapping in zip(indices, mappings)}
 
+        self.is_registered = True
         return {'reg_result': reg_result,
                 'mappings': mappings_dict,
                 'residual_errors': residual_error_dict,

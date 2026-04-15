@@ -7,7 +7,7 @@ import glob
 import json
 import math
 import numpy as np
-import os
+import os.path
 import re
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
@@ -51,6 +51,24 @@ def numpy_to_native(value):
         return value.item()
     else:
         return value
+
+
+def is_valid_value(value):
+    return value is not None and value != ''
+
+
+def set_dict_value(dct, keys, value):
+    try:
+        value = float(value)
+    except:
+        pass
+    for index, key in enumerate(keys):
+        if index == len(keys) - 1:
+            dct[key] = value
+        else:
+            if key not in dct:
+                dct[key] = {}
+            dct = dct[key]
 
 
 def filter_dict(dict0: dict) -> dict:
@@ -111,6 +129,15 @@ def print_dict(dct: dict, indent: int = 0) -> str:
     else:
         s += str(dct)
     return s
+
+
+def print_dict_simple(dct: dict) -> str:
+    items = []
+    for key, value in dct.items():
+        if isinstance(value, float):
+            value = f'{value:.3f}'
+        items.append(f'{key}: {value}')
+    return ' '.join(items)
 
 
 def print_dict_xyz(dct: dict, dims='xyz', decimals=3, as_tuple=False) -> str:
@@ -339,6 +366,8 @@ def eval_context(data, key, default_value, context):
             value = eval(value, context)
         except:
             pass
+    if not isinstance(value, (float, int)):
+        value = default_value
     return value
 
 
@@ -768,3 +797,10 @@ def adjust_sbemimage_properties(translation, scale, size, filename, sbemimage_co
     translation['y'] = dy - physical_size['y'] / 2
 
     return translation, scale
+
+
+def get_label_element(elements, label):
+    for element in elements:
+        if element.get('label') == label:
+            return element
+    return None

@@ -47,7 +47,7 @@ class DaskSource:
                 if 'z' in scale:
                     self.pixel_size['z'] = eval_context(scale, 'z', 1, context)
             if 'rotation' in source_metadata:
-                self.rotation = source_metadata['rotation']
+                self.rotation = eval_context(source_metadata, 'rotation', 0, context)
 
         if len(self.scales) == 0:
             for shape in self.shapes:

@@ -1,0 +1,162 @@
+citations:
+  - name: "muvis-align"
+    license: "GPL 3"
+    description: "Image registration"
+
+docker_image:
+  org: ccp-volume-em
+  name: muvis-align
+  tag: "1.0.0"
+  platform: "linux/amd64"
+
+inputs:
+  - name: input_images
+    type: image
+    label: "Input images"
+    description: "Input images"
+    file_count: "multiple"
+    unique_string:
+      - "*"
+#    default: "single"
+    cli_tag: "--input_images"
+    cli_order: 0
+    optional: False
+    format:
+      - tiff
+      - ometiff
+      - zarr
+      - omezarr
+    section_id: "overview"
+    folder_name: "/data"
+    mode: "beginner"
+
+outputs:
+  - name: output_array 
+    type: image
+    label: "Output Data"
+    description: "output data"
+    cli_tag: "--output_data"
+    cli_order: 1
+#    default: "single"
+    optional: True
+    format:
+      - omezarr
+    folder_name: "/data"
+    file_count: "single"
+    unique_string:
+      - "*"
+    section_id: "outputs"
+    mode: "beginner"
+    depth: True
+    timepoints: True
+    tiled: True
+    pyramidal: True
+
+parameters:
+  - name: source_position_z
+    type: textbox
+    label: "Source position Z"
+    description: "Metadata source for Z position"
+    default: "source"
+    cli_tag: "--source_position_z"
+    cli_order: 1
+    optional: True
+    section_id: "overview"
+    mode: "advanced"
+  - name: source_position_y
+    type: textbox
+    label: "Source position Y"
+    description: "Metadata source for Y position"
+    default: "source"
+    cli_tag: "--source_position_y"
+    cli_order: 2
+    optional: True
+    section_id: "overview"
+    mode: "advanced"
+  - name: source_position_x
+    type: textbox
+    label: "Source position X"
+    description: "Metadata source for X position"
+    default: "source"
+    cli_tag: "--source_position_x"
+    cli_order: 3
+    optional: True
+    section_id: "overview"
+    mode: "advanced"
+  - name: source_size_
+    type: textbox
+    label: "Source size Z"
+    description: "Metadata source for Z size"
+    default: "source"
+    cli_tag: "--source_size_z"
+    cli_order: 4
+    optional: True
+    section_id: "overview"
+    mode: "advanced"
+  - name: source_size_y
+    type: textbox
+    label: "Source size Y"
+    description: "Metadata source for Y size"
+    default: "source"
+    cli_tag: "--source_size_y"
+    cli_order: 5
+    optional: True
+    section_id: "overview"
+    mode: "advanced"
+  - name: source_size_x
+    type: textbox
+    label: "Source size X"
+    description: "Metadata source for X size"
+    default: "source"
+    cli_tag: "--source_size_x"
+    cli_order: 6
+    optional: True
+    section_id: "overview"
+    mode: "advanced"
+  - name: source_rotation
+    type: textbox
+    label: "Source rotation"
+    description: "Metadata source for rotation"
+    default: "source"
+    cli_tag: "--source_rotation"
+    cli_order: 7
+    optional: True
+    section_id: "overview"
+    mode: "advanced"
+
+  - name: preview_shapes
+    type: checkbox
+    label: "Preview shape data"
+    description: "If enabled, tiles will be displayed as shapes"
+    default: True
+    cli_tag: "--preview_shapes"
+    cli_order: 10
+    optional: True
+    append_value: False
+    section_id: "overview"
+    mode: "beginner"
+  - name: preview_images
+    type: checkbox
+    label: "Preview image data"
+    description: "If enabled, tiles will be previewed as images"
+    default: True
+    cli_tag: "--preview_images"
+    cli_order: 11
+    optional: True
+    append_value: False
+    section_id: "overview"
+    mode: "beginner"
+
+display_only:
+  - name: coordinate_system
+    type: dropdown
+    label: "Select coordinate system"
+    description: "Select coordinate system to preview"
+    section_id: "overview"
+    cli_order: 8
+  - name: metadata_table
+    type: table
+    label: " "
+    description: "Metadata"
+    section_id: "overview"
+    cli_order: 9

@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 import logging
-import multiview_stitcher
 import numpy as np
 import os
 import pandas as pd
@@ -52,7 +51,6 @@ class Pipeline(Thread):
             logging.getLogger(module).setLevel(logging.WARNING)
 
         logging.info(f'muvis-align version {version}')
-        logging.info(f'Multiview-stitcher version: {multiview_stitcher.__version__}')
 
     def run(self):
         break_on_error = self.params_general.get('break_on_error', False)

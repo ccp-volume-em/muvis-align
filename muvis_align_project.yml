@@ -1,0 +1,12 @@
+outputs: {}
+overview:
+  input_images: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
+  preview_images: true
+  preview_shapes: true
+  source_position_x: source
+  source_position_y: source
+  source_position_z: source
+  source_rotation: source
+  source_size_: source
+  source_size_x: source
+  source_size_y: source
