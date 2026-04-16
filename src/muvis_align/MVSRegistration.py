@@ -35,6 +35,15 @@ class MVSRegistration:
                  operation=None, label='', input_pattern=None, filenames=None, output_pattern=None,
                  global_rotation=None, global_center=None,
                  overwrite=False, clear=False, show_original=False, ui='', verbose=False, debug=False):
+        self.init(params_general=params_general, params=params,
+                  operation=operation, label=label, input_pattern=input_pattern, filenames=filenames, output_pattern=output_pattern,
+                  global_rotation=global_rotation, global_center=global_center,
+                  overwrite=overwrite, clear=clear, show_original=show_original, ui=ui, verbose=verbose, debug=debug)
+
+    def init(self, params_general=None, params={},
+                 operation=None, label='', input_pattern=None, filenames=None, output_pattern=None,
+                 global_rotation=None, global_center=None,
+                 overwrite=False, clear=False, show_original=False, ui='', verbose=False, debug=False):
         self.params = params
         if params_general is not None:
             self.overwrite = params_general.get('overwrite', False)
@@ -58,29 +67,22 @@ class MVSRegistration:
         self.napari_ui = ('napari' in self.ui)
 
         self.operation = params.get('operation', operation)
+        self.input_pattern = input_pattern
         self.input = params.get('input', input_pattern)
         self.source_metadata = params.get('source_metadata', {})
         self.extra_metadata = params.get('extra_metadata', {})
 
-        if not output_pattern:
-            output_pattern = params['output']
-        if filenames:
-            input_dir = os.path.dirname(filenames[0])
-            parts = split_numeric_dict(filenames[0])
-            output_pattern = output_pattern.format_map(parts)
-        else:
+        if input_pattern:
             filenames = dir_regex(input_pattern)
             if isinstance(input_pattern, list):
                 input_pattern = input_pattern[0]
-            input_dir = os.path.dirname(input_pattern)
+            self.input_dir = os.path.dirname(input_pattern)
+        else:
+            self.input_dir = os.path.dirname(filenames[0])
         self.filenames = filenames
         self.file_labels = get_unique_file_labels(filenames)
-        self.output = os.path.join(input_dir, output_pattern)    # preserve trailing slash: do not use os.path.normpath()
-        output_dir = os.path.dirname(self.output)
-        if self.clear:
-            shutil.rmtree(output_dir, ignore_errors=True)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+
+        self.init_output(output_pattern)
 
         self.fileset_label = label
         self.global_rotation = global_rotation
@@ -90,6 +92,24 @@ class MVSRegistration:
         self.reg_transform_key = 'registered'
         self.transition_transform_key = 'transition'
         self.sources = None
+
+    def init_output(self, output_pattern):
+        if not output_pattern:
+            output_pattern = self.params['output']
+        if self.input_pattern:
+            input_dir = os.path.dirname(self.filenames[0])
+        else:
+            filename0 = self.filenames[0]
+            input_dir = os.path.dirname(filename0)
+            parts = split_numeric_dict(filename0)
+            output_pattern = output_pattern.format_map(parts)
+
+        self.output = os.path.join(input_dir, output_pattern)    # preserve trailing slash: do not use os.path.normpath()
+        output_dir = os.path.dirname(self.output)
+        if self.clear:
+            shutil.rmtree(output_dir, ignore_errors=True)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
     def run(self):
         with ProgressBar(minimum=60, dt=1) if self.logging_dask else nullcontext():
@@ -322,8 +342,9 @@ class MVSRegistration:
             self.sources.append(create_dask_source(filename, source_metadata))
 
     def init_sims(self, source_metadata='source', extra_metadata={}, z_scale=None, chunk_size=default_chunk_size,
-                  target_scale=None, reinit_sources=False):
-        if self.source_metadata:
+                  target_scale=None):
+        source_metadata_changed = (source_metadata != self.source_metadata)
+        if self.source_metadata and not source_metadata_changed:
             source_metadata = self.source_metadata
         else:
             source_metadata = import_metadata(source_metadata, input_path=self.input)
@@ -342,7 +363,7 @@ class MVSRegistration:
             raise ValueError('No input files')
 
         logging.info('Initialising sims...')
-        if self.sources is None or reinit_sources:
+        if self.sources is None or source_metadata_changed:
             self.init_sources()
         sources = self.sources
         source0 = sources[0]
