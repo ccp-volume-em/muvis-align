@@ -20,7 +20,7 @@ from src.muvis_align.Timer import Timer
 from src.muvis_align.constants import *
 from src.muvis_align.image.Video import Video
 from src.muvis_align.image.flatfield import flatfield_correction
-from src.muvis_align.image.ome_helper import save_image, exists_output_image
+from src.muvis_align.image.ome_helper import save_image
 from src.muvis_align.image.ome_tiff_helper import save_tiff
 from src.muvis_align.image.source_helper import create_dask_source
 from src.muvis_align.image.util import *
@@ -50,7 +50,7 @@ class MVSRegistration:
 
         logging.info(f'Multiview-stitcher version: {multiview_stitcher.__version__}')
 
-    def init_operation(self, fileset_label, filenames, params, global_rotation=None, global_center=None):
+    def init(self, fileset_label, filenames, params, global_rotation=None, global_center=None):
         self.fileset_label = fileset_label
         self.filenames = filenames
         self.file_labels = get_unique_file_labels(filenames)
@@ -58,6 +58,7 @@ class MVSRegistration:
         self.global_rotation = global_rotation
         self.global_center = global_center
         self.is_registered = False
+        clear = self.params_general.get('output', {}).get('clear', False)
 
         if filenames:
             input_dir = os.path.dirname(filenames[0])
@@ -70,13 +71,18 @@ class MVSRegistration:
             input_dir = os.path.dirname(input_pattern)
             output_pattern = params['output']
         self.output = os.path.join(input_dir, output_pattern)    # preserve trailing slash: do not use os.path.normpath()
+        output_dir = os.path.dirname(self.output)
+        if clear:
+            shutil.rmtree(output_dir, ignore_errors=True)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
-    def run_operation(self, fileset_label, filenames, params, global_rotation=None, global_center=None):
-        self.init_operation(fileset_label, filenames, params, global_rotation, global_center)
+    def run(self, fileset_label, filenames, params, global_rotation=None, global_center=None):
+        self.init(fileset_label, filenames, params, global_rotation, global_center)
         with ProgressBar(minimum=60, dt=1) if self.logging_dask else nullcontext():
-            return self._run_operation()
+            return self._run()
 
-    def _run_operation(self):
+    def _run(self):
         params = self.params
         filenames = self.filenames
         file_labels = self.file_labels
@@ -94,7 +100,6 @@ class MVSRegistration:
 
         show_original = self.params_general.get('show_original', False)
         output_params = self.params_general.get('output', {})
-        clear = output_params.get('clear', False)
         overwrite = output_params.get('overwrite', True)
 
         is_stack = ('stack' in operation)
@@ -112,14 +117,9 @@ class MVSRegistration:
         registered_fused_filename = output + registered_name
         mappings_filename = output + params.get('mappings', default_mappings_name)
 
-        output_dir = os.path.dirname(output)
-        if not overwrite and exists_output_image(registered_fused_filename):
-            logging.warning(f'Skipping existing output {os.path.normpath(output_dir)}')
+        if not overwrite and os.path.exists(registered_fused_filename):
+            logging.warning(f'Skipping existing output {registered_fused_filename}')
             return False
-        if clear:
-            shutil.rmtree(output_dir, ignore_errors=True)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
 
         with Timer('init sims', self.logging_time):
             sims = self.init_sims(target_scale=target_scale)

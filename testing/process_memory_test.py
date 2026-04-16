@@ -12,7 +12,7 @@ def test_process_memory(params, filenames):
     logging.getLogger('ome_zarr').setLevel(logging.WARNING)
 
     reg = MVSRegistration(params['general'])
-    reg.run_operation('1', filenames, params['operations'][0])
+    reg.run('1', filenames, params['operations'][0])
 
 
 if __name__ == '__main__':

@@ -69,7 +69,7 @@ class Interface:
             return
         elif self.verbose:
             logging.info(f'# total files: {len(filenames)}')
-        self.reg.init_operation(fileset_label, filenames, self.params_operation)
+        self.reg.init(fileset_label, filenames, self.params_operation)
 
     def source_position_z(self, value):
         if is_valid_value(value):

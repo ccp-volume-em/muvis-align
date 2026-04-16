@@ -67,7 +67,3 @@ def save_image(filename, data, output_format=zarr_extension, params={},
                           channels, positions, rotation, tile_size=tile_size, compression=compression, scaler=scaler)
 
         open(str(filename), 'w')
-
-
-def exists_output_image(filename):
-    return os.path.exists(filename)

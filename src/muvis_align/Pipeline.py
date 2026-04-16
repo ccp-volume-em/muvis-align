@@ -160,5 +160,5 @@ class Pipeline(Thread):
         else:
             from src.muvis_align.MVSRegistration import MVSRegistration
             mvs_registration = MVSRegistration(self.params_general)
-        return mvs_registration.run_operation(fileset_label, fileset, params,
-                                              global_center=center, global_rotation=rotation)
+        return mvs_registration.run(fileset_label, fileset, params,
+                                    global_center=center, global_rotation=rotation)
