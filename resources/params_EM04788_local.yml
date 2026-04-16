@@ -18,5 +18,5 @@ operations:
     normalisation: True
     source_metadata: source normalise
     use_orthogonal_pairs: True
-    method: phase_correlation
+    registration: phase_correlation
     output: stitched/

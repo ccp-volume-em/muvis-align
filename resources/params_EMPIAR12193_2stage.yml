@@ -30,7 +30,7 @@ operations:
 #    pairing: orthogonal
 #    transform_type: translation
 #    scale: 4
-#    method:
+#    registration:
 #      name: sift
 #      gaussian_sigma: 2
 #      inlier_threshold_factor: 0.05
@@ -45,7 +45,7 @@ operations:
 #    extra_metadata: {'scale': {'z': 0.1}}
 #    transform_type: rigid
 #    scale: 2
-#    method:
+#    registration:
 #      name: sift
 #      gaussian_sigma: 4
 #      max_keypoints: 10000
@@ -63,7 +63,7 @@ operations:
 #    #flatfield_quantiles: [0.5]
 #    #pairing: orthogonal
 #    transform_type: rigid
-#    method:
+#    registration:
 #      name: 3din2d  # sift
 #      gaussian_sigma: 2
 #      inlier_threshold_factor: 0.05
@@ -89,7 +89,7 @@ operations:
     pairing: orthogonal
     transform_type: rigid
     groupwise_resolution_method: linear_two_pass
-    method:
+    registration:
       normalisation: True
       name: orb
       max_keypoints: 5000

@@ -6,8 +6,8 @@ from src.muvis_align.MVSRegistration import MVSRegistration
 class MVSRegistrationNapari(MVSRegistration, QObject):
     update_napari_signal = Signal(str, list, list)
 
-    def __init__(self, params_general, viewer):
-        super().__init__(params_general)
+    def __init__(self, viewer, **kwargs):
+        super().__init__(**kwargs)
         self.viewer = viewer
         self.update_napari_signal.connect(self.update_napari)
 

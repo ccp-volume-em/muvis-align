@@ -29,7 +29,7 @@ operations:
     source_metadata: {'position': {'x':'{t} % 15 * 38.96', 'y':'{t} // 15 * 28.72'}}
     normalisation: global
     use_orthogonal_pairs: True
-    method: phase_correlation
+    registration: phase_correlation
     output: ../../../stitched/slice{s}/
 
   - operation: stack
@@ -37,5 +37,5 @@ operations:
     input: D:/slides/EM04654_slice011/stitched/slice?????/registered.ome.zarr
     source_metadata: source
     extra_metadata: {'scale': {'z': 0.1}}
-    method: phase_correlation
+    registration: phase_correlation
     output: ../../aligned/

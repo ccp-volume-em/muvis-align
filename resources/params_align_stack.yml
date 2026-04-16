@@ -23,5 +23,5 @@ operations:
     source_metadata: {'x': 0, 'y': 0}
     extra_metadata: {'scale': {'z': 0.05}}
     normalisation: global
-    method: cpd #features
+    registration: cpd #features
     output: aligned/

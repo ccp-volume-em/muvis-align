@@ -1,17 +1,22 @@
 general:
+  overwrite: True
+  logging:
+    verbose: True
   output:
     format: ome.zarr
 
 operations:
   - operation: register
-    input: data/S000/*.tiff
-    source_metadata: {'scale': {'x': 0.032, 'y': 0.032}, 'position': {'y':'fn[-3]*24', 'x':'fn[-2]*24'}}
+    input: data/S000/*.zarr
+    source_metadata: source
     use_orthogonal_pairs: True
     transform_type: rigid
-    method:
+    registration:
       name: sift
       gaussian_sigma: 2
+      normalisation: True
+      max_keypoints: 5000
       inlier_threshold_factor: 0.05
       max_trials: 1000
       ransac_iterations: 3
-    output: ../stitched/
+    output: ../../output/stitched/

@@ -31,7 +31,7 @@ operations:
       - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/tiles_slice394/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00394.ome.tif
     source_metadata: sbem
     transform_type: affine
-    method:
+    registration:
       name: orb
       gaussian_sigma: 5
       max_keypoints: 5000

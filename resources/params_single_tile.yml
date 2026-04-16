@@ -23,5 +23,5 @@ operations:
     filter_foreground: False
     use_orthogonal_pairs: True
     channel: 0
-    method: phase_correlation
+    registration: phase_correlation
     output: test/

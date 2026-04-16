@@ -1,7 +1,9 @@
 from multiview_stitcher import ngff_utils
 
+from muvis_align.constants import default_ome_zarr_version
 
-def save_ome_ngff(filename, data, pyramid_downsample=2, ome_version='0.4', verbose=False):
+
+def save_ome_ngff(filename, data, pyramid_downsample=2, ome_version=default_ome_zarr_version, verbose=False):
     pyramid_downsample_dict = {}
     for dim in data.dims:
         if dim in 'xy':

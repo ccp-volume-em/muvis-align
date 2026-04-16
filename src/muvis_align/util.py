@@ -267,7 +267,6 @@ def get_unique_nums(all_parts: list) -> list:
 
 def get_unique_file_labels(filenames: list) -> list:
     file_labels = []
-    label_indices = set()
 
     ntot = len(filenames)
     parts_dic = get_unique_nums([split_numeric_dict(get_filetitle(filename)) for filename in filenames])
@@ -303,7 +302,7 @@ def split_num_text(text: str) -> list:
     block = ''
     is_num0 = None
     if text is None:
-        return None
+        return []
 
     for c in text:
         is_num = (c.isnumeric() or c == '.')
