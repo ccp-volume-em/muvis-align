@@ -685,7 +685,8 @@ class MVSRegistration:
     def register(self, sims, register_sims=None, register_indices=None, register_params=None):
         g_reg, msims, sims, pairs = self.register_pairs(sims, register_sims=register_sims,
                                                         register_params=register_params)
-        results = self.register_global(sims, msims, g_reg, register_indices=register_indices)
+        results = self.register_global(sims, msims, register_indices=register_indices,
+                                       register_params=register_params)
         results['sims'] = sims
         results['pairs'] = pairs
         return results
@@ -698,7 +699,7 @@ class MVSRegistration:
 
         operation = self.operation
         pairing = params.get('pairing', '')
-        post_registration_quality_threshold = params.get('post_registration_quality_threshold')
+
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
 
         is_stack = ('stack' in operation)
@@ -742,10 +743,9 @@ class MVSRegistration:
         logging.info('Registering...')
         register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
 
-        # ******* start MVS registration functions
-
         overlap_tolerance = 0
-        post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
+
+        # ******* start MVS registration functions
 
         if "c" in msi_utils.get_dims(register_msims[0]):
             if reg_channel is None:
@@ -785,14 +785,6 @@ class MVSRegistration:
                 n_parallel_pairwise_regs=n_parallel_pairwise_regs,
             )
 
-            if post_registration_do_quality_filter:
-                # filter edges by quality
-                g_reg_computed = mv_graph.filter_edges(
-                    g_reg_computed,
-                    threshold=post_registration_quality_threshold,
-                    weight_key="quality",
-                )
-
             # ******* end MVS registration functions
 
             # reg_result = registration.register(
@@ -823,10 +815,16 @@ class MVSRegistration:
         except NotEnoughOverlapError:
             g_reg_computed = g_reg
 
+        self.g_reg = g_reg_computed
         return g_reg_computed, msims_reg, sims, pairs
 
-    def register_global(self, sims, msims, g_reg_computed, register_indices=None):
-        params = self.params
+    def register_global(self, sims, msims, register_indices=None, register_params=None):
+        if register_params:
+            params = register_params
+        else:
+            params = self.params
+
+        g_reg_computed = self.g_reg
         sim0 = sims[0]
         ndims = si_utils.get_ndim_from_sim(sim0)
 
@@ -835,9 +833,20 @@ class MVSRegistration:
         if groupwise_resolution_method == 'global_optimization' and 'transform_type' in params:
            groupwise_resolution_kwargs['transform'] = params['transform_type']  # options include 'translation', 'rigid', 'affine', 'similarity'
 
+        post_registration_quality_threshold = params.get('post_registration_quality_threshold')
+        post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
+
         plot_summary = self.mpl_ui
 
         # ******* start MVS registration functions
+
+        if post_registration_do_quality_filter:
+            # filter edges by quality
+            g_reg_computed = mv_graph.filter_edges(
+                g_reg_computed,
+                threshold=post_registration_quality_threshold,
+                weight_key="quality",
+            )
 
         params_dict, groupwise_resolution_info_dict = groupwise_resolution(
             g_reg_computed,
