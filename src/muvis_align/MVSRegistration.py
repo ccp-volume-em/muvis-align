@@ -683,17 +683,18 @@ class MVSRegistration:
         return fuse_func
 
     def register(self, sims, register_sims=None, register_indices=None, register_params=None):
-        g_reg, msims = self.register_pairs(self, sims, register_sims=register_sims, register_indices=register_indices,
-                                           register_params=register_params)
-        return self.register_global(msims, g_reg, register_indices)
+        g_reg, msims, sims, pairs = self.register_pairs(sims, register_sims=register_sims,
+                                                        register_params=register_params)
+        results = self.register_global(sims, msims, g_reg, register_indices=register_indices)
+        results['sims'] = sims
+        results['pairs'] = pairs
+        return results
 
-    def register_pairs(self, sims, register_sims=None, register_indices=None, register_params=None):
+    def register_pairs(self, sims, register_sims=None, register_params=None):
         if register_params:
             params = register_params
         else:
             params = self.params
-        sim0 = sims[0]
-        ndims = si_utils.get_ndim_from_sim(sim0)
 
         operation = self.operation
         pairing = params.get('pairing', '')
@@ -703,23 +704,12 @@ class MVSRegistration:
         is_stack = ('stack' in operation)
         is_3d = ('3d' in operation)
 
-        return_dict = True
-
         reg_channel = params.get('channel', 0)
         if isinstance(reg_channel, int):
             reg_channel_index = reg_channel
             reg_channel = None
         else:
             reg_channel_index = None
-
-        groupwise_resolution_method = params.get('groupwise_resolution_method', 'global_optimization')
-        groupwise_resolution_kwargs = None
-        if groupwise_resolution_method == 'global_optimization' and 'transform_type' in params:
-           groupwise_resolution_kwargs = {
-                'transform': params['transform_type']  # options include 'translation', 'rigid', 'affine', 'similarity'
-            }
-        if groupwise_resolution_method == 'shortest_paths':
-            return_dict = False
 
         if register_sims is None:
             register_sims = sims
@@ -749,9 +739,62 @@ class MVSRegistration:
 
         logging.info(f'Registration method: {reg_method}')
 
+        logging.info('Registering...')
+        register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
+
+        # ******* start MVS registration functions
+
+        overlap_tolerance = 0
+        post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
+
+        if "c" in msi_utils.get_dims(register_msims[0]):
+            if reg_channel is None:
+                if reg_channel_index is None:
+                    for msim in register_msims:
+                        if "c" in msi_utils.get_dims(msim):
+                            raise (
+                                Exception("Please choose a registration channel.")
+                            )
+                else:
+                    reg_channel = sims[0].coords["c"][reg_channel_index]
+
+            msims_reg = [
+                msi_utils.multiscale_sel_coords(msim, {"c": reg_channel})
+                if "c" in msi_utils.get_dims(msim)
+                else msim
+                for imsim, msim in enumerate(register_msims)
+            ]
+        else:
+            msims_reg = register_msims
+
+        g_reg = mv_graph.build_view_adjacency_graph_from_msims(
+            msims_reg,
+            transform_key=self.source_transform_key,
+            pairs=pairs,
+            overlap_tolerance=overlap_tolerance,
+        )
+
         try:
-            logging.info('Registering...')
-            register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
+            g_reg_computed = compute_pairwise_registrations(
+                msims_reg,
+                g_reg,
+                transform_key=self.source_transform_key,
+                overlap_tolerance=overlap_tolerance,
+                pairwise_reg_func=pairwise_reg_func,
+                pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
+                n_parallel_pairwise_regs=n_parallel_pairwise_regs,
+            )
+
+            if post_registration_do_quality_filter:
+                # filter edges by quality
+                g_reg_computed = mv_graph.filter_edges(
+                    g_reg_computed,
+                    threshold=post_registration_quality_threshold,
+                    weight_key="quality",
+                )
+
+            # ******* end MVS registration functions
+
             # reg_result = registration.register(
             #     register_msims,
             #     reg_channel=reg_channel,
@@ -777,82 +820,20 @@ class MVSRegistration:
             #     return_dict=return_dict,
             # )
 
-            # ******* start MVS registration functions
-
-            overlap_tolerance = 0
-            post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
-
-            if "c" in msi_utils.get_dims(register_msims[0]):
-                if reg_channel is None:
-                    if reg_channel_index is None:
-                        for msim in register_msims:
-                            if "c" in msi_utils.get_dims(msim):
-                                raise (
-                                    Exception("Please choose a registration channel.")
-                                )
-                    else:
-                        reg_channel = sims[0].coords["c"][reg_channel_index]
-
-                msims_reg = [
-                    msi_utils.multiscale_sel_coords(msim, {"c": reg_channel})
-                    if "c" in msi_utils.get_dims(msim)
-                    else msim
-                    for imsim, msim in enumerate(register_msims)
-                ]
-            else:
-                msims_reg = register_msims
-
-            g_reg = mv_graph.build_view_adjacency_graph_from_msims(
-                msims_reg,
-                transform_key=self.reg_transform_key,
-                pairs=pairs,
-                overlap_tolerance=overlap_tolerance,
-            )
-
-            g_reg_computed = compute_pairwise_registrations(
-                msims_reg,
-                g_reg,
-                transform_key=self.reg_transform_key,
-                overlap_tolerance=overlap_tolerance,
-                pairwise_reg_func=pairwise_reg_func,
-                pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
-                n_parallel_pairwise_regs=n_parallel_pairwise_regs,
-            )
-
-            if post_registration_do_quality_filter:
-                # filter edges by quality
-                g_reg_computed = mv_graph.filter_edges(
-                    g_reg_computed,
-                    threshold=post_registration_quality_threshold,
-                    weight_key="quality",
-                )
-
-            # ******* end MVS registration functions
-
-            if register_indices is None:
-                register_indices = range(len(register_msims))
-
-            # copy transforms from register sims to unmodified sims
-            for reg_msim, index in zip(register_msims, register_indices):
-                si_utils.set_sim_affine(
-                    sims[index],
-                    msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key),
-                    transform_key=self.reg_transform_key)
-
-            # set missing transforms
-            for sim in sims:
-                if self.reg_transform_key not in si_utils.get_tranform_keys_from_sim(sim):
-                    si_utils.set_sim_affine(
-                        sim,
-                        param_utils.identity_transform(ndim=ndims, t_coords=[0]),
-                        transform_key=self.reg_transform_key)
-
         except NotEnoughOverlapError:
-            pair_error = True
+            g_reg_computed = g_reg
 
-        return g_reg_computed, msims_reg
+        return g_reg_computed, msims_reg, sims, pairs
 
-    def register_global(self, msims, g_reg_computed, register_indices):
+    def register_global(self, sims, msims, g_reg_computed, register_indices=None):
+        params = self.params
+        sim0 = sims[0]
+        ndims = si_utils.get_ndim_from_sim(sim0)
+
+        groupwise_resolution_method = params.get('groupwise_resolution_method', 'global_optimization')
+        groupwise_resolution_kwargs = {}
+        if groupwise_resolution_method == 'global_optimization' and 'transform_type' in params:
+           groupwise_resolution_kwargs['transform'] = params['transform_type']  # options include 'translation', 'rigid', 'affine', 'similarity'
 
         plot_summary = self.mpl_ui
 
@@ -915,6 +896,24 @@ class MVSRegistration:
 
         # ******* end MVS registration functions
 
+        if register_indices is None:
+            register_indices = range(len(msims))
+
+        # copy transforms from register sims to unmodified sims
+        for reg_msim, index in zip(msims, register_indices):
+            si_utils.set_sim_affine(
+                sims[index],
+                msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key),
+                transform_key=self.reg_transform_key)
+
+        # set missing transforms
+        for sim in sims:
+            if self.reg_transform_key not in si_utils.get_tranform_keys_from_sim(sim):
+                si_utils.set_sim_affine(
+                    sim,
+                    param_utils.identity_transform(ndim=ndims, t_coords=[0]),
+                    transform_key=self.reg_transform_key)
+
         mappings = reg_result['params']
         # re-index from subset of sims
         residual_error_dict = reg_result.get('groupwise_resolution', {}).get('metrics', {}).get('residuals', {})
@@ -924,13 +923,6 @@ class MVSRegistration:
         registration_qualities_dict = {(register_indices[key[0]], register_indices[key[1]]): value
                                        for key, value in registration_qualities_dict.items()}
 
-        if pair_error:
-            logging.warning('Not enough overlap')
-            reg_result = {}
-            mappings = [param_utils.identity_transform(ndim=ndims, t_coords=[0])] * len(sims)
-            residual_error_dict = {}
-            registration_qualities_dict = {}
-
         # re-index from subset of sims
         mappings_dict = {index: mapping for index, mapping in zip(register_indices, mappings)}
 
@@ -938,9 +930,7 @@ class MVSRegistration:
         return {'reg_result': reg_result,
                 'mappings': mappings_dict,
                 'residual_errors': residual_error_dict,
-                'registration_qualities': registration_qualities_dict,
-                'sims': sims,
-                'pairs': pairs}
+                'registration_qualities': registration_qualities_dict}
 
     def fuse(self, sims, fusion_method=None, transform_key=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, thumbnail=False):
