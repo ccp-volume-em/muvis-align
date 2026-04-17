@@ -622,17 +622,16 @@ class MVSRegistration:
             indices = range(len(sims))
         return sims, indices
 
-    def create_registration_method(self, sim0):
+    def create_registration_method(self, sim0, reg_params={}, reg_method=''):
         registration_method = None
         pairwise_reg_func_kwargs = None
 
-        reg_params = self.params.get('registration', {})
-        if isinstance(reg_params, dict):
-            reg_method = reg_params.get('name', '').lower()
-        elif isinstance(reg_params, str):
-            reg_method = reg_params.lower()
-        else:
-            reg_method = ''
+        if 'registration' in reg_params:
+            reg_params = reg_params['registration']
+        if not reg_method:
+            reg_method = reg_params.get('method',
+                                 reg_params.get('name', ''))
+        reg_method = reg_method.lower()
 
         if 'cpd' in reg_method:
             from src.muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
@@ -698,9 +697,10 @@ class MVSRegistration:
             params = self.params
 
         operation = self.operation
-        pairing = params.get('pairing', '')
-
-        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
+        pairing = params.get('pairing',
+                             params.get('registration', {}).get('pairing', ''))
+        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
+                                              params.get('registration', {}).get('n_parallel_pairwise_regs'))
 
         is_stack = ('stack' in operation)
         is_3d = ('3d' in operation)
@@ -730,7 +730,8 @@ class MVSRegistration:
         else:
             pairs = None
 
-        reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(register_sims[0])
+        reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(register_sims[0],
+                                                                                                  reg_params=params)
 
         # Pass registration through metrics method
         #from src.muvis_align.registration_methods.RegistrationMetrics import RegistrationMetrics
@@ -818,22 +819,30 @@ class MVSRegistration:
         self.g_reg = g_reg_computed
         return g_reg_computed, msims_reg, sims, pairs
 
-    def register_global(self, sims, msims, register_indices=None, register_params=None):
+    def register_global(self, sims, msims, register_indices=None, register_params=None, g_reg=None):
         if register_params:
             params = register_params
         else:
             params = self.params
 
-        g_reg_computed = self.g_reg
+        if g_reg is not None:
+            g_reg_computed = g_reg
+        else:
+            g_reg_computed = self.g_reg
+
         sim0 = sims[0]
         ndims = si_utils.get_ndim_from_sim(sim0)
 
-        groupwise_resolution_method = params.get('groupwise_resolution_method', 'global_optimization')
+        groupwise_resolution_method = params.get('groupwise_resolution_method',
+                                                 params.get('registration', {}).get('groupwise_resolution_method', 'global_optimization'))
         groupwise_resolution_kwargs = {}
-        if groupwise_resolution_method == 'global_optimization' and 'transform_type' in params:
-           groupwise_resolution_kwargs['transform'] = params['transform_type']  # options include 'translation', 'rigid', 'affine', 'similarity'
+        if groupwise_resolution_method == 'global_optimization':
+           groupwise_resolution_kwargs['transform'] = params.get('transform_type',
+                                                                 params.get('registration', {}).get('transform_type'))
+           # transform_type options include 'translation', 'rigid', 'affine', 'similarity'
 
-        post_registration_quality_threshold = params.get('post_registration_quality_threshold')
+        post_registration_quality_threshold = params.get('post_registration_quality_threshold',
+                                                         params.get('registration', {}).get('post_registration_quality_threshold'))
         post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
 
         plot_summary = self.mpl_ui

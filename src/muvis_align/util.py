@@ -476,7 +476,7 @@ def apply_transform_dict(points, transform, transform_dims='xyz'):
     new_points = []
     for point in points:
         point = dict_to_xyz(point, dims=transform_dims)
-        while len(point) < len(transform):
+        while len(point) < max(len(transform), 3):
             point = list(point) + [1]
         new_point = np.dot(point, np.transpose(np.array(transform)))
         new_point = xyz_to_dict(new_point, dims=transform_dims)
