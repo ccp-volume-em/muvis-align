@@ -55,7 +55,7 @@ class MVSRegistration:
             self.ui = params_general.get('ui', '')
             self.verbose = params_general.get('verbose', False)
             self.debug = params_general.get('debug', False)
-            self.output_params = params_general['output']
+            self.output_params = params_general.get('output')
         else:
             self.overwrite = overwrite
             self.clear = clear
@@ -80,12 +80,14 @@ class MVSRegistration:
             if isinstance(input_pattern, list):
                 input_pattern = input_pattern[0]
             self.input_dir = os.path.dirname(input_pattern)
-        else:
+        elif filenames:
             self.input_dir = os.path.dirname(filenames[0])
         self.filenames = filenames
-        self.file_labels = get_unique_file_labels(filenames)
+        if filenames:
+            self.file_labels = get_unique_file_labels(filenames)
 
-        self.init_output(output_pattern)
+        if output_pattern:
+            self.init_output(output_pattern)
 
         self.fileset_label = label
         self.global_rotation = global_rotation

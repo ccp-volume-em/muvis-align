@@ -19,6 +19,7 @@ class Interface:
             raise FileNotFoundError('Project template not found')
         self.template = get_section_dict(self.raw_template, ['inputs', 'parameters', 'display_only', 'outputs'])
         self.param_widgets = {}
+        self.params = {}
         self.source_metadata = {}
 
         self.reg = MVSRegistrationNapari(self.viewer)

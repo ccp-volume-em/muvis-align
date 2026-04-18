@@ -9,10 +9,10 @@ operations:
   - operation: register
     input: data/S000/*.zarr
     source_metadata: source
-    pairing: orthogonal
-    transform_type: rigid
     registration:
-      name: sift
+      pairing: orthogonal
+      transform_type: rigid
+      method: sift
       gaussian_sigma: 2
       normalisation: True
       max_keypoints: 5000

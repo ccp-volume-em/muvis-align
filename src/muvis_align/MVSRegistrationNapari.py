@@ -3,7 +3,7 @@ from qtpy.QtCore import QObject, Signal, Slot
 from src.muvis_align.MVSRegistration import MVSRegistration
 
 
-class MVSRegistrationNapari(MVSRegistration, QObject):
+class MVSRegistrationNapari(QObject, MVSRegistration):
     update_napari_signal = Signal(str, list, list)
 
     def __init__(self, viewer, **kwargs):

@@ -40,7 +40,7 @@ dependencies = [
     "ome-zarr",
     "matplotlib",
     "tqdm",
-    "multiview-stitcher",
+    "multiview-stitcher>=v0.1.49",
     "opencv-python",
     "spatial-image",
     "multiscale-spatial-image",
