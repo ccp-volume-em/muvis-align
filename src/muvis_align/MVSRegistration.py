@@ -135,10 +135,10 @@ class MVSRegistration:
         is_channel_overlay = (len(channels) > 1)
 
         output_format = output_params.get('format', self.params_general.get('format', zarr_extension))
-        output_tile_size = output_params.get('tile_size', self.params_general.get('tile_size')),
-        output_compression = output_params.get('compression', self.params_general.get('compression')),
-        output_pyramid_downsample = output_params.get('pyramid_downsample', self.params_general.get('pyramid_downsample', 2)),
-        output_npyramid_add = output_params.get('npyramid_add', self.params_general.get('npyramid_add', 0)),
+        output_tile_size = output_params.get('tile_size', self.params_general.get('tile_size'))
+        output_compression = output_params.get('compression', self.params_general.get('compression'))
+        output_pyramid_downsample = output_params.get('pyramid_downsample', self.params_general.get('pyramid_downsample', 2))
+        output_npyramid_add = output_params.get('npyramid_add', self.params_general.get('npyramid_add', 0))
         output_ome_version = output_params.get('ome_version', self.params_general.get('ome_version', default_ome_zarr_version))
 
         mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
@@ -265,10 +265,13 @@ class MVSRegistration:
                 with Timer('fuse image', self.logging_time):
                     if isinstance(self.fusion_params, dict):
                         fusion_method = self.fusion_params.get('method', '')
+                        output_spacing = self.fusion_params.get('output_spacing', 'mean')
                     else:
                         fusion_method = self.fusion_params
-                    fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method,
-                                                      output_filename=registered_fused_filename)
+                        output_spacing = self.params.get('output_spacing', 'mean')
+                    fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method, output_spacing=output_spacing,
+                                                      output_filename=registered_fused_filename,
+                                                      tile_size=output_tile_size, ome_version=output_ome_version)
 
                 if not is_saved or 'tif' in output_format:
                     logging.info('Saving fused image...')
@@ -898,8 +901,8 @@ class MVSRegistration:
                 'residual_errors': residual_error_dict,
                 'registration_qualities': registration_qualities_dict}
 
-    def fuse(self, sims, fusion_method=None, transform_key=None, output_filename=None,
-             tile_size=None, ome_version=default_ome_zarr_version, output_spacing='mean'):
+    def fuse(self, sims, fusion_method=None, output_spacing='mean', transform_key=None,
+             output_filename=None, tile_size=None, ome_version=default_ome_zarr_version):
         sim0 = sims[0]
         if transform_key is None:
             transform_key = self.reg_transform_key
