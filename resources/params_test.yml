@@ -29,7 +29,7 @@ operations:
     flatfield_quantiles: [0.5]
     use_orthogonal_pairs: True
     transform_type: translation
-    method:
+    registration:
       name: sift
       gaussian_sigma: 4
       inlier_threshold_factor: 0.05

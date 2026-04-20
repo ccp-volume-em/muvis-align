@@ -267,7 +267,6 @@ def get_unique_nums(all_parts: list) -> list:
 
 def get_unique_file_labels(filenames: list) -> list:
     file_labels = []
-    label_indices = set()
 
     ntot = len(filenames)
     parts_dic = get_unique_nums([split_numeric_dict(get_filetitle(filename)) for filename in filenames])
@@ -303,7 +302,7 @@ def split_num_text(text: str) -> list:
     block = ''
     is_num0 = None
     if text is None:
-        return None
+        return []
 
     for c in text:
         is_num = (c.isnumeric() or c == '.')
@@ -477,7 +476,7 @@ def apply_transform_dict(points, transform, transform_dims='xyz'):
     new_points = []
     for point in points:
         point = dict_to_xyz(point, dims=transform_dims)
-        while len(point) < len(transform):
+        while len(point) < max(len(transform), 3):
             point = list(point) + [1]
         new_point = np.dot(point, np.transpose(np.array(transform)))
         new_point = xyz_to_dict(new_point, dims=transform_dims)

@@ -10,15 +10,15 @@ docker_image:
   platform: "linux/amd64"
 
 inputs:
-  - name: input_images
+  - name: input_path
     type: image
-    label: "Input images"
-    description: "Input images"
+    label: "Input data"
+    description: "Input data"
     file_count: "multiple"
     unique_string:
       - "*"
 #    default: "single"
-    cli_tag: "--input_images"
+    cli_tag: "--input_path"
     cli_order: 0
     optional: False
     format:
@@ -26,17 +26,17 @@ inputs:
       - ometiff
       - zarr
       - omezarr
-    section_id: "overview"
+    section_id: "input_output"
     folder_name: "/data"
     mode: "beginner"
 
 outputs:
-  - name: output_array 
+  - name: output_path
     type: image
-    label: "Output Data"
-    description: "output data"
-    cli_tag: "--output_data"
-    cli_order: 1
+    label: "Output data"
+    description: "Output data"
+    cli_tag: "--output_path"
+    cli_order: 12
 #    default: "single"
     optional: True
     format:
@@ -45,7 +45,7 @@ outputs:
     file_count: "single"
     unique_string:
       - "*"
-    section_id: "outputs"
+    section_id: "input_output"
     mode: "beginner"
     depth: True
     timepoints: True
@@ -61,7 +61,7 @@ parameters:
     cli_tag: "--source_position_z"
     cli_order: 1
     optional: True
-    section_id: "overview"
+    section_id: "input_output"
     mode: "advanced"
   - name: source_position_y
     type: textbox
@@ -71,7 +71,7 @@ parameters:
     cli_tag: "--source_position_y"
     cli_order: 2
     optional: True
-    section_id: "overview"
+    section_id: "input_output"
     mode: "advanced"
   - name: source_position_x
     type: textbox
@@ -81,7 +81,7 @@ parameters:
     cli_tag: "--source_position_x"
     cli_order: 3
     optional: True
-    section_id: "overview"
+    section_id: "input_output"
     mode: "advanced"
   - name: source_size_
     type: textbox
@@ -91,7 +91,7 @@ parameters:
     cli_tag: "--source_size_z"
     cli_order: 4
     optional: True
-    section_id: "overview"
+    section_id: "input_output"
     mode: "advanced"
   - name: source_size_y
     type: textbox
@@ -101,7 +101,7 @@ parameters:
     cli_tag: "--source_size_y"
     cli_order: 5
     optional: True
-    section_id: "overview"
+    section_id: "input_output"
     mode: "advanced"
   - name: source_size_x
     type: textbox
@@ -111,7 +111,7 @@ parameters:
     cli_tag: "--source_size_x"
     cli_order: 6
     optional: True
-    section_id: "overview"
+    section_id: "input_output"
     mode: "advanced"
   - name: source_rotation
     type: textbox
@@ -121,7 +121,7 @@ parameters:
     cli_tag: "--source_rotation"
     cli_order: 7
     optional: True
-    section_id: "overview"
+    section_id: "input_output"
     mode: "advanced"
 
   - name: preview_shapes
@@ -133,7 +133,7 @@ parameters:
     cli_order: 10
     optional: True
     append_value: False
-    section_id: "overview"
+    section_id: "input_output"
     mode: "beginner"
   - name: preview_images
     type: checkbox
@@ -144,7 +144,18 @@ parameters:
     cli_order: 11
     optional: True
     append_value: False
-    section_id: "overview"
+    section_id: "input_output"
+    mode: "beginner"
+  - name: overwrite
+    type: checkbox
+    label: "Overwrite output data"
+    description: "If enabled, any existing output data will be overwritten"
+    default: True
+    cli_tag: "--overwrite"
+    cli_order: 13
+    optional: True
+    append_value: False
+    section_id: "input_output"
     mode: "beginner"
 
 display_only:
@@ -152,11 +163,11 @@ display_only:
     type: dropdown
     label: "Select coordinate system"
     description: "Select coordinate system to preview"
-    section_id: "overview"
+    section_id: "input_output"
     cli_order: 8
   - name: metadata_table
     type: table
     label: " "
     description: "Metadata"
-    section_id: "overview"
+    section_id: "input_output"
     cli_order: 9

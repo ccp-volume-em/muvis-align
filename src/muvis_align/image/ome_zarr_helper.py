@@ -2,13 +2,14 @@ from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, Omero, OmeroC
 import ome_zarr.format
 import zarr
 
+from muvis_align.constants import default_ome_zarr_version, default_chunk_size
 from src.muvis_align.image.util import create_compression_filter
 from src.muvis_align.image.ome_zarr_util import create_transformation_metadata, get_channel_window
 
 
 def save_ome_zarr(filename, datas, dim_order, pixel_size, channels, translations, rotations,
-                  compression=None, scaler=None, ome_version='0.4'):
-
+                  compression=None, scaler=None, ome_version=default_ome_zarr_version):
+    # experimental
     is_series = isinstance(datas, list)
     if not is_series:
         datas = [datas]
@@ -40,7 +41,7 @@ def save_ome_zarr(filename, datas, dim_order, pixel_size, channels, translations
 
 
 def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rotation,
-                   scaler=None, compression=None, ome_version='0.4'):
+                   scaler=None, compression=None, ome_version=default_ome_zarr_version):
 
     storage_options = {}
     compressor, compression_filters = create_compression_filter(compression)
@@ -68,7 +69,7 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
     image = to_ngff_image(data, dims=dim_order, scale=pixel_size, translation=translation, axes_units=axes_units)
 
     scale_factors = [pyramid_downsample ** (scale + 1) for scale in range(npyramid_add)]
-    multiscales = to_multiscales(image, scale_factors=scale_factors, chunks=1024)
+    multiscales = to_multiscales(image, scale_factors=scale_factors, chunks=default_chunk_size)
 
     if channels:
         omero = Omero(channels=[OmeroChannel(label=channel,

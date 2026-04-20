@@ -31,7 +31,7 @@ operations:
     flatfield_quantiles: [0.5]
     pairing: orthogonal
     transform_type: translation
-    method:
+    registration:
       name: orb
       gaussian_sigma: 1
       max_keypoints: 5000
@@ -48,7 +48,7 @@ operations:
     #normalisation: individual  # normalise in custom registration function instead
     scale: 4
     transform_type: rigid
-    method:
+    registration:
       name: orb
       gaussian_sigma: 5
       max_keypoints: 5000

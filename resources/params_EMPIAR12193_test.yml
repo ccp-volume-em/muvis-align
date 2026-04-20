@@ -33,7 +33,7 @@ operations:
     scale: 4
     #normalisation: individual  # normalise in custom registration function instead
     transform_type: rigid
-    method:
+    registration:
       name: orb
       max_keypoints: 5000
       gaussian_sigma: 10

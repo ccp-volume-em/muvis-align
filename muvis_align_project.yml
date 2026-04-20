@@ -1,6 +1,7 @@
-outputs: {}
-overview:
-  input_images: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
+input_output:
+  input_path: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.ome.zarr
+  output_path: C:\Users\Y\PycharmProjects\muvis-align\output
+  overwrite: true
   preview_images: true
   preview_shapes: true
   source_position_x: source

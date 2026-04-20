@@ -1,4 +1,3 @@
-import logging
 from multiview_stitcher import spatial_image_utils as si_utils
 import os.path
 
@@ -7,7 +6,7 @@ from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
 from muvis_align.image.util import get_sim_physical_size
 from muvis_align.file.resources import get_project_template
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import dir_regex, find_all_numbers, print_dict_simple, set_dict_value, is_valid_value
+from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value
 
 
 class Interface:
@@ -18,12 +17,11 @@ class Interface:
         if not self.raw_template:
             raise FileNotFoundError('Project template not found')
         self.template = get_section_dict(self.raw_template, ['inputs', 'parameters', 'display_only', 'outputs'])
-        self.params = {}
         self.param_widgets = {}
+        self.params = {}
+        self.source_metadata = {}
 
-        self.params_general = {}
-        self.params_operation = {}
-        self.reg = MVSRegistrationNapari(self.params_general, self.viewer)
+        self.reg = MVSRegistrationNapari(self.viewer)
 
     def get_function(self, function_label):
         if hasattr(self, function_label):
@@ -55,56 +53,45 @@ class Interface:
         self.params[keys[0]][keys[1]] = value
         self.write_params()
 
-    def input_images(self, path):
-        path = str(path)
-        self.params_operation['operation'] = 'register'
-        self.params_operation['output'] = '/output'
-        self.params_operation['input'] = path
-
-        filenames = dir_regex(path)
-        filenames = sorted(filenames, key=lambda file: list(find_all_numbers(file)))  # sort first key first
-        fileset_label = os.path.basename(path)
-        if len(filenames) == 0:
-            logging.warning(f'No files found for path: {path}')
-            return
-        elif self.verbose:
-            logging.info(f'# total files: {len(filenames)}')
-        self.reg.init_operation(fileset_label, filenames, self.params_operation)
-
     def source_position_z(self, value):
         if is_valid_value(value):
-            set_dict_value(self.params_operation, ['source_metadata', 'position', 'z'], value)
+            set_dict_value(self.source_metadata, ['position', 'z'], value)
 
     def source_position_y(self, value):
         if is_valid_value(value):
-            set_dict_value(self.params_operation, ['source_metadata', 'position', 'y'], value)
+            set_dict_value(self.source_metadata, ['position', 'y'], value)
 
     def source_position_x(self, value):
         if is_valid_value(value):
-            set_dict_value(self.params_operation, ['source_metadata', 'position', 'x'], value)
+            set_dict_value(self.source_metadata, ['position', 'x'], value)
 
     def source_size_z(self, value):
         if is_valid_value(value):
-            set_dict_value(self.params_operation, ['source_metadata', 'size', 'z'], value)
+            set_dict_value(self.source_metadata, ['size', 'z'], value)
 
     def source_size_y(self, value):
         if is_valid_value(value):
-            set_dict_value(self.params_operation, ['source_metadata', 'size', 'y'], value)
+            set_dict_value(self.source_metadata, ['size', 'y'], value)
 
     def source_size_x(self, value):
         if is_valid_value(value):
-            set_dict_value(self.params_operation, ['source_metadata', 'size', 'x'], value)
+            set_dict_value(self.source_metadata, ['size', 'x'], value)
 
     def source_rotation(self, value):
         if is_valid_value(value):
-            set_dict_value(self.params_operation, ['source_metadata', 'rotation'], value)
+            set_dict_value(self.source_metadata, ['rotation'], value)
 
-    def overview_process(self):
-        self.update_metadata_source()
+    def input_output_process(self):
+        params = self.params['input_output']
+        ok = self.reg.init(input_path=str(params['input_path']),
+                           output_path=str(params['output_path']),
+                           overwrite=params['overwrite'])
+        if ok:
+            self.update_metadata_source()
 
     def update_metadata_source(self):
         if not self.reg.is_registered:
-            sims = self.reg.init_sims(reinit_sources=True)
+            sims = self.reg.init_sims(source_metadata=self.source_metadata)
         else:
             sims = self.reg.sims
         coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
@@ -112,13 +99,13 @@ class Interface:
         self.populate_metadata_table(sims)
 
     def populate_coordinate_systems(self, coord_systems):
-        param_widget = self.param_widgets.get('overview.coordinate_system')
+        param_widget = self.param_widgets.get('input_output.coordinate_system')
         param_widget.widget.choices = coord_systems
 
     def populate_metadata_table(self, sims):
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
         # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
-        table_widget = self.param_widgets.get('overview.metadata_table')
+        table_widget = self.param_widgets.get('input_output.metadata_table')
         data = {
            'label': ["'" + label + "'" for label in self.reg.file_labels],
            'position': [print_dict_simple(si_utils.get_origin_from_sim(sim)) for sim in sims],

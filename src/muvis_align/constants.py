@@ -3,8 +3,10 @@ version = '0.2.28'
 zarr_extension = '.ome.zarr'
 tiff_extension = '.ome.tiff'
 
-original_name = 'original'
-original_thumbnail_name = 'thumb_original'
+default_ome_zarr_version = '0.5'
+
+default_chunk_size = 1024
+
 registered_name = 'registered'
 registered_thumbnail_name = 'thumb'
 

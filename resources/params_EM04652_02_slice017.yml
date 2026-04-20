@@ -32,8 +32,8 @@ operations:
 #    normalisation: global
 #    #pairing: overlay
 #    transform_type: translation
-#    #method: phase_correlation
-#    method:
+#    #registration: phase_correlation
+#    registration:
 #      name: orb
 #      max_keypoints: 5000
 #      inlier_threshold_factor: 0.05
@@ -55,8 +55,8 @@ operations:
 #    normalisation: global
 #    gaussian_sigma: 2.5
 #    transform_type: affine
-#    #method: phase_correlation
-#    method:
+#    #registration: phase_correlation
+#    registration:
 #      name: orb
 #      gaussian_sigma: 5
 #      max_keypoints: 5000
@@ -68,11 +68,11 @@ operations:
 #    output: ../../aligned/ov2_
 
   - operation: stack
-    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s*/registered.ome.zarr
+    #input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s*/registered.ome.zarr
     #input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/stitched/s0050?/registered.ome.zarr
-    #input:
-    #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched_hpc/s00000/registered.ome.zarr
-    #  - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched_hpc/s00001/registered.ome.zarr
+    input:
+      - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched_hpc/s00000/registered.ome.zarr
+      - D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/stitched_hpc/s00001/registered.ome.zarr
     source_metadata: {'position': {'y': 0, 'x': 0}, rotation: null}
     extra_metadata: {scale: {z: 0.05}}
     scale: 8

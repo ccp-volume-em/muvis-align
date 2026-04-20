@@ -23,7 +23,7 @@ operations:
     #filter_foreground: True
     normalisation: global
     use_orthogonal_pairs: True
-    method: phase_correlation
+    registration: phase_correlation
     output: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched/
 
   - operation: register
@@ -34,7 +34,7 @@ operations:
     #filter_foreground: True
     normalisation: global
     use_orthogonal_pairs: True
-    method: phase_correlation
+    registration: phase_correlation
     output: D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched/
 
   - operation: register
@@ -42,7 +42,7 @@ operations:
       - D:/slides/EM04768_01_substrate_04/registered/reflection_stitched/registered.ome.zarr
       - D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched/registered.ome.zarr
     normalisation: individual
-    method: ANTsPy
+    registration: ANTsPy
     channel: 0
     extra_metadata: {'channels': [{'label':reflection, 'color':[1, 1, 1, 1]}, {'label':fluorescence, 'color':[0, 1, 0, 1]}]}
     output: D:/slides/EM04768_01_substrate_04/registered/
