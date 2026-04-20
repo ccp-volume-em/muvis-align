@@ -35,7 +35,7 @@ dask.config.set(scheduler='threads')
 
 class MVSRegistration:
     def __init__(self, params_general=None, params={},
-                 operation=None, label='', input_pattern=None, filenames=None, output_pattern=None,
+                 operation='', label='', input_pattern=None, filenames=None, output_pattern=None,
                  global_rotation=None, global_center=None,
                  overwrite=False, clear=False, show_original=False, ui='', verbose=False, debug=False):
         self.init(params_general=params_general, params=params,
@@ -86,6 +86,8 @@ class MVSRegistration:
         if filenames:
             self.file_labels = get_unique_file_labels(filenames)
 
+        if not output_pattern:
+            output_pattern = params.get('output')
         if output_pattern:
             self.init_output(output_pattern)
 
@@ -124,6 +126,7 @@ class MVSRegistration:
         params = self.params
         filenames = self.filenames
         file_labels = self.file_labels
+
         output = self.output
 
         operation = self.operation
@@ -248,14 +251,13 @@ class MVSRegistration:
                     results = self.register(sims, register_sims, register_indices)
 
             if is_stack:
-                results['sims'] = make_sims_3d(results['sims'], z_scale, self.positions)
+                sims = make_sims_3d(sims, z_scale, self.positions)
 
             reg_result = results['reg_result']
-            sims = results['sims']
             mappings = results['mappings']
 
             logging.info('Exporting registered...')
-            metrics = self.calc_metrics(results, file_labels)
+            metrics = self.calc_metrics(sims, results, file_labels)
             logging.info(metrics['summary'])
             output_mappings = {file_labels[key]: np.array(mapping.sel(t=0)).tolist() for key, mapping in mappings.items()}
             export_json(mappings_filename, output_mappings)
@@ -684,11 +686,10 @@ class MVSRegistration:
         return fuse_func
 
     def register(self, sims, register_sims=None, register_indices=None, register_params=None):
-        g_reg, msims, sims, pairs = self.register_pairs(sims, register_sims=register_sims,
-                                                        register_params=register_params)
+        g_reg, msims, pairs = self.register_pairs(sims, register_sims=register_sims,
+                                                  register_params=register_params)
         results = self.register_global(sims, msims, register_indices=register_indices,
                                        register_params=register_params)
-        results['sims'] = sims
         results['pairs'] = pairs
         return results
 
@@ -819,7 +820,7 @@ class MVSRegistration:
             g_reg_computed = g_reg
 
         self.g_reg = g_reg_computed
-        return g_reg_computed, msims_reg, sims, pairs
+        return g_reg_computed, msims_reg, pairs
 
     def register_global(self, sims, msims, register_indices=None, register_params=None, g_reg=None):
         if register_params:
@@ -1062,10 +1063,9 @@ class MVSRegistration:
                    ome_version=ome_version,
                    verbose=self.verbose)
 
-    def calc_overlap_metrics(self, results):
+    def calc_overlap_metrics(self, sims, results):
         nccs = {}
         ssims = {}
-        sims = results['sims']
         pairs = results['pairs']
         if pairs is None:
             origins = np.array([get_sim_position_final(sim) for sim in sims])
@@ -1129,7 +1129,7 @@ class MVSRegistration:
 
         return fixed_data, moving_data
 
-    def calc_metrics(self, results, labels):
+    def calc_metrics(self, sims, results, labels):
         var = None
         distances = [np.linalg.norm(param_utils.translation_from_affine(mapping.sel(t=0)))
                      for mapping in results['mappings'].values()]
@@ -1140,7 +1140,7 @@ class MVSRegistration:
                 cvar = np.std(distances) / mean_distance
                 var = cvar
         if var is None:
-            size = get_sim_physical_size(results['sims'][0])
+            size = get_sim_physical_size(sims[0])
             norm_distance = np.sum(distances) / np.linalg.norm(list(size.values()))
             var = norm_distance
 
@@ -1158,7 +1158,7 @@ class MVSRegistration:
         else:
             registration_quality = 0
 
-        #overlap_metrics = self.calc_overlap_metrics(results)
+        #overlap_metrics = self.calc_overlap_metrics(sims, results)
 
         #nccs = {labels[key[0]] + ' - ' + labels[key[1]]: value
         #         for key, value in overlap_metrics['ncc'].items()}
