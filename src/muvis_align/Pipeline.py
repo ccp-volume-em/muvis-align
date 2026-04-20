@@ -46,8 +46,11 @@ class Pipeline(Thread):
         use_global_metadata = 'global' in params.get('source_metadata', '')
         metadata_summary = self.params_general.get('metadata_summary', False)
 
-        filenames = dir_regex(params['input'])
-        filenames = sorted(filenames, key=lambda file: list(find_all_numbers(file)))    # sort first key first
+        if isinstance(params['input'], dict):
+            path = params['input'].get('path')
+        else:
+            path = params['input']
+        filenames = sorted(dir_regex(path), key=lambda file: list(find_all_numbers(file)))    # sort first key first
         if len(filenames) == 0:
             logging.warning(f'Skipping operation {operation} (no files)')
             return False
@@ -127,14 +130,11 @@ class Pipeline(Thread):
         napari_ui = 'napari' in self.params_general.get('ui', '')
         if napari_ui:
             from src.muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
-            mvs_registration = MVSRegistrationNapari(params_general=self.params_general, params=params,
-                                                     label=fileset_label, filenames=fileset,
-                                                     global_center=center, global_rotation=rotation,
-                                                     viewer=self.viewer)
+            mvs_registration = MVSRegistrationNapari(viewer=self.viewer)
         else:
             from src.muvis_align.MVSRegistration import MVSRegistration
-            mvs_registration = MVSRegistration(params_general=self.params_general, params=params,
-                                               label=fileset_label, filenames=fileset,
-                                               global_center=center, global_rotation=rotation)
+            mvs_registration = MVSRegistration()
+        mvs_registration.init_params(params_general=self.params_general, params=params,
+                                     label=fileset_label, input_path=fileset,
+                                     global_center=center, global_rotation=rotation)
         return mvs_registration.run()
-

@@ -34,62 +34,70 @@ dask.config.set(scheduler='threads')
 
 
 class MVSRegistration:
-    def __init__(self, params_general=None, params={},
-                 operation='', label='', input_pattern=None, filenames=None, output_pattern=None,
+    def __init__(self, operation='', label='', input_path=None, output_path=None,
+                 source_metadata={}, extra_metadata={},
                  global_rotation=None, global_center=None,
-                 overwrite=False, clear=False, show_original=False, ui='', verbose=False, debug=False):
-        self.init(params_general=params_general, params=params,
-                  operation=operation, label=label, input_pattern=input_pattern, filenames=filenames, output_pattern=output_pattern,
-                  global_rotation=global_rotation, global_center=global_center,
-                  overwrite=overwrite, clear=clear, show_original=show_original, ui=ui, verbose=verbose, debug=debug)
+                 overwrite=True, clear=False, ui='', verbose=False, debug=False):
+        if input_path is not None:
+            self.init(operation=operation, label=label, input_path=input_path, output_path=output_path,
+                      source_metadata=source_metadata, extra_metadata=extra_metadata,
+                      global_rotation=global_rotation, global_center=global_center,
+                      overwrite=overwrite, clear=clear, ui=ui, verbose=verbose, debug=debug)
 
-    def init(self, params_general=None, params={},
-                 operation=None, label='', input_pattern=None, filenames=None, output_pattern=None,
-                 global_rotation=None, global_center=None,
-                 overwrite=False, clear=False, show_original=False, ui='', verbose=False, debug=False):
+    def init_params(self, params_general, params, label='', input_path=None, global_rotation=None, global_center=None):
+        self.params_general = params_general
         self.params = params
-        if params_general is not None:
-            self.overwrite = params_general.get('overwrite', False)
-            self.clear = params_general.get('clear', False)
-            self.show_original = params_general.get('show_original', False)
-            self.ui = params_general.get('ui', '')
-            self.verbose = params_general.get('verbose', False)
-            self.debug = params_general.get('debug', False)
-            self.output_params = params_general.get('output')
-        else:
-            self.overwrite = overwrite
-            self.clear = clear
-            self.show_original = show_original
-            self.ui = ui
-            self.verbose = verbose
-            self.debug = debug
-            self.output_params = {}
+        self.input_params = params.get('input')
+        self.output_params = params.get('output')
+        self.preprocess_params = params.get('preprocessing', {})
+        self.register_params = params.get('registration', {})
+        self.fusion_params = params.get('fusion', {})
+
+        return self.init(operation=params.get('operation'), label=label, input_path=input_path,
+                         output_path=self.output_params.get('path'),
+                         source_metadata=self.input_params.get('source_metadata', {}),
+                         extra_metadata=self.input_params.get('extra_metadata', {}),
+                         global_rotation=global_rotation, global_center=global_center,
+                         overwrite=params_general.get('overwrite', False), clear=params_general.get('clear', False),
+                         ui=params_general.get('ui', ''),
+                         verbose=params_general.get('verbose', False), debug=params_general.get('debug', False))
+
+    def init(self, operation='', label='', input_path=None, output_path=None,
+             source_metadata={}, extra_metadata={}, global_rotation=None, global_center=None,
+             overwrite=True, clear=False, ui='', verbose=False, debug=False):
+        self.overwrite = overwrite
+        self.clear = clear
+        self.ui = ui
+        self.verbose = verbose
+        self.debug = debug
         self.logging_dask = self.verbose
         self.logging_time = self.verbose
         self.mpl_ui = ('mpl' in self.ui or 'plot' in self.ui)
         self.napari_ui = ('napari' in self.ui)
+        self.operation = operation
 
-        self.operation = params.get('operation', operation)
-        self.input_pattern = input_pattern
-        self.input = params.get('input', input_pattern)
-        self.source_metadata = params.get('source_metadata', {})
-        self.extra_metadata = params.get('extra_metadata', {})
+        self.input_path = input_path
+        if isinstance(input_path, list):
+            self.filenames = input_path
+            self.input_dir = os.path.dirname(input_path[0])
+        else:
+            self.filenames = dir_regex(input_path)
+            self.input_dir = os.path.dirname(input_path)
+        if not self.filenames:
+            return False
 
-        if input_pattern:
-            filenames = dir_regex(input_pattern)
-            if isinstance(input_pattern, list):
-                input_pattern = input_pattern[0]
-            self.input_dir = os.path.dirname(input_pattern)
-        elif filenames:
-            self.input_dir = os.path.dirname(filenames[0])
-        self.filenames = filenames
-        if filenames:
-            self.file_labels = get_unique_file_labels(filenames)
+        self.file_labels = get_unique_file_labels(self.filenames)
 
-        if not output_pattern:
-            output_pattern = params.get('output')
-        if output_pattern:
-            self.init_output(output_pattern)
+        self.source_metadata = import_metadata(source_metadata, input_path=input_path)
+        self.extra_metadata = import_metadata(extra_metadata, input_path=input_path)
+
+        output_path = output_path.format_map(split_numeric_dict(self.filenames[0]))
+        self.output = os.path.join(self.input_dir, output_path)    # preserve trailing slash: do not use os.path.normpath()
+        output_dir = os.path.dirname(self.output)
+        if self.clear:
+            shutil.rmtree(output_dir, ignore_errors=True)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
 
         self.fileset_label = label
         self.global_rotation = global_rotation
@@ -99,54 +107,39 @@ class MVSRegistration:
         self.reg_transform_key = 'registered'
         self.transition_transform_key = 'transition'
         self.sources = None
-
-    def init_output(self, output_pattern):
-        if not output_pattern:
-            output_pattern = self.params['output']
-        if self.input_pattern:
-            input_dir = os.path.dirname(self.filenames[0])
-        else:
-            filename0 = self.filenames[0]
-            input_dir = os.path.dirname(filename0)
-            parts = split_numeric_dict(filename0)
-            output_pattern = output_pattern.format_map(parts)
-
-        self.output = os.path.join(input_dir, output_pattern)    # preserve trailing slash: do not use os.path.normpath()
-        output_dir = os.path.dirname(self.output)
-        if self.clear:
-            shutil.rmtree(output_dir, ignore_errors=True)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        return True
 
     def run(self):
         with ProgressBar(minimum=60, dt=1) if self.logging_dask else nullcontext():
             return self._run()
 
     def _run(self):
-        params = self.params
         filenames = self.filenames
         file_labels = self.file_labels
 
         output = self.output
-
         operation = self.operation
-        overlap_threshold = params.get('overlap_threshold', 0.5)
-        source_metadata = import_metadata(params.get('source_metadata', {}), input_path=params['input'])
-        self.source_metadata = source_metadata
-        save_images = params.get('save_images', True)
-        target_scale = params.get('scale')
-        extra_metadata = import_metadata(params.get('extra_metadata', {}), input_path=params['input'])
-        self.extra_metadata = extra_metadata
+        source_metadata = self.source_metadata
+        extra_metadata = self.extra_metadata
         z_scale = extra_metadata.get('scale', {}).get('z')
         channels = extra_metadata.get('channels', [])
         normalise_orientation = 'norm' in source_metadata
         output_params = self.output_params
+        overlap_threshold = self.register_params.get('overlap_threshold', self.params.get('overlap_threshold', 0.5))
+        save_images = self.output_params.get('save_images', self.params.get('save_images', True))
 
         is_stack = ('stack' in operation)
         is_3d = ('3d' in operation)
         is_simple_stack = is_stack and not is_3d
         is_transition = ('transition' in operation)
         is_channel_overlay = (len(channels) > 1)
+
+        output_format = output_params.get('format', self.params_general.get('format', zarr_extension))
+        output_tile_size = output_params.get('tile_size', self.params_general.get('tile_size')),
+        output_compression = output_params.get('compression', self.params_general.get('compression')),
+        output_pyramid_downsample = output_params.get('pyramid_downsample', self.params_general.get('pyramid_downsample', 2)),
+        output_npyramid_add = output_params.get('npyramid_add', self.params_general.get('npyramid_add', 0)),
+        output_ome_version = output_params.get('ome_version', self.params_general.get('ome_version', default_ome_zarr_version))
 
         mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
 
@@ -155,21 +148,21 @@ class MVSRegistration:
             return False
 
         registered_fused_filename = output + registered_name
-        mappings_filename = output + params.get('mappings', default_mappings_name)
+        mappings_filename = output + output_params.get('mappings', default_mappings_name)
 
         if not self.overwrite and os.path.exists(registered_fused_filename):
             logging.warning(f'Skipping existing output {registered_fused_filename}')
             return False
 
         with Timer('init sims', self.logging_time):
-            sims = self.init_sims(target_scale=target_scale)
+            sims = self.init_sims(target_scale=self.preprocess_params.get('scale'))
         self.sims = sims
 
         if not z_scale:
             z_scale = self.scales[0].get('z', 1)
 
         with Timer('pre-process', self.logging_time):
-            register_sims, register_indices = self.preprocess(sims)
+            register_sims, register_indices = self.preprocess(sims, **self.preprocess_params)
 
         data = []
         for label, sim, scale in zip(file_labels, sims, self.scales):
@@ -179,50 +172,14 @@ class MVSRegistration:
             data.append(row)
         export_csv(output + prereg_mappings_name, data, header=mappings_header)
 
-        if self.show_original:
-            # before registration:
-            logging.info('Exporting original...')
-            original_positions_filename = output + original_positions_name
-
-            with Timer('plot positions', self.logging_time):
-                vis_utils.plot_positions(sims, transform_key=self.source_transform_key,
-                                         use_positional_colors=False, view_labels=file_labels, view_labels_size=3,
-                                         show_plot=self.mpl_ui, output_filename=original_positions_filename)
-                plt_close()
-
-            if self.napari_ui:
-                shapes = [get_sim_shape_2d(sim, transform_key=self.source_transform_key) for sim in sims]
-                self.update_napari_signal.emit(f'{self.fileset_label} original', shapes, file_labels)
-
-            if save_images:
-                if output_params.get('thumbnail'):
-                    with Timer('create thumbnail', self.logging_time):
-                        self.save_thumbnail(output + original_thumbnail_name, nom_sims=sims,
-                                            transform_key=self.source_transform_key)
-
-                sims2 = [sim.copy() for sim in sims]
-                sims2 = make_sims_3d(sims2, z_scale, self.positions)
-
-                original_fused_filename = output + original_name
-                original_fused, is_saved = self.fuse(sims2, transform_key=self.source_transform_key,
-                                                     tile_size=output_params.get('tile_size'),
-                                                     ome_version=output_params.get('ome_version'))
-                if not is_saved or 'tif' in output_params.get('format'):
-                    self.save(original_fused_filename, original_fused, transform_key=self.source_transform_key,
-                              format=output_params.get('format'),
-                              tile_size=output_params.get('tile_size'), compression=output_params.get('compression'),
-                              pyramid_downsample=output_params.get('pyramid_downsample', 2),
-                              npyramid_add=output_params.get('npyramid_add', 0),
-                              ome_version=output_params.get('ome_version'))
-
         if len(filenames) == 1 and save_images:
             logging.warning('Skipping registration (single image)')
             self.save(registered_fused_filename, sims[0], translations0=self.positions,
-                      format = output_params.get('format'),
-                      tile_size = output_params.get('tile_size'), compression = output_params.get('compression'),
-                      pyramid_downsample = output_params.get('pyramid_downsample', 2),
-                      npyramid_add = output_params.get('npyramid_add', 0),
-                      ome_version = output_params.get('ome_version'))
+                      format = output_format,
+                      tile_size = output_tile_size,
+                      pyramid_downsample = output_pyramid_downsample,
+                      npyramid_add = output_npyramid_add,
+                      ome_version = output_ome_version)
             return False
 
         _, has_overlaps = self.validate_overlap(sims, file_labels, is_simple_stack, is_simple_stack or is_channel_overlay)
@@ -248,7 +205,7 @@ class MVSRegistration:
         else:
             if 'register' in operation:
                 with Timer('register', self.logging_time):
-                    results = self.register(sims, register_sims, register_indices)
+                    results = self.register(sims, register_sims, register_indices, self.register_params)
 
             if is_stack:
                 sims = make_sims_3d(sims, z_scale, self.positions)
@@ -306,18 +263,24 @@ class MVSRegistration:
                                             transform_key=self.reg_transform_key)
 
                 with Timer('fuse image', self.logging_time):
-                    fused_image, is_saved = self.fuse(sims, output_filename=registered_fused_filename)
+                    if isinstance(self.fusion_params, dict):
+                        fusion_method = self.fusion_params.get('method', '')
+                    else:
+                        fusion_method = self.fusion_params
+                    fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method,
+                                                      output_filename=registered_fused_filename)
 
-                if not is_saved or 'tif' in self.output_params.get('format'):
+                if not is_saved or 'tif' in output_format:
                     logging.info('Saving fused image...')
                     with Timer('save fused image', self.logging_time):
                         self.save(registered_fused_filename, fused_image,
                                   transform_key=self.reg_transform_key, translations0=self.positions,
-                                  format = output_params.get('format'),
-                                  tile_size = output_params.get('tile_size'), compression = output_params.get('compression'),
-                                  pyramid_downsample = output_params.get('pyramid_downsample', 2),
-                                  npyramid_add = output_params.get('npyramid_add', 0),
-                                  ome_version = output_params.get('ome_version'))
+                                  format = output_format,
+                                  tile_size = output_tile_size,
+                                  compression = output_compression,
+                                  pyramid_downsample = output_pyramid_downsample,
+                                  npyramid_add = output_npyramid_add,
+                                  ome_version = output_ome_version)
 
             if is_transition:
                 self.save_video(output, sims, fused_image)
@@ -354,12 +317,12 @@ class MVSRegistration:
         if self.source_metadata and not source_metadata_changed:
             source_metadata = self.source_metadata
         else:
-            source_metadata = import_metadata(source_metadata, input_path=self.input)
+            source_metadata = import_metadata(source_metadata, input_path=self.input_path)
             self.source_metadata = source_metadata
         if self.extra_metadata:
             extra_metadata = self.extra_metadata
         else:
-            extra_metadata = import_metadata(extra_metadata, input_path=self.input)
+            extra_metadata = import_metadata(extra_metadata, input_path=self.input_path)
             self.extra_metadata = extra_metadata
         if isinstance(source_metadata, dict):
             z_scale = source_metadata.get('scale', {}).get('z')
@@ -562,16 +525,8 @@ class MVSRegistration:
                     has_overlaps.append(True)
         return min_dists, has_overlaps
 
-    def preprocess(self, sims, flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
-        if not flatfield_quantiles:
-            flatfield_quantiles = self.params.get('flatfield_quantiles')
-        if not normalisation:
-            normalisation = self.params.get('normalisation', '')
-        if not gaussian_sigma:
-            gaussian_sigma = self.params.get('gaussian_sigma')
-        if not filter_foreground:
-            filter_foreground = self.params.get('filter_foreground', False)
-
+    def preprocess(self, sims,
+                   flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
         # normalise pixel size: take max pixel size
         max_scale = {dim: max(scale[dim] for scale in self.scales) for dim in 'xy'}
         scales0 = self.scales
@@ -666,7 +621,9 @@ class MVSRegistration:
 
         return reg_method, pairwise_reg_func, pairwise_reg_func_kwargs
 
-    def create_fusion_method(self, sim0, fusion_method):
+    def create_fusion_method(self, fusion_method, sim0):
+        if fusion_method is None:
+            fusion_method = ''
         if 'compos' in fusion_method:
             fusion_method = None
             fuse_func = None
@@ -685,20 +642,13 @@ class MVSRegistration:
 
         return fuse_func
 
-    def register(self, sims, register_sims=None, register_indices=None, register_params=None):
-        g_reg, msims, pairs = self.register_pairs(sims, register_sims=register_sims,
-                                                  register_params=register_params)
-        results = self.register_global(sims, msims, register_indices=register_indices,
-                                       register_params=register_params)
+    def register(self, sims, register_sims=None, register_indices=None, params=None):
+        g_reg, msims, pairs = self.register_pairs(sims, register_sims=register_sims, params=params)
+        results = self.register_global(sims, msims, register_indices=register_indices, params=params)
         results['pairs'] = pairs
         return results
 
-    def register_pairs(self, sims, register_sims=None, register_params=None):
-        if register_params:
-            params = register_params
-        else:
-            params = self.params
-
+    def register_pairs(self, sims, register_sims=None, params=None):
         operation = self.operation
         pairing = params.get('pairing',
                              params.get('registration', {}).get('pairing', ''))
@@ -822,12 +772,7 @@ class MVSRegistration:
         self.g_reg = g_reg_computed
         return g_reg_computed, msims_reg, pairs
 
-    def register_global(self, sims, msims, register_indices=None, register_params=None, g_reg=None):
-        if register_params:
-            params = register_params
-        else:
-            params = self.params
-
+    def register_global(self, sims, msims, register_indices=None, params=None, g_reg=None):
         if g_reg is not None:
             g_reg_computed = g_reg
         else:
@@ -954,17 +899,13 @@ class MVSRegistration:
                 'registration_qualities': registration_qualities_dict}
 
     def fuse(self, sims, fusion_method=None, transform_key=None, output_filename=None,
-             tile_size=None, ome_version=default_ome_zarr_version, thumbnail=False):
+             tile_size=None, ome_version=default_ome_zarr_version, output_spacing='mean'):
         sim0 = sims[0]
         if transform_key is None:
             transform_key = self.reg_transform_key
         z_scale = self.extra_metadata.get('scale', {}).get('z')
         channels = self.extra_metadata.get('channels', [])
         is_channel_overlay = (len(channels) > 1)
-        if thumbnail:
-            output_spacing = 'max'
-        else:
-            output_spacing = self.params.get('output_spacing')
 
         if z_scale is None and self.scales is not None:
             z_scale0 = np.mean([scale.get('z', 0) for scale in self.scales])
@@ -995,9 +936,7 @@ class MVSRegistration:
             channel_sims = [sim.assign_coords({'c': [channels[simi]['label']]}) for simi, sim in enumerate(channel_sims)]
             fused_image = xr.combine_nested([sim.rename() for sim in channel_sims], concat_dim='c', combine_attrs='override')
         else:
-            if not fusion_method:
-                fusion_method = self.params.get('fusion', '')
-            fuse_func = self.create_fusion_method(sim0, fusion_method.lower())
+            fuse_func = self.create_fusion_method(fusion_method, sim0)
             if fuse_func:
                 saving_zarr = output_filename is not None
                 output_chunksize = None
@@ -1047,14 +986,14 @@ class MVSRegistration:
                     si_utils.set_sim_affine(sim,
                                             si_utils.get_affine_from_sim(nom_sim, transform_key=transform_key),
                                             transform_key=transform_key)
-        fused_image, is_saved = self.fuse(sims, transform_key=transform_key, thumbnail=True)
+        fused_image, is_saved = self.fuse(sims, transform_key=transform_key, output_spacing='max')
         if not is_saved or 'tif' in output_params.get('thumbnail'):
             self.save(output_filename, fused_image.squeeze(), transform_key=transform_key,
                       format=output_params.get('thumbnail'), ome_version=output_params.get('ome_version'))
 
     def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None,
              tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=0, ome_version=default_ome_zarr_version):
-        extra_metadata = import_metadata(self.params.get('extra_metadata', {}), input_path=self.input)
+        extra_metadata = import_metadata(self.extra_metadata, input_path=self.input_path)
         channels = extra_metadata.get('channels', [])
         save_image(output_filename, data, format,
                    transform_key=transform_key, channels=channels, translations0=translations0,

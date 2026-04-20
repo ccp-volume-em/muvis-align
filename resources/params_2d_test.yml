@@ -7,8 +7,9 @@ general:
 
 operations:
   - operation: register
-    input: data/S000/*.zarr
-    source_metadata: source
+    input:
+      path: data/S000/*.zarr
+      source_metadata: source
     registration:
       pairing: orthogonal
       transform_type: rigid
@@ -19,4 +20,5 @@ operations:
       inlier_threshold_factor: 0.05
       max_trials: 1000
       ransac_iterations: 3
-    output: ../../output/stitched/
+    output:
+      path: ../../output/stitched/

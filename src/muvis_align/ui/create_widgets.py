@@ -3,6 +3,7 @@
 
 
 from magicgui.widgets import Container, create_widget
+import os.path
 
 from muvis_align.ui.ParamWidget import ParamWidget
 
@@ -69,6 +70,9 @@ def create_section_container(section_id, section_template, interface,
         if is_file_type:
             file_count = template.get('file_count')
             options['mode'] = get_file_dialog_mode(is_output, file_count)
+            ext = os.path.splitext(str(template.get('default')))[1]
+            if ext:
+                options['filter'] = '*' + ext
         full_name = section_id + '.' + param_name
         widget = create_widget(name=full_name, value=value, label=param_label, widget_type=widget_type, options=options)
         if description:

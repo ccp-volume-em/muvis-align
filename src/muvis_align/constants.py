@@ -7,8 +7,6 @@ default_ome_zarr_version = '0.5'
 
 default_chunk_size = 1024
 
-original_name = 'original'
-original_thumbnail_name = 'thumb_original'
 registered_name = 'registered'
 registered_thumbnail_name = 'thumb'
 

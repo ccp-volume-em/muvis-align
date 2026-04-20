@@ -1,4 +1,3 @@
-import logging
 from multiview_stitcher import spatial_image_utils as si_utils
 import os.path
 
@@ -7,7 +6,7 @@ from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
 from muvis_align.image.util import get_sim_physical_size
 from muvis_align.file.resources import get_project_template
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import dir_regex, find_all_numbers, print_dict_simple, set_dict_value, is_valid_value
+from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value
 
 
 class Interface:
@@ -54,9 +53,6 @@ class Interface:
         self.params[keys[0]][keys[1]] = value
         self.write_params()
 
-    def input_images(self, path):
-        self.reg.init(input_pattern=str(path))
-
     def source_position_z(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'z'], value)
@@ -85,8 +81,13 @@ class Interface:
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['rotation'], value)
 
-    def overview_process(self):
-        self.update_metadata_source()
+    def input_output_process(self):
+        params = self.params['input_output']
+        ok = self.reg.init(input_path=str(params['input_path']),
+                           output_path=str(params['output_path']),
+                           overwrite=params['overwrite'])
+        if ok:
+            self.update_metadata_source()
 
     def update_metadata_source(self):
         if not self.reg.is_registered:
@@ -98,13 +99,13 @@ class Interface:
         self.populate_metadata_table(sims)
 
     def populate_coordinate_systems(self, coord_systems):
-        param_widget = self.param_widgets.get('overview.coordinate_system')
+        param_widget = self.param_widgets.get('input_output.coordinate_system')
         param_widget.widget.choices = coord_systems
 
     def populate_metadata_table(self, sims):
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
         # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
-        table_widget = self.param_widgets.get('overview.metadata_table')
+        table_widget = self.param_widgets.get('input_output.metadata_table')
         data = {
            'label': ["'" + label + "'" for label in self.reg.file_labels],
            'position': [print_dict_simple(si_utils.get_origin_from_sim(sim)) for sim in sims],
@@ -112,6 +113,3 @@ class Interface:
         }
         table_widget.set_value(data)
         table_widget.read_only = True   # https://github.com/pyapp-kit/magicgui/issues/348
-
-    def output_array(self, path):
-        self.reg.init_output(output_pattern=str(path))
