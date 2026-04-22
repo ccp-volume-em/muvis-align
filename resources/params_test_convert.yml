@@ -6,13 +6,15 @@ general:
     format: ome.zarr
 
 operations:
-  - operation: register
+  - operation: convert
     input:
-      path: data/S000/*.zarr
-      source_metadata: source
+      path: data/*/*.tiff
+      source_metadata:
+        scale: {x: 0.032, y: 0.032}
+        position: {y: 'fn[-3]*24', x: 'fn[-2]*24'}
     registration:
       pairing: orthogonal
-      transform_type: rigid
+      transform_type: affine
       method: sift
       gaussian_sigma: 2
       normalisation: True
@@ -21,4 +23,4 @@ operations:
       max_trials: 1000
       ransac_iterations: 3
     output:
-      path: ../../output/stitched/
+      path: ../../output/
