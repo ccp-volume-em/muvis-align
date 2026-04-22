@@ -28,6 +28,8 @@ class Pipeline(Thread):
         for operation_params in tqdm(self.params['operations']):
             error = False
             input_path = operation_params['input']
+            if isinstance(input_path, dict):
+                input_path = input_path.get('path')
             logging.info(f'Input: {input_path}')
             try:
                 self.run_operation(operation_params)
