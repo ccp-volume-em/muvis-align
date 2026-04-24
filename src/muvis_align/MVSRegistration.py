@@ -255,8 +255,7 @@ class MVSRegistration:
                 plt_close()
 
             if self.napari_ui:
-                shapes = [get_sim_shape_2d(sim, transform_key=self.reg_transform_key) for sim in sims]
-                self.update_napari_signal.emit(f'{self.fileset_label} registered', shapes, file_labels)
+                self.update_napari_shapes.emit(f'{self.fileset_label} registered', self.reg_transform_key)
 
             if save_images:
                 if self.output_params.get('thumbnail'):
@@ -495,6 +494,7 @@ class MVSRegistration:
         self.scales = scales2
         self.positions = translations2
         self.rotations = rotations
+        self.sims = sims
         return sims
 
     def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):

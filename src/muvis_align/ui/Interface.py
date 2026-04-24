@@ -20,6 +20,7 @@ class Interface:
         self.param_widgets = {}
         self.params = {}
         self.source_metadata = {}
+        self.transform_key = 'source_metadata'
 
         self.reg = MVSRegistrationNapari(self.viewer)
 
@@ -91,13 +92,14 @@ class Interface:
 
     def update_metadata_source(self):
         if not self.reg.is_registered:
-            sims = self.reg.init_sims(source_metadata=self.source_metadata)
-        else:
-            sims = self.reg.sims
+            self.reg.init_sims(source_metadata=self.source_metadata)
+        sims = self.reg.sims
+
         coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
         self.populate_coordinate_systems(coord_systems)
         if self.reg.initialised:
             self.populate_metadata_table(sims)
+            self.update_view()
 
     def populate_coordinate_systems(self, coord_systems):
         param_widget = self.param_widgets.get('input_output.coordinate_system')
@@ -105,6 +107,7 @@ class Interface:
         param_widget.widget.choices = param_widget.create_choices(choices)
 
     def coordinate_system(self, transform_key):
+        self.transform_key = transform_key
         if self.reg.initialised:
             self.populate_metadata_table(self.reg.sims, [transform_key])
 
@@ -119,3 +122,9 @@ class Interface:
         }
         table_widget.set_value(data)
         table_widget.read_only = True   # https://github.com/pyapp-kit/magicgui/issues/348
+
+    def update_view(self):
+        if self.params['input_output']['preview_images']:
+            self.reg.update_napari_data.emit(f'{self.reg.fileset_label} data', self.transform_key)
+        if self.params['input_output']['preview_shapes']:
+            self.reg.update_napari_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key)
