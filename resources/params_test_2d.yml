@@ -1,0 +1,24 @@
+general:
+  overwrite: True
+  logging:
+    verbose: True
+  output:
+    format: ome.zarr
+
+operations:
+  - operation: register
+    input:
+      path: data/S000/*.zarr
+      source_metadata: source
+    registration:
+      pairing: orthogonal
+      transform_type: affine
+      method: sift
+      gaussian_sigma: 2
+      normalisation: True
+      max_keypoints: 5000
+      inlier_threshold_factor: 0.05
+      max_trials: 1000
+      ransac_iterations: 3
+    output:
+      path: ../../output/stitched/
