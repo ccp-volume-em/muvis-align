@@ -53,6 +53,7 @@ outputs:
     pyramidal: True
 
 parameters:
+    # input_output
   - name: source_position_z
     type: textbox
     label: "Source position Z"
@@ -163,6 +164,10 @@ display_only:
     type: dropdown
     label: "Select coordinate system"
     description: "Select coordinate system to preview"
+    options:
+      - label: Source metadata
+        value: "source_metadata"
+    default: "source_metadata"
     section_id: "input_output"
     cli_order: 8
   - name: metadata_table

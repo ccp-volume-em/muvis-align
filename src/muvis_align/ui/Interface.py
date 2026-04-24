@@ -100,7 +100,8 @@ class Interface:
 
     def populate_coordinate_systems(self, coord_systems):
         param_widget = self.param_widgets.get('input_output.coordinate_system')
-        param_widget.widget.choices = coord_systems
+        choices = {coord_system: coord_system.replace('_', ' ').capitalize() for coord_system in coord_systems}
+        param_widget.widget.choices = param_widget.create_choices(choices)
 
     def populate_metadata_table(self, sims):
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
