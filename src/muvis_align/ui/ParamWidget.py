@@ -12,3 +12,15 @@ class ParamWidget:
         if self.to_str:
             value = str(value)
         self.interface.change_param(self.param_name, value)
+
+    def create_choices(self, choices):
+        # When setting choices with a dict, the dict must have keys 'choices' (Iterable),
+        # and 'key' (callable that takes each value in `choices` and returns a string
+        self.choices = choices
+        return {
+            'choices': choices.keys(),
+            'key': self.get_choice_label
+        }
+
+    def get_choice_label(self, choice):
+        return self.choices[choice]

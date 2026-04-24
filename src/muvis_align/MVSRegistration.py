@@ -38,6 +38,7 @@ class MVSRegistration:
                  source_metadata={}, extra_metadata={},
                  global_rotation=None, global_center=None,
                  overwrite=True, clear=False, ui='', verbose=False, debug=False):
+        self.initialised = False
         if input_path is not None:
             self.init(operation=operation, label=label, input_path=input_path, output_path=output_path,
                       source_metadata=source_metadata, extra_metadata=extra_metadata,
@@ -81,6 +82,16 @@ class MVSRegistration:
         self.mpl_ui = ('mpl' in self.ui or 'plot' in self.ui)
         self.napari_ui = ('napari' in self.ui)
         self.operation = operation
+        self.fileset_label = label
+        self.global_rotation = global_rotation
+        self.global_center = global_center
+        self.is_registered = False
+        self.source_transform_key = 'source_metadata'
+        self.reg_transform_key = 'registered'
+        self.transition_transform_key = 'transition'
+        self.sims = []
+        self.sources = []
+        self.initialised = True
 
         self.input_path = input_path
         if isinstance(input_path, list):
@@ -105,14 +116,6 @@ class MVSRegistration:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        self.fileset_label = label
-        self.global_rotation = global_rotation
-        self.global_center = global_center
-        self.is_registered = False
-        self.source_transform_key = 'source_metadata'
-        self.reg_transform_key = 'registered'
-        self.transition_transform_key = 'transition'
-        self.sources = None
         return True
 
     def run(self):
@@ -259,8 +262,7 @@ class MVSRegistration:
                 plt_close()
 
             if self.napari_ui:
-                shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in sims]
-                self.update_napari_signal.emit(f'{self.fileset_label} registered', shapes, file_labels)
+                self.update_napari_shapes.emit(f'{self.fileset_label} registered', self.reg_transform_key)
 
         else:
             transform_key = self.source_transform_key
@@ -350,7 +352,7 @@ class MVSRegistration:
             raise ValueError('No input files')
 
         logging.info('Initialising sims...')
-        if self.sources is None or source_metadata_changed:
+        if not self.sources or source_metadata_changed:
             self.init_sources()
         sources = self.sources
         source0 = sources[0]
@@ -506,6 +508,7 @@ class MVSRegistration:
         self.scales = scales2
         self.positions = translations2
         self.rotations = rotations
+        self.sims = sims
         return sims
 
     def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):

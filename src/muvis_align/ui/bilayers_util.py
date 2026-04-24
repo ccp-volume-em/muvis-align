@@ -1,3 +1,7 @@
+# docs https://bilayers.org/understanding-config/
+# example https://github.com/bilayer-containers/bilayers/blob/main/algorithms/cellpose_inference/config.yaml
+
+
 def get_section_dict(template, keys=None):
     sections = {}
     if keys is None:

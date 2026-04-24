@@ -61,11 +61,13 @@ def create_section_container(section_id, section_template, interface,
         is_file_type = (widget_type == 'FileEdit')
         if widget_type is None:
             print(f'Unsupported type {param_type}')
+
+        full_name = section_id + '.' + param_name
+        param_widget = ParamWidget(full_name, None, interface, to_str=is_file_type)
+
         options = {}
         if widget_type == 'Dropdown':
-            #options['choices'] = {item['label']: item['value'] for item in choices}
-            #options['choices'] = get_choices
-            options['choices'] = ['source_metadata']
+            options['choices'] = param_widget.create_choices({item['value']: item['label'] for item in choices})
 
         if is_file_type:
             file_count = template.get('file_count')
@@ -73,8 +75,8 @@ def create_section_container(section_id, section_template, interface,
             ext = os.path.splitext(str(template.get('default')))[1]
             if ext:
                 options['filter'] = '*' + ext
-        full_name = section_id + '.' + param_name
         widget = create_widget(name=full_name, value=value, label=param_label, widget_type=widget_type, options=options)
+        param_widget.widget = widget
         if description:
             widget.tooltip = description
         if function is not None:
@@ -83,7 +85,6 @@ def create_section_container(section_id, section_template, interface,
         interface_function = interface.get_function(param_name)
         if interface_function is not None:
             widget.changed.connect(interface_function)
-        param_widget = ParamWidget(full_name, widget, interface, to_str=is_file_type)
         interface.param_widgets[full_name] = param_widget
         if connect_changed and section_key != 'display_only':
             widget.changed.connect(param_widget.value_changed)
