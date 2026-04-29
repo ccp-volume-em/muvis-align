@@ -235,7 +235,7 @@ def test_reg_2d(sims, tmp_path):
 
     # work-around for points error in get_overlap_bboxes()
     overlap_sims = [si_utils.sim_sel_coords(sim, {'t': 0}) for sim in sims]
-    overlap_boxes = registration.get_overlap_bboxes(overlap_sims[0],
+    overlap_boxes = registration._get_overlap_bboxes(overlap_sims[0],
                                                     overlap_sims[1],
                                                     input_transform_key=transform_key)
     print('overlap_boxes', overlap_boxes)

@@ -9,7 +9,7 @@ from multiview_stitcher import registration, vis_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.mv_graph import NotEnoughOverlapError
 from multiview_stitcher.param_resolution import groupwise_resolution
-from multiview_stitcher.registration import get_overlap_bboxes, sims_to_intrinsic_coord_system, \
+from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system, \
     compute_pairwise_registrations, _plot_registration_summaries
 import networkx as nx
 import numpy as np
@@ -1050,7 +1050,7 @@ class MVSRegistration:
         sims = [sim1.squeeze(), sim2.squeeze()]
         # functionality copied from registration.register_pair_of_msims()
         spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
-        lowers, uppers = get_overlap_bboxes(
+        lowers, uppers = _get_overlap_bboxes(
             sims[0],
             sims[1],
             input_transform_key=transform_key,
