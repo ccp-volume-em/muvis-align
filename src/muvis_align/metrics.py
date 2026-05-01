@@ -1,11 +1,102 @@
 #import frc
-from multiview_stitcher import spatial_image_utils as si_utils
+from multiview_stitcher import spatial_image_utils as si_utils, metrics, param_utils
 import numpy as np
-from skimage.metrics import structural_similarity
+from skimage.metrics import structural_similarity, normalized_mutual_information
 from sklearn.metrics import euclidean_distances
 
-from src.muvis_align.image.util import image_reshape
-from src.muvis_align.util import apply_transform
+from src.muvis_align.image.util import image_reshape, get_sim_physical_size, get_overlap_images, get_sim_position_final
+from src.muvis_align.util import apply_transform, get_pairs
+
+
+def calc_overlap_metrics(sims, msims, transform_key, reg_channel, pairs):
+    data_range = np.iinfo(sims[0].dtype).max
+    metrics_result = metrics.tile_pair_image_metrics(
+        msims,
+        base_transform_key='source_metadata',  # defines overlap region
+        query_transform_keys=[
+            'source_metadata',
+            'registered'
+        ],
+        metric_funcs={
+            'ncc': metrics.normalized_cross_correlation,
+            'ssim': lambda im1, im2: structural_similarity(np.nan_to_num(im1), np.nan_to_num(im2),
+                                                           data_range=data_range, channel_axis=reg_channel),
+            'onmi': lambda im1, im2: normalized_mutual_information(np.nan_to_num(im1), np.nan_to_num(im2)) - 1,
+        },
+    )
+
+    nccs = {}
+    ssims = {}
+    if pairs is None:
+        origins = np.array([get_sim_position_final(sim) for sim in sims])
+        sizes = [get_sim_physical_size(sim) for sim in sims]
+        pairs, _ = get_pairs(origins, sizes)
+
+    for pair in pairs:
+        overlap_sims = get_overlap_images(sims[pair[0]], sims[pair[1]], transform_key)
+        if overlap_sims is not None:
+            nccs[pair] = calc_ncc(overlap_sims[0], overlap_sims[1])
+            ssims[pair] = calc_ssim(overlap_sims[0], overlap_sims[1])
+            # frcs[pair] = calc_frc(overlap_sims[0], overlap_sims[1])
+
+    return {'ncc': nccs, 'ssim': ssims}
+
+
+def calc_metrics(sims, msims, transform_key, reg_channel, results, pairs, labels):
+    var = None
+    distances = [np.linalg.norm(param_utils.translation_from_affine(mapping.sel(t=0)))
+                 for mapping in results['mappings'].values()]
+    if len(distances) > 2:
+        # Coefficient of variation
+        mean_distance = np.mean(distances)
+        if mean_distance > 0:
+            cvar = np.std(distances) / mean_distance
+            var = cvar
+    if var is None:
+        size = get_sim_physical_size(sims[0])
+        norm_distance = np.sum(distances) / np.linalg.norm(list(size.values()))
+        var = norm_distance
+
+    residual_errors = {labels[key[0]] + ' - ' + labels[key[1]]: value
+                       for key, value in results['residual_errors'].items()}
+    if len(residual_errors) > 0:
+        residual_error = np.nanmean(list(residual_errors.values()))
+    else:
+        residual_error = 1
+
+    registration_qualities = {labels[key[0]] + ' - ' + labels[key[1]]: value.item()
+                              for key, value in results['registration_qualities'].items()}
+    if len(registration_qualities) > 0:
+        registration_quality = np.nanmean(list(registration_qualities.values()))
+    else:
+        registration_quality = 0
+
+    overlap_metrics = calc_overlap_metrics(sims, msims, transform_key, reg_channel, pairs)
+
+    # nccs = {labels[key[0]] + ' - ' + labels[key[1]]: value
+    #         for key, value in overlap_metrics['ncc'].items()}
+    # ncc = np.nanmean(list(nccs.values()))
+
+    # ssims = {labels[key[0]] + ' - ' + labels[key[1]]: value
+    #         for key, value in overlap_metrics['ssim'].items()}
+    # ssim = np.nanmean(list(ssims.values()))
+
+    summary = (f'Residual error: {residual_error:.3f}'
+               f' Registration quality: {registration_quality:.3f}'
+               #           f' NCC: {ncc:.3f}'
+               #           f' SSIM: {ssim:.3f}'
+               f' Variation: {var:.3f}')
+
+    return {'variation': var,
+            'residual_error': residual_error,
+            'residual_errors': residual_errors,
+            'registration_quality': registration_quality,
+            'registration_qualities': registration_qualities,
+            #       'ncc': ncc,
+            #       'nccs': nccs,
+            #       'ssim': ssim,
+            #       'ssims': ssims,
+            'summary': summary}
 
 
 def calc_match_metrics(points1, points2, transform, threshold, lowe_ratio=None):

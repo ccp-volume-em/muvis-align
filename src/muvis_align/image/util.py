@@ -1,10 +1,12 @@
 import cv2 as cv
 import numpy as np
-from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph
+from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph, metrics
 from multiview_stitcher import spatial_image_utils as si_utils
+from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system
 from skimage.filters import gaussian
 from skimage.feature import plot_matched_features
 from skimage.transform import downscale_local_mean
+import xarray as xr
 from xarray import DataTree
 
 try:
@@ -788,6 +790,82 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
             rotation += rotation1
 
     return translation, rotation
+
+
+def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):
+    sims = [sim1.squeeze(), sim2.squeeze()]
+    # functionality copied from registration.register_pair_of_msims()
+    spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
+    result = _get_overlap_bboxes(
+        sims[0],
+        sims[1],
+        input_transform_key=transform_key,
+        output_transform_key=None,
+        overlap_tolerance=overlap_tolerance,
+    )
+    lowers, uppers = result['lowers'], result['uppers']
+
+    reg_sims_spacing = [
+        si_utils.get_spacing_from_sim(sim) for sim in sims
+    ]
+
+    tol = 1e-6
+    overlaps_sims = [
+        si_utils.sim_sel_coords(
+            sim, sel_dict={
+                # add spacing to include bounding pixels
+                dim: slice(
+                    lowers[isim][idim] - tol - reg_sims_spacing[isim][dim],
+                    uppers[isim][idim] + tol + reg_sims_spacing[isim][dim],
+                )
+                for idim, dim in enumerate(spatial_dims)
+            }
+        ) for isim, sim in enumerate(sims)
+    ]
+
+    sims_pixel_space = sims_to_intrinsic_coord_system(
+        overlaps_sims[0],
+        overlaps_sims[1],
+        transform_key=transform_key,
+        overlap_bboxes=(lowers, uppers),
+    )
+
+    fixed_data = sims_pixel_space[0].data
+    moving_data = sims_pixel_space[1].data
+
+    fixed_data = xr.DataArray(fixed_data, dims=spatial_dims)
+    moving_data = xr.DataArray(moving_data, dims=spatial_dims)
+
+    return fixed_data, moving_data
+
+
+def get_overlap_images2(sim1, sim2, transform_key):
+    spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
+    overlap = metrics.tile_pair_image_metrics(
+        [msi_utils.get_msim_from_sim(sim1), msi_utils.get_msim_from_sim(sim2)],
+        base_transform_key=transform_key,  # defines overlap region
+        query_transform_keys=[transform_key]
+    )
+    bboxes = list(overlap['bboxes'].values())
+    if len(bboxes) == 0:
+        return None
+    lower, upper = bboxes[0]['lower'], bboxes[0]['upper']
+
+    overlaps_sims = [
+        sim.sel({dim: slice(lower[idim], upper[idim]) for idim, dim in enumerate(spatial_dims)})
+        for isim, sim in enumerate([sim1.squeeze(), sim2.squeeze()])
+    ]
+
+    sims_pixel_space = sims_to_intrinsic_coord_system(
+        overlaps_sims[0], overlaps_sims[1],
+        transform_key=transform_key,
+        overlap_bboxes=([lower, lower], [upper, upper]),
+    )
+
+    fixed_data = xr.DataArray(sims_pixel_space[0].data, dims=spatial_dims)
+    moving_data = xr.DataArray(sims_pixel_space[1].data, dims=spatial_dims)
+
+    return overlaps_sims
 
 
 def combine_transforms(transforms):
