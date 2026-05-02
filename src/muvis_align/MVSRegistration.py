@@ -24,7 +24,7 @@ from src.muvis_align.image.ome_helper import save_image
 from src.muvis_align.image.ome_tiff_helper import save_tiff
 from src.muvis_align.image.source_helper import create_dask_source
 from src.muvis_align.image.util import *
-from src.muvis_align.metrics import calc_metrics
+from src.muvis_align.metrics import calc_pair_metrics, calc_global_metrics
 from src.muvis_align.Timer import Timer
 from src.muvis_align.util import *
 
@@ -225,8 +225,7 @@ class MVSRegistration:
                     results = self.register(sims, register_sims, register_indices, self.register_params)
                 reg_result = results['reg_result']
                 mappings = results['mappings']
-                reg_channel = self.register_params.get('channel', 0)
-                metrics = calc_metrics(sims, self.msims, self.reg_transform_key, reg_channel, results, self.pairs, self.file_labels)
+                metrics = results['metrics']
 
             if is_stack:
                 sims = make_sims_3d(sims, z_scale, self.positions)
@@ -235,7 +234,8 @@ class MVSRegistration:
                 logging.info(metrics['summary'])
                 output_mappings = {file_labels[key]: np.array(mapping.sel(t=0)).tolist() for key, mapping in mappings.items()}
                 export_json(mappings_filename, output_mappings)
-                export_json(output + metrics_name, metrics)
+                output_metrics = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}': value for keys, value in metrics['pairs'].items()}
+                export_json(output + metrics_name, output_metrics)
                 data = []
                 for label, sim, mapping, scale, position, rotation\
                         in zip(file_labels, sims, mappings.values(), self.scales, self.positions, self.rotations):
@@ -796,16 +796,25 @@ class MVSRegistration:
         except NotEnoughOverlapError:
             g_reg_computed = g_reg
 
-        self.g_reg = g_reg_computed
+        metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []), self.source_transform_key,
+                                    reg_channel=reg_channel_index)
+
+        self.pairs_graph = g_reg_computed
         self.msims = msims_reg
         self.pairs = pairs
-        return g_reg_computed, msims_reg, pairs
+        return {
+            'pairs_graph': self.pairs_graph,
+            'msims': msims_reg,
+            'pairs': pairs,
+            'metrics': metrics
+        }
 
-    def register_global(self, sims, msims, register_indices=None, params=None, g_reg=None):
-        if g_reg is not None:
-            g_reg_computed = g_reg
+    def register_global(self, sims, msims, register_indices=None, params=None,
+                        pairs_graph=None):
+        if pairs_graph is not None:
+            g_reg_computed = pairs_graph
         else:
-            g_reg_computed = self.g_reg
+            g_reg_computed = self.pairs_graph
 
         sim0 = sims[0]
         ndims = si_utils.get_ndim_from_sim(sim0)
@@ -834,20 +843,20 @@ class MVSRegistration:
                 weight_key="quality",
             )
 
-        params_dict, groupwise_resolution_info_dict = groupwise_resolution(
+        transforms_dict, groupwise_resolution_info_dict = groupwise_resolution(
             g_reg_computed,
             method=groupwise_resolution_method,
             **groupwise_resolution_kwargs,
         )
 
-        params = [
-            params_dict[iview] for iview in sorted(g_reg_computed.nodes())
+        transforms = [
+            transforms_dict[iview] for iview in sorted(g_reg_computed.nodes())
         ]
 
         for imsim, msim in enumerate(msims):
             msi_utils.set_affine_transform(
                 msim,
-                params[imsim],
+                transforms[imsim],
                 transform_key=self.reg_transform_key,
                 base_transform_key=self.source_transform_key,
             )
@@ -865,7 +874,7 @@ class MVSRegistration:
             plot_info = {}
 
         reg_result = {
-            "params": params,
+            "params": transforms,
             "pairwise_registration": {
                 "graph": g_reg_computed,
                 "metrics": {
@@ -921,11 +930,16 @@ class MVSRegistration:
         # re-index from subset of sims
         mappings_dict = {index: mapping for index, mapping in zip(register_indices, mappings)}
 
+        reg_channel = params.get('channel', 0)
+        metrics = calc_global_metrics(msims, self.source_transform_key, self.reg_transform_key,
+                                      params.get('metrics', []), reg_channel=reg_channel)
+
         self.is_registered = True
         return {'reg_result': reg_result,
                 'mappings': mappings_dict,
                 'residual_errors': residual_error_dict,
-                'registration_qualities': registration_qualities_dict}
+                'registration_qualities': registration_qualities_dict,
+                'metrics': metrics}
 
     def fuse(self, sims, fusion_method=None, output_spacing='mean', transform_key=None,
              output_filename=None, tile_size=None, ome_version=default_ome_zarr_version):

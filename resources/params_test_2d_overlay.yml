@@ -26,5 +26,6 @@ operations:
       inlier_threshold_factor: 0.05
       max_trials: 1000
       ransac_iterations: 3
+      metrics: [ncc, ssim, onmi]
     output:
       path: ../../output/stitched/
