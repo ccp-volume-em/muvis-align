@@ -22,3 +22,4 @@ def test(resource_file):
 
 if __name__ == "__main__":
     test('params_test_2d.yml')
+    test('params_test_2d_overlay.yml')
