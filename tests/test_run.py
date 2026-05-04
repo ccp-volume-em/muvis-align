@@ -1,21 +1,24 @@
 import os.path
+import pytest
 import yaml
 
 from src.muvis_align.Pipeline import Pipeline
 
 
-def test():
-    resource_files = [
+@pytest.mark.parametrize(
+    'resource_file',
+    [
         'params_test_2d.yml',
         'params_test_2d_overlay.yml',
-    ]
-    for resource_file in resource_files:
-        with open(os.path.join('resources', resource_file), 'r', encoding='utf8') as file:
-            params = yaml.safe_load(file)
+    ],
+)
+def test(resource_file):
+    with open(os.path.join('resources', resource_file), 'r', encoding='utf8') as file:
+        params = yaml.safe_load(file)
 
-        pipeline = Pipeline(params)
-        pipeline.run()
+    pipeline = Pipeline(params)
+    pipeline.run()
 
 
 if __name__ == "__main__":
-    test()
+    test('params_test_2d.yml')
