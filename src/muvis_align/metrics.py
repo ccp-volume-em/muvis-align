@@ -1,11 +1,51 @@
 #import frc
+import multiview_stitcher.metrics
 from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
-from skimage.metrics import structural_similarity
+from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
 from sklearn.metrics import euclidean_distances
 
 from src.muvis_align.image.util import image_reshape
 from src.muvis_align.util import apply_transform
+
+
+
+def create_metric_methods(metric_methods, msim, reg_channel=None):
+    data_range = np.iinfo(msim["scale0/image"].dtype).max
+    all_metric_funcs = {
+        'ncc': multiview_stitcher.metrics.normalized_cross_correlation,
+        'ssim': lambda im1, im2: structural_similarity(np.nan_to_num(im1), np.nan_to_num(im2),
+                                                       data_range=data_range, channel_axis=reg_channel),
+        'onmi': lambda im1, im2: normalized_mutual_information(np.nan_to_num(im1), np.nan_to_num(im2)) - 1,
+        "mse": lambda im1, im2: 1 / mean_squared_error(im1, im2),
+    }
+    metric_funcs = {metric_method: all_metric_funcs[metric_method] for metric_method in metric_methods}
+    return metric_funcs
+
+
+def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None):
+    metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
+    metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
+        msims,
+        base_transform_key=base_transform_key,  # defines overlap region
+        pairs_graph=pairs_graph,
+        metric_funcs=metric_funcs,
+    )
+    return metric_results
+
+
+def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_methods, reg_channel=None):
+    metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
+    metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
+        msims,
+        base_transform_key=base_transform_key,  # defines overlap region
+        query_transform_keys=[
+            base_transform_key,
+            reg_transform_key
+        ],
+        metric_funcs=metric_funcs
+    )
+    return metric_results
 
 
 def calc_match_metrics(points1, points2, transform, threshold, lowe_ratio=None):

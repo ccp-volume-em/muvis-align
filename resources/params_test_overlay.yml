@@ -10,7 +10,7 @@ operations:
     input:
       path: [data/S000/S000_000_000.ome.zarr, data/S001/S001_000_001.ome.zarr]
       source_metadata: source
-      extract_metadata: ../aligned_stitched_mappings1.json
+      extra_metadata: ../aligned_stitched_mappings1.json
     registration:
       pairing: orthogonal
       transform_type: rigid

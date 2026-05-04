@@ -8,8 +8,14 @@ general:
 operations:
   - operation: register
     input:
-      path: data/S000/*.zarr
+      path:
+        - data/S000/S000_000_000.ome.zarr
+        - data/S001/S001_000_001.ome.zarr
+      labels:
+        - S000_000_000
+        - S001_000_001
       source_metadata: source
+      extra_metadata: ../aligned_stitched_mappings1.json
     registration:
       pairing: orthogonal
       transform_type: affine
