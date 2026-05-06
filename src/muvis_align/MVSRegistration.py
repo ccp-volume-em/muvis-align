@@ -2,7 +2,6 @@
 # https://github.com/pydata/xarray/issues/8828
 
 from contextlib import nullcontext
-import dask
 from dask.diagnostics import ProgressBar
 import logging
 from multiview_stitcher import registration, vis_utils
@@ -27,9 +26,6 @@ from src.muvis_align.image.util import *
 from src.muvis_align.metrics import calc_pair_metrics, calc_global_metrics
 from src.muvis_align.Timer import Timer
 from src.muvis_align.util import *
-
-
-dask.config.set(scheduler='threads')
 
 
 class MVSRegistration:
