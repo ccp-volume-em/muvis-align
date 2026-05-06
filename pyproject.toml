@@ -39,7 +39,7 @@ dependencies = [
     "ome-zarr",
     "matplotlib",
     "tqdm",
-    "multiview-stitcher @ git+https://github.com/multiview-stitcher/multiview-stitcher.git@refs/pull/154/head",
+    "multiview-stitcher @ git+https://github.com/multiview-stitcher/multiview-stitcher.git",
     "opencv-python",
     "spatial-image",
     "multiscale-spatial-image",

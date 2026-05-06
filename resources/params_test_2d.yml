@@ -21,6 +21,5 @@ operations:
       max_trials: 1000
       ransac_iterations: 3
       metrics: [ncc, ssim, onmi]
-      n_parallel_pairwise_regs: 1
     output:
       path: ../../output/stitched/
