@@ -485,7 +485,7 @@ def apply_transform_dict(points, transform, transform_dims='xyz'):
     return new_points
 
 
-def validate_transform(transform, max_rotation=None):
+def validate_transform(transform, max_scale = 1.25, max_rotation=None):
     if transform is None:
         return False
     transform = np.array(transform)
@@ -494,6 +494,9 @@ def validate_transform(transform, max_rotation=None):
     if np.any(np.isinf(transform)):
         return False
     if np.linalg.det(transform) == 0:
+        return False
+    scale = get_scale_from_transform(transform)
+    if scale < 1 / max_scale or scale > max_scale:
         return False
     if  max_rotation is not None and abs(normalise_rotation(get_rotation_from_transform(transform))) > max_rotation:
         return False

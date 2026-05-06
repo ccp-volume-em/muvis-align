@@ -18,9 +18,9 @@ operations:
       extra_metadata: ../aligned_stitched_mappings1.json
     registration:
       pairing: orthogonal
-      transform_type: affine
-      method: sift
-      gaussian_sigma: 2
+      transform_type: rigid
+      method: orb
+      gaussian_sigma: 2.5
       normalisation: True
       max_keypoints: 5000
       inlier_threshold_factor: 0.05
@@ -29,4 +29,4 @@ operations:
       metrics: [ncc, ssim, onmi]
       n_parallel_pairwise_regs: 1
     output:
-      path: ../../output/stitched/
+      path: ../../output/overlay/

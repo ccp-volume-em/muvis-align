@@ -1,3 +1,4 @@
+import dask
 #import frc
 import multiview_stitcher.metrics
 from multiview_stitcher import spatial_image_utils as si_utils
@@ -26,29 +27,31 @@ def create_metric_methods(metric_methods, msim, reg_channel=None):
 def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
                       n_parallel_pairs=None):
     metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
-    metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
-        msims,
-        base_transform_key=base_transform_key,  # defines overlap region
-        pairs_graph=pairs_graph,
-        metric_funcs=metric_funcs,
-        n_parallel_pairs=n_parallel_pairs
-    )
+    with dask.config.set(scheduler='single-threaded'):
+        metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
+            msims,
+            base_transform_key=base_transform_key,  # defines overlap region
+            pairs_graph=pairs_graph,
+            metric_funcs=metric_funcs,
+            n_parallel_pairs=n_parallel_pairs
+        )
     return metric_results
 
 
 def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_methods, reg_channel=None,
                         n_parallel_pairs=None):
     metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
-    metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
-        msims,
-        base_transform_key=base_transform_key,  # defines overlap region
-        query_transform_keys=[
-            base_transform_key,
-            reg_transform_key
-        ],
-        metric_funcs=metric_funcs,
-        n_parallel_pairs=n_parallel_pairs
-    )
+    with dask.config.set(scheduler='single-threaded'):
+        metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
+            msims,
+            base_transform_key=base_transform_key,  # defines overlap region
+            query_transform_keys=[
+                base_transform_key,
+                reg_transform_key
+            ],
+            metric_funcs=metric_funcs,
+            n_parallel_pairs=n_parallel_pairs
+        )
     return metric_results
 
 
