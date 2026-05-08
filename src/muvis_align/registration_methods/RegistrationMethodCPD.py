@@ -37,7 +37,7 @@ class RegistrationMethodCPD(RegistrationMethod):
             metrics = calc_match_metrics(fixed_points, moving_points, transform, threshold)
             quality = metrics['match_rate']
 
-        if not validate_transform(transform, get_sim_physical_size(fixed_data, invert=True)):
+        if not validate_transform(transform):
             logging.error('Feature extraction: Unable to find CPD registration')
 
         return {

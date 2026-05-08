@@ -2,7 +2,6 @@
 # https://github.com/pydata/xarray/issues/8828
 
 from contextlib import nullcontext
-import dask
 from dask.diagnostics import ProgressBar
 import logging
 from multiview_stitcher import registration, vis_utils
@@ -27,9 +26,6 @@ from src.muvis_align.image.util import *
 from src.muvis_align.metrics import calc_pair_metrics, calc_global_metrics
 from src.muvis_align.Timer import Timer
 from src.muvis_align.util import *
-
-
-dask.config.set(scheduler='threads')
 
 
 class MVSRegistration:
@@ -797,7 +793,7 @@ class MVSRegistration:
             g_reg_computed = g_reg
 
         metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []), self.source_transform_key,
-                                    reg_channel=reg_channel_index)
+                                    reg_channel=reg_channel_index, n_parallel_pairs=n_parallel_pairwise_regs)
 
         self.pairs_graph = g_reg_computed
         self.msims = msims_reg
@@ -830,6 +826,9 @@ class MVSRegistration:
         post_registration_quality_threshold = params.get('post_registration_quality_threshold',
                                                          params.get('registration', {}).get('post_registration_quality_threshold'))
         post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
+
+        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
+                                              params.get('registration', {}).get('n_parallel_pairwise_regs'))
 
         plot_summary = self.mpl_ui
 
@@ -932,7 +931,8 @@ class MVSRegistration:
 
         reg_channel = params.get('channel', 0)
         metrics = calc_global_metrics(msims, self.source_transform_key, self.reg_transform_key,
-                                      params.get('metrics', []), reg_channel=reg_channel)
+                                      params.get('metrics', []), reg_channel=reg_channel,
+                                      n_parallel_pairs=n_parallel_pairwise_regs)
 
         self.is_registered = True
         return {'reg_result': reg_result,

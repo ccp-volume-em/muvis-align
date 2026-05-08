@@ -19,7 +19,7 @@ class Pipeline(Thread):
         self.params_general = params['general']
         params_logging = self.params_general.get('logging', {})
         log_filename = params_logging.get('filename', 'log/muvis-align.log')
-        log_format = params_logging.get('format')
+        log_format = params_logging.get('format', '%(asctime)s %(levelname)s: %(message)s')
         self.verbose = params_logging.get('verbose', False)
         init_logging(log_filename, log_format, self.verbose)
 

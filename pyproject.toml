@@ -39,7 +39,7 @@ dependencies = [
     "ome-zarr",
     "matplotlib",
     "tqdm",
-    "multiview-stitcher @ git+https://github.com/multiview-stitcher/multiview-stitcher.git@refs/pull/154/head",
+    "multiview-stitcher @ git+https://github.com/multiview-stitcher/multiview-stitcher.git",
     "opencv-python",
     "spatial-image",
     "multiscale-spatial-image",
@@ -57,6 +57,7 @@ dev = [
     "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
     "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
     "napari[qt]",  # test with napari's default Qt bindings
+    "nbmake"
 ]
 
 [project.entry-points."napari.manifest"]
