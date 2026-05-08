@@ -2,3 +2,4 @@ multiview-stitcher
 opencv-python
 spatial-image
 multiscale-spatial-image
+rocrate>=0.15.0

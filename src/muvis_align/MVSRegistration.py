@@ -17,6 +17,7 @@ from skimage.transform import resize
 import xarray as xr
 
 from src.muvis_align.constants import *
+from src.muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
 from src.muvis_align.image.Video import Video
 from src.muvis_align.image.flatfield import flatfield_correction
 from src.muvis_align.image.ome_helper import save_image
@@ -273,6 +274,7 @@ class MVSRegistration:
 
         logging.info('Exporting...')
 
+        image_paths = []
         if save_images:
             if self.output_params.get('thumbnail'):
                 with Timer('create thumbnail', self.logging_time):
@@ -306,6 +308,16 @@ class MVSRegistration:
                               pyramid_downsample = output_pyramid_downsample,
                               npyramid_add = output_npyramid_add,
                               ome_version = output_ome_version)
+
+            if 'tif' in output_format:
+                filename = output_filename + tiff_extension
+                image_paths.append(filename)
+            if 'zar' in output_format:
+                filename = output_filename + zarr_extension
+                image_paths.append(filename)
+                create_zarr_ro_crate(data, self.output + filename)
+
+        create_ro_crate(fused_image, self.output, image_paths)
 
         if is_transition:
             self.save_video(output, sims, fused_image)
