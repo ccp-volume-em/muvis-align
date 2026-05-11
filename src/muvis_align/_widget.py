@@ -19,7 +19,7 @@ class MainWidget(QTabWidget):
         self.verbose = True
         init_logging()
         self.viewer = viewer
-        self.interface = Interface(viewer, self.verbose)
+        self.interface = Interface(viewer, self.enable_tabs, self.verbose)
 
         self.widgets = self.create_widgets()
         for label, widget in self.widgets.items():
@@ -38,4 +38,4 @@ class MainWidget(QTabWidget):
                 self.setTabEnabled(index, set)
 
     def project_path_set(self):
-        self.enable_tabs()
+        self.enable_tabs(True, 1)

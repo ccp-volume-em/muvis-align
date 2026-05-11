@@ -5,6 +5,9 @@ class ParamWidget:
         self.interface = interface
         self.to_str = to_str
 
+    def get_value(self):
+        return self.widget.get_value()
+
     def set_value(self, value):
         self.widget.set_value(value)
 

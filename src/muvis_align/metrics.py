@@ -1,6 +1,7 @@
 import dask
 #import frc
 import multiview_stitcher.metrics
+from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
@@ -18,9 +19,12 @@ def create_metric_methods(metric_methods, msim, reg_channel=None):
         'ssim': lambda im1, im2: structural_similarity(np.nan_to_num(im1), np.nan_to_num(im2),
                                                        data_range=data_range, channel_axis=reg_channel),
         'onmi': lambda im1, im2: normalized_mutual_information(np.nan_to_num(im1), np.nan_to_num(im2)) - 1,
-        "mse": lambda im1, im2: 1 / mean_squared_error(im1, im2),
+        'mse': lambda im1, im2: 1 / mean_squared_error(im1, im2),
     }
-    metric_funcs = {metric_method: all_metric_funcs[metric_method] for metric_method in metric_methods}
+    if metric_methods == 'all':
+        metric_funcs = all_metric_funcs
+    else:
+        metric_funcs = {metric_method: all_metric_funcs[metric_method] for metric_method in metric_methods}
     return metric_funcs
 
 
@@ -53,6 +57,13 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
             n_parallel_pairs=n_parallel_pairs
         )
     return metric_results
+
+
+def calc_sims_metrics(sims, base_transform_key, reg_transform_key, metric_methods='all', reg_channel=None,
+                        n_parallel_pairs=None):
+    msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
+    return calc_global_metrics(msims=msims, base_transform_key=base_transform_key, reg_transform_key=reg_transform_key,
+                               metric_methods=metric_methods, reg_channel=reg_channel, n_parallel_pairs=n_parallel_pairs)
 
 
 def calc_match_metrics(points1, points2, transform, threshold, lowe_ratio=None):

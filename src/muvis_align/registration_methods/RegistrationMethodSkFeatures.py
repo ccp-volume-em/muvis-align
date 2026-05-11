@@ -19,7 +19,7 @@ from src.muvis_align.registration_methods.RegistrationMethod import Registration
 class RegistrationMethodSkFeatures(RegistrationMethod):
     def __init__(self, source, params, debug=False):
         super().__init__(source, params, debug=debug)
-        self.method = params.get('name', 'sift').lower()
+        self.method = params.get('method', params.get('name', 'sift')).lower()
         self.full_size_gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 0))
         self.normalisation = params.get('normalisation')
         self.downscale_factor = params.get('downscale_factor', params.get('downscale', np.sqrt(2)))
@@ -29,7 +29,7 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
         self.inlier_threshold_factor = params.get('inlier_threshold_factor', 0.05)
         self.min_matches = params.get('min_matches', 10)
         self.max_trails = params.get('max_trials', 100)
-        self.ransac_iterations = params.get('ransac_iterations', 10)
+        self.ransac_iterations = params.get('ransac_iterations', 3)
 
         transform_type = params.get('transform_type', '').lower()
         if transform_type == 'affine':
@@ -215,5 +215,9 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
 
         return {
             "affine_matrix": transform,  # homogenous matrix of shape (ndim + 1, ndim + 1), axis order (z, y, x)
-            "quality": quality  # float between 0 and 1 (if not available, set to 1.0)
+            "quality": quality,  # float between 0 and 1 (if not available, set to 1.0)
+            "fixed_points": fixed_points,
+            "moving_points": moving_points,
+            "matches": matches,
+            "inliers": inliers
         }

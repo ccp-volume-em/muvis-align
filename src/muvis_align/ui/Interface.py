@@ -1,17 +1,29 @@
-from multiview_stitcher import spatial_image_utils as si_utils
+from enum import Enum, auto
+
+import numpy as np
+from multiview_stitcher import spatial_image_utils as si_utils, param_utils
+from napari.utils.notifications import show_warning
 import os.path
 
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params
 from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
-from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
+from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, get_overlap_images
 from muvis_align.file.resources import get_project_template
+from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value
 
 
+class ViewMode(Enum):
+    OVERVIEW = auto()
+    PAIRS = auto()
+    FEATURES = auto()
+
+
 class Interface:
-    def __init__(self, viewer, verbose=False):
+    def __init__(self, viewer, enable_tabs, verbose=False):
         self.viewer = viewer
+        self.enable_tabs = enable_tabs
         self.verbose = verbose
         self.raw_template = get_project_template()
         if not self.raw_template:
@@ -21,6 +33,7 @@ class Interface:
         self.params = {}
         self.source_metadata = {}
         self.transform_key = 'source_metadata'
+        self.view_mode = None
 
         self.reg = MVSRegistrationNapari(self.viewer)
 
@@ -51,6 +64,8 @@ class Interface:
 
     def change_param(self, param_name, value):
         keys = param_name.split('.')
+        if keys[0] not in self.params:
+            self.params[keys[0]] = {}
         self.params[keys[0]][keys[1]] = value
         self.write_params()
 
@@ -89,6 +104,10 @@ class Interface:
                            overwrite=params['overwrite'])
         if ok:
             self.update_metadata_source()
+            self.populate_image_selection()
+            self.enable_tabs()
+        else:
+            show_warning('No input images found')
 
     def update_metadata_source(self):
         if not self.reg.is_registered:
@@ -123,8 +142,72 @@ class Interface:
         table_widget.set_value(data)
         table_widget.read_only = True   # https://github.com/pyapp-kit/magicgui/issues/348
 
+    def populate_image_selection(self):
+        labels = self.reg.file_labels
+        widget1 = self.param_widgets.get('features.reg_preview_image1').widget
+        widget1.choices = labels
+        widget1.value = labels[0]
+
+        widget2 = self.param_widgets.get('features.reg_preview_image2').widget
+        widget2.choices = labels
+        index = 1 if len(labels) > 1 else 0
+        widget2.value = labels[index]
+
     def update_view(self):
+        if self.view_mode != ViewMode.OVERVIEW:
+            self.reg.clear_napari_view.emit()
+            self.view_mode = ViewMode.OVERVIEW
         if self.params['input_output']['preview_images']:
             self.reg.update_napari_data.emit(f'{self.reg.fileset_label} data', self.transform_key)
         if self.params['input_output']['preview_shapes']:
             self.reg.update_napari_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key)
+
+    def preprocess(self, sims):
+        params_features = self.params['features']
+        quantiles = params_features.get('flatfield_quantiles')
+        quantiles_array = None
+        if quantiles:
+            quantiles_array = [float(quantile.strip()) for quantile in quantiles.split(',')]
+        return self.reg.preprocess(sims,
+                                   quantiles_array,
+                                   params_features.get('global_normalisation'),
+                                   params_features.get('global_gaussian_sigma'),
+                                   params_features.get('filter_foreground')
+        )
+
+    def preview_registration(self):
+        preview_key = 'preview_registration'
+        label1 = self.param_widgets.get('features.reg_preview_image1').get_value()
+        label2 = self.param_widgets.get('features.reg_preview_image2').get_value()
+        index1 = self.reg.file_labels.index(label1)
+        index2 = self.reg.file_labels.index(label2)
+        reg_sims, _ = self.preprocess([self.reg.sims[index1], self.reg.sims[index2]])
+        overlap1, overlap2 = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
+        overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
+        reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
+            self.reg.create_registration_method(self.reg.sims[0], params=self.params['features']))
+        results = pairwise_reg_func(overlap1, overlap2)
+        si_utils.set_sim_affine(reg_sims[0], param_utils.identity_transform(2), transform_key=preview_key)
+        si_utils.set_sim_affine(reg_sims[1], results['affine_matrix'], transform_key=preview_key)
+        metrics = calc_sims_metrics(reg_sims, self.reg.source_transform_key, preview_key)
+
+        self.populate_metrics_table(metrics['summary'])
+
+        fixed_points = results.get('fixed_points', [])
+        moving_points = results.get('moving_points', [])
+        matches = results.get('matches', [])
+        inliers = results.get('inliers', [])
+        self.reg._update_napari_features(overlap1, fixed_points,
+                                         overlap2, moving_points,
+                                         matches, inliers)
+        self.view_mode = ViewMode.FEATURES
+
+    def populate_metrics_table(self, metrics):
+        table_widget = self.param_widgets.get('features.metrics_table')
+        table_widget.set_value(metrics)
+        table_widget.read_only = True
+
+    def features_process(self):
+        reg_sims, _ = self.preprocess(self.reg.sims)
+        if not self.reg.is_registered:
+            self.reg.register_pairs(self.reg.sims, reg_sims, self.params['features'])

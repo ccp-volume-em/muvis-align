@@ -594,7 +594,7 @@ class MVSRegistration:
             sims = new_sims
 
         if normalisation:
-            use_global = ('global' in str(normalisation))
+            use_global = ('global' in str(normalisation).lower())
             if use_global:
                 logging.info('Normalising (global)...')
             else:
@@ -686,9 +686,11 @@ class MVSRegistration:
     def register_pairs(self, sims, register_sims=None, params=None):
         operation = self.operation
         pairing = params.get('pairing',
-                             params.get('registration', {}).get('pairing', ''))
+                             params.get('registration', {}).get('pairing', '')).lower()
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
                                               params.get('registration', {}).get('n_parallel_pairwise_regs'))
+        if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
+            n_parallel_pairwise_regs = None
 
         is_stack = ('stack' in operation)
         is_3d = ('3d' in operation)
@@ -841,6 +843,8 @@ class MVSRegistration:
 
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
                                               params.get('registration', {}).get('n_parallel_pairwise_regs'))
+        if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
+            n_parallel_pairwise_regs = None
 
         plot_summary = self.mpl_ui
 
