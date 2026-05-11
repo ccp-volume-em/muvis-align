@@ -27,8 +27,8 @@ def test_feature_registration():
     origins = np.array([get_sim_position_final(sim, position) for sim, position in zip(sims, reg.positions)])
     pairs, _ = get_pairs(origins, sizes)
     for pair in pairs:
-        overlap_sims = get_overlap_images(norm_sims[pair[0]], norm_sims[pair[1]], reg.source_transform_key)
-        result = reg_method.registration(*overlap_sims)
+        overlap_sim1, overlap_sim2, _ = get_overlap_images(norm_sims[pair[0]], norm_sims[pair[1]], reg.source_transform_key)
+        result = reg_method.registration(overlap_sim1, overlap_sim2)
         print(result)
 
 

@@ -2,7 +2,8 @@ import cv2 as cv
 import numpy as np
 from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph, metrics
 from multiview_stitcher import spatial_image_utils as si_utils
-from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system
+from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system, \
+    get_affine_from_intrinsic_affine
 from skimage.filters import gaussian
 from skimage.feature import plot_matched_features
 from skimage.transform import downscale_local_mean
@@ -917,7 +918,18 @@ def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):
     fixed_data = xr.DataArray(fixed_data, dims=spatial_dims)
     moving_data = xr.DataArray(moving_data, dims=spatial_dims)
 
-    return fixed_data, moving_data
+    return fixed_data, moving_data, sims_pixel_space
+
+
+def affine_from_intrinsic_affine(affine, sims_pixel_space, transform_key):
+    affine_phys = get_affine_from_intrinsic_affine(
+        data_affine=affine,
+        sim_fixed=sims_pixel_space[0],
+        sim_moving=sims_pixel_space[1],
+        transform_key_fixed=transform_key,
+        transform_key_moving=transform_key,
+    )
+    return affine_phys
 
 
 def get_overlap_images2(sim1, sim2, transform_key):

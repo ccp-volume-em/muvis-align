@@ -262,8 +262,8 @@ parameters:
     mode: "beginner"
   - name: method
     type: dropdown
-    label: "Transform type"
-    description: "Transform type for registration (translation, rigid, affine or similarity)"
+    label: "Method"
+    description: "Method for pairwise registration (phase correlation, SIFT, ORB, CPD or ANTs)"
     options:
       - label: Phase correlation
         value: "phase_correlation"

@@ -1,13 +1,12 @@
 from enum import Enum, auto
-
-import numpy as np
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.utils.notifications import show_warning
 import os.path
 
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params
 from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
-from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, get_overlap_images
+from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, get_overlap_images, \
+    affine_from_intrinsic_affine
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.bilayers_util import get_section_dict
@@ -176,22 +175,25 @@ class Interface:
         )
 
     def preview_registration(self):
-        preview_key = 'preview_registration'
+        preview_key = 'registration'
         label1 = self.param_widgets.get('features.reg_preview_image1').get_value()
         label2 = self.param_widgets.get('features.reg_preview_image2').get_value()
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
         reg_sims, _ = self.preprocess([self.reg.sims[index1], self.reg.sims[index2]])
-        overlap1, overlap2 = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
+        overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
         overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
             self.reg.create_registration_method(self.reg.sims[0], params=self.params['features']))
         results = pairwise_reg_func(overlap1, overlap2)
+        affine_phys = affine_from_intrinsic_affine(results['affine_matrix'], sims_pixel_space, self.reg.source_transform_key)
         si_utils.set_sim_affine(reg_sims[0], param_utils.identity_transform(2), transform_key=preview_key)
-        si_utils.set_sim_affine(reg_sims[1], results['affine_matrix'], transform_key=preview_key)
+        si_utils.set_sim_affine(reg_sims[1], affine_phys, transform_key=preview_key)
         metrics = calc_sims_metrics(reg_sims, self.reg.source_transform_key, preview_key)
+        summary = metrics['summary']
+        summary[preview_key]['quality'] = float(results['quality'])
 
-        self.populate_metrics_table(metrics['summary'])
+        self.populate_metrics_table(summary)
 
         fixed_points = results.get('fixed_points', [])
         moving_points = results.get('moving_points', [])
