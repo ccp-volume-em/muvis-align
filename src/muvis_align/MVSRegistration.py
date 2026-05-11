@@ -722,15 +722,7 @@ class MVSRegistration:
 
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(register_sims[0],
                                                                                                   params=params)
-
-        # Pass registration through metrics method
-        #from src.muvis_align.registration_methods.RegistrationMetrics import RegistrationMetrics
-        #registration_metrics = RegistrationMetrics(sim0, pairwise_reg_function)
-        #pairwise_reg_function = registration_metrics.registration
-        # TODO: extract metrics from registration_metrics
-
         logging.info(f'Registration method: {reg_method}')
-
         logging.info('Registering...')
         register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
 
@@ -947,7 +939,7 @@ class MVSRegistration:
 
         reg_channel = params.get('channel', 0)
         metrics = calc_global_metrics(msims, self.source_transform_key, self.reg_transform_key,
-                                      params.get('metrics', []), reg_channel=reg_channel,
+                                      params.get('metrics', []), reg_channel=reg_channel, reg_results=reg_result,
                                       n_parallel_pairs=n_parallel_pairwise_regs)
 
         self.is_registered = True

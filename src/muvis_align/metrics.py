@@ -1,6 +1,7 @@
 import dask
 #import frc
 import multiview_stitcher.metrics
+import networkx as nx
 from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
@@ -39,11 +40,19 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
             metric_funcs=metric_funcs,
             n_parallel_pairs=n_parallel_pairs
         )
+
+    qualities = nx.get_edge_attributes(pairs_graph, 'quality')
+
+    for pair_key, value in qualities.items():
+        metric_results['pairs'][pair_key]['transform']['quality'] = float(value)
+
+    metric_results['summary']['transform']['quality'] = float(np.nanmean(list(qualities.values())))
+
     return metric_results
 
 
 def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_methods, reg_channel=None,
-                        n_parallel_pairs=None):
+                        reg_results=None, n_parallel_pairs=None):
     metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
     with dask.config.set(scheduler='single-threaded'):
         metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
@@ -56,11 +65,20 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
             metric_funcs=metric_funcs,
             n_parallel_pairs=n_parallel_pairs
         )
+
+    if reg_results is not None:
+        qualities = reg_results['pairwise_registration']['metrics']['qualities']
+
+        for pair_key, value in qualities.items():
+            metric_results['pairs'][pair_key][reg_transform_key]['quality'] = float(value)
+
+        metric_results['summary'][reg_transform_key]['quality'] = float(np.nanmean(list(qualities.values())))
+
     return metric_results
 
 
 def calc_sims_metrics(sims, base_transform_key, reg_transform_key, metric_methods='all', reg_channel=None,
-                        n_parallel_pairs=None):
+                      n_parallel_pairs=None):
     msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
     return calc_global_metrics(msims=msims, base_transform_key=base_transform_key, reg_transform_key=reg_transform_key,
                                metric_methods=metric_methods, reg_channel=reg_channel, n_parallel_pairs=n_parallel_pairs)

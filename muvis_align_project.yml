@@ -1,4 +1,5 @@
 features:
+  gaussian_sigma: 1.0
   global_normalisation: 'False'
   inlier_threshold_factor: 0.05
   max_keypoints: 5000
@@ -17,7 +18,7 @@ input_output:
   input_path: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
   output_path: C:\Users\Y\PycharmProjects\muvis-align\output
   overwrite: true
-  preview_images: true
+  preview_images: false
   preview_shapes: true
   source_position_x: source
   source_position_y: source

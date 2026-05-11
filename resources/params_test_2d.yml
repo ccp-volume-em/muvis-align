@@ -14,7 +14,7 @@ operations:
       pairing: orthogonal
       transform_type: affine
       method: sift
-      gaussian_sigma: 2
+      gaussian_sigma: 1
       normalisation: True
       max_keypoints: 5000
       inlier_threshold_factor: 0.05
