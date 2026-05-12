@@ -30,9 +30,11 @@ def create_ro_crate(source, dest_path, image_paths=[]):
 def create_zarr_ro_crate(source, dest_path):
     crate = ZarrCrate()
 
-    crate.add_dataset(dest_path='.')
+    properties = {}
+    #properties['name'] = 'name'
+    crate.add_dataset(dest_path='.', properties=properties)
 
-    properties = {"fbbi_id": {"@id": 'obo:FBbi_00000257'}}
+    properties = {'fbbi_id': {'@id': 'obo:FBbi_00000257'}}
     crate.add(ImageAcquistion(crate, properties=properties))
 
     crate.write(dest_path)
