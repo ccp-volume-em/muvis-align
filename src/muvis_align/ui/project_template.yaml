@@ -160,12 +160,12 @@ parameters:
     mode: "beginner"
 
     # registration / feature explorer
-  - name: register
+  - name: operation
     type: textbox
     label: "Operation"
     description: "Operation (e.g. 'register', 'stack', '2d', '3d')"
     default: "register"
-    cli_tag: "--register"
+    cli_tag: "--operation"
     cli_order: 0
     optional: True
     append_value: False

@@ -33,7 +33,7 @@ class MVSRegistrationNapari(QObject, MVSRegistration):
                 self.viewer.layers[layer_name].features = features
             else:
                 self.viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5)
-            self.viewer.show()
+            #self.viewer.show()
 
     @Slot(str, str)
     def _update_napari_data(self, layer_name, transform_key):
@@ -49,7 +49,7 @@ class MVSRegistrationNapari(QObject, MVSRegistration):
                 # ensure image layer goes on 'bottom'
                 if current_index > 0:
                     self.viewer.layers.move(current_index, 0)
-            self.viewer.show()
+            #self.viewer.show()
 
     def _update_napari_features(self, fixed_data2, fixed_points,
                                moving_data2, moving_points,

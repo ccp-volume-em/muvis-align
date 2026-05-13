@@ -6,12 +6,12 @@ features:
   max_trials: 1000
   method: sift
   normalisation: true
+  operation: register
   pairing: orthogonal
   preview_registration: false
   ransac_iterations: 3
   reg_preview_image1: '000_000'
   reg_preview_image2: '000_001'
-  register: register
   transform_type: rigid
 input_output:
   coordinate_system: source_metadata

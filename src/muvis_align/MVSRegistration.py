@@ -593,6 +593,11 @@ class MVSRegistration:
                 new_sims.append(gaussian_filter_sim(sim, self.source_transform_key, sigma))
             sims = new_sims
 
+        if normalisation is not None:
+            if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
+                normalisation = None
+            elif isinstance(normalisation, bool) and normalisation == False:
+                normalisation = None
         if normalisation:
             use_global = ('global' in str(normalisation).lower())
             if use_global:

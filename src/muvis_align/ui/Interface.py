@@ -168,10 +168,10 @@ class Interface:
         if quantiles:
             quantiles_array = [float(quantile.strip()) for quantile in quantiles.split(',')]
         return self.reg.preprocess(sims,
-                                   quantiles_array,
-                                   params_features.get('global_normalisation'),
-                                   params_features.get('global_gaussian_sigma'),
-                                   params_features.get('filter_foreground')
+                                   flatfield_quantiles=quantiles_array,
+                                   normalisation=params_features.get('global_normalisation'),
+                                   gaussian_sigma=params_features.get('global_gaussian_sigma'),
+                                   filter_foreground=params_features.get('filter_foreground')
         )
 
     def preview_registration(self):
