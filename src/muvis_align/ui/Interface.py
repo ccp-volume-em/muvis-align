@@ -186,6 +186,7 @@ class Interface:
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
             self.reg.create_registration_method(self.reg.sims[0], params=self.params['features']))
         results = pairwise_reg_func(overlap1, overlap2)
+        
         affine_phys = affine_from_intrinsic_affine(results['affine_matrix'], sims_pixel_space, self.reg.source_transform_key)
         si_utils.set_sim_affine(reg_sims[0], param_utils.identity_transform(2), transform_key=preview_key)
         si_utils.set_sim_affine(reg_sims[1], affine_phys, transform_key=preview_key)
