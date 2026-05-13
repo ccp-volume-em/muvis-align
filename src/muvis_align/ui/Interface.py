@@ -3,7 +3,7 @@ from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.utils.notifications import show_warning
 import os.path
 
-from muvis_align.file.project_yaml import read_params, get_template_params, write_params
+from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, get_overlap_images, \
     affine_from_intrinsic_affine
@@ -44,11 +44,11 @@ class Interface:
 
     def project_path(self, path):
         self.params_path = path
+        self.params = get_template_params(self.template)
         if os.path.exists(path):
-            self.params = read_params(path)
+            self.params = update_params(self.params, read_params(path))
             self.update_widgets()
         else:
-            self.params = get_template_params(self.template)
             self.write_params()
 
     def update_widgets(self):

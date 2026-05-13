@@ -224,6 +224,23 @@ parameters:
     optional: True
     section_id: "features"
     mode: "beginner"
+  - name: pairing
+    type: dropdown
+    label: "Pairing"
+    description: "Pairing method: use orthogonal to avoid diagonal / very small overlaps, use overlay for stack-like overlaps. Default uses MVS default pairing method"
+    options:
+      - label: Default
+        value: "default"
+      - label: Orthogonal
+        value: "orthogonal"
+      - label: Overlay
+        value: "overlay"
+    default: "default"
+    cli_tag: "--pairing"
+    cli_order: 6
+    optional: True
+    section_id: "features"
+    mode: "beginner"
   - name: transform_type
     type: dropdown
     label: "Transform type"
@@ -239,23 +256,6 @@ parameters:
         value: "similarity"
     default: "rigid"
     cli_tag: "--transform_type"
-    cli_order: 6
-    optional: True
-    section_id: "features"
-    mode: "beginner"
-  - name: pairing
-    type: dropdown
-    label: "Pairing"
-    description: "Pairing method: use orthogonal to avoid diagonal / very small overlaps, use overlay for stack-like overlaps. Default uses MVS default pairing method"
-    options:
-      - label: Default
-        value: "default"
-      - label: Orthogonal
-        value: "orthogonal"
-      - label: Overlay
-        value: "overlay"
-    default: "False"
-    cli_tag: "--pairing"
     cli_order: 7
     optional: True
     section_id: "features"
