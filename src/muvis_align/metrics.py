@@ -69,10 +69,15 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
     if reg_results is not None:
         qualities = reg_results['pairwise_registration']['metrics']['qualities']
 
+        quality_values = []
         for pair_key, value in qualities.items():
-            metric_results['pairs'][pair_key][reg_transform_key]['quality'] = float(value)
+            if 't' in value:
+                value = value.sel(t=0)
+            value = float(value)
+            metric_results['pairs'][pair_key][reg_transform_key]['quality'] = value
+            quality_values.append(value)
 
-        metric_results['summary'][reg_transform_key]['quality'] = float(np.nanmean(list(qualities.values())))
+        metric_results['summary'][reg_transform_key]['quality'] = float(np.nanmean(quality_values))
 
     return metric_results
 
