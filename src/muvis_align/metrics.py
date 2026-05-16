@@ -2,7 +2,7 @@ import dask
 #import frc
 import multiview_stitcher.metrics
 import networkx as nx
-from multiview_stitcher import msi_utils
+from multiview_stitcher import msi_utils, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
@@ -10,7 +10,6 @@ from sklearn.metrics import euclidean_distances
 
 from src.muvis_align.image.util import image_reshape
 from src.muvis_align.util import apply_transform
-
 
 
 def create_metric_methods(metric_methods, msim, reg_channel=None):
@@ -43,10 +42,15 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
 
     qualities = nx.get_edge_attributes(pairs_graph, 'quality')
 
+    quality_values = []
     for pair_key, value in qualities.items():
-        metric_results['pairs'][pair_key]['transform']['quality'] = float(value)
+        if 't' in value:
+            value = value.sel(t=0)
+        value = float(value)
+        metric_results['pairs'][pair_key]['transform']['quality'] = value
+        quality_values.append(value)
 
-    metric_results['summary']['transform']['quality'] = float(np.nanmean(list(qualities.values())))
+    metric_results['summary']['transform']['quality'] = float(np.nanmean(quality_values))
 
     return metric_results
 
@@ -82,11 +86,21 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
     return metric_results
 
 
-def calc_sims_metrics(sims, base_transform_key, reg_transform_key, metric_methods='all', reg_channel=None,
-                      n_parallel_pairs=None):
+def calc_sims_metrics(sims, pair_transforms, qualities, base_transform_key=None, metric_methods='all',
+                      reg_channel=None, n_parallel_pairs=None):
+    if base_transform_key is None:
+        reg_keys = si_utils.get_tranform_keys_from_sim(sims[0])
+        base_transform_key = reg_keys[0]
     msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
-    return calc_global_metrics(msims=msims, base_transform_key=base_transform_key, reg_transform_key=reg_transform_key,
-                               metric_methods=metric_methods, reg_channel=reg_channel, n_parallel_pairs=n_parallel_pairs)
+    pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
+        msims,
+        transform_key=base_transform_key,
+        pairs=list(pair_transforms.keys())
+    )
+    nx.set_edge_attributes(pairs_graph, pair_transforms, 'transform')
+    nx.set_edge_attributes(pairs_graph, qualities, 'quality')
+    return calc_pair_metrics(msims=msims, pairs_graph=pairs_graph, base_transform_key=base_transform_key,
+                             metric_methods=metric_methods, reg_channel=reg_channel, n_parallel_pairs=n_parallel_pairs)
 
 
 def calc_match_metrics(points1, points2, transform, threshold, lowe_ratio=None):

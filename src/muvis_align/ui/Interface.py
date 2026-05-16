@@ -1,6 +1,7 @@
 from enum import Enum, auto
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.utils.notifications import show_warning
+import numpy as np
 import os.path
 
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
@@ -175,7 +176,6 @@ class Interface:
         )
 
     def preview_registration(self):
-        preview_key = 'registration'
         label1 = self.param_widgets.get('features.reg_preview_image1').get_value()
         label2 = self.param_widgets.get('features.reg_preview_image2').get_value()
         index1 = self.reg.file_labels.index(label1)
@@ -188,11 +188,14 @@ class Interface:
         results = pairwise_reg_func(overlap1, overlap2)
         
         affine_phys = affine_from_intrinsic_affine(results['affine_matrix'], sims_pixel_space, self.reg.source_transform_key)
-        si_utils.set_sim_affine(reg_sims[0], param_utils.identity_transform(2), transform_key=preview_key)
-        si_utils.set_sim_affine(reg_sims[1], affine_phys, transform_key=preview_key)
-        metrics = calc_sims_metrics(reg_sims, self.reg.source_transform_key, preview_key)
+        transforms = {
+            (0, 1): affine_phys
+        }
+        qualities = {
+            (0, 1): np.array(results['quality'])
+        }
+        metrics = calc_sims_metrics(reg_sims, transforms, qualities, metric_methods=['ncc', 'ssim', 'onmi'])
         summary = metrics['summary']
-        summary[preview_key]['quality'] = float(results['quality'])
 
         self.populate_metrics_table(summary)
 
