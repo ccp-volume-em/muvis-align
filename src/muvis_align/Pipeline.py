@@ -6,15 +6,15 @@ from threading import Thread
 from tqdm import tqdm
 
 from src.muvis_align.image.source_helper import get_images_metadata
+from src.muvis_align.MVSRegistration import MVSRegistration
 from src.muvis_align.logging import init_logging
 from src.muvis_align.util import dir_regex, get_filetitle, find_all_numbers, find_target_numeric
 
 
 class Pipeline(Thread):
-    def __init__(self, params, viewer=None):
+    def __init__(self, params):
         super().__init__()
         self.params = params
-        self.viewer = viewer
 
         self.params_general = params['general']
         params_logging = self.params_general.get('logging', {})
@@ -129,13 +129,7 @@ class Pipeline(Thread):
         if fileset_label:
             logging.info(f'File set: {fileset_label}')
 
-        napari_ui = 'napari' in self.params_general.get('ui', '')
-        if napari_ui:
-            from src.muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
-            mvs_registration = MVSRegistrationNapari(viewer=self.viewer)
-        else:
-            from src.muvis_align.MVSRegistration import MVSRegistration
-            mvs_registration = MVSRegistration()
+        mvs_registration = MVSRegistration()
         mvs_registration.init_params(params_general=self.params_general, params=params,
                                      label=fileset_label, input_path=fileset,
                                      global_center=center, global_rotation=rotation)

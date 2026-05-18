@@ -1,13 +1,11 @@
 features:
-  gaussian_sigma: 1.0
-  global_normalisation: 'False'
   inlier_threshold_factor: 0.05
   max_keypoints: 5000
   max_trials: 1000
   method: sift
   normalisation: true
   operation: register
-  pairing: orthogonal
+  pairing: default
   preview_registration: false
   ransac_iterations: 3
   reg_preview_image1: '000_000'
@@ -27,3 +25,5 @@ input_output:
   source_size_: source
   source_size_x: source
   source_size_y: source
+pre_processing:
+  normalisation: 'False'

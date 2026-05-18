@@ -1,11 +1,12 @@
 # https://bilayers.org/understanding-config
 # https://forum.image.sc/t/napari-widgets-from-bilayers/119800
-import logging
 
+import logging
 from magicgui.widgets import Container, create_widget
 import os.path
 
 from muvis_align.ui.ParamWidget import ParamWidget
+
 
 map_bilayers_to_widget_type = {
     'textbox': 'LineEdit',

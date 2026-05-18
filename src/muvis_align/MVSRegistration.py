@@ -77,7 +77,6 @@ class MVSRegistration:
         self.logging_dask = self.verbose
         self.logging_time = self.verbose
         self.mpl_ui = ('mpl' in self.ui or 'plot' in self.ui)
-        self.napari_ui = ('napari' in self.ui)
         self.operation = operation
         self.fileset_label = label
         self.global_rotation = global_rotation
@@ -265,10 +264,6 @@ class MVSRegistration:
                                          use_positional_colors=False, view_labels=file_labels, view_labels_size=3,
                                          show_plot=self.mpl_ui, output_filename=registered_positions_filename)
                 plt_close()
-
-            if self.napari_ui:
-                self.update_napari_shapes.emit(f'{self.fileset_label} registered', self.reg_transform_key)
-
         else:
             transform_key = self.source_transform_key
 
@@ -573,6 +568,8 @@ class MVSRegistration:
             foreground_map = None
         if flatfield_quantiles is not None:
             logging.info('Flat-field correction...')
+            if isinstance(flatfield_quantiles, str):
+                flatfield_quantiles = [float(quantile.strip()) for quantile in flatfield_quantiles.split(',')]
             new_sims = [None] * len(sims)
             for sim_indices in group_sims_by_z(sims, self.positions):
                 sims_z_set = [sims[i] for i in sim_indices]
@@ -620,6 +617,8 @@ class MVSRegistration:
             sims = new_sims
         else:
             indices = range(len(sims))
+        self.register_sims = sims
+        self.register_indices = indices
         return sims, indices
 
     def create_registration_method(self, sim0, params={}, method=''):

@@ -92,11 +92,12 @@ def calc_sims_metrics(sims, pair_transforms, qualities, base_transform_key=None,
         reg_keys = si_utils.get_tranform_keys_from_sim(sims[0])
         base_transform_key = reg_keys[0]
     msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
-    pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
-        msims,
-        transform_key=base_transform_key,
-        pairs=list(pair_transforms.keys())
-    )
+    with dask.config.set(scheduler='single-threaded'):
+        pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
+            msims,
+            transform_key=base_transform_key,
+            pairs=list(pair_transforms.keys())
+        )
     nx.set_edge_attributes(pairs_graph, pair_transforms, 'transform')
     nx.set_edge_attributes(pairs_graph, qualities, 'quality')
     return calc_pair_metrics(msims=msims, pairs_graph=pairs_graph, base_transform_key=base_transform_key,

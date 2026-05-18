@@ -447,8 +447,8 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
     ], axis=merge_axis)
 
     # Build combined points (in y, x order for napari)
-    p1 = points1[:, :2] if points1.size else np.empty((0, 2))
-    p2 = points2[:, :2] + offset2 if points2.size else np.empty((0, 2))
+    p1 = points1[:, :2] if len(points1) else np.empty((0, 2))
+    p2 = points2[:, :2] + offset2 if len(points2) else np.empty((0, 2))
     points_data = np.vstack([p1, p2]) if (len(p1) or len(p2)) else np.empty((0, 2))
 
     # Build match lines as a shapes layer (each line is [[y1, x1], [y2, x2]])

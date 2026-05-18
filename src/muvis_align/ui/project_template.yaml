@@ -159,6 +159,49 @@ parameters:
     section_id: "input_output"
     mode: "beginner"
 
+    # pre-processing
+  - name: flatfield_quantiles
+    type: textbox
+    label: "Flat-field quantiles"
+    description: "One or two quantile values for flat-field correction, separated by comma (e.g. 0.5 or 0.01,0.99)"
+    default: ""
+    cli_tag: "--flatfield_quantiles"
+    cli_order: 1
+    optional: True
+    section_id: "pre_processing"
+    mode: "beginner"
+  - name: normalisation
+    type: textbox
+    label: "Normalisation"
+    description: "Normalisation method ('global' for global normalisation, any other value for regular normalisation)"
+    default: "False"
+    cli_tag: "--global_normalisation"
+    cli_order: 2
+    optional: True
+    section_id: "pre_processing"
+    mode: "beginner"
+  - name: gaussian_sigma
+    type: float
+    label: "Gaussian sigma"
+    description: "Sigma for Gaussian filtering (value of 0 or empty for no filtering)"
+    default:
+    cli_tag: "--global_gaussian_sigma"
+    cli_order: 3
+    optional: True
+    section_id: "pre_processing"
+    mode: "beginner"
+  - name: filter_foreground
+    type: checkbox
+    label: "Filter foreground"
+    description: "If enabled, filter tile images with low image signal (e.g. empty tiles)"
+    default: False
+    cli_tag: "--filter_foreground"
+    cli_order: 4
+    optional: True
+    append_value: False
+    section_id: "pre_processing"
+    mode: "beginner"
+
     # registration / feature explorer
   - name: operation
     type: textbox
@@ -171,49 +214,6 @@ parameters:
     append_value: False
     section_id: "features"
     mode: "beginner"
-
-  - name: flatfield_quantiles
-    type: textbox
-    label: "Flat-field quantiles"
-    description: "One or two quantile values for flat-field correction, separated by comma (e.g. 0.5 or 0.01,0.99)"
-    default: ""
-    cli_tag: "--flatfield_quantiles"
-    cli_order: 1
-    optional: True
-    section_id: "features"
-    mode: "beginner"
-  - name: global_normalisation
-    type: textbox
-    label: "Global normalisation"
-    description: "Normalisation method ('global' for global normalisation, any other value for regular normalisation)"
-    default: "False"
-    cli_tag: "--global_normalisation"
-    cli_order: 2
-    optional: True
-    section_id: "features"
-    mode: "beginner"
-  - name: global_gaussian_sigma
-    type: float
-    label: "Global Gaussian sigma"
-    description: "Gaussian sigma for Global Gaussian filtering (value of 0 or empty for no filtering)"
-    default:
-    cli_tag: "--global_gaussian_sigma"
-    cli_order: 3
-    optional: True
-    section_id: "features"
-    mode: "beginner"
-  - name: filter_foreground
-    type: checkbox
-    label: "Filter foreground"
-    description: "If enabled, filter tile images with low image signal (e.g. empty tiles)"
-    default: False
-    cli_tag: "--filter_foreground"
-    cli_order: 4
-    optional: True
-    append_value: False
-    section_id: "features"
-    mode: "beginner"
-
   - name: channel
     type: textbox
     label: "Registration channel"
@@ -295,7 +295,7 @@ parameters:
   - name: gaussian_sigma
     type: float
     label: "Gaussian sigma"
-    description: "Gaussian sigma for Gaussian filtering of overlaps (value of 0 or empty for no filtering)"
+    description: "Sigma for Gaussian filtering of overlaps (value of 0 or empty for no filtering)"
     default:
     cli_tag: "--gaussian_sigma"
     cli_order: 10
