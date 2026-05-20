@@ -169,11 +169,11 @@ class Interface:
             self.reg.update_napari_view_data.emit(f'{self.reg.fileset_label} data', self.transform_key,
                                                   show_preprocessed)
         if self.params['input_output']['preview_shapes'] and not show_preprocessed:
-            self.reg.update_napari_view_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key)
+            self.reg.update_napari_view_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key, False)
 
     def update_overview(self):
         #self.reg.update_napari_overview_data.emit(f'{self.reg.fileset_label} data', self.transform_key)
-        self.reg.update_napari_overview_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key)
+        self.reg.update_napari_overview_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key, True)
 
     def preview_registration(self):
         label1 = self.param_widgets.get('features.reg_preview_image1').get_value()
