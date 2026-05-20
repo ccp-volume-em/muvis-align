@@ -46,11 +46,13 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
     for pair_key, value in qualities.items():
         if 't' in value:
             value = value.sel(t=0)
-        value = float(value)
-        metric_results['pairs'][pair_key]['transform']['quality'] = value
-        quality_values.append(value)
+        if value:
+            value = float(value)
+            metric_results['pairs'][pair_key]['transform']['quality'] = value
+            quality_values.append(value)
 
-    metric_results['summary']['transform']['quality'] = float(np.nanmean(quality_values))
+    value = float(np.nanmean(quality_values)) if quality_values else None
+    metric_results['summary']['transform']['quality'] = value
 
     return metric_results
 
