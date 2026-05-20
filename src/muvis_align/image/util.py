@@ -932,35 +932,6 @@ def affine_from_intrinsic_affine(affine, sims_pixel_space, transform_key):
     return affine_phys
 
 
-def get_overlap_images2(sim1, sim2, transform_key):
-    spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
-    overlap = metrics.tile_pair_image_metrics(
-        [msi_utils.get_msim_from_sim(sim1), msi_utils.get_msim_from_sim(sim2)],
-        base_transform_key=transform_key,  # defines overlap region
-        query_transform_keys=[transform_key]
-    )
-    bboxes = list(overlap['bboxes'].values())
-    if len(bboxes) == 0:
-        return None
-    lower, upper = bboxes[0]['lower'], bboxes[0]['upper']
-
-    overlaps_sims = [
-        sim.sel({dim: slice(lower[idim], upper[idim]) for idim, dim in enumerate(spatial_dims)})
-        for isim, sim in enumerate([sim1.squeeze(), sim2.squeeze()])
-    ]
-
-    sims_pixel_space = sims_to_intrinsic_coord_system(
-        overlaps_sims[0], overlaps_sims[1],
-        transform_key=transform_key,
-        overlap_bboxes=([lower, lower], [upper, upper]),
-    )
-
-    fixed_data = xr.DataArray(sims_pixel_space[0].data, dims=spatial_dims)
-    moving_data = xr.DataArray(sims_pixel_space[1].data, dims=spatial_dims)
-
-    return overlaps_sims
-
-
 def combine_transforms(transforms):
     combined_transform = None
     for transform in transforms:
