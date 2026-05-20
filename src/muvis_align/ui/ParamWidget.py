@@ -5,7 +5,12 @@ class ParamWidget:
         self.interface = interface
         self.to_str = to_str
 
-    def set_value(self, value):
+    def get_value(self):
+        return self.widget.get_value()
+
+    def set_value(self, value, choices=None):
+        if choices is not None:
+            self.widget.choices = choices
         self.widget.set_value(value)
 
     def value_changed(self, value):

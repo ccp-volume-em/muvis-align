@@ -2,7 +2,8 @@ import cv2 as cv
 import numpy as np
 from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph, metrics
 from multiview_stitcher import spatial_image_utils as si_utils
-from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system
+from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system, \
+    get_affine_from_intrinsic_affine
 from skimage.filters import gaussian
 from skimage.feature import plot_matched_features
 from skimage.transform import downscale_local_mean
@@ -429,6 +430,87 @@ def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers
     return fig, ax
 
 
+def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], inliers=[],
+                                  points_color='black', match_color='red', inlier_color='lime'):
+    # create napari image and shapes layers
+    shape = np.max([image.shape for image in [image1, image2]], axis=0)
+    shape_y, shape_x = shape[:2]
+    if shape_x > 2 * shape_y:
+        merge_axis = 0
+        offset2 = [shape_y, 0]
+    else:
+        merge_axis = 1
+        offset2 = [0, shape_x]
+    image = np.concatenate([
+        np.pad(image1, ((0, shape[0] - image1.shape[0]), (0, shape[1] - image1.shape[1]))),
+        np.pad(image2, ((0, shape[0] - image2.shape[0]), (0, shape[1] - image2.shape[1])))
+    ], axis=merge_axis)
+
+    # Build combined points (in y, x order for napari)
+    p1 = points1[:, :2] if len(points1) else np.empty((0, 2))
+    p2 = points2[:, :2] + offset2 if len(points2) else np.empty((0, 2))
+    points_data = np.vstack([p1, p2]) if (len(p1) or len(p2)) else np.empty((0, 2))
+
+    # Build match lines as a shapes layer (each line is [[y1, x1], [y2, x2]])
+    line_data = []
+    edge_colors = []
+
+    # Sort non-inliers and inliers so they show on top
+    for do_inliers in [False, True]:
+        for i, match in enumerate(matches):
+            is_inlier = inliers[i] if i < len(inliers) else False
+            if is_inlier == do_inliers:
+                i1, i2 = int(match[0]), int(match[1])
+                start = points1[i1, :2]
+                end = points2[i2, :2] + offset2
+                line_data.append(np.array([start, end], dtype=float))
+                edge_colors.append(inlier_color if is_inlier else match_color)
+
+    layers = [
+        (
+            image,
+            {
+                "name": "matches_image",
+                # For 2D grayscale this is ignored by napari; for RGB it is inferred.
+                "rgb": (image.ndim == 3 and image.shape[-1] in (3, 4)),
+            },
+            "image",
+        )
+    ]
+
+    if len(points_data) > 0:
+        layers.append(
+            (
+                points_data,
+                {
+                    "name": "keypoints",
+                    "size": 6,
+                    "face_color": points_color,
+                    "border_color": "transparent",
+                    "symbol": "ring",
+                },
+                "points",
+            )
+        )
+
+    if len(line_data) > 0:
+        layers.append(
+            (
+                line_data,
+                {
+                    "name": "matches",
+                    "shape_type": "line",
+                    "edge_color": edge_colors,
+                    "edge_width": 1.5,
+                    "opacity": 0.8,
+                },
+                "shapes",
+            )
+        )
+
+    return layers
+
+
 def create_compression_filter(compression: list) -> tuple:
     compressor, compression_filters = None, None
     compression = ensure_list(compression)
@@ -836,7 +918,18 @@ def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):
     fixed_data = xr.DataArray(fixed_data, dims=spatial_dims)
     moving_data = xr.DataArray(moving_data, dims=spatial_dims)
 
-    return fixed_data, moving_data
+    return fixed_data, moving_data, sims_pixel_space
+
+
+def affine_from_intrinsic_affine(affine, sims_pixel_space, transform_key):
+    affine_phys = get_affine_from_intrinsic_affine(
+        data_affine=affine,
+        sim_fixed=sims_pixel_space[0],
+        sim_moving=sims_pixel_space[1],
+        transform_key_fixed=transform_key,
+        transform_key_moving=transform_key,
+    )
+    return affine_phys
 
 
 def get_overlap_images2(sim1, sim2, transform_key):

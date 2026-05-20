@@ -1,8 +1,22 @@
+features:
+  inlier_threshold_factor: 0.05
+  max_keypoints: 5000
+  max_trials: 1000
+  method: sift
+  normalisation: true
+  operation: register
+  pairing: default
+  preview_registration: false
+  ransac_iterations: 3
+  reg_preview_image1: '000_000'
+  reg_preview_image2: '000_001'
+  transform_type: rigid
 input_output:
-  input_path: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.ome.zarr
+  coordinate_system: source_metadata
+  input_path: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
   output_path: C:\Users\Y\PycharmProjects\muvis-align\output
   overwrite: true
-  preview_images: true
+  preview_images: false
   preview_shapes: true
   source_position_x: source
   source_position_y: source
@@ -11,3 +25,5 @@ input_output:
   source_size_: source
   source_size_x: source
   source_size_y: source
+pre_processing:
+  normalisation: 'False'

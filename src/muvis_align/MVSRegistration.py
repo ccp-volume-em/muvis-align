@@ -77,7 +77,6 @@ class MVSRegistration:
         self.logging_dask = self.verbose
         self.logging_time = self.verbose
         self.mpl_ui = ('mpl' in self.ui or 'plot' in self.ui)
-        self.napari_ui = ('napari' in self.ui)
         self.operation = operation
         self.fileset_label = label
         self.global_rotation = global_rotation
@@ -265,10 +264,6 @@ class MVSRegistration:
                                          use_positional_colors=False, view_labels=file_labels, view_labels_size=3,
                                          show_plot=self.mpl_ui, output_filename=registered_positions_filename)
                 plt_close()
-
-            if self.napari_ui:
-                self.update_napari_shapes.emit(f'{self.fileset_label} registered', self.reg_transform_key)
-
         else:
             transform_key = self.source_transform_key
 
@@ -573,6 +568,8 @@ class MVSRegistration:
             foreground_map = None
         if flatfield_quantiles is not None:
             logging.info('Flat-field correction...')
+            if isinstance(flatfield_quantiles, str):
+                flatfield_quantiles = [float(quantile.strip()) for quantile in flatfield_quantiles.split(',')]
             new_sims = [None] * len(sims)
             for sim_indices in group_sims_by_z(sims, self.positions):
                 sims_z_set = [sims[i] for i in sim_indices]
@@ -593,8 +590,13 @@ class MVSRegistration:
                 new_sims.append(gaussian_filter_sim(sim, self.source_transform_key, sigma))
             sims = new_sims
 
+        if normalisation is not None:
+            if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
+                normalisation = None
+            elif isinstance(normalisation, bool) and normalisation == False:
+                normalisation = None
         if normalisation:
-            use_global = ('global' in str(normalisation))
+            use_global = ('global' in str(normalisation).lower())
             if use_global:
                 logging.info('Normalising (global)...')
             else:
@@ -615,6 +617,8 @@ class MVSRegistration:
             sims = new_sims
         else:
             indices = range(len(sims))
+        self.register_sims = sims
+        self.register_indices = indices
         return sims, indices
 
     def create_registration_method(self, sim0, params={}, method=''):
@@ -686,9 +690,11 @@ class MVSRegistration:
     def register_pairs(self, sims, register_sims=None, params=None):
         operation = self.operation
         pairing = params.get('pairing',
-                             params.get('registration', {}).get('pairing', ''))
+                             params.get('registration', {}).get('pairing', '')).lower()
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
                                               params.get('registration', {}).get('n_parallel_pairwise_regs'))
+        if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
+            n_parallel_pairwise_regs = None
 
         is_stack = ('stack' in operation)
         is_3d = ('3d' in operation)
@@ -720,15 +726,7 @@ class MVSRegistration:
 
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(register_sims[0],
                                                                                                   params=params)
-
-        # Pass registration through metrics method
-        #from src.muvis_align.registration_methods.RegistrationMetrics import RegistrationMetrics
-        #registration_metrics = RegistrationMetrics(sim0, pairwise_reg_function)
-        #pairwise_reg_function = registration_metrics.registration
-        # TODO: extract metrics from registration_metrics
-
         logging.info(f'Registration method: {reg_method}')
-
         logging.info('Registering...')
         register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
 
@@ -841,6 +839,8 @@ class MVSRegistration:
 
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
                                               params.get('registration', {}).get('n_parallel_pairwise_regs'))
+        if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
+            n_parallel_pairwise_regs = None
 
         plot_summary = self.mpl_ui
 
@@ -943,7 +943,7 @@ class MVSRegistration:
 
         reg_channel = params.get('channel', 0)
         metrics = calc_global_metrics(msims, self.source_transform_key, self.reg_transform_key,
-                                      params.get('metrics', []), reg_channel=reg_channel,
+                                      params.get('metrics', []), reg_channel=reg_channel, reg_results=reg_result,
                                       n_parallel_pairs=n_parallel_pairwise_regs)
 
         self.is_registered = True
