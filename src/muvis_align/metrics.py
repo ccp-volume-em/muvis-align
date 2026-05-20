@@ -7,6 +7,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
 from sklearn.metrics import euclidean_distances
+from xarray import DataArray
 
 from src.muvis_align.image.util import image_reshape
 from src.muvis_align.util import apply_transform
@@ -44,10 +45,11 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
 
     quality_values = []
     for pair_key, value in qualities.items():
-        if 't' in value:
-            value = value.sel(t=0)
+        if isinstance(value, DataArray):
+            if 't' in value.dims:
+                value = value.sel(t=0)
+            value = value.item()
         if value:
-            value = float(value)
             metric_results['pairs'][pair_key]['transform']['quality'] = value
             quality_values.append(value)
 
@@ -77,11 +79,13 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
 
         quality_values = []
         for pair_key, value in qualities.items():
-            if 't' in value:
-                value = value.sel(t=0)
-            value = float(value)
-            metric_results['pairs'][pair_key][reg_transform_key]['quality'] = value
-            quality_values.append(value)
+            if isinstance(value, DataArray):
+                if 't' in value.dims:
+                    value = value.sel(t=0)
+                value = value.item()
+            if value:
+                metric_results['pairs'][pair_key][reg_transform_key]['quality'] = value
+                quality_values.append(value)
 
         metric_results['summary'][reg_transform_key]['quality'] = float(np.nanmean(quality_values))
 
