@@ -2,11 +2,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import napari
 from magicclass.ext.napari.viewer import ViewerWidget
-from muvis_align.logging import init_logging
 from qtpy.QtWidgets import QTabWidget, QSizePolicy
 
 from muvis_align.ui.create_widgets import create_project_widget, create_template_widgets
 from muvis_align.ui.Interface import Interface
+from muvis_align.logging import init_logging
 
 
 class MainWidget(QTabWidget):
