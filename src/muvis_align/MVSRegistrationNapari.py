@@ -1,3 +1,4 @@
+from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils
 from qtpy.QtCore import QObject, Signal, Slot
 
@@ -24,6 +25,7 @@ class MVSRegistrationNapari(QObject, MVSRegistration):
         self.clear_napari_overview.connect(self._clear_napari_overview)
         self.update_napari_overview_shapes.connect(self._update_napari_overview_shapes)
         self.update_napari_overview_data.connect(self._update_napari_overview_data)
+        self.selected_shape_index = None
 
     @Slot()
     def _clear_napari_view(self):
@@ -85,27 +87,22 @@ class MVSRegistrationNapari(QObject, MVSRegistration):
                 viewer.layers[layer_name].features = features
             else:
                 layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5)
+                if isinstance(viewer, ViewerWidget):
+                    viewer = viewer._qtwidget._viewer_model
+                @viewer.mouse_move_callbacks.append
+                def on_mouse_move(viewer, event):
+                    self.selected_shape_index = layer._value[0]
 
-                def on_data_change(event):
-                    print('highlight event', event)
-                    print(event.source)
-                    selected_indices = list(layer.selected_data)
-                    if selected_indices:
-                        self.on_selection_change(selected_indices)
+                @viewer.mouse_drag_callbacks.append
+                def on_mouse_drag(viewer, event):
+                    if event.type == "mouse_press" and event.button == 1:
+                        if viewer.layers.selection.active == layer:
+                            self.on_selection_change(refs[self.selected_shape_index])
+                    yield
 
-                def on_highlight_change(event):
-                    print('highlight event', event)
-                    print(event.source)
-                    selected_indices = list(layer.selected_data)
-                    if selected_indices:
-                        self.on_selection_change(selected_indices)
 
-                layer.events.data.connect(on_data_change)
-                #layer.events.highlight.connect(on_highlight_change)
-
-    def on_selection_change(self, selected_indices):
-        if selected_indices:
-            print(f"Currently selected shape indices: {selected_indices}")
+    def on_selection_change(self, ref):
+        print(f"Currently selected shape: {ref}")
 
     def _update_napari_features(self, fixed_data2, fixed_points,
                                moving_data2, moving_points,
