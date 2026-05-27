@@ -84,32 +84,32 @@ parameters:
     optional: True
     section_id: "input_output"
     mode: "advanced"
-  - name: source_size_
+  - name: source_scale_z
     type: textbox
-    label: "Source size Z"
-    description: "Metadata source for Z size"
+    label: "Source scale Z"
+    description: "Metadata source for Z scale"
     default: "source"
-    cli_tag: "--source_size_z"
+    cli_tag: "--source_scale_z"
     cli_order: 4
     optional: True
     section_id: "input_output"
     mode: "advanced"
-  - name: source_size_y
+  - name: source_scale_y
     type: textbox
-    label: "Source size Y"
-    description: "Metadata source for Y size"
+    label: "Source scale Y"
+    description: "Metadata source for Y scale"
     default: "source"
-    cli_tag: "--source_size_y"
+    cli_tag: "--source_scale_y"
     cli_order: 5
     optional: True
     section_id: "input_output"
     mode: "advanced"
-  - name: source_size_x
+  - name: source_scale_x
     type: textbox
-    label: "Source size X"
-    description: "Metadata source for X size"
+    label: "Source scale X"
+    description: "Metadata source for X scale"
     default: "source"
-    cli_tag: "--source_size_x"
+    cli_tag: "--source_scale_x"
     cli_order: 6
     optional: True
     section_id: "input_output"

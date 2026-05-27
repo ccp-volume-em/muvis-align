@@ -85,17 +85,17 @@ class Interface:
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'x'], value)
 
-    def source_size_z(self, value):
+    def source_scale_z(self, value):
         if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['size', 'z'], value)
+            set_dict_value(self.source_metadata, ['scale', 'z'], value)
 
-    def source_size_y(self, value):
+    def source_scale_y(self, value):
         if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['size', 'y'], value)
+            set_dict_value(self.source_metadata, ['scale', 'y'], value)
 
-    def source_size_x(self, value):
+    def source_scale_x(self, value):
         if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['size', 'x'], value)
+            set_dict_value(self.source_metadata, ['scale', 'x'], value)
 
     def source_rotation(self, value):
         if is_valid_value(value):
