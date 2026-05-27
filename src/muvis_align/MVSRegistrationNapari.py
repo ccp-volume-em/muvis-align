@@ -101,7 +101,7 @@ class MVSRegistrationNapari(QObject, MVSRegistration):
                 @viewer.mouse_drag_callbacks.append
                 def on_mouse_drag(viewer, event):
                     if event.type == "mouse_press" and event.button == 1:
-                        if viewer.layers.selection.active == layer:
+                        if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
                             self.on_selection_change(refs[self.selected_shape_index])
                     yield
 

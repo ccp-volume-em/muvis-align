@@ -175,7 +175,7 @@ class MVSRegistration:
             z_scale = self.scales[0].get('z', 1)
 
         with Timer('pre-process', self.logging_time):
-            register_sims, register_indices = self.preprocess(sims, **self.preprocess_params)
+            register_sims, register_indices, _ = self.preprocess(sims, **self.preprocess_params)
 
         data = []
         for label, sim, scale in zip(file_labels, sims, self.scales):
@@ -561,12 +561,14 @@ class MVSRegistration:
 
     def preprocess(self, sims,
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
+        modified = False
         # normalise pixel size: take max pixel size
         max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
         scales0 = self.scales
 
         if filter_foreground:
             foreground_map = calc_foreground_map(sims)
+            modified = True
         else:
             foreground_map = None
         if flatfield_quantiles is not None:
@@ -582,6 +584,7 @@ class MVSRegistration:
                 for sim_index, sim in zip(sim_indices, new_sims_z_set):
                     new_sims[sim_index] = sim
             sims = new_sims
+            modified = True
 
         if gaussian_sigma:
             logging.info('Applying Gaussian filtering...')
@@ -592,6 +595,7 @@ class MVSRegistration:
                 sigma = gaussian_sigma * (scale ** (1 / 3))
                 new_sims.append(gaussian_filter_sim(sim, self.source_transform_key, sigma))
             sims = new_sims
+            modified = True
 
         if normalisation is not None:
             if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
@@ -605,6 +609,7 @@ class MVSRegistration:
             else:
                 logging.info('Normalising (individual)...')
             sims = normalise_sims(sims, self.source_transform_key, use_global=use_global)
+            modified = True
 
         if filter_foreground:
             logging.info('Filtering foreground images...')
@@ -618,11 +623,12 @@ class MVSRegistration:
             logging.info(f'Foreground images: {len(new_sims)} / {len(sims)}')
             indices = np.where(foreground_map)[0]
             sims = new_sims
+            modified = True
         else:
             indices = range(len(sims))
         self.register_sims = sims
         self.register_indices = indices
-        return sims, indices
+        return sims, indices, modified
 
     def create_registration_method(self, sim0, params={}, method=''):
         registration_method = None

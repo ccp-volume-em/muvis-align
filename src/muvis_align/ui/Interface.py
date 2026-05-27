@@ -126,8 +126,9 @@ class Interface:
 
     def pre_processing_process(self):
         params_features = self.params['pre_processing']
-        self.reg.preprocess(self.reg.sims, **params_features)
-        self.update_view(show_preprocessed=True)
+        _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
+        if modified:
+            self.update_view(show_preprocessed=True)
         self.enable_tabs(True, 3)
 
     def populate_coordinate_systems(self, coord_systems):

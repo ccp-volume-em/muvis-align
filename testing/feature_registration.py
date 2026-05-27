@@ -19,7 +19,7 @@ def test_feature_registration():
     target_scale = 4
     reg = MVSRegistration(params['general'])
     sims = reg.init_sims(target_scale=target_scale)
-    sims, norm_sims, _ = reg.preprocess(sims, operation)
+    norm_sims, _, _ = reg.preprocess(sims, operation)
     sim0 = norm_sims[0]
     reg_method = RegMethod(sim0.dtype, operation['method'])
 
