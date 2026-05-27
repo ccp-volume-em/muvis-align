@@ -45,7 +45,7 @@ class MVSRegistration:
         self.params_general = params_general
         self.params = params
         self.input_params = params.get('input')
-        if isinstance(self.input_params, str):
+        if isinstance(self.input_params, (str, list)):
             self.input_params = {'path': self.input_params}
         if input_path is None:
             input_path = self.input_params.get('path')
@@ -180,7 +180,7 @@ class MVSRegistration:
         data = []
         for label, sim, scale in zip(file_labels, sims, self.scales):
             position, rotation = get_data_mapping(sim, transform_key=self.source_transform_key)
-            position_pixels = {dim: position[dim] / float(scale[dim]) for dim in position.keys()}
+            position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
             row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
             data.append(row)
         export_csv(output + prereg_mappings_name, data, header=mappings_header)
@@ -472,8 +472,8 @@ class MVSRegistration:
         increase_z_positions = is_stack and not different_z_positions
 
         z_position = 0
-        scales2 = []
-        translations2 = []
+        final_scales = []
+        final_translations = []
         for source, image, scale, translation, rotation, file_label in zip(sources, images, scales, translations, rotations, self.file_labels):
             # transform #dimensions need to match
             if 'z' in output_order:
@@ -497,13 +497,16 @@ class MVSRegistration:
                     transform = np.array(transform2)
                 else:
                     transform = np.array(combine_transforms([transform, transform2]))
-            translation2 = translation.copy()
+
+            # fix empty dictionaries args
+            scale_arg = scale if scale else None
+            translation_arg = translation if translation else None
 
             sim = si_utils.get_sim_from_array(
                 image,
                 dims=list(output_order),
-                scale=scale,
-                translation=translation2,
+                scale=scale_arg,
+                translation=translation_arg,
                 affine=transform,
                 transform_key=self.source_transform_key,
                 c_coords=channel_labels
@@ -513,11 +516,11 @@ class MVSRegistration:
                     chunk_size = [chunk_size] * 2
                 sim = sim.chunk(xyz_to_dict(chunk_size))
             sims.append(sim)
-            scales2.append(scale)
-            translations2.append(translation)
+            final_scales.append(scale)
+            final_translations.append(translation)
 
-        self.scales = scales2
-        self.positions = translations2
+        self.scales = final_scales
+        self.positions = final_translations
         self.rotations = rotations
         self.sims = sims
         return sims
@@ -559,7 +562,7 @@ class MVSRegistration:
     def preprocess(self, sims,
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
         # normalise pixel size: take max pixel size
-        max_scale = {dim: max(scale[dim] for scale in self.scales) for dim in 'xy'}
+        max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
         scales0 = self.scales
 
         if filter_foreground:

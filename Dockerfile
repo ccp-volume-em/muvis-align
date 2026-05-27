@@ -76,7 +76,7 @@ RUN apt-get update && \
 
 ENV DISPLAY=:100
 ENV XPRA_PORT=9876
-ENV XPRA_START="python3 -m napari"
+ENV XPRA_START="python3 -m napari --with muvis-align"
 ENV XPRA_EXIT_WITH_CLIENT="yes"
 ENV XPRA_XVFB_SCREEN="1920x1080x24+32"
 EXPOSE 9876
@@ -99,4 +99,4 @@ ENTRYPOINT []
 # Build:
 # docker build -t muvis-align-xpra .
 # Run:
-# docker run -p 9876:9876 muvis-align-xpra
+# docker run -v "D:\slides:/data" -p 9876:9876 muvis-align-xpra
