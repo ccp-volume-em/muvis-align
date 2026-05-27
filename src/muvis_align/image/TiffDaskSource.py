@@ -126,13 +126,13 @@ class TiffDaskSource(DaskSource):
         if level < 0:
             dask_data = []
             for level in range(len(self.shapes)):
-                #lazy_array = dask.delayed(tifffile.imread)(self.filename, level=level)
-                lazy_array = dask.delayed(self.pages[level].asarray)
+                lazy_array = dask.delayed(tifffile.imread)(self.filename, level=level)
+                #lazy_array = dask.delayed(self.pages[level].asarray)()
                 data = dask.array.from_delayed(lazy_array, shape=self.shapes[level], dtype=self.dtype)
                 dask_data.append(data)
         else:
-            #lazy_array = dask.delayed(tifffile.imread)(self.filename, level=level)
-            lazy_array = dask.delayed(self.pages[level].asarray)
+            lazy_array = dask.delayed(tifffile.imread)(self.filename, level=level)
+            #lazy_array = dask.delayed(self.pages[level].asarray)()
             dask_data = dask.array.from_delayed(lazy_array, shape=self.shapes[level], dtype=self.dtype)
         return dask_data
 

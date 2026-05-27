@@ -70,6 +70,8 @@ class MVSRegistrationNapari(QObject, MVSRegistration):
                     viewer.layers.move(current_index, 0)
 
     def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+        if isinstance(viewer, ViewerWidget):
+            viewer = viewer._qtwidget._viewer_model
         shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in self.sims]
         refs = [str(index) for index in range(len(self.sims))]
         labels = list(self.file_labels)
@@ -92,9 +94,6 @@ class MVSRegistrationNapari(QObject, MVSRegistration):
             else:
                 layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
                                           face_color=face_colors)
-                if isinstance(viewer, ViewerWidget):
-                    viewer = viewer._qtwidget._viewer_model
-
                 @viewer.mouse_move_callbacks.append
                 def on_mouse_move(viewer, event):
                     self.selected_shape_index = layer._value[0]
