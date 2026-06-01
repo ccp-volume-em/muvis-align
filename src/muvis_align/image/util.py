@@ -678,7 +678,7 @@ def detect_area_points(image):
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
     if position is None:
         position = si_utils.get_origin_from_sim(sim)
-    if transform_keys is None:
+    if transform_keys is None or len(transform_keys) == 0:
         transform_keys = si_utils.get_tranform_keys_from_sim(sim)
     transform = combine_transforms([np.array(si_utils.get_affine_from_sim(sim, transform_key))
                                     for transform_key in transform_keys])
