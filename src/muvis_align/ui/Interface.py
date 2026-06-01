@@ -1,4 +1,5 @@
 from enum import Enum, auto
+from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils
 from napari.utils.notifications import show_warning
 import numpy as np
@@ -6,9 +7,10 @@ import os.path
 from qtpy.QtGui import QColor
 
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
-from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
-from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, get_overlap_images, \
-    affine_from_intrinsic_affine
+from muvis_align.MVSRegistration import MVSRegistration
+from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
+    affine_from_intrinsic_affine, get_sim_shape_2d, get_overlap_shapes, get_overlap_images, \
+    draw_keypoints_matches_napari
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.bilayers_util import get_section_dict
@@ -23,6 +25,8 @@ class ViewMode(Enum):
 
 class Interface:
     def __init__(self, viewer, overview, enable_tabs, verbose=False):
+        self.viewer = viewer
+        self.overview = overview
         self.enable_tabs = enable_tabs
         self.verbose = verbose
         self.raw_template = get_project_template()
@@ -34,8 +38,9 @@ class Interface:
         self.source_metadata = {}
         self.transform_key = 'source_metadata'
         self.view_mode = None
+        self.selected_shape_index = None
 
-        self.reg = MVSRegistrationNapari(viewer, overview)
+        self.reg = MVSRegistration()
 
     def get_function(self, function_label):
         if hasattr(self, function_label):
@@ -45,7 +50,7 @@ class Interface:
 
     def tab_changed(self, tab_label):
         if tab_label == 'features':
-            self.update_overview()
+            self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', self.transform_key, True)
 
     def project_path(self, path):
         self.params_path = path
@@ -164,17 +169,90 @@ class Interface:
 
     def update_view(self, show_preprocessed=False):
         if self.view_mode != ViewMode.OVERVIEW or show_preprocessed:
-            self.reg.clear_napari_view.emit()
+            self._clear_napari_view(self.viewer)
             self.view_mode = ViewMode.OVERVIEW
         if self.params['input_output']['preview_images'] or show_preprocessed:
-            self.reg.update_napari_view_data.emit(f'{self.reg.fileset_label} data', self.transform_key,
+            self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', self.transform_key,
                                                   show_preprocessed)
         if self.params['input_output']['preview_shapes'] and not show_preprocessed:
-            self.reg.update_napari_view_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key, False)
+            self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', self.transform_key, False)
 
-    def update_overview(self):
-        #self.reg.update_napari_overview_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key, True)
-        self.reg._update_napari_shapes(self.reg.overview, f'{self.reg.fileset_label} shapes', self.transform_key, True)
+    def _clear_napari_view(self, viewer):
+        viewer.layers.clear()
+
+    def _update_napari_data(self, viewer, layer_name, transform_key, show_preprocessed=False):
+        if show_preprocessed:
+            sims = self.register_sims
+        else:
+            sims = self.sims
+        fused, _ = self.fuse(sims, transform_key=transform_key, fusion_method='additive')
+        fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
+        fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
+        if fused is not None:
+            if layer_name in viewer.layers:
+                viewer.layers[layer_name].data = fused
+            else:
+                image_layer = viewer.add_image(fused, name=layer_name, scale=fused_scale, translate=fused_position)
+                current_index = viewer.layers.index(image_layer)
+                # ensure image layer goes on 'bottom'
+                if current_index > 0:
+                    viewer.layers.move(current_index, 0)
+
+    def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+        if isinstance(viewer, ViewerWidget):
+            viewer = viewer._qtwidget._viewer_model
+        sims = self.reg.sims
+        shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in sims]
+        refs = [str(index) for index in range(len(sims))]
+        labels = list(self.reg.file_labels)
+        face_colors = [(1, 1, 1) for _ in range(len(sims))]
+        if overlaps:
+            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key)
+            shapes += shapes2
+            refs += [f'{index1} {index2}' for index1, index2 in pairs]
+            labels += ['' for _ in pairs]
+            face_colors += [(1, 1, 0) for _ in pairs]
+        if len(shapes) > 0:
+            text = {'string': '{labels}'}
+            features = {'refs': refs, 'labels': labels}
+            if layer_name in viewer.layers:
+                layer = viewer.layers[layer_name]
+                layer.data = shapes
+                layer.face_color = face_colors
+                layer.text = text
+                layer.features = features
+            else:
+                layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
+                                          face_color=face_colors)
+                @viewer.mouse_move_callbacks.append
+                def on_mouse_move(viewer, event):
+                    self.selected_shape_index = layer._value[0]
+
+                @viewer.mouse_drag_callbacks.append
+                def on_mouse_drag(viewer, event):
+                    if event.type == "mouse_press" and event.button == 1:
+                        if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
+                            self.on_selection_change(refs[self.selected_shape_index])
+                    yield
+
+
+    def on_selection_change(self, ref):
+        print(f"Currently selected shape: {ref}")
+
+    def _update_napari_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
+
+        layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
+                                               moving_data2, moving_points,
+                                               matches, inliers, points_color='blue')
+
+        viewer.layers.clear()
+        for data, kwargs, layer_type in layers:
+            if layer_type == "image":
+                viewer.add_image(data, **kwargs)
+            elif layer_type == "points":
+                viewer.add_points(data, **kwargs)
+            elif layer_type == "shapes":
+                viewer.add_shapes(data, **kwargs)
 
     def preview_registration(self):
         label1 = self.param_widgets.get('features.reg_preview_image1').get_value()
@@ -204,10 +282,7 @@ class Interface:
         moving_points = results.get('moving_points', [])
         matches = results.get('matches', [])
         inliers = results.get('inliers', [])
-        self.reg.clear_napari_view.emit()
-        self.reg._update_napari_features(overlap1, fixed_points,
-                                         overlap2, moving_points,
-                                         matches, inliers)
+        self._update_napari_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
         self.view_mode = ViewMode.FEATURES
 
     def populate_metrics_table(self, metrics):

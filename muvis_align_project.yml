@@ -22,8 +22,8 @@ input_output:
   source_position_y: source
   source_position_z: source
   source_rotation: source
-  source_size_: source
-  source_size_x: source
-  source_size_y: source
+  source_scale_x: source
+  source_scale_y: source
+  source_scale_z: source
 pre_processing:
   normalisation: 'False'
