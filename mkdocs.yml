@@ -24,6 +24,8 @@ markdown_extensions:
 
 nav:
   - index.md
+  - pipeline.md
+  - notebooks.md
   - poster.md
   - references.md
 
