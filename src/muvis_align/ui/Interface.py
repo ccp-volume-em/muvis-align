@@ -154,12 +154,12 @@ class Interface:
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
         # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
         table_widget = self.param_widgets.get('input_output.metadata_table')
-        data = {
-           'label': ["'" + label + "'" for label in self.reg.file_labels],
-           'position': [print_dict_simple(get_sim_position_final(sim, transform_keys=transform_keys)) for sim in sims],
-           'size': [print_dict_simple(get_sim_physical_size(sim)) for sim in sims]
-        }
-        table_widget.set_value(data)
+        properties = ['position', 'size']
+        data = [[print_dict_simple(get_sim_position_final(sim, transform_keys=transform_keys)),
+                 print_dict_simple(get_sim_physical_size(sim))]
+                for sim in sims]
+        # Table: tuple-of-values : ([values], [row_headers], [column_headers])
+        table_widget.set_value((data, self.reg.file_labels, properties))
         table_widget.read_only = True   # https://github.com/pyapp-kit/magicgui/issues/348
 
     def populate_image_selection(self):
@@ -171,15 +171,25 @@ class Interface:
         index = 1 if len(labels) > 1 else 0
         widget2.set_value(labels[index], choices=labels)
 
+    def get_best_transform_key(self):
+        transforms = get_transforms(self.reg.sims)
+        if self.reg.reg_transform_key in transforms:
+            transform_key = self.reg.reg_transform_key
+        elif 'transform' in transforms:
+            transform_key = 'transform'
+        elif self.reg.source_transform_key:
+            transform_key = self.reg.source_transform_key
+        else:
+            transform_key = None
+        return transform_key
+
     def update_overview(self, overlaps=True):
-        transform_key = self.reg.reg_transform_key if self.reg.reg_transform_key in get_transforms(self.reg.sims)\
-            else self.reg.source_transform_key
+        transform_key = self.get_best_transform_key()
         self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', transform_key,
                                    overlaps=overlaps)
 
     def update_view(self, overlaps=False, show_preprocessed=False):
-        transform_key = self.reg.reg_transform_key if self.reg.reg_transform_key in get_transforms(self.reg.sims)\
-            else self.reg.source_transform_key
+        transform_key = self.get_best_transform_key()
         if self.view_mode != ViewMode.OVERVIEW or show_preprocessed:
             self._clear_napari_view(self.viewer)
             self.view_mode = ViewMode.OVERVIEW
@@ -195,10 +205,10 @@ class Interface:
 
     def _update_napari_data(self, viewer, layer_name, transform_key, show_preprocessed=False):
         if show_preprocessed:
-            sims = self.register_sims
+            sims = self.reg.register_sims
         else:
-            sims = self.sims
-        fused, _ = self.fuse(sims, transform_key=transform_key, fusion_method='additive')
+            sims = self.reg.sims
+        fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method='additive')
         fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
         fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
         if fused is not None:
@@ -236,7 +246,7 @@ class Interface:
                 layer.features = features
             else:
                 viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
-                                  face_color=face_colors)
+                                  face_color=face_colors, edge_width=0.1)
 
                 # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
                 #                           face_color=face_colors)
@@ -311,7 +321,8 @@ class Interface:
                         metric_keys.append(metric_key)
         metrics = metrics_dict.get('pairs')
         if metrics:
-            for pair_key, pair_value in metrics.items():
+            for pair_key_indices, pair_value in metrics.items():
+                pair_key = self.reg.file_labels[pair_key_indices[0]] + ' - ' + self.reg.file_labels[pair_key_indices[1]]
                 if pair_key not in item_keys:
                     item_keys.append(pair_key)
                 for transform_key, transform_value in pair_value.items():
@@ -327,13 +338,13 @@ class Interface:
         metrics = metrics_dict.get('summary')
         if metrics:
             item_offset = 1
-            for transform_index, (transform_key, transform_value) in enumerate(metrics.items()):
+            for transform_index, transform_value in enumerate(metrics.values()):
                 for metric_value in transform_value.values():
                     metrics_table[0, transform_index] = metric_value
         metrics = metrics_dict.get('pairs')
         if metrics:
-            for pair_index, (pair_key, pair_value) in enumerate(metrics.items()):
-                for transform_index, (transform_key, transform_value) in enumerate(pair_value.items()):
+            for pair_index, pair_value in enumerate(metrics.values()):
+                for transform_index, transform_value in enumerate(pair_value.values()):
                     for metric_value in transform_value.values():
                         metrics_table[pair_index + item_offset, transform_index] = metric_value
 

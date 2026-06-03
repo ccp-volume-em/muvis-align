@@ -875,7 +875,7 @@ def get_sim_shape_2d(sim, transform_key=None):
 
 
 def squeeze_sim_dims(sim, transform_key):
-    sim = sim.squeeze().copy()
+    sim = sim.copy()
     affine = si_utils.get_affine_from_sim(sim, transform_key)
     if "t" in affine.dims:
         affine = affine.isel(t=0)
@@ -894,6 +894,7 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
             sim1,
             sim2,
             input_transform_key=transform_key,
+            output_transform_key=transform_key,
             overlap_tolerance=overlap_tolerance,
         )
         points = result['intersection'].intersections
