@@ -1,6 +1,3 @@
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    import napari
 from magicclass.ext.napari.viewer import ViewerWidget
 from qtpy.QtWidgets import QTabWidget, QSizePolicy
 

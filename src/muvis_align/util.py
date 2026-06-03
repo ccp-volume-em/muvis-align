@@ -6,6 +6,7 @@ from datetime import datetime
 import glob
 import json
 import math
+from matplotlib.pyplot import colormaps
 import numpy as np
 import os.path
 import re
@@ -689,6 +690,43 @@ def retuple(chunks, shape):
 
     dims_to_add = len(shape) - len(chunks)
     return *shape[:dims_to_add], *chunks
+
+
+def metric_to_color(value):
+    # metric range 0...1 to traffic-light color
+    if value > 0.5:
+        color = 'green'
+    elif value > 0.25:
+        color = 'gold'
+    elif value > 0.1:
+        color = 'orange'
+    else:
+        color = 'red'
+    return color
+
+
+def metric_to_rgb(value, min_light=0, max_light=1, range=1.0):
+    # metric range 0...1 to red-yellow-green ranged rgb
+    colormap = colormaps.get('RdYlGn')
+    index = int(value * colormap.N)
+    r, g, b, a = [float(value) for value in colormap(index)]
+    light = 0.2125 * r + 0.7154 * g + 0.0721 * b
+    if light < min_light:
+        factor = light / min_light
+        r = 1 - (1 - r) * factor
+        g = 1 - (1 - g) * factor
+        b = 1 - (1 - b) * factor
+    elif light > max_light:
+        factor = max_light / light
+        r *= factor
+        g *= factor
+        b *= factor
+    r *= range
+    g *= range
+    b *= range
+    if isinstance(range, int):
+        r, g, b = int(r), int(g), int(b)
+    return r, g, b
 
 
 def import_metadata(content, fields=None, input_path=None):

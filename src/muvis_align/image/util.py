@@ -4,6 +4,7 @@ from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph, metrics
 from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system, \
     get_affine_from_intrinsic_affine
+from scipy.spatial import ConvexHull
 from skimage.filters import gaussian
 from skimage.feature import plot_matched_features
 from skimage.transform import downscale_local_mean
@@ -677,7 +678,7 @@ def detect_area_points(image):
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
     if position is None:
         position = si_utils.get_origin_from_sim(sim)
-    if transform_keys is None:
+    if transform_keys is None or len(transform_keys) == 0:
         transform_keys = si_utils.get_tranform_keys_from_sim(sim)
     transform = combine_transforms([np.array(si_utils.get_affine_from_sim(sim, transform_key))
                                     for transform_key in transform_keys])
@@ -816,26 +817,6 @@ def calc_output_properties(sims, transform_key, output_spacing=None, z_scale=Non
     return output_properties
 
 
-def get_sim_shape_2d(sim, transform_key=None):
-    if 't' in sim.coords.xindexes:
-        # work-around for points error in get_overlap_bboxes()
-        sim1 = si_utils.sim_sel_coords(sim, {'t': 0})
-    else:
-        sim1 = sim
-    stack_props = si_utils.get_stack_properties_from_sim(sim1, transform_key=transform_key)
-    vertices = mv_graph.get_vertices_from_stack_props(stack_props)
-    if vertices.shape[1] == 3:
-        # remove z coordinate
-        vertices = vertices[:, 1:]
-    if len(vertices) >= 8:
-        # remove redundant x/y vertices
-        vertices = vertices[:4]
-    if len(vertices) >= 4:
-        # last 2 vertices appear to be swapped
-        vertices[2:] = np.array(list(reversed(vertices[2:])))
-    return vertices
-
-
 def get_properties_from_transform(transform):
     if 't' in transform.dims:
         transform = transform.sel(t=0)
@@ -874,6 +855,41 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
     return translation, rotation
 
 
+def get_sim_shape_2d(sim, transform_key=None):
+    sim = sim.squeeze()
+    stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
+    points = mv_graph.get_vertices_from_stack_props(stack_props)
+    if points.shape[1] == 3:
+        # remove z coordinate
+        points = points[:, 1:]
+    if len(points) >= 8:
+        # remove redundant x/y vertices
+        points = points[:4]
+    hull = ConvexHull(points)
+    shape = points[hull.vertices]
+    return shape
+
+
+def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
+    # functionality copied from registration.register_pair_of_msims()
+    shapes = []
+    if pairs is None:
+        pairs = np.transpose(np.triu_indices(len(sims), 1))
+    for pair in pairs:
+        sim1, sim2 = sims[pair[0]].squeeze(), sims[pair[1]].squeeze()
+        result = _get_overlap_bboxes(
+            sim1,
+            sim2,
+            input_transform_key=transform_key,
+            overlap_tolerance=overlap_tolerance,
+        )
+        points = result['intersection'].intersections
+        hull = ConvexHull(points)
+        shape = points[hull.vertices]
+        shapes.append(shape)
+    return shapes, pairs
+
+
 def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):
     sims = [sim1.squeeze(), sim2.squeeze()]
     # functionality copied from registration.register_pair_of_msims()
@@ -882,7 +898,6 @@ def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):
         sims[0],
         sims[1],
         input_transform_key=transform_key,
-        output_transform_key=None,
         overlap_tolerance=overlap_tolerance,
     )
     lowers, uppers = result['lowers'], result['uppers']
@@ -930,35 +945,6 @@ def affine_from_intrinsic_affine(affine, sims_pixel_space, transform_key):
         transform_key_moving=transform_key,
     )
     return affine_phys
-
-
-def get_overlap_images2(sim1, sim2, transform_key):
-    spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
-    overlap = metrics.tile_pair_image_metrics(
-        [msi_utils.get_msim_from_sim(sim1), msi_utils.get_msim_from_sim(sim2)],
-        base_transform_key=transform_key,  # defines overlap region
-        query_transform_keys=[transform_key]
-    )
-    bboxes = list(overlap['bboxes'].values())
-    if len(bboxes) == 0:
-        return None
-    lower, upper = bboxes[0]['lower'], bboxes[0]['upper']
-
-    overlaps_sims = [
-        sim.sel({dim: slice(lower[idim], upper[idim]) for idim, dim in enumerate(spatial_dims)})
-        for isim, sim in enumerate([sim1.squeeze(), sim2.squeeze()])
-    ]
-
-    sims_pixel_space = sims_to_intrinsic_coord_system(
-        overlaps_sims[0], overlaps_sims[1],
-        transform_key=transform_key,
-        overlap_bboxes=([lower, lower], [upper, upper]),
-    )
-
-    fixed_data = xr.DataArray(sims_pixel_space[0].data, dims=spatial_dims)
-    moving_data = xr.DataArray(sims_pixel_space[1].data, dims=spatial_dims)
-
-    return overlaps_sims
 
 
 def combine_transforms(transforms):

@@ -1,18 +1,21 @@
 from enum import Enum, auto
+from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils
 from napari.utils.notifications import show_warning
 import numpy as np
 import os.path
 from qtpy.QtGui import QColor
+from qtpy.QtWidgets import QMessageBox
 
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
-from muvis_align.MVSRegistrationNapari import MVSRegistrationNapari
-from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, get_overlap_images, \
-    affine_from_intrinsic_affine
+from muvis_align.MVSRegistration import MVSRegistration
+from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
+    affine_from_intrinsic_affine, get_sim_shape_2d, get_overlap_shapes, get_overlap_images, \
+    draw_keypoints_matches_napari
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value
+from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb
 
 
 class ViewMode(Enum):
@@ -23,6 +26,8 @@ class ViewMode(Enum):
 
 class Interface:
     def __init__(self, viewer, overview, enable_tabs, verbose=False):
+        self.viewer = viewer
+        self.overview = overview
         self.enable_tabs = enable_tabs
         self.verbose = verbose
         self.raw_template = get_project_template()
@@ -34,8 +39,9 @@ class Interface:
         self.source_metadata = {}
         self.transform_key = 'source_metadata'
         self.view_mode = None
+        self.selected_shape_index = None
 
-        self.reg = MVSRegistrationNapari(viewer, overview)
+        self.reg = MVSRegistration()
 
     def get_function(self, function_label):
         if hasattr(self, function_label):
@@ -45,7 +51,11 @@ class Interface:
 
     def tab_changed(self, tab_label):
         if tab_label == 'features':
-            self.update_overview()
+            self._clear_napari_view(self.viewer)
+            self.view_mode = ViewMode.FEATURES
+        elif self.view_mode == ViewMode.FEATURES:
+            self._clear_napari_view(self.viewer)
+            self.view_mode = None
 
     def project_path(self, path):
         self.params_path = path
@@ -85,17 +95,17 @@ class Interface:
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'x'], value)
 
-    def source_size_z(self, value):
+    def source_scale_z(self, value):
         if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['size', 'z'], value)
+            set_dict_value(self.source_metadata, ['scale', 'z'], value)
 
-    def source_size_y(self, value):
+    def source_scale_y(self, value):
         if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['size', 'y'], value)
+            set_dict_value(self.source_metadata, ['scale', 'y'], value)
 
-    def source_size_x(self, value):
+    def source_scale_x(self, value):
         if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['size', 'x'], value)
+            set_dict_value(self.source_metadata, ['scale', 'x'], value)
 
     def source_rotation(self, value):
         if is_valid_value(value):
@@ -114,20 +124,22 @@ class Interface:
             show_warning('No input images found')
 
     def update_metadata_source(self):
-        if not self.reg.is_registered:
+        if not self.reg.is_pairs_registered():
             self.reg.init_sims(source_metadata=self.source_metadata)
         sims = self.reg.sims
 
         coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
         self.populate_coordinate_systems(coord_systems)
-        if self.reg.initialised:
+        if self.reg.is_initialised():
             self.populate_metadata_table(sims)
+            self.update_overview()
             self.update_view()
 
     def pre_processing_process(self):
         params_features = self.params['pre_processing']
-        self.reg.preprocess(self.reg.sims, **params_features)
-        self.update_view(show_preprocessed=True)
+        _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
+        if modified:
+            self.update_view(show_preprocessed=True)
         self.enable_tabs(True, 3)
 
     def populate_coordinate_systems(self, coord_systems):
@@ -137,7 +149,7 @@ class Interface:
 
     def coordinate_system(self, transform_key):
         self.transform_key = transform_key
-        if self.reg.initialised:
+        if self.reg.is_initialised():
             self.populate_metadata_table(self.reg.sims, [transform_key])
 
     def populate_metadata_table(self, sims, transform_keys=None):
@@ -161,19 +173,96 @@ class Interface:
         index = 1 if len(labels) > 1 else 0
         widget2.set_value(labels[index], choices=labels)
 
-    def update_view(self, show_preprocessed=False):
+    def update_overview(self, overlaps=True):
+        self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', self.transform_key,
+                                   overlaps=overlaps)
+
+    def update_view(self, overlaps=False, show_preprocessed=False):
         if self.view_mode != ViewMode.OVERVIEW or show_preprocessed:
-            self.reg.clear_napari_view.emit()
+            self._clear_napari_view(self.viewer)
             self.view_mode = ViewMode.OVERVIEW
         if self.params['input_output']['preview_images'] or show_preprocessed:
-            self.reg.update_napari_view_data.emit(f'{self.reg.fileset_label} data', self.transform_key,
-                                                  show_preprocessed)
+            self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', self.transform_key,
+                                     show_preprocessed)
         if self.params['input_output']['preview_shapes'] and not show_preprocessed:
-            self.reg.update_napari_view_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key)
+            self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', self.transform_key,
+                                       overlaps=overlaps)
 
-    def update_overview(self):
-        #self.reg.update_napari_overview_data.emit(f'{self.reg.fileset_label} data', self.transform_key)
-        self.reg.update_napari_overview_shapes.emit(f'{self.reg.fileset_label} shapes', self.transform_key)
+    def _clear_napari_view(self, viewer):
+        viewer.layers.clear()
+
+    def _update_napari_data(self, viewer, layer_name, transform_key, show_preprocessed=False):
+        if show_preprocessed:
+            sims = self.register_sims
+        else:
+            sims = self.sims
+        fused, _ = self.fuse(sims, transform_key=transform_key, fusion_method='additive')
+        fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
+        fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
+        if fused is not None:
+            if layer_name in viewer.layers:
+                viewer.layers[layer_name].data = fused
+            else:
+                image_layer = viewer.add_image(fused, name=layer_name, scale=fused_scale, translate=fused_position)
+                current_index = viewer.layers.index(image_layer)
+                # ensure image layer goes on 'bottom'
+                if current_index > 0:
+                    viewer.layers.move(current_index, 0)
+
+    def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+        if isinstance(viewer, ViewerWidget):
+            viewer = viewer._qtwidget._viewer_model
+        sims = self.reg.sims
+        shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in sims]
+        refs = [str(index) for index in range(len(sims))]
+        labels = list(self.reg.file_labels)
+        face_colors = [(1, 1, 1) for _ in range(len(sims))]
+        if overlaps:
+            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key)
+            shapes += shapes2
+            refs += [f'{index1} {index2}' for index1, index2 in pairs]
+            labels += ['' for _ in pairs]
+            face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
+        if len(shapes) > 0:
+            text = {'string': '{labels}'}
+            features = {'refs': refs, 'labels': labels}
+            if layer_name in viewer.layers:
+                layer = viewer.layers[layer_name]
+                layer.data = shapes
+                layer.face_color = face_colors
+                layer.text = text
+                layer.features = features
+            else:
+                viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
+                                  face_color=face_colors)
+
+                # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
+                #                           face_color=face_colors)
+                # @viewer.mouse_move_callbacks.append
+                # def on_mouse_move(viewer, event):
+                #     self.selected_shape_index = layer._value[0]
+                #
+                # @viewer.mouse_drag_callbacks.append
+                # def on_mouse_drag(viewer, event):
+                #     if event.type == "mouse_press" and event.button == 1:
+                #         if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
+                #             self.on_selection_change(refs[self.selected_shape_index])
+                #     yield
+
+    def _update_napari_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
+
+        layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
+                                               moving_data2, moving_points,
+                                               matches, inliers, points_color='blue')
+
+        viewer.layers.clear()
+        for data, kwargs, layer_type in layers:
+            if layer_type == "image":
+                viewer.add_image(data, **kwargs)
+            elif layer_type == "points":
+                viewer.add_points(data, **kwargs)
+            elif layer_type == "shapes":
+                viewer.add_shapes(data, **kwargs)
 
     def preview_registration(self):
         label1 = self.param_widgets.get('features.reg_preview_image1').get_value()
@@ -203,34 +292,41 @@ class Interface:
         moving_points = results.get('moving_points', [])
         matches = results.get('matches', [])
         inliers = results.get('inliers', [])
-        self.reg.clear_napari_view.emit()
-        self.reg._update_napari_features(overlap1, fixed_points,
-                                         overlap2, moving_points,
-                                         matches, inliers)
-        self.view_mode = ViewMode.FEATURES
+        self._update_napari_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
 
     def populate_metrics_table(self, metrics):
         table_widget = self.param_widgets.get('features.metrics_table')
         table_widget.set_value(metrics)
         for coli, (col_key, col_value) in enumerate(metrics.items()):
             for rowi, (key, value) in enumerate(col_value.items()):
-                if value > 0.5:
-                    color = QColor('green')
-                elif value > 0.25:
-                    color = QColor('gold')
-                elif value > 0.1:
-                    color = QColor('orange')
-                else:
-                    color = QColor('red')
-                table_widget.widget.native.item(rowi, coli).setBackground(color)
+                table_widget.widget.native.item(rowi, coli).setBackground(
+                    QColor(*metric_to_rgb(value, range=255, max_light=0.5)))
         table_widget.read_only = True
 
     def features_process(self):
-        if not self.reg.is_registered:
-            self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['features'])
-
-
+        if not self.reg.is_global_registered():
+            reply = QMessageBox.question(None, 'muvis-align','Are you sure you want to run pair registration?',
+                                         QMessageBox.Yes|QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self._clear_napari_view(self.viewer)
+                self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['features'])
+                self.update_registered()
 
     def global_registration(self):
-        self.reg.register_global(self.reg.sims, self.reg.msims, register_indices=self.reg.register_indices,
-                                 params=self.params['features'])
+        if not self.reg.is_global_registered():
+            reply = QMessageBox.question(None, 'muvis-align','Are you sure you want to run global registration?',
+                                         QMessageBox.Yes|QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self._clear_napari_view(self.viewer)
+                self.reg.register_global(self.reg.sims, self.reg.msims, register_indices=self.reg.register_indices,
+                                         params=self.params['features'])
+                self.update_registered()
+
+    def update_registered(self):
+        sims = self.reg.sims
+        coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+        self.populate_coordinate_systems(coord_systems)
+        self.populate_metadata_table(sims)
+        self.update_overview()
+        self.update_view()
+        self.populate_metrics_table(self.reg.metrics['summary'])
