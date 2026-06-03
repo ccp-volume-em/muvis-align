@@ -1,0 +1,1435 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="convert source image to OME-TIFF or OME-Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://FrancisCrickInstitute.github.io/muvis-align/notebooks/">
+      
+      
+        <link rel="prev" href="../pipeline/">
+      
+      
+        <link rel="next" href="../poster/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Jupyter Notebooks Guide - muvis-align</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#jupyter-notebooks-guide" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="muvis-align" class="md-header__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            muvis-align
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Jupyter Notebooks Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/FrancisCrickInstitute/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="muvis-align" class="md-nav__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    muvis-align
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/FrancisCrickInstitute/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running the muvis-align Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jupyter Notebooks Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jupyter Notebooks Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-navigation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Navigation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pipelineipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pipeline.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stitching2dipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stitching2d.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature_matchingipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        feature_matching.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature_matching_metricsipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        feature_matching_metrics.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature_matching_overlayipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        feature_matching_overlay.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stitching2d_metricsipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stitching2d_metrics.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stitching2d_split_registrationipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stitching2d_split_registration.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tile_staging_napariipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tile_staging_napari.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#general-tips-for-all-notebooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General Tips for All Notebooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="General Tips for All Notebooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setting-up-your-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setting Up Your Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-parameter-adjustments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Parameter Adjustments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debugging-registration-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging Registration Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Optimization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-notebooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Notebooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the Notebooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#start-jupyter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start Jupyter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#navigate-to-notebooks-folder-and-select-a-notebook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Navigate to notebooks folder and select a notebook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-cells-sequentially-shiftenter-or-all-at-once-kernel-run-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run cells sequentially (Shift+Enter) or all at once (Kernel &gt; Run All)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../poster/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align: building a registration pipeline for large data &amp; next gen file format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-navigation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Navigation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pipelineipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pipeline.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stitching2dipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stitching2d.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature_matchingipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        feature_matching.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature_matching_metricsipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        feature_matching_metrics.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#feature_matching_overlayipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        feature_matching_overlay.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stitching2d_metricsipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stitching2d_metrics.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stitching2d_split_registrationipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stitching2d_split_registration.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tile_staging_napariipynb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        tile_staging_napari.ipynb
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#general-tips-for-all-notebooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General Tips for All Notebooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="General Tips for All Notebooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#setting-up-your-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Setting Up Your Data
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#common-parameter-adjustments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Parameter Adjustments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#debugging-registration-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Debugging Registration Issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Performance Optimization
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-notebooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Notebooks
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the Notebooks">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#start-jupyter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Start Jupyter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#navigate-to-notebooks-folder-and-select-a-notebook" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Navigate to notebooks folder and select a notebook
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-cells-sequentially-shiftenter-or-all-at-once-kernel-run-all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run cells sequentially (Shift+Enter) or all at once (Kernel &gt; Run All)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="jupyter-notebooks-guide">Jupyter Notebooks Guide</h1>
+<p>This guide provides an overview of the Jupyter notebooks included in the muvis-align project. These notebooks demonstrate various aspects of the image registration and stitching pipeline, from basic workflows to interactive debugging and visualization.</p>
+<h2 id="quick-navigation">Quick Navigation</h2>
+<table>
+<thead>
+<tr>
+<th>Notebook</th>
+<th>Purpose</th>
+<th>Audience</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#pipelineipynb">pipeline.ipynb</a></td>
+<td>Complete workflow example</td>
+<td>Beginners</td>
+</tr>
+<tr>
+<td><a href="#stitching2dipynb">stitching2d.ipynb</a></td>
+<td>Streamlined 2D stitching</td>
+<td>General users</td>
+</tr>
+<tr>
+<td><a href="#feature_matchingipynb">feature_matching.ipynb</a></td>
+<td>Interactive feature visualization</td>
+<td>Method developers</td>
+</tr>
+<tr>
+<td><a href="#feature_matching_metricsipynb">feature_matching_metrics.ipynb</a></td>
+<td>Feature matching with metrics</td>
+<td>Advanced users</td>
+</tr>
+<tr>
+<td><a href="#feature_matching_overlayipynb">feature_matching_overlay.ipynb</a></td>
+<td>Tile overlap visualization</td>
+<td>Debugging</td>
+</tr>
+<tr>
+<td><a href="#stitching2d_metricsipynb">stitching2d_metrics.ipynb</a></td>
+<td>2D stitching with metrics</td>
+<td>Quality analysis</td>
+</tr>
+<tr>
+<td><a href="#stitching2d_split_registrationipynb">stitching2d_split_registration.ipynb</a></td>
+<td>Advanced registration control</td>
+<td>Parameter optimization</td>
+</tr>
+<tr>
+<td><a href="#tile_staging_napariipynb">tile_staging_napari.ipynb</a></td>
+<td>Interactive napari visualization</td>
+<td>Results inspection</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="pipelineipynb">pipeline.ipynb</h2>
+<p><strong>Purpose:</strong> Complete registration pipeline example showing all major steps</p>
+<p><strong>Best for:</strong> Understanding the full workflow for 2D x/y stitching</p>
+<p><strong>Key Steps:</strong></p>
+<ol>
+<li><strong>Initialization</strong> - Set up the MVSRegistration object with input/output paths</li>
+<li><strong>Load &amp; Preprocess</strong> - Initialize spatial images and apply preprocessing (normalization)</li>
+<li><strong>Feature Detection</strong> - Configure registration method parameters</li>
+<li><strong>Registration</strong> - Perform pairwise and global registration</li>
+<li><strong>Fusion</strong> - Combine registered images into a single output</li>
+</ol>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Initialize</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">)</span>
+
+<span class="c1"># Load and preprocess</span>
+<span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_sims</span><span class="p">()</span>
+<span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">normalisation</span><span class="o">=</span><span class="s1">&#39;global&#39;</span><span class="p">)</span>
+
+<span class="c1"># Configure and run registration</span>
+<span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="c1"># ... more parameters</span>
+<span class="p">}</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">register_params</span><span class="p">)</span>
+
+<span class="c1"># Fuse registered images</span>
+<span class="n">fusion_params</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;average&#39;</span><span class="p">}</span>
+<span class="n">fused_sim</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">fusion_params</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Output:</strong> Registered and fused image with transformation matrices</p>
+<p><strong>Customization:</strong> All parameters can be modified to experiment with different registration methods and settings</p>
+<hr />
+<h2 id="stitching2dipynb">stitching2d.ipynb</h2>
+<p><strong>Purpose:</strong> Streamlined example focusing on the essential 2D stitching workflow</p>
+<p><strong>Best for:</strong> Quick prototyping and understanding basic registration</p>
+<p><strong>Key Differences from pipeline.ipynb:</strong>
+- Combines operations into fewer, more focused cells
+- Emphasizes the core registration workflow
+- Includes quality reporting</p>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># One-step initialization, preprocessing, and registration</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">)</span>
+<span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_sims</span><span class="p">()</span>
+<span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
+
+<span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="s1">&#39;max_trials&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">register_params</span><span class="p">)</span>
+
+<span class="c1"># Report quality metrics</span>
+<span class="n">qualities</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;registration_qualities&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<span class="n">print_dict_simple</span><span class="p">(</span><span class="n">qualities</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Output:</strong> Registration quality metrics for pairwise registrations</p>
+<p><strong>Tip:</strong> Use this as a starting template for your own registration pipelines</p>
+<hr />
+<h2 id="feature_matchingipynb">feature_matching.ipynb</h2>
+<p><strong>Purpose:</strong> Interactive exploration of feature detection and matching between image pairs</p>
+<p><strong>Best for:</strong> Understanding feature-based registration and debugging matching issues</p>
+<p><strong>Key Features:</strong></p>
+<ol>
+<li><strong>Overlap Visualization</strong> - View the overlapping regions between adjacent tiles</li>
+<li><strong>Interactive Parameters</strong> - Modify parameters and see results immediately</li>
+<li><strong>Keypoint Visualization</strong> - Visualize detected keypoints and their matches</li>
+</ol>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Initialize with debug mode for detailed output</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
+                      <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_sims</span><span class="p">()</span>
+<span class="n">norm_sims</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
+
+<span class="c1"># Get and visualize overlap</span>
+<span class="n">overlap1</span><span class="p">,</span> <span class="n">overlap2</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">get_overlap_images</span><span class="p">(</span><span class="n">norm_sims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">norm_sims</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> 
+                                            <span class="n">reg</span><span class="o">.</span><span class="n">source_transform_key</span><span class="p">)</span>
+<span class="n">draw_keypoints_matches</span><span class="p">(</span><span class="n">overlap1</span><span class="p">,</span> <span class="p">[],</span> <span class="n">overlap2</span><span class="p">,</span> <span class="p">[])</span>
+
+<span class="c1"># Configure and visualize feature matching</span>
+<span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>  <span class="c1"># Try &#39;sift&#39; or &#39;orb&#39;</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="s1">&#39;max_trials&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><strong>Interactive Exploration:</strong>
+- Modify <code>name</code> parameter to use different feature detectors:
+  - <code>'sift'</code> - Scale-Invariant Feature Transform (more robust, slower)
+  - <code>'orb'</code> - Oriented FAST and Rotated BRIEF (faster, less robust)
+- Adjust <code>gaussian_sigma</code> to smooth the image before feature detection
+- Change <code>transform_type</code> to test different transformation models:
+  - <code>'translation'</code> - Only translation
+  - <code>'euclidean'</code> - Translation + rotation
+  - <code>'affine'</code> - Full affine</p>
+<p><strong>Output:</strong> Visual overlays of keypoints and feature matches between tiles</p>
+<hr />
+<h2 id="feature_matching_metricsipynb">feature_matching_metrics.ipynb</h2>
+<p><strong>Purpose:</strong> Interactive feature matching with alignment quality metrics</p>
+<p><strong>Best for:</strong> Optimizing registration parameters and evaluating match quality</p>
+<p><strong>Key Features:</strong></p>
+<ol>
+<li><strong>Feature Visualization</strong> - Like <code>feature_matching.ipynb</code></li>
+<li><strong>Alignment Metrics</strong> - Compute NCC, SSIM, ONMI on overlapping regions</li>
+<li><strong>Transform Visualization</strong> - Show the estimated transformation</li>
+</ol>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Initialize</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
+                      <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_sims</span><span class="p">()</span>
+<span class="n">norm_sims</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
+
+<span class="c1"># Get overlap with metrics</span>
+<span class="n">overlap1</span><span class="p">,</span> <span class="n">overlap2</span><span class="p">,</span> <span class="n">sims_pixel_space</span> <span class="o">=</span> <span class="n">get_overlap_images</span><span class="p">(</span><span class="n">norm_sims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">norm_sims</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> 
+                                                           <span class="n">reg</span><span class="o">.</span><span class="n">source_transform_key</span><span class="p">)</span>
+
+<span class="c1"># Compute metrics</span>
+<span class="n">metrics</span> <span class="o">=</span> <span class="n">calc_sims_metrics</span><span class="p">(</span><span class="n">norm_sims</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">],</span> <span class="n">overlap_sims</span><span class="o">=</span><span class="n">sims_pixel_space</span><span class="p">)</span>
+
+<span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span> <span class="o">/*</span> <span class="o">...</span> <span class="o">*/</span> <span class="p">}</span>
+<span class="c1"># Run registration and get results</span>
+</code></pre></div>
+<p><strong>Metrics Computed:</strong>
+- <strong>NCC</strong> (Normalized Cross Correlation) - 0 to 1, higher is better
+- <strong>SSIM</strong> (Structural Similarity Index) - -1 to 1, higher is better<br />
+- <strong>ONMI</strong> (Overlapping Normalized Mutual Information) - Higher is better</p>
+<p><strong>Use Case:</strong> Parameter tuning by iteratively adjusting parameters and checking improvement in metrics</p>
+<hr />
+<h2 id="feature_matching_overlayipynb">feature_matching_overlay.ipynb</h2>
+<p><strong>Purpose:</strong> Visualize feature matching between specific tile pairs with overlay</p>
+<p><strong>Best for:</strong> Debugging specific tile pairs and understanding spatial relationships</p>
+<p><strong>Key Features:</strong></p>
+<ol>
+<li><strong>Custom Tile Selection</strong> - Load specific tiles you want to analyze</li>
+<li><strong>Transform Integration</strong> - Load pre-computed transforms from JSON</li>
+<li><strong>Overlay Visualization</strong> - Visual comparison of tiles with estimated alignment</li>
+</ol>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Specify exact tiles to compare</span>
+<span class="n">input_path</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;../data/S000/S000_000_000.ome.zarr&#39;</span><span class="p">,</span> 
+              <span class="s1">&#39;../data/S001/S001_000_001.ome.zarr&#39;</span><span class="p">]</span>
+<span class="n">extra_metadata</span> <span class="o">=</span> <span class="s1">&#39;../aligned_stitched_mappings1.json&#39;</span>  <span class="c1"># Pre-computed transforms</span>
+
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">input_path</span><span class="o">=</span><span class="n">input_path</span><span class="p">,</span> 
+                      <span class="n">extra_metadata</span><span class="o">=</span><span class="n">extra_metadata</span><span class="p">,</span>
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
+                      <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">reg</span><span class="o">.</span><span class="n">file_labels</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;S000_000_000&#39;</span><span class="p">,</span> <span class="s1">&#39;S001_000_001&#39;</span><span class="p">]</span>
+<span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_sims</span><span class="p">()</span>
+<span class="n">norm_sims</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
+
+<span class="c1"># Visualize overlap</span>
+<span class="n">overlap1</span><span class="p">,</span> <span class="n">overlap2</span><span class="p">,</span> <span class="n">sims_pixel_space</span> <span class="o">=</span> <span class="n">get_overlap_images</span><span class="p">(</span><span class="n">norm_sims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">norm_sims</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> 
+                                                           <span class="n">reg</span><span class="o">.</span><span class="n">source_transform_key</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Use Case:</strong> 
+- Verify if pre-computed registrations are correct
+- Inspect specific problematic tile pairs
+- Validate transformation matrices from previous runs</p>
+<hr />
+<h2 id="stitching2d_metricsipynb">stitching2d_metrics.ipynb</h2>
+<p><strong>Purpose:</strong> Complete 2D stitching with detailed metrics reporting</p>
+<p><strong>Best for:</strong> Quality assessment and registration verification</p>
+<p><strong>Key Features:</strong></p>
+<ol>
+<li><strong>Registration with Metrics</strong> - Compute NCC, SSIM, ONMI during registration</li>
+<li><strong>Quality Graph</strong> - Visualize registration quality as a graph</li>
+<li><strong>Detailed Reporting</strong> - Various output formats and summaries</li>
+</ol>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="s1">&#39;max_trials&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s1">&#39;metrics&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;ncc&#39;</span><span class="p">,</span> <span class="s1">&#39;ssim&#39;</span><span class="p">,</span> <span class="s1">&#39;onmi&#39;</span><span class="p">],</span>  <span class="c1"># Request metric computation</span>
+    <span class="s1">&#39;n_parallel_pairwise_regs&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">register_params</span><span class="p">)</span>
+
+<span class="c1"># Access metrics</span>
+<span class="n">pair_metrics</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;metrics&#39;</span><span class="p">]</span>
+<span class="c1"># Analyze quality by examining the graph structure</span>
+</code></pre></div>
+<p><strong>Output Analysis:</strong>
+- Edge weights represent registration quality
+- Visualize the registration graph with matplotlib
+- Export metrics to CSV for further analysis</p>
+<hr />
+<h2 id="stitching2d_split_registrationipynb">stitching2d_split_registration.ipynb</h2>
+<p><strong>Purpose:</strong> Advanced registration with detailed control and multi-step workflow</p>
+<p><strong>Best for:</strong> Fine-tuning parameters and understanding registration steps</p>
+<p><strong>Key Features:</strong></p>
+<ol>
+<li><strong>Separate Pairwise/Global Steps</strong> - Control each registration phase independently</li>
+<li><strong>Intermediary Inspection</strong> - Examine results between steps</li>
+<li><strong>Advanced Filtering</strong> - Apply quality thresholds and edge filtering</li>
+<li><strong>Multi-method Comparison</strong> - Easy comparison of different registration methods</li>
+</ol>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Step 1: Pairwise registration</span>
+<span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span> <span class="o">/*</span> <span class="o">...</span> <span class="o">*/</span> <span class="p">}</span>
+<span class="n">pairwise_results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register_pairs</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">register_sims</span><span class="o">=</span><span class="n">reg_sims</span><span class="p">,</span> 
+                                     <span class="n">params</span><span class="o">=</span><span class="n">register_params</span><span class="p">)</span>
+
+<span class="c1"># Inspect pairwise results</span>
+<span class="n">pairs_graph</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">&#39;pairs_graph&#39;</span><span class="p">]</span>
+<span class="n">msims_reg</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">&#39;msims&#39;</span><span class="p">]</span>
+<span class="n">pair_metrics</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">&#39;metrics&#39;</span><span class="p">]</span>
+
+<span class="c1"># Step 2: Global registration (with optional quality filtering)</span>
+<span class="n">register_params</span><span class="p">[</span><span class="s1">&#39;post_registration_quality_threshold&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.7</span>
+<span class="n">global_results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register_global</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">msims_reg</span><span class="p">,</span> 
+                                    <span class="n">register_indices</span><span class="o">=</span><span class="n">reg_indices</span><span class="p">,</span>
+                                    <span class="n">params</span><span class="o">=</span><span class="n">register_params</span><span class="p">)</span>
+
+<span class="c1"># Step 3: Inspect and save</span>
+<span class="n">transforms</span> <span class="o">=</span> <span class="n">global_results</span><span class="p">[</span><span class="s1">&#39;transforms&#39;</span><span class="p">]</span>
+<span class="c1"># ... further analysis or visualization</span>
+</code></pre></div>
+<p><strong>Advanced Features:</strong>
+- Quality-based edge filtering: <code>post_registration_quality_threshold</code>
+- Different groupwise resolution methods: <code>groupwise_resolution_method</code>
+- Manual pair selection instead of automatic pairing
+- Debug visualization of the registration graph</p>
+<p><strong>Use Case:</strong> Parameter optimization by isolating and testing individual registration components</p>
+<hr />
+<h2 id="tile_staging_napariipynb">tile_staging_napari.ipynb</h2>
+<p><strong>Purpose:</strong> Interactive visualization of tiles and fused images using napari viewer</p>
+<p><strong>Best for:</strong> Results inspection and interactive exploration</p>
+<p><strong>Key Features:</strong></p>
+<ol>
+<li><strong>napari Integration</strong> - Open interactive viewer for spatial exploration</li>
+<li><strong>Tile Staging</strong> - Visualize individual tile positions</li>
+<li><strong>Fused Image</strong> - View the final stitched result</li>
+<li><strong>Interactive Navigation</strong> - Zoom, pan, and inspect details</li>
+</ol>
+<p><strong>Main Operations:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Initialize</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span>
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
+                      <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_sims</span><span class="p">()</span>
+
+<span class="c1"># Calculate tile shapes</span>
+<span class="n">shapes</span> <span class="o">=</span> <span class="p">[</span><span class="n">get_sim_shape_2d</span><span class="p">(</span><span class="n">sim</span><span class="p">,</span> <span class="n">transform_key</span><span class="o">=</span><span class="n">reg</span><span class="o">.</span><span class="n">source_transform_key</span><span class="p">)</span> 
+          <span class="k">for</span> <span class="n">sim</span> <span class="ow">in</span> <span class="n">sims</span><span class="p">]</span>
+
+<span class="c1"># Calculate fused image bounds</span>
+<span class="n">fused_shape</span><span class="p">,</span> <span class="n">fused_offset</span><span class="p">,</span> <span class="n">fused_scale</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
+
+<span class="c1"># Open in napari viewer</span>
+<span class="n">viewer</span> <span class="o">=</span> <span class="n">napari</span><span class="o">.</span><span class="n">Viewer</span><span class="p">()</span>
+<span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">sim</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">file_labels</span><span class="p">,</span> <span class="n">sims</span><span class="p">):</span>
+    <span class="n">viewer</span><span class="o">.</span><span class="n">add_image</span><span class="p">(</span><span class="n">sim</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">si_utils</span><span class="o">.</span><span class="n">get_spacing_from_sim</span><span class="p">(</span><span class="n">sim</span><span class="p">))</span>
+</code></pre></div>
+<p><strong>napari Features:</strong>
+- Multiple image layers for side-by-side comparison
+- Zoom and pan to inspect details
+- Measure distances and angles
+- Export visualizations as images</p>
+<p><strong>Workflow:</strong>
+1. Inspect individual tiles for quality
+2. View fused result to verify stitching
+3. Identify problem areas for further debugging
+4. Export screenshots for reports/documentation</p>
+<hr />
+<h2 id="general-tips-for-all-notebooks">General Tips for All Notebooks</h2>
+<h3 id="setting-up-your-data">Setting Up Your Data</h3>
+<ol>
+<li>
+<p><strong>Modify input paths</strong> to point to your data:
+   <div class="highlight"><pre><span></span><code><span class="n">input_path</span> <span class="o">=</span> <span class="s1">&#39;/path/to/your/data/*.zarr&#39;</span>  <span class="c1"># Supports wildcards</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Adjust output directory</strong>:
+   <div class="highlight"><pre><span></span><code><span class="n">output_path</span> <span class="o">=</span> <span class="s1">&#39;/path/to/output/&#39;</span>
+</code></pre></div></p>
+</li>
+</ol>
+<h3 id="common-parameter-adjustments">Common Parameter Adjustments</h3>
+<p><strong>For faster processing (lower quality):</strong>
+<div class="highlight"><pre><span></span><code><span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>      <span class="c1"># Reduce from 5000</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>        <span class="c1"># Increase blur</span>
+    <span class="s1">&#39;scale&#39;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>                 <span class="c1"># Downsample during processing</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<p><strong>For better accuracy (slower):</strong>
+<div class="highlight"><pre><span></span><code><span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">10000</span><span class="p">,</span>       <span class="c1"># Increase from 5000</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>       <span class="c1"># Increase from 3</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span>  <span class="c1"># Stricter threshold</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<p><strong>For different image types:</strong>
+<div class="highlight"><pre><span></span><code><span class="c1"># For very noisy images</span>
+<span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>        <span class="c1"># More blur</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="s1">&#39;global&#39;</span><span class="p">,</span>  <span class="c1"># Global normalization</span>
+<span class="p">}</span>
+
+<span class="c1"># For high-contrast images</span>
+<span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;orb&#39;</span><span class="p">,</span>           <span class="c1"># Faster, good for high contrast</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">3000</span><span class="p">,</span>     <span class="c1"># Fewer keypoints needed</span>
+<span class="p">}</span>
+</code></pre></div></p>
+<h3 id="debugging-registration-issues">Debugging Registration Issues</h3>
+<ol>
+<li><strong>Start with <code>feature_matching.ipynb</code></strong> to verify feature detection</li>
+<li><strong>Check metrics with <code>feature_matching_metrics.ipynb</code></strong> to assess alignment quality</li>
+<li><strong>Use <code>stitching2d_split_registration.ipynb</code></strong> to isolate problem steps</li>
+<li><strong>Visualize with <code>tile_staging_napari.ipynb</code></strong> to inspect spatial results</li>
+</ol>
+<h3 id="performance-optimization">Performance Optimization</h3>
+<ul>
+<li>Use <code>n_parallel_pairwise_regs</code> &gt; 1 to parallelize pairwise registrations</li>
+<li>Reduce <code>scale</code> to process downsampled images (faster but less accurate)</li>
+<li>Limit <code>max_keypoints</code> for faster feature detection</li>
+<li>Use <code>orb</code> method instead of <code>sift</code> for speed</li>
+</ul>
+<hr />
+<h2 id="running-the-notebooks">Running the Notebooks</h2>
+<h3 id="requirements">Requirements</h3>
+<ul>
+<li>Jupyter or JupyterLab</li>
+<li>muvis-align installed</li>
+<li>multiview-stitcher package</li>
+<li>napari (for tile_staging_napari.ipynb)</li>
+</ul>
+<h3 id="start-jupyter">Start Jupyter</h3>
+<div class="highlight"><pre><span></span><code>jupyter<span class="w"> </span>notebook
+</code></pre></div>
+<h3 id="navigate-to-notebooks-folder-and-select-a-notebook">Navigate to notebooks folder and select a notebook</h3>
+<h3 id="run-cells-sequentially-shiftenter-or-all-at-once-kernel-run-all">Run cells sequentially (Shift+Enter) or all at once (Kernel &gt; Run All)</h3>
+<hr />
+<h2 id="troubleshooting">Troubleshooting</h2>
+<table>
+<thead>
+<tr>
+<th>Issue</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"No files matched"</td>
+<td>Check input path pattern and file extensions</td>
+</tr>
+<tr>
+<td>"ImportError"</td>
+<td>Ensure muvis-align is installed and parent directory is in sys.path</td>
+</tr>
+<tr>
+<td>"Out of memory"</td>
+<td>Reduce <code>max_keypoints</code>, increase <code>gaussian_sigma</code>, or use <code>scale</code> parameter</td>
+</tr>
+<tr>
+<td>"Poor registration"</td>
+<td>Check <code>feature_matching.ipynb</code>, adjust parameters, verify data quality</td>
+</tr>
+<tr>
+<td>"napari won't open"</td>
+<td>Install napari: <code>pip install napari[all]</code></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

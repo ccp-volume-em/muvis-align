@@ -2,14 +2,22 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://FrancisCrickInstitute.github.io/muvis-align/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2026-06-03</lastmod>
+    </url>
+    <url>
+         <loc>https://FrancisCrickInstitute.github.io/muvis-align/notebooks/</loc>
+         <lastmod>2026-06-03</lastmod>
+    </url>
+    <url>
+         <loc>https://FrancisCrickInstitute.github.io/muvis-align/pipeline/</loc>
+         <lastmod>2026-06-03</lastmod>
     </url>
     <url>
          <loc>https://FrancisCrickInstitute.github.io/muvis-align/poster/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2026-06-03</lastmod>
     </url>
     <url>
          <loc>https://FrancisCrickInstitute.github.io/muvis-align/references/</loc>
-         <lastmod>2025-11-19</lastmod>
+         <lastmod>2026-06-03</lastmod>
     </url>
 </urlset>

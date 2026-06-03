@@ -1,0 +1,1512 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="convert source image to OME-TIFF or OME-Zarr format">
+      
+      
+      
+        <link rel="canonical" href="https://FrancisCrickInstitute.github.io/muvis-align/pipeline/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../notebooks/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Running the muvis-align Pipeline - muvis-align</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#running-the-muvis-align-pipeline" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="muvis-align" class="md-header__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            muvis-align
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Running the muvis-align Pipeline
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/FrancisCrickInstitute/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="muvis-align" class="md-nav__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    muvis-align
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/FrancisCrickInstitute/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running the muvis-align Pipeline
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running the muvis-align Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter File Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Parameter File Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-general-configuration-general" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. General Configuration (general)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. General Configuration (general)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#general-options-explained" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General options explained:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logging-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging options:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output options:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other options:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-operations-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Operations (operations)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operation Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#register-image-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        register - Image Registration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="register - Image Registration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#input-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registration-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registration Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preprocessing-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preprocessing Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fusion-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fusion Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example-2d-stitching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example: 2D Stitching
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Advanced Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-dataset-registration-with-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Dataset Registration with Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stack-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack Registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-channel-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Channel Registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Resolution
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notebooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jupyter Notebooks Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../poster/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align: building a registration pipeline for large data &amp; next gen file format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter File Structure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Parameter File Structure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-general-configuration-general" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. General Configuration (general)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. General Configuration (general)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#general-options-explained" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        General options explained:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logging-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging options:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output options:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#other-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Other options:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-operations-operations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Operations (operations)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operation-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operation Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Operation Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#register-image-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        register - Image Registration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="register - Image Registration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#input-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Input Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registration-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registration Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preprocessing-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preprocessing Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fusion-options" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fusion Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#output-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-example-2d-stitching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Example: 2D Stitching
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#advanced-examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Advanced Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Advanced Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-dataset-registration-with-matching" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Dataset Registration with Matching
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#stack-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack Registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multi-channel-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Channel Registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-resolution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Resolution
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="running-the-muvis-align-pipeline">Running the muvis-align Pipeline</h1>
+<h2 id="overview">Overview</h2>
+<p>The muvis-align pipeline is command-line driven and uses YAML parameter files to configure all operations. The main entry point is <code>run.py</code>.</p>
+<h2 id="basic-usage">Basic Usage</h2>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>run.py<span class="w"> </span>resources/params_test_2d.yml
+</code></pre></div>
+<p>Where <code>resources/params_test_2d.yml</code> is your parameter configuration file.</p>
+<h2 id="parameter-file-structure">Parameter File Structure</h2>
+<p>The parameter file uses YAML format with two main sections:</p>
+<h3 id="1-general-configuration-general">1. General Configuration (<code>general</code>)</h3>
+<p>Global settings for logging, output, and error handling.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">general</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">  </span><span class="nt">logging</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">verbose</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">    </span><span class="nt">filename</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">log/muvis-align.log</span>
+<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;%(asctime)s</span><span class="nv"> </span><span class="s">%(levelname)s:</span><span class="nv"> </span><span class="s">%(message)s&#39;</span>
+<span class="w">    </span><span class="nt">dask</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">    </span><span class="nt">time</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">  </span><span class="nt">output</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
+<span class="w">    </span><span class="nt">clear</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">    </span><span class="nt">tile_size</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">4096</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">4096</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">compression</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span>
+<span class="w">    </span><span class="nt">npyramid_add</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+<span class="w">    </span><span class="nt">pyramid_downsample</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">    </span><span class="nt">thumbnail</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
+<span class="w">    </span><span class="nt">thumbnail_scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">32</span>
+<span class="w">  </span><span class="nt">break_on_error</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">  </span><span class="nt">metadata_summary</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">  </span><span class="nt">chunk_size</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">1024</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">1024</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">show_original</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+</code></pre></div>
+<h4 id="general-options-explained">General options explained:</h4>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>overwrite</code></td>
+<td>bool</td>
+<td><code>False</code></td>
+<td>Overwrite existing output files</td>
+</tr>
+<tr>
+<td><code>clear</code></td>
+<td>bool</td>
+<td><code>False</code></td>
+<td>Clear output directory before processing</td>
+</tr>
+<tr>
+<td><code>break_on_error</code></td>
+<td>bool</td>
+<td><code>False</code></td>
+<td>Stop on first error (vs. continue)</td>
+</tr>
+<tr>
+<td><code>metadata_summary</code></td>
+<td>bool</td>
+<td><code>False</code></td>
+<td>Print metadata summary for each fileset</td>
+</tr>
+<tr>
+<td><code>show_original</code></td>
+<td>bool</td>
+<td><code>False</code></td>
+<td>Whether to show original images in UI</td>
+</tr>
+</tbody>
+</table>
+<h4 id="logging-options">Logging options:</h4>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>filename</code></td>
+<td>str</td>
+<td>Log file path (default: <code>log/muvis-align.log</code>)</td>
+</tr>
+<tr>
+<td><code>format</code></td>
+<td>str</td>
+<td>Log message format string</td>
+</tr>
+<tr>
+<td><code>verbose</code></td>
+<td>bool</td>
+<td>Enable verbose logging</td>
+</tr>
+<tr>
+<td><code>dask</code></td>
+<td>bool</td>
+<td>Enable dask progress bar</td>
+</tr>
+<tr>
+<td><code>time</code></td>
+<td>bool</td>
+<td>Log timing information</td>
+</tr>
+</tbody>
+</table>
+<h4 id="output-options">Output options:</h4>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>format</code></td>
+<td>str</td>
+<td>Output format: <code>ome.zarr</code> or <code>ome.tiff</code> (or both: <code>ome.zarr, ome.tiff</code>)</td>
+</tr>
+<tr>
+<td><code>clear</code></td>
+<td>bool</td>
+<td>Delete output directory before processing</td>
+</tr>
+<tr>
+<td><code>tile_size</code></td>
+<td>list</td>
+<td>Tile size for zarr output <code>[x, y]</code> or <code>[x, y, z]</code></td>
+</tr>
+<tr>
+<td><code>compression</code></td>
+<td>str/list</td>
+<td>Compression method(s)</td>
+</tr>
+<tr>
+<td><code>npyramid_add</code></td>
+<td>int</td>
+<td>Number of pyramid levels to add</td>
+</tr>
+<tr>
+<td><code>pyramid_downsample</code></td>
+<td>int</td>
+<td>Downsampling factor for pyramid</td>
+</tr>
+<tr>
+<td><code>thumbnail</code></td>
+<td>str</td>
+<td>Thumbnail format</td>
+</tr>
+<tr>
+<td><code>thumbnail_scale</code></td>
+<td>int</td>
+<td>Thumbnail scale factor</td>
+</tr>
+</tbody>
+</table>
+<h4 id="other-options">Other options:</h4>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chunk_size</code></td>
+<td>list</td>
+<td>Default chunk size <code>[x, y]</code> or <code>[x, y, z]</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="2-operations-operations">2. Operations (<code>operations</code>)</h3>
+<p>List of processing operations to run sequentially.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
+<span class="w">    </span><span class="nt">input</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span>
+<span class="w">      </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
+<span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span>
+<span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
+<span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span>
+<span class="w">      </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">      </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">      </span><span class="nt">max_keypoints</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5000</span>
+<span class="w">      </span><span class="nt">inlier_threshold_factor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.05</span>
+<span class="w">      </span><span class="nt">max_trials</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<span class="w">      </span><span class="nt">ransac_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">      </span><span class="nt">metrics</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ncc</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ssim</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">onmi</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">n_parallel_pairwise_regs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">    </span><span class="nt">output</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span>
+</code></pre></div>
+<h2 id="operation-types">Operation Types</h2>
+<h3 id="register-image-registration"><code>register</code> - Image Registration</h3>
+<p>Registers (aligns) images using feature matching or phase correlation.</p>
+<p><strong>Variants:</strong>
+- <code>register</code> - Basic registration
+- <code>register match LABEL</code> - Group files by matching a label in filenames, then register each group
+- <code>register stack</code> - Register images as a z-stack (consecutive 2D registrations)
+- <code>register 3d</code> - Full 3D registration</p>
+<h4 id="input-configuration">Input Configuration</h4>
+<div class="highlight"><pre><span></span><code><span class="nt">input</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span><span class="w">            </span><span class="c1"># File path pattern (supports wildcards)</span>
+<span class="w">  </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span><span class="w">           </span><span class="c1"># How to interpret source file metadata</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">tile_00_00</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">tile_00_01</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Optional: custom labels for input files</span>
+<span class="w">  </span><span class="nt">extra_metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span><span class="w">                </span><span class="c1"># Extra metadata to apply</span>
+</code></pre></div>
+<p><strong>source_metadata options:</strong>
+- <code>source</code> - Use metadata from source image files
+- <code>source invert</code> - Use source metadata but invert x/y coordinates
+- <code>global</code> - Use global metadata (requires <code>metadata_summary: True</code>)
+- <code>source_metadata: {'scale': {'x': 0.004, 'y': 0.004}, ...}</code> - Custom metadata dict</p>
+<h4 id="registration-configuration">Registration Configuration</h4>
+<div class="highlight"><pre><span></span><code><span class="nt">registration</span><span class="p">:</span>
+<span class="w">  </span><span class="c1"># Registration method</span>
+<span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span><span class="w">              </span><span class="c1"># sift, orb, feature, cpd, ANTsPy, phase_correlation</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span><span class="w">                 </span><span class="c1"># Alternative to &#39;method&#39;</span>
+
+<span class="w">  </span><span class="c1"># Feature detection (for sift, orb, feature methods)</span>
+<span class="w">  </span><span class="nt">max_keypoints</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5000</span><span class="w">       </span><span class="c1"># Maximum number of keypoints to detect</span>
+<span class="w">  </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">         </span><span class="c1"># Gaussian filter sigma before detection</span>
+
+<span class="w">  </span><span class="c1"># Feature matching parameters</span>
+<span class="w">  </span><span class="nt">inlier_threshold_factor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.05</span>
+<span class="w">  </span><span class="nt">max_trials</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
+<span class="w">  </span><span class="nt">ransac_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+
+<span class="w">  </span><span class="c1"># Transform type (rigid, translation, affine, similarity)</span>
+<span class="w">  </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
+
+<span class="w">  </span><span class="c1"># Pairing strategy</span>
+<span class="w">  </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span><span class="w">       </span><span class="c1"># orthogonal, overlap, stack (default)</span>
+
+<span class="w">  </span><span class="c1"># Normalization</span>
+<span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w">       </span><span class="c1"># True, False, &#39;global&#39;, &#39;individual&#39;</span>
+
+<span class="w">  </span><span class="c1"># Global resolution method</span>
+<span class="w">  </span><span class="nt">groupwise_resolution_method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global_optimization</span><span class="w">  </span><span class="c1"># or other methods</span>
+
+<span class="w">  </span><span class="c1"># Quality filtering</span>
+<span class="w">  </span><span class="nt">post_registration_quality_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+
+<span class="w">  </span><span class="c1"># Parallel processing</span>
+<span class="w">  </span><span class="nt">n_parallel_pairwise_regs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+
+<span class="w">  </span><span class="c1"># Output metrics</span>
+<span class="w">  </span><span class="nt">metrics</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ncc</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ssim</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">onmi</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Metrics to compute</span>
+</code></pre></div>
+<p><strong>Registration Methods:</strong>
+- <code>sift</code> - Scale-Invariant Feature Transform (scikit-image)
+- <code>orb</code> - Oriented FAST and Rotated BRIEF (OpenCV)
+- <code>feature</code> - Generic feature-based registration
+- <code>cpd</code> - Coherent Point Drift
+- <code>ANTsPy</code> - Advanced Normalization Tools
+- <code>phase_correlation</code> - Phase correlation (default)</p>
+<p><strong>Transform Types:</strong>
+- <code>translation</code> - Only translation
+- <code>rigid</code> - Translation + rotation
+- <code>affine</code> - Full affine transformation
+- <code>similarity</code> - Rigid + uniform scaling</p>
+<p><strong>Pairing Strategies:</strong>
+- <code>orthogonal</code> - Pair orthogonal tiles (X-Y grid)
+- <code>overlap</code> - Pair tiles based on overlap
+- <code>stack</code> - Pair consecutive slices (z-stacks)</p>
+<p><strong>Metrics:</strong>
+- <code>ncc</code> - Normalized Cross Correlation
+- <code>ssim</code> - Structural Similarity Index
+- <code>onmi</code> - Overlapping Normalized Mutual Information</p>
+<h4 id="preprocessing-options">Preprocessing Options</h4>
+<div class="highlight"><pre><span></span><code><span class="nt">preprocessing</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">flatfield_quantiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.5</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.95</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Flat-field correction quantiles</span>
+<span class="w">  </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">                  </span><span class="c1"># Gaussian blur sigma (optional)</span>
+<span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global</span><span class="w">              </span><span class="c1"># Image normalization</span>
+<span class="w">  </span><span class="nt">filter_foreground</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w">            </span><span class="c1"># Filter out empty/background images</span>
+<span class="w">  </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">                           </span><span class="c1"># Downsampling factor for processing</span>
+</code></pre></div>
+<h4 id="fusion-options">Fusion Options</h4>
+<p>Combine registered images into a single output.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">fusion</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">average</span><span class="w">          </span><span class="c1"># average, composite, exclusive, additive</span>
+<span class="w">  </span><span class="nt">blend_edges</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w">        </span><span class="c1"># Blend overlapping regions</span>
+</code></pre></div>
+<p><strong>Fusion Methods:</strong>
+- <code>simple_average_fusion</code> (default) - Average overlapping pixels
+- <code>exclusive</code> - Showing only single tile data where overlapping
+- <code>additive</code> - Sum overlapping regions
+- <code>composite</code> - Compositional blending (<em>experimental</em>)</p>
+<h4 id="output-configuration">Output Configuration</h4>
+<div class="highlight"><pre><span></span><code><span class="nt">output</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span><span class="w">    </span><span class="c1"># Output directory</span>
+</code></pre></div>
+<h2 id="complete-example-2d-stitching">Complete Example: 2D Stitching</h2>
+<div class="highlight"><pre><span></span><code><span class="nt">general</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">  </span><span class="nt">logging</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">verbose</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">  </span><span class="nt">output</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
+
+<span class="nt">operations</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
+<span class="w">    </span><span class="nt">input</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span>
+<span class="w">      </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
+<span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span>
+<span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
+<span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span>
+<span class="w">      </span><span class="nt">max_keypoints</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5000</span>
+<span class="w">      </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">      </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">      </span><span class="nt">metrics</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ncc</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ssim</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">output</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span>
+</code></pre></div>
+<h2 id="advanced-examples">Advanced Examples</h2>
+<h3 id="multi-dataset-registration-with-matching">Multi-Dataset Registration with Matching</h3>
+<div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register match S</span>
+<span class="w">    </span><span class="nt">input</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/S???/*.tiff</span>
+<span class="w">    </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;scale&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;x&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&#39;y&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">},</span><span class="w"> </span><span class="s">&#39;position&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;y&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;fn[-3]*24&#39;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&#39;x&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;fn[-2]*24&#39;</span><span class="p p-Indicator">}}</span>
+<span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span>
+<span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span>
+<span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">translation</span>
+<span class="w">    </span><span class="nt">output</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../stitched/S{S}/</span>
+</code></pre></div>
+<p>Registers files from multiple directories (S001, S002, etc.) separately, using <code>{S}</code> placeholder in output path.</p>
+<h3 id="stack-registration">Stack Registration</h3>
+<div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register stack</span>
+<span class="w">    </span><span class="nt">input</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./registered.ome.zarr</span>
+<span class="w">    </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
+<span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span>
+<span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
+<span class="w">      </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+<span class="w">    </span><span class="nt">output</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../aligned/</span>
+</code></pre></div>
+<p>Registers slices as a z-stack, applying consecutive 2D registrations.</p>
+<h3 id="multi-channel-registration">Multi-Channel Registration</h3>
+<div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
+<span class="w">    </span><span class="nt">input</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/channel0_registered.ome.zarr</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/channel1_registered.ome.zarr</span>
+<span class="w">    </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">individual</span>
+<span class="w">    </span><span class="nt">registration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ANTsPy</span>
+<span class="w">    </span><span class="nt">channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w">  </span><span class="c1"># Register using first channel</span>
+<span class="w">    </span><span class="nt">output</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/output/fused/</span>
+</code></pre></div>
+<p>Combines multiple channels using registration from a specific channel.</p>
+<h2 id="running-the-pipeline">Running the Pipeline</h2>
+<ol>
+<li><strong>Create a parameter file</strong> (e.g., <code>params.yml</code>)</li>
+<li>
+<p><strong>Run the pipeline:</strong>
+   <div class="highlight"><pre><span></span><code>python<span class="w"> </span>run.py<span class="w"> </span>params.yml
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Check the log file</strong> for progress and errors:
+   <div class="highlight"><pre><span></span><code>tail<span class="w"> </span>-f<span class="w"> </span>log/muvis-align.log
+</code></pre></div></p>
+</li>
+</ol>
+<h2 id="output-structure">Output Structure</h2>
+<p>After successful registration:
+- <code>registered.ome.zarr</code> - Registered &amp; fused output image
+- <code>mappings.json</code> - Registration mapping information
+- <code>metrics.json</code> - Calculated metrics
+- <code>*.pdf</code> - Position visualizations</p>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<ul>
+<li><strong>No files matched</strong>: Check your <code>input.path</code> pattern and file extensions</li>
+<li><strong>No overlap found</strong>: Verify source metadata (position/scale) or adjust pairing strategy</li>
+<li><strong>Out of memory</strong>: Reduce <code>chunk_size</code>, <code>tile_size</code>, or use <code>scale</code> to downsample</li>
+<li><strong>Poor registration</strong>: Try different <code>method</code>, increase <code>max_keypoints</code>, or adjust <code>normalisation</code></li>
+</ul>
+<h2 id="parameter-resolution">Parameter Resolution</h2>
+<p>Parameters can use placeholders based on filename:
+- <code>{S}</code> - Matches numeric values from filename (e.g., from S001)
+- <code>fn[-3]</code> - Access filename elements by position
+- Custom metadata patterns for position/scale resolution</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
