@@ -675,6 +675,10 @@ def detect_area_points(image):
     return area_points
 
 
+def get_transforms(sims):
+    return list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+
+
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
     if position is None:
         position = si_utils.get_origin_from_sim(sim)
@@ -870,13 +874,22 @@ def get_sim_shape_2d(sim, transform_key=None):
     return shape
 
 
+def squeeze_sim_dims(sim, transform_key):
+    sim = sim.squeeze().copy()
+    affine = si_utils.get_affine_from_sim(sim, transform_key)
+    if "t" in affine.dims:
+        affine = affine.isel(t=0)
+        si_utils.set_sim_affine(sim, affine, transform_key)
+    return sim
+
+
 def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
     # functionality copied from registration.register_pair_of_msims()
     shapes = []
     if pairs is None:
         pairs = np.transpose(np.triu_indices(len(sims), 1))
     for pair in pairs:
-        sim1, sim2 = sims[pair[0]].squeeze(), sims[pair[1]].squeeze()
+        sim1, sim2 = squeeze_sim_dims(sims[pair[0]], transform_key), squeeze_sim_dims(sims[pair[1]], transform_key)
         result = _get_overlap_bboxes(
             sim1,
             sim2,

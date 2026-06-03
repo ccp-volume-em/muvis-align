@@ -11,7 +11,7 @@ from muvis_align.file.project_yaml import read_params, get_template_params, writ
 from muvis_align.MVSRegistration import MVSRegistration
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, get_sim_shape_2d, get_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari
+    draw_keypoints_matches_napari, get_transforms
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.bilayers_util import get_section_dict
@@ -50,10 +50,7 @@ class Interface:
             return None
 
     def tab_changed(self, tab_label):
-        if tab_label == 'features':
-            self._clear_napari_view(self.viewer)
-            self.view_mode = ViewMode.FEATURES
-        elif self.view_mode == ViewMode.FEATURES:
+        if tab_label != 'registration' and self.view_mode == ViewMode.FEATURES:
             self._clear_napari_view(self.viewer)
             self.view_mode = None
 
@@ -125,10 +122,11 @@ class Interface:
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
-            self.reg.init_sims(source_metadata=self.source_metadata)
+            target_scale = self.params['input_output']['target_scale']
+            self.reg.init_sims(source_metadata=self.source_metadata, target_scale=target_scale)
         sims = self.reg.sims
 
-        coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+        coord_systems = get_transforms(sims)
         self.populate_coordinate_systems(coord_systems)
         if self.reg.is_initialised():
             self.populate_metadata_table(sims)
@@ -166,26 +164,30 @@ class Interface:
 
     def populate_image_selection(self):
         labels = self.reg.file_labels
-        widget1 = self.param_widgets.get('features.reg_preview_image1')
+        widget1 = self.param_widgets.get('registration.reg_preview_image1')
         widget1.set_value(labels[0], choices=labels)
 
-        widget2 = self.param_widgets.get('features.reg_preview_image2')
+        widget2 = self.param_widgets.get('registration.reg_preview_image2')
         index = 1 if len(labels) > 1 else 0
         widget2.set_value(labels[index], choices=labels)
 
     def update_overview(self, overlaps=True):
-        self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', self.transform_key,
+        transform_key = self.reg.reg_transform_key if self.reg.reg_transform_key in get_transforms(self.reg.sims)\
+            else self.reg.source_transform_key
+        self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', transform_key,
                                    overlaps=overlaps)
 
     def update_view(self, overlaps=False, show_preprocessed=False):
+        transform_key = self.reg.reg_transform_key if self.reg.reg_transform_key in get_transforms(self.reg.sims)\
+            else self.reg.source_transform_key
         if self.view_mode != ViewMode.OVERVIEW or show_preprocessed:
             self._clear_napari_view(self.viewer)
             self.view_mode = ViewMode.OVERVIEW
         if self.params['input_output']['preview_images'] or show_preprocessed:
-            self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', self.transform_key,
+            self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
                                      show_preprocessed)
         if self.params['input_output']['preview_shapes'] and not show_preprocessed:
-            self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', self.transform_key,
+            self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', transform_key,
                                        overlaps=overlaps)
 
     def _clear_napari_view(self, viewer):
@@ -265,15 +267,16 @@ class Interface:
                 viewer.add_shapes(data, **kwargs)
 
     def preview_registration(self):
-        label1 = self.param_widgets.get('features.reg_preview_image1').get_value()
-        label2 = self.param_widgets.get('features.reg_preview_image2').get_value()
+        self._clear_napari_view(self.viewer)
+        label1 = self.param_widgets.get('registration.reg_preview_image1').get_value()
+        label2 = self.param_widgets.get('registration.reg_preview_image2').get_value()
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
         reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
         overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
         overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
-            self.reg.create_registration_method(self.reg.sims[0], params=self.params['features']))
+            self.reg.create_registration_method(self.reg.sims[0], params=self.params['registration']))
         results = pairwise_reg_func(overlap1, overlap2)
 
         affine_phys = affine_from_intrinsic_affine(results['affine_matrix'], sims_pixel_space, self.reg.source_transform_key)
@@ -284,42 +287,91 @@ class Interface:
             (0, 1): np.array(results['quality'])
         }
         metrics = calc_sims_metrics(reg_sims, transforms, qualities, metric_methods=['ncc', 'ssim', 'onmi'])
-        summary = metrics['summary']
-
-        self.populate_metrics_table(summary)
+        self.populate_metrics_table(metrics)
 
         fixed_points = results.get('fixed_points', [])
         moving_points = results.get('moving_points', [])
         matches = results.get('matches', [])
         inliers = results.get('inliers', [])
         self._update_napari_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
+        self.view_mode = ViewMode.FEATURES
 
-    def populate_metrics_table(self, metrics):
-        table_widget = self.param_widgets.get('features.metrics_table')
-        table_widget.set_value(metrics)
-        for coli, (col_key, col_value) in enumerate(metrics.items()):
-            for rowi, (key, value) in enumerate(col_value.items()):
+    def populate_metrics_table(self, metrics_dict):
+        transform_keys = []
+        metric_keys = []
+        item_keys = []
+        metrics = metrics_dict.get('summary')
+        if metrics:
+            item_keys.append('summary')
+            for transform_key, transform_value in metrics.items():
+                if transform_key not in transform_keys:
+                    transform_keys.append(transform_key)
+                for metric_key in transform_value.keys():
+                    if metric_key not in metric_keys:
+                        metric_keys.append(metric_key)
+        metrics = metrics_dict.get('pairs')
+        if metrics:
+            for pair_key, pair_value in metrics.items():
+                if pair_key not in item_keys:
+                    item_keys.append(pair_key)
+                for transform_key, transform_value in pair_value.items():
+                    if transform_key not in transform_keys:
+                        transform_keys.append(transform_key)
+                    for metric_key in transform_value.keys():
+                        if metric_key not in metric_keys:
+                            metric_keys.append(metric_key)
+
+        metrics_table = np.zeros((len(item_keys), len(transform_keys)), dtype=np.float32)
+        item_offset = 0
+
+        metrics = metrics_dict.get('summary')
+        if metrics:
+            item_offset = 1
+            for transform_index, (transform_key, transform_value) in enumerate(metrics.items()):
+                for metric_value in transform_value.values():
+                    metrics_table[0, transform_index] = metric_value
+        metrics = metrics_dict.get('pairs')
+        if metrics:
+            for pair_index, (pair_key, pair_value) in enumerate(metrics.items()):
+                for transform_index, (transform_key, transform_value) in enumerate(pair_value.items()):
+                    for metric_value in transform_value.values():
+                        metrics_table[pair_index + item_offset, transform_index] = metric_value
+
+        table_widget = self.param_widgets.get('registration.metrics_table')
+        # Table: tuple-of-values : ([values], [row_headers], [column_headers])
+        table_widget.set_value((metrics_table, item_keys, transform_keys))
+        for rowi in range(len(item_keys)):
+            for coli in range(len(transform_keys)):
                 table_widget.widget.native.item(rowi, coli).setBackground(
-                    QColor(*metric_to_rgb(value, range=255, max_light=0.5)))
+                    QColor(*metric_to_rgb(metrics_table[rowi, coli], range=255, max_light=0.5)))
         table_widget.read_only = True
 
-    def features_process(self):
-        if not self.reg.is_global_registered():
-            reply = QMessageBox.question(None, 'muvis-align','Are you sure you want to run pair registration?',
+    def pair_registration(self):
+        if self.reg.is_global_registered():
+            show_warning('Global registration was already performed')
+        else:
+            message = 'Pair registration was already performed' if self.reg.is_pairs_registered() else ''
+            message += 'Run pair registration?'
+            reply = QMessageBox.question(None, 'muvis-align',message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
-                self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['features'])
+                self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['registration'])
                 self.update_registered()
 
-    def global_registration(self):
-        if not self.reg.is_global_registered():
-            reply = QMessageBox.question(None, 'muvis-align','Are you sure you want to run global registration?',
+    def modify_pair_registration(self):
+        pass
+
+    def registration_process(self):
+        if not self.reg.is_pairs_registered():
+            show_warning('Perform pair registration first')
+        elif not self.reg.is_global_registered():
+            reply = QMessageBox.question(None, 'muvis-align','Run global registration?',
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
                 self.reg.register_global(self.reg.sims, self.reg.msims, register_indices=self.reg.register_indices,
-                                         params=self.params['features'])
+                                         params=self.params['registration'])
                 self.update_registered()
 
     def update_registered(self):
@@ -328,5 +380,5 @@ class Interface:
         self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
         self.update_overview()
-        self.update_view()
-        self.populate_metrics_table(self.reg.metrics['summary'])
+        self.update_view(overlaps=True)
+        self.populate_metrics_table(self.reg.metrics)

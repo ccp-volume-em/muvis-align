@@ -1146,13 +1146,19 @@ class MVSRegistration:
         video.close()
 
     def get_metrics(self, metric=None, pair=None):
+        metrics = self.metrics
         if pair is not None:
             if isinstance(pair, np.ndarray):
                 pair = pair.tolist()
                 pair = tuple(pair)
-            metrics = self.metrics.get(pair, {})
+            metrics = metrics.get('pairs', {}).get(pair, {})
         else:
-            metrics = self.metrics
+            if 'summary' in metrics:
+                metrics = metrics['summary']
+        transform_keys = metrics.keys()
+        if len(transform_keys) > 0:
+            transform_key = list(transform_keys)[-1]
+            metrics = metrics.get(transform_key, {})
         if metric is not None:
             return metrics.get(metric, 0)
         else:
