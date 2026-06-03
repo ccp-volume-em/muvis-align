@@ -125,10 +125,10 @@ Registers (aligns) images using feature matching or phase correlation.
 
 ```yaml
 input:
-  path: data/S000/*.zarr          # File path pattern (supports wildcards)
-  source_metadata: source         # How to interpret source file metadata
-  labels: [ch0, ch1]              # Optional: custom labels for input files
-  extra_metadata: {}              # Extra metadata to apply
+  path: data/S000/*.zarr            # File path pattern (supports wildcards)
+  source_metadata: source           # How to interpret source file metadata
+  labels: [tile_00_00, tile_00_01]  # Optional: custom labels for input files
+  extra_metadata: {}                # Extra metadata to apply
 ```
 
 **source_metadata options:**
@@ -223,9 +223,9 @@ fusion:
 
 **Fusion Methods:**
 - `simple_average_fusion` (default) - Average overlapping pixels
-- `composite` - Compositional blending
-- `exclusive` - Non-overlapping regions only
+- `exclusive` - Showing only single tile data where overlapping
 - `additive` - Sum overlapping regions
+- `composite` - Compositional blending (*experimental*)
 
 #### Output Configuration
 
@@ -327,8 +327,7 @@ Combines multiple channels using registration from a specific channel.
 ## Output Structure
 
 After successful registration:
-- `registered.ome.zarr` - Input images with registration transforms applied
-- `registered_fused.ome.zarr` - Registered and fused image (if fusion enabled)
+- `registered.ome.zarr` - Registered & fused output image
 - `mappings.json` - Registration mapping information
 - `metrics.json` - Calculated metrics
 - `*.pdf` - Position visualizations
