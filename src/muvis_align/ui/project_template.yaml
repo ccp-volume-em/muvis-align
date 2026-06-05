@@ -125,6 +125,17 @@ parameters:
     section_id: "input_output"
     mode: "advanced"
 
+  - name: target_scale
+    type: integer
+    label: "Target downscale factor"
+    description: "Downscale factor for input images"
+    default: "1"
+    cli_tag: "--target_scale"
+    cli_order: 8
+    optional: True
+    section_id: "input_output"
+    mode: "advanced"
+
   - name: preview_shapes
     type: checkbox
     label: "Preview shape data"
@@ -212,7 +223,7 @@ parameters:
     cli_order: 0
     optional: True
     append_value: False
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: channel
     type: textbox
@@ -222,7 +233,7 @@ parameters:
     cli_tag: "--channel"
     cli_order: 5
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: pairing
     type: dropdown
@@ -239,7 +250,7 @@ parameters:
     cli_tag: "--pairing"
     cli_order: 6
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: transform_type
     type: dropdown
@@ -258,7 +269,7 @@ parameters:
     cli_tag: "--transform_type"
     cli_order: 7
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: method
     type: dropdown
@@ -279,7 +290,7 @@ parameters:
     cli_tag: "--method"
     cli_order: 8
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: normalisation
     type: checkbox
@@ -290,7 +301,7 @@ parameters:
     cli_order: 9
     optional: True
     append_value: False
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: gaussian_sigma
     type: float
@@ -300,7 +311,7 @@ parameters:
     cli_tag: "--gaussian_sigma"
     cli_order: 10
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: max_keypoints
     type: integer
@@ -310,7 +321,7 @@ parameters:
     cli_tag: "--max_keypoints"
     cli_order: 11
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: inlier_threshold_factor
     type: float
@@ -320,7 +331,7 @@ parameters:
     cli_tag: "--max_keypoints"
     cli_order: 12
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: max_trials
     type: integer
@@ -330,7 +341,7 @@ parameters:
     cli_tag: "--max_trials"
     cli_order: 13
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: ransac_iterations
     type: integer
@@ -340,7 +351,7 @@ parameters:
     cli_tag: "--ransac_iterations"
     cli_order: 14
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: n_parallel_pairwise_regs
     type: integer
@@ -350,7 +361,7 @@ parameters:
     cli_tag: "--n_parallel_pairwise_regs"
     cli_order: 15
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: reg_preview_image1
     type: dropdown
@@ -360,7 +371,7 @@ parameters:
     cli_tag: "--reg_preview_image1"
     cli_order: 16
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: reg_preview_image2
     type: dropdown
@@ -370,14 +381,28 @@ parameters:
     cli_tag: "--reg_preview_image2"
     cli_order: 17
     optional: True
-    section_id: "features"
+    section_id: "registration"
     mode: "beginner"
   - name: preview_registration
     type: pushbutton
     label: "Preview"
     description: "Preview registration"
     cli_order: 19
-    section_id: "features"
+    section_id: "registration"
+    mode: "beginner"
+  - name: pair_registration
+    type: pushbutton
+    label: "Pair registration"
+    description: "Run pair registration"
+    cli_order: 20
+    section_id: "registration"
+    mode: "beginner"
+  - name: modify_pair_registration
+    type: pushbutton
+    label: "Modify pair registration"
+    description: "Modify pair registration"
+    cli_order: 21
+    section_id: "registration"
     mode: "beginner"
 
 display_only:
@@ -404,5 +429,5 @@ display_only:
     label: " "
     default: []
     description: "Metrics"
-    section_id: "features"
+    section_id: "registration"
     cli_order: 18

@@ -1,17 +1,3 @@
-features:
-  gaussian_sigma: 2.0
-  inlier_threshold_factor: 0.05
-  max_keypoints: 5000
-  max_trials: 1000
-  method: sift
-  normalisation: true
-  operation: register
-  pairing: orthogonal
-  preview_registration: false
-  ransac_iterations: 3
-  reg_preview_image1: '000_000'
-  reg_preview_image2: '000_001'
-  transform_type: rigid
 input_output:
   coordinate_system: source_metadata
   input_path: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
@@ -26,5 +12,22 @@ input_output:
   source_scale_x: source
   source_scale_y: source
   source_scale_z: source
+  target_scale: 1
 pre_processing:
   normalisation: 'False'
+registration:
+  gaussian_sigma: 2.0
+  inlier_threshold_factor: 0.05
+  max_keypoints: 5000
+  max_trials: 1000
+  method: sift
+  modify_pair_registration: false
+  normalisation: true
+  operation: register
+  pair_registration: false
+  pairing: orthogonal
+  preview_registration: false
+  ransac_iterations: 3
+  reg_preview_image1: '000_000'
+  reg_preview_image2: '000_001'
+  transform_type: rigid
