@@ -708,7 +708,7 @@ def metric_to_color(value):
 def metric_to_rgb(value, min_light=0, max_light=1, range=1.0):
     # metric range 0...1 to red-yellow-green ranged rgb
     if value is None:
-        value = 0
+        return 0, 0, 0
     colormap = colormaps.get('RdYlGn')
     index = int(value * colormap.N)
     r, g, b, a = [float(value) for value in colormap(index)]
