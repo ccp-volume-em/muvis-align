@@ -1,5 +1,5 @@
 from magicclass.ext.napari.viewer import ViewerWidget
-from qtpy.QtWidgets import QTabWidget, QSizePolicy
+from qtpy.QtWidgets import QTabWidget
 
 from muvis_align.ui.create_widgets import create_project_widget, create_template_widgets
 from muvis_align.ui.Interface import Interface
@@ -16,8 +16,8 @@ class MainWidget(QTabWidget):
         self.viewer = viewer
 
         self.overview = ViewerWidget()
-        viewer.window.add_dock_widget(self.overview, name='muvis-align', area='left')
-        self.overview.native.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        self.overview.min_height = 200
+        viewer.window.add_dock_widget(self.overview, name='muvis-align', area='left', add_vertical_stretch=False)
 
         self.interface = Interface(viewer, self.overview, self.enable_tabs, self.verbose)
 

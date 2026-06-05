@@ -1,7 +1,8 @@
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
-from multiview_stitcher import spatial_image_utils as si_utils
+from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.utils.notifications import show_warning
+import networkx as nx
 import numpy as np
 import os.path
 from qtpy.QtGui import QColor
@@ -276,6 +277,14 @@ class Interface:
             elif layer_type == "shapes":
                 viewer.add_shapes(data, **kwargs)
 
+    def _add_napari_image(self, viewer, data, transform, label, color=None):
+        scale = si_utils.get_spacing_from_sim(data, asarray=True)
+        position = si_utils.get_origin_from_sim(data, asarray=True)
+        layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
+                                 blending='additive')
+        if color:
+            layer.colormap = color
+
     def preview_registration(self):
         self._clear_napari_view(self.viewer)
         label1 = self.param_widgets.get('registration.reg_preview_image1').get_value()
@@ -332,7 +341,10 @@ class Interface:
                         if metric_key not in metric_keys:
                             metric_keys.append(metric_key)
 
-        metrics_table = np.zeros((len(item_keys), len(transform_keys)), dtype=np.float32)
+        metrics_table = []
+        for rowi in range(len(item_keys)):
+            row = [None] * len(transform_keys)
+            metrics_table.append(row)
         item_offset = 0
 
         metrics = metrics_dict.get('summary')
@@ -340,30 +352,34 @@ class Interface:
             item_offset = 1
             for transform_index, transform_value in enumerate(metrics.values()):
                 for metric_value in transform_value.values():
-                    metrics_table[0, transform_index] = metric_value
+                    if metric_value is not None:
+                        metrics_table[0][transform_index] = metric_value
         metrics = metrics_dict.get('pairs')
         if metrics:
             for pair_index, pair_value in enumerate(metrics.values()):
                 for transform_index, transform_value in enumerate(pair_value.values()):
                     for metric_value in transform_value.values():
-                        metrics_table[pair_index + item_offset, transform_index] = metric_value
+                        if metric_value is not None:
+                            metrics_table[pair_index + item_offset][transform_index] = metric_value
 
         table_widget = self.param_widgets.get('registration.metrics_table')
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((metrics_table, item_keys, transform_keys))
         for rowi in range(len(item_keys)):
             for coli in range(len(transform_keys)):
-                table_widget.widget.native.item(rowi, coli).setBackground(
-                    QColor(*metric_to_rgb(metrics_table[rowi, coli], range=255, max_light=0.5)))
+                table_cell = table_widget.widget.native.item(rowi, coli)
+                if table_cell is not None:
+                    table_cell.setBackground(
+                        QColor(*metric_to_rgb(metrics_table[rowi][coli], range=255, max_light=0.5)))
         table_widget.read_only = True
 
     def pair_registration(self):
         if self.reg.is_global_registered():
             show_warning('Global registration was already performed')
         else:
-            message = 'Pair registration was already performed' if self.reg.is_pairs_registered() else ''
-            message += 'Run pair registration?'
-            reply = QMessageBox.question(None, 'muvis-align',message,
+            message = 'Pair registration was already performed.' if self.reg.is_pairs_registered() else ''
+            message += ' Run pair registration?'
+            reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
@@ -371,13 +387,59 @@ class Interface:
                 self.update_registered()
 
     def modify_pair_registration(self):
-        pass
+        if self.view_mode == ViewMode.PAIRS:
+            reply = QMessageBox.question(None, 'muvis-align','Store modified registration?',
+                                         QMessageBox.Yes|QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                pair_transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
+                matsize = len(si_utils.get_spatial_dims_from_sim(self.reg.sims[0])) + 1
+                transform = pair_transforms[0] - pair_transforms[1]
+                transform = transform[-matsize:, -matsize:] + np.eye(matsize)
+                transform = param_utils.affine_to_xaffine(transform)
+                pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, 'transform')
+                qualities = nx.get_edge_attributes(self.reg.pairs_graph, 'quality')
+                if 't' in pair_transforms[self.pair_indices].dims:
+                    print('expanding transform')
+                    transform = transform.expand_dims({'t': [0]})
+                pair_transforms[self.pair_indices] = transform
+                qualities[self.pair_indices] = np.array(1)    # set quality to 1
+                nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, 'transform')
+                nx.set_edge_attributes(self.reg.pairs_graph, qualities, 'quality')
+
+            self.view_mode = ViewMode.OVERVIEW
+            self._clear_napari_view(self.viewer)
+            self.update_registered()
+        else:
+            self.view_mode = ViewMode.PAIRS
+            labels = self.reg.file_labels
+            label1 = self.param_widgets.get('registration.reg_preview_image1').get_value()
+            label2 = self.param_widgets.get('registration.reg_preview_image2').get_value()
+            index1 = labels.index(label1)
+            index2 = labels.index(label2)
+            indices = index1, index2
+            colors = [(0, 1, 0), (1, 0, 1)]
+            pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, 'transform')
+            if indices not in pair_transforms and tuple(reversed(indices)) in pair_transforms:
+                indices = tuple(reversed(indices))
+
+            if indices not in pair_transforms:
+                show_warning('No pair registration found for selected images')
+            else:
+                self.pair_indices = indices
+                pair_transform = np.array(pair_transforms[indices].sel(t=0))
+                eye = np.eye(max(pair_transform.shape))
+                pair_transforms = pair_transform, eye
+                self._clear_napari_view(self.viewer)
+                for index, (sim_index, color) in enumerate(zip(indices, colors)):
+                    self._add_napari_image(self.viewer, self.reg.sims[sim_index], pair_transforms[index], labels[sim_index], color)
 
     def registration_process(self):
         if not self.reg.is_pairs_registered():
             show_warning('Perform pair registration first')
-        elif not self.reg.is_global_registered():
-            reply = QMessageBox.question(None, 'muvis-align','Run global registration?',
+        else:
+            message = 'Global registration was already performed. ' if self.reg.is_global_registered() else ''
+            message += ' Run global registration?'
+            reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
@@ -390,6 +452,6 @@ class Interface:
         coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
         self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
+        self.populate_metrics_table(self.reg.metrics)
         self.update_overview()
         self.update_view(overlaps=True)
-        self.populate_metrics_table(self.reg.metrics)
