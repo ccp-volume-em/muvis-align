@@ -1,6 +1,6 @@
 from multiview_stitcher import ngff_utils
 
-from muvis_align.constants import default_ome_zarr_version
+from src.muvis_align.constants import default_ome_zarr_version
 
 
 def save_ome_ngff(filename, data, pyramid_downsample=2, ome_version=default_ome_zarr_version, verbose=False):

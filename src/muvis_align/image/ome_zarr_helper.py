@@ -2,7 +2,7 @@ from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, Omero, OmeroC
 import ome_zarr.format
 import zarr
 
-from muvis_align.constants import default_ome_zarr_version, default_chunk_size
+from src.muvis_align.constants import default_ome_zarr_version, default_chunk_size
 from src.muvis_align.image.util import create_compression_filter
 from src.muvis_align.image.ome_zarr_util import create_transformation_metadata, get_channel_window
 
