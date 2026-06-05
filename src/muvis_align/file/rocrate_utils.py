@@ -23,7 +23,7 @@ def create_ro_crate(source, dest_path, image_paths=[]):
 
     workflow_schema_filename = os.path.join('src', 'muvis_align/', NAPARI_PROJECT_TEMPLATE)
     #crate.add(ComputationalWorkflow(crate, workflow_schema_filename))
-    crate.add_workflow(crate, workflow_schema_filename)
+    crate.add_workflow(workflow_schema_filename)
     #crate.add_formal_parameter('bla', 'PropertyValue', '#acq:001')
 
     crate.write(dest_path)
