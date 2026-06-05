@@ -32,7 +32,6 @@ def create_ro_crate(source, dest_path, image_paths=[]):
 
 def create_zarr_ro_crate(dest_path):
     crate = ZarrCrate()
-    # Alternative use github German-BioImaging idr_study_crates GraphBuilder class to low-level build instead?
 
     properties = {}
     properties['name'] = get_filetitle(dest_path)
@@ -48,51 +47,6 @@ def create_zarr_ro_crate(dest_path):
     crate.add(acquisition_entity)
 
     dataset_entity['resultOf'] = acquisition_entity
-
-    instrument_properties = {
-        '@id': '#microscope-001',
-        '@type': 'IndividualProduct',
-        'name': 'Zeiss LSM 900',
-        'manufacturer': {
-            '@id': 'https://ror.org'
-        },
-        'serialNumber': '12345-XYZ'
-    }
-    instrument_entity = ContextEntity(crate, identifier=instrument_properties['@id'], properties=instrument_properties)
-    crate.add(instrument_entity)
-
-    dataset_entity['instrument'] = instrument_entity
-
-    additional_properties = [
-        {
-            '@id': '#acq:001',
-            '@type': 'PropertyValue',
-            'name': 'MeanBeamCharge',
-            'value': '1.0'
-        },
-        {
-            '@id': '#acq:002',
-            '@type': 'PropertyValue',
-            'name': 'AcceleratedVoltage',
-            'value': '1.0'
-        },
-        {
-            '@id': '#acq:003',
-            '@type': 'PropertyValue',
-            'name': 'Detector',
-            'value': 'name'
-        }
-    ]
-
-    properties_entities = []
-    for additional_property in additional_properties:
-        properties_entity = ContextEntity(crate, identifier=additional_property['@id'], properties=additional_property)
-        properties_entities.append(crate.add(properties_entity))
-
-    dataset_entity['additionalProperty'] = properties_entities
-
-    # TODO: Consider hasDefinedTerm as a better alternative when using a defined ontology?
-    # TODO: Can add variableMeasured for output properties
 
     crate.write(dest_path)
     return crate
