@@ -332,7 +332,7 @@ class MVSRegistration:
             if 'zar' in output_format:
                 filename = output_filename + zarr_extension
                 image_paths.append(filename)
-                create_zarr_ro_crate(data, self.output + filename)
+                create_zarr_ro_crate(self.output + filename)
 
         create_ro_crate(fused_image, self.output, image_paths)
 
