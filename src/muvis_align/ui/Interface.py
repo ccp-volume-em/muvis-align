@@ -42,6 +42,7 @@ class Interface:
         self.transform_key = 'source_metadata'
         self.view_mode = None
         self.selected_shape_index = None
+        self.is_updating = False
 
         self.reg = MVSRegistration()
 
@@ -55,6 +56,7 @@ class Interface:
         if tab_label != 'registration' and self.view_mode == ViewMode.FEATURES:
             self._clear_napari_view(self.viewer)
             self.view_mode = None
+        self.is_updating = False
 
     def project_path(self, path):
         self.params_path = path
@@ -286,6 +288,20 @@ class Interface:
         if color:
             layer.colormap = color
 
+        layer.events.affine.connect(self.on_image_data_changed)
+        return layer
+
+    def on_image_data_changed(self, event):
+        #layer = event.source
+        if not self.is_updating:
+            self.is_updating = True
+            # filter only selected pair
+            sims = [self.reg.sims[index] for index in self.pair_indices]
+            transforms = {(0, 1): self.calc_mod_pair_transform()}
+            metrics = calc_sims_metrics(sims, transforms, metric_methods=['ncc'])
+            self.populate_metrics_table(metrics)
+            self.is_updating = False
+
     def preview_registration(self):
         self._clear_napari_view(self.viewer)
         label1 = self.param_widgets.get('registration.reg_preview_image1').get_value()
@@ -326,8 +342,8 @@ class Interface:
             for transform_key, transform_value in metrics.items():
                 if transform_key not in transform_keys:
                     transform_keys.append(transform_key)
-                for metric_key in transform_value.keys():
-                    if metric_key not in metric_keys:
+                for metric_key, metric_value in transform_value.items():
+                    if metric_value is not None and metric_key not in metric_keys:
                         metric_keys.append(metric_key)
         metrics = metrics_dict.get('pairs')
         if metrics:
@@ -338,13 +354,16 @@ class Interface:
                 for transform_key, transform_value in pair_value.items():
                     if transform_key not in transform_keys:
                         transform_keys.append(transform_key)
-                    for metric_key in transform_value.keys():
-                        if metric_key not in metric_keys:
+                    for metric_key, metric_value in transform_value.items():
+                        if metric_value is not None and metric_key not in metric_keys:
                             metric_keys.append(metric_key)
+
+        is_metric_cols = (len(transform_keys) <= 1 and len(metric_keys) >= 1)
+        col_headers = metric_keys if is_metric_cols else transform_keys
 
         metrics_table = []
         for rowi in range(len(item_keys)):
-            row = [None] * len(transform_keys)
+            row = [None] * len(col_headers)
             metrics_table.append(row)
         item_offset = 0
 
@@ -352,20 +371,22 @@ class Interface:
         if metrics:
             item_offset = 1
             for transform_index, transform_value in enumerate(metrics.values()):
-                for metric_value in transform_value.values():
+                for metric_index, metric_value in enumerate(transform_value.values()):
                     if metric_value is not None:
-                        metrics_table[0][transform_index] = metric_value
+                        col_index = metric_index if is_metric_cols else transform_index
+                        metrics_table[0][col_index] = metric_value
         metrics = metrics_dict.get('pairs')
         if metrics:
             for pair_index, pair_value in enumerate(metrics.values()):
                 for transform_index, transform_value in enumerate(pair_value.values()):
-                    for metric_value in transform_value.values():
+                    for metric_index, metric_value in enumerate(transform_value.values()):
                         if metric_value is not None:
-                            metrics_table[pair_index + item_offset][transform_index] = metric_value
+                            col_index = metric_index if is_metric_cols else transform_index
+                            metrics_table[pair_index + item_offset][col_index] = metric_value
 
         table_widget = self.param_widgets.get('registration.metrics_table')
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
-        table_widget.set_value((metrics_table, item_keys, transform_keys))
+        table_widget.set_value((metrics_table, item_keys, col_headers))
         for rowi in range(len(item_keys)):
             for coli in range(len(transform_keys)):
                 table_cell = table_widget.widget.native.item(rowi, coli)
@@ -392,11 +413,7 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align','Store modified registration?',
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
-                pair_transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
-                matsize = len(si_utils.get_spatial_dims_from_sim(self.reg.sims[0])) + 1
-                transform = calculate_rigid_difference(pair_transforms[1][-matsize:, -matsize:],
-                                                       pair_transforms[0][-matsize:, -matsize:])
-                transform = param_utils.affine_to_xaffine(transform)
+                transform = self.calc_mod_pair_transform()
                 pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, 'transform')
                 qualities = nx.get_edge_attributes(self.reg.pairs_graph, 'quality')
                 if 't' in pair_transforms[self.pair_indices].dims:
@@ -430,8 +447,17 @@ class Interface:
                 eye = np.eye(max(pair_transform.shape))
                 pair_transforms = pair_transform, eye
                 self._clear_napari_view(self.viewer)
+                self.image_pair_layers = []
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._add_napari_image(self.viewer, self.reg.sims[sim_index], pair_transforms[index], labels[sim_index], color)
+                    layer = self._add_napari_image(self.viewer, self.reg.sims[sim_index], pair_transforms[index], labels[sim_index], color)
+                    self.image_pair_layers.append(layer)
+
+    def calc_mod_pair_transform(self):
+        transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
+        matsize = len(si_utils.get_spatial_dims_from_sim(self.reg.sims[0])) + 1
+        transform = calculate_rigid_difference(transforms[1][-matsize:, -matsize:],
+                                               transforms[0][-matsize:, -matsize:])
+        return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
         if not self.reg.is_pairs_registered():

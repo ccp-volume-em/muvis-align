@@ -1160,6 +1160,6 @@ class MVSRegistration:
             transform_key = list(transform_keys)[-1]
             metrics = metrics.get(transform_key, {})
         if metric is not None:
-            return metrics.get(metric, 0)
+            return metrics.get(metric)
         else:
             return metrics
