@@ -12,7 +12,7 @@ def get_template_params(section_template):
     for section_id, section_items in section_template.items():
         section_params = {}
         for section_item in section_items:
-            if section_item.get('label') and section_item.get('default'):
+            if section_item.get('label') and section_item.get('default') is not None:
                 label = section_item['name']
                 if section_params.get(label) is None:
                     section_params[label] = section_item['default']

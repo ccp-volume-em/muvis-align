@@ -594,7 +594,7 @@ class MVSRegistration:
             modified = True
         else:
             foreground_map = None
-        if flatfield_quantiles is not None:
+        if flatfield_quantiles:
             logging.info('Flat-field correction...')
             if isinstance(flatfield_quantiles, str):
                 flatfield_quantiles = [float(quantile.strip()) for quantile in flatfield_quantiles.split(',')]
@@ -620,7 +620,7 @@ class MVSRegistration:
             sims = new_sims
             modified = True
 
-        if normalisation is not None:
+        if normalisation:
             if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
                 normalisation = None
             elif isinstance(normalisation, bool) and normalisation == False:
