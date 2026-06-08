@@ -16,7 +16,8 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.bilayers_util import get_section_dict, to_magicgui_choices
-from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb
+from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb, \
+    calculate_rigid_difference
 
 
 class ViewMode(Enum):
@@ -393,13 +394,12 @@ class Interface:
             if reply == QMessageBox.Yes:
                 pair_transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
                 matsize = len(si_utils.get_spatial_dims_from_sim(self.reg.sims[0])) + 1
-                transform = pair_transforms[0] - pair_transforms[1]
-                transform = transform[-matsize:, -matsize:] + np.eye(matsize)
+                transform = calculate_rigid_difference(pair_transforms[1][-matsize:, -matsize:],
+                                                       pair_transforms[0][-matsize:, -matsize:])
                 transform = param_utils.affine_to_xaffine(transform)
                 pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, 'transform')
                 qualities = nx.get_edge_attributes(self.reg.pairs_graph, 'quality')
                 if 't' in pair_transforms[self.pair_indices].dims:
-                    print('expanding transform')
                     transform = transform.expand_dims({'t': [0]})
                 pair_transforms[self.pair_indices] = transform
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1

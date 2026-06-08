@@ -447,7 +447,7 @@ def create_transform0(center=(0, 0), angle=0, scale=1, translate=(0, 0)):
     return transform
 
 
-def create_transform(center, angle, matrix_size=3):
+def create_transform(center, angle, translation=None, matrix_size=3):
     if isinstance(center, dict):
         center = dict_to_xyz(center)
     if len(center) == 2:
@@ -456,6 +456,10 @@ def create_transform(center, angle, matrix_size=3):
         angle = 0
     r = Rotation.from_euler('z', angle, degrees=True)
     t = center - r.apply(center, inverse=True)
+    if translation is not None:
+        if len(translation) < matrix_size:
+            translation = list(translation) + [0]
+        t += translation
     transform = np.eye(matrix_size)
     transform[:3, :3] = np.transpose(r.as_matrix())
     transform[:3, -1] += t
@@ -484,6 +488,12 @@ def apply_transform_dict(points, transform, transform_dims='xyz'):
         new_point.pop('1', None)
         new_points.append(new_point)
     return new_points
+
+
+def calculate_rigid_difference(m1, m2):
+    translation = get_translation_from_transform(m2) - get_translation_from_transform(m1)
+    rotation = get_rotation_from_transform(m2) - get_rotation_from_transform(m1)
+    return create_transform((0, 0), rotation, translation=translation)
 
 
 def validate_transform(transform, max_scale = 1.25, max_rotation=None):
