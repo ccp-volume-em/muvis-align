@@ -1,4 +1,5 @@
 multiview-stitcher>=v0.1.53
+pydantic>=2
 opencv-python
 spatial-image
 multiscale-spatial-image

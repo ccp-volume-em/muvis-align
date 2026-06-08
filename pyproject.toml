@@ -29,6 +29,7 @@ requires-python = ">=3.11"
 # See best practices: https://napari.org/stable/plugins/building_a_plugin/best_practices.html
 dependencies = [
     "numpy",
+    "pydantic>=2",
     "qtpy",
     "scipy",
     "scikit-image",

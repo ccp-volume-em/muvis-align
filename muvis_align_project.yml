@@ -1,6 +1,7 @@
 input_output:
   coordinate_system: source_metadata
   input_path: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
+  metadata_table: []
   output_path: C:\Users\Y\PycharmProjects\muvis-align\output
   overwrite: true
   preview_images: false
@@ -14,6 +15,8 @@ input_output:
   source_scale_z: source
   target_scale: 1
 pre_processing:
+  filter_foreground: false
+  flatfield_quantiles: ''
   normalisation: 'False'
 registration:
   gaussian_sigma: 2.0
@@ -21,6 +24,7 @@ registration:
   max_keypoints: 5000
   max_trials: 1000
   method: sift
+  metrics_table: []
   modify_pair_registration: false
   normalisation: true
   operation: register

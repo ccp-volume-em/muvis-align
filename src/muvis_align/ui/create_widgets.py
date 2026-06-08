@@ -6,6 +6,7 @@ from magicgui.widgets import Container, create_widget
 import os.path
 
 from muvis_align.ui.ParamWidget import ParamWidget
+from muvis_align.ui.bilayers_util import bilayers_to_magicgui_field
 
 
 map_bilayers_to_widget_type = {
@@ -49,53 +50,56 @@ def create_section_container(section_id, section_template, interface,
     # https://pyapp-kit.github.io/magicgui/widgets/
     # https://pyapp-kit.github.io/magicgui/api/widgets/create_widget/
     widgets = []
-    for index, template in enumerate(section_template):
+    for template in section_template:
         try:
             section_params = interface.params.get(section_id, {})
-            section_key = template.get('section_key')
-            param_name = template.get('name')
-            param_label = template.get('label')
-            param_type = template.get('type').lower()
-            value = section_params.get(param_label, template.get('default'))
-            is_output = (section_id == 'output' or template.get('output_dir_set'))
-            description = template.get('description')
-            choices = template.get('options')
+            spec = bilayers_to_magicgui_field(
+                template,
+                section_id=section_id,
+                section_params=section_params,
+                widget_type_map=map_bilayers_to_widget_type,
+            )
 
-            widget_type = map_bilayers_to_widget_type.get(param_type)
-            is_file_type = (widget_type == 'FileEdit')
-            if widget_type is None:
-                print(f'Unsupported type {param_type}')
-
-            full_name = section_id + '.' + param_name
-            param_widget = ParamWidget(full_name, None, interface, to_str=is_file_type)
+            full_name = section_id + '.' + spec.param_name
+            param_widget = ParamWidget(full_name, None, interface, to_str=spec.is_file_type)
 
             options = {}
-            if widget_type == 'Dropdown' and choices is not None:
-                options['choices'] = param_widget.create_choices({item['value']: item['label'] for item in choices})
+            if spec.widget_type == 'Dropdown' and spec.choices:
+                options['choices'] = spec.to_magicgui_choices()
 
-            if is_file_type:
-                file_count = template.get('file_count')
-                options['mode'] = get_file_dialog_mode(is_output, file_count)
-                ext = os.path.splitext(str(template.get('default')))[1]
+            if spec.is_file_type:
+                options['mode'] = get_file_dialog_mode(spec.is_output, spec.file_count)
+                ext = os.path.splitext(str(spec.default))[1]
                 if ext:
                     options['filter'] = '*' + ext
-            if value is not None:
-                widget = create_widget(name=full_name, label=param_label, widget_type=widget_type, options=options,
-                                       value=value)
+
+            if spec.value is not None:
+                widget = create_widget(
+                    name=full_name,
+                    label=spec.param_label,
+                    widget_type=spec.widget_type,
+                    options=options,
+                    value=spec.value,
+                )
             else:
-                widget = create_widget(name=full_name, label=param_label, widget_type=widget_type, options=options)
+                widget = create_widget(
+                    name=full_name,
+                    label=spec.param_label,
+                    widget_type=spec.widget_type,
+                    options=options,
+                )
                 # explicitly setting value=None triggers type deduction, and results in an error
             param_widget.widget = widget
-            if description:
-                widget.tooltip = description
+            if spec.description:
+                widget.tooltip = spec.description
             if function is not None:
                 widget.changed.connect(function)
             # check if function with same name exists
-            interface_function = interface.get_function(param_name)
+            interface_function = interface.get_function(spec.param_name)
             if interface_function is not None:
                 widget.changed.connect(interface_function)
             interface.param_widgets[full_name] = param_widget
-            if connect_changed and section_key != 'display_only':
+            if connect_changed and spec.section_key != 'display_only':
                 widget.changed.connect(param_widget.value_changed)
             widgets.append(widget)
         except Exception as e:

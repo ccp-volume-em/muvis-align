@@ -15,7 +15,7 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
     draw_keypoints_matches_napari, get_transforms
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
-from muvis_align.ui.bilayers_util import get_section_dict
+from muvis_align.ui.bilayers_util import get_section_dict, to_magicgui_choices
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb
 
 
@@ -144,7 +144,7 @@ class Interface:
     def populate_coordinate_systems(self, coord_systems):
         param_widget = self.param_widgets.get('input_output.coordinate_system')
         choices = {coord_system: coord_system.replace('_', ' ').capitalize() for coord_system in coord_systems}
-        param_widget.widget.choices = param_widget.create_choices(choices)
+        param_widget.widget.choices = to_magicgui_choices(choices)
 
     def coordinate_system(self, transform_key):
         self.transform_key = transform_key
