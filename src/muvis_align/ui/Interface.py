@@ -5,6 +5,7 @@ from napari.utils.notifications import show_warning
 import networkx as nx
 import numpy as np
 import os.path
+from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
 
@@ -42,7 +43,10 @@ class Interface:
         self.transform_key = 'source_metadata'
         self.view_mode = None
         self.selected_shape_index = None
-        self.is_updating = False
+        self.pair_metrics_timer = QTimer()
+        self.pair_metrics_timer.setSingleShot(True)
+        self.pair_metrics_timer.setInterval(1000)
+        self.pair_metrics_timer.timeout.connect(self.update_pair_metrics)
 
         self.reg = MVSRegistration()
 
@@ -56,7 +60,7 @@ class Interface:
         if tab_label != 'registration' and self.view_mode == ViewMode.FEATURES:
             self._clear_napari_view(self.viewer)
             self.view_mode = None
-        self.is_updating = False
+        self.pair_metrics_timer.stop()
 
     def project_path(self, path):
         self.params_path = path
@@ -293,14 +297,15 @@ class Interface:
 
     def on_image_data_changed(self, event):
         #layer = event.source
-        if not self.is_updating:
-            self.is_updating = True
-            # filter only selected pair
-            sims = [self.reg.sims[index] for index in self.pair_indices]
-            transforms = {(0, 1): self.calc_mod_pair_transform()}
-            metrics = calc_sims_metrics(sims, transforms, metric_methods=['ncc'])
-            self.populate_metrics_table(metrics)
-            self.is_updating = False
+        self.pair_metrics_timer.stop()
+        self.pair_metrics_timer.start()
+
+    def update_pair_metrics(self):
+        # filter only selected pair
+        sims = [self.reg.sims[index] for index in self.pair_indices]
+        transforms = {(0, 1): self.calc_mod_pair_transform()}
+        metrics = calc_sims_metrics(sims, transforms, metric_methods=['ncc', 'ssim', 'onmi'])
+        self.populate_metrics_table(metrics)
 
     def preview_registration(self):
         self._clear_napari_view(self.viewer)
@@ -388,8 +393,8 @@ class Interface:
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((metrics_table, item_keys, col_headers))
         for rowi in range(len(item_keys)):
-            for coli in range(len(transform_keys)):
-                table_cell = table_widget.widget.native.item(rowi, coli)
+            for coli in range(len(col_headers)):
+                table_cell = table_widget.get_native_item(rowi, coli)
                 if table_cell is not None:
                     table_cell.setBackground(
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], range=255, max_light=0.5)))
@@ -451,6 +456,7 @@ class Interface:
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
                     layer = self._add_napari_image(self.viewer, self.reg.sims[sim_index], pair_transforms[index], labels[sim_index], color)
                     self.image_pair_layers.append(layer)
+                self.update_pair_metrics()
 
     def calc_mod_pair_transform(self):
         transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
