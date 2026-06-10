@@ -216,6 +216,7 @@ def calc_pyramid(xyzct: tuple, npyramid_add: int = 0, pyramid_downsample: float 
 
 def get_level_from_scale(source_scales, source_pixel_size, target_scale=1):
     # Only downscaling
+    # TODO: return new scale
     mean_source_pixel_size = float(np.mean([source_pixel_size[dim] for dim in 'xy']))
     if isinstance(target_scale, dict):
         target_pixel_size = target_scale

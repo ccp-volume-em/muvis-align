@@ -9,8 +9,9 @@ from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
 
+from muvis_align.constants import fused_name
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
-from muvis_align.MVSRegistration import MVSRegistration
+from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, get_sim_shape_2d, get_overlap_shapes, get_overlap_images, \
     draw_keypoints_matches_napari, get_transforms
@@ -25,6 +26,7 @@ class ViewMode(Enum):
     OVERVIEW = auto()
     PAIRS = auto()
     FEATURES = auto()
+    FUSED = auto()
 
 
 class Interface:
@@ -206,7 +208,7 @@ class Interface:
             self.view_mode = ViewMode.OVERVIEW
         if self.params['input_output']['preview_images'] or show_preprocessed:
             self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
-                                     show_preprocessed)
+                                     show_preprocessed=show_preprocessed)
         if self.params['input_output']['preview_shapes'] and not show_preprocessed:
             self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', transform_key,
                                        overlaps=overlaps)
@@ -214,12 +216,12 @@ class Interface:
     def _clear_napari_view(self, viewer):
         viewer.layers.clear()
 
-    def _update_napari_data(self, viewer, layer_name, transform_key, show_preprocessed=False):
+    def _update_napari_data(self, viewer, layer_name, transform_key, fusion_method='additive', show_preprocessed=False):
         if show_preprocessed:
             sims = self.reg.register_sims
         else:
             sims = self.reg.sims
-        fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method='additive')
+        fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method=fusion_method)
         fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
         fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
         if fused is not None:
@@ -239,6 +241,7 @@ class Interface:
         shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in sims]
         refs = [str(index) for index in range(len(sims))]
         labels = list(self.reg.file_labels)
+        scale = si_utils.get_spacing_from_sim(sims[0], asarray=True)
         face_colors = [(1, 1, 1) for _ in range(len(sims))]
         if overlaps:
             shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key)
@@ -256,8 +259,8 @@ class Interface:
                 layer.text = text
                 layer.features = features
             else:
-                viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
-                                  face_color=face_colors, edge_width=0.1)
+                viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
+                                  face_color=face_colors, opacity=0.5, edge_width=0.1)
 
                 # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
                 #                           face_color=face_colors)
@@ -287,7 +290,7 @@ class Interface:
             elif layer_type == "shapes":
                 viewer.add_shapes(data, **kwargs)
 
-    def _add_napari_image(self, viewer, data, transform, label, color=None):
+    def _add_napari_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
         scale = si_utils.get_spacing_from_sim(data, asarray=True)
         position = si_utils.get_origin_from_sim(data, asarray=True)
         layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
@@ -295,7 +298,9 @@ class Interface:
         if color:
             layer.colormap = color
 
-        layer.events.affine.connect(self.on_image_data_changed)
+        if affine_event:
+            layer.events.affine.connect(self.on_image_data_changed)
+
         return layer
 
     def on_image_data_changed(self, event):
@@ -403,12 +408,21 @@ class Interface:
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], range=255, max_light=0.5)))
         table_widget.read_only = True
 
+    def update_registered(self):
+        sims = self.reg.sims
+        coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+        self.populate_coordinate_systems(coord_systems)
+        self.populate_metadata_table(sims)
+        self.populate_metrics_table(self.reg.metrics)
+        self.update_overview()
+        self.update_view(overlaps=True)
+
     def pair_registration(self):
         if self.reg.is_global_registered():
             show_warning('Global registration was already performed')
         else:
-            message = 'Pair registration was already performed.' if self.reg.is_pairs_registered() else ''
-            message += ' Run pair registration?'
+            message = 'Pair registration was already performed. ' if self.reg.is_pairs_registered() else ''
+            message += 'Run pair registration?'
             reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
@@ -460,7 +474,8 @@ class Interface:
                 self._clear_napari_view(self.viewer)
                 self.image_pair_layers = []
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    layer = self._add_napari_image(self.viewer, self.reg.sims[sim_index], pair_transforms[index], labels[sim_index], color)
+                    layer = self._add_napari_image(self.viewer, self.reg.sims[sim_index], labels[sim_index],
+                                                   pair_transforms[index], color, affine_event=True)
                     self.image_pair_layers.append(layer)
                 self.update_pair_metrics()
 
@@ -476,7 +491,7 @@ class Interface:
             show_warning('Perform pair registration first')
         else:
             message = 'Global registration was already performed. ' if self.reg.is_global_registered() else ''
-            message += ' Run global registration?'
+            message += 'Run global registration?'
             reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
@@ -486,13 +501,35 @@ class Interface:
                                                    params=self.params['registration'])
                 self.reg.save_mappings(results['mappings'])
                 self.update_registered()
+                self.enable_tabs(True, 4)
 
-    def update_registered(self):
-        sims = self.reg.sims
-        coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
-        self.populate_coordinate_systems(coord_systems)
-        self.populate_metadata_table(sims)
-        self.populate_metrics_table(self.reg.metrics)
-        self.update_overview()
-        self.update_view(overlaps=True)
+    def preview_fusion(self):
+        self.reg.params_general = {'output': {}}
+        self.reg.fusion_params = self.params['fusion']
+        #self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key, fusion_method=self.params['fusion']['fusion_method'])
+        fused_image = self.reg.create_thumbnail(nom_sims=self.reg.sims, transform_key=self.reg.reg_transform_key)
+        if fused_image is None:
+            show_warning('Fusion preview failed, possibly missing source pyramid sizes.')
+        else:
+            self._clear_napari_view(self.viewer)
+            self._add_napari_image(self.viewer, fused_image, 'Fused')
+            self.view_mode = ViewMode.FUSED
 
+    def fusion_process(self):
+        message = 'Fusion was already performed. ' if self.reg.is_fused() else ''
+        message += 'Export fused data?'
+        reply = QMessageBox.question(None, 'muvis-align', message,
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            tile_size = self.params['fusion']['tile_size']
+            if ',' in tile_size:
+                tile_size = [int(size.strip()) for size in tile_size.split(',')]
+            elif isinstance(tile_size, str):
+                tile_size = int(tile_size.strip())
+            fused_image, _ = self.reg.fuse(self.reg.sims, fusion_method=self.params['fusion']['method'],
+                                           output_spacing=self.params['fusion']['spacing'], output_filename=fused_name,
+                                           tile_size=tile_size, ome_version=self.params['fusion']['ome_version'])
+            self._clear_napari_view(self.viewer)
+            self._add_napari_image(self.viewer, fused_image, 'Fused')
+            self.reg.state = RegState.FUSED
+            self.view_mode = ViewMode.FUSED

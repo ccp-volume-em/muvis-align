@@ -405,6 +405,76 @@ parameters:
     section_id: "registration"
     mode: "beginner"
 
+  # fusion
+  - name: method
+    type: dropdown
+    label: "Method"
+    description: "Method for fusion (average, exclusive, additive, compose)"
+    options:
+      - label: Average
+        value: "average"
+      - label: Exclusive
+        value: "exclusive"
+      - label: Additive
+        value: "additive"
+      - label: Compose
+        value: "compose"
+    default: "average"
+    cli_tag: "--method"
+    cli_order: 0
+    optional: True
+    section_id: "fusion"
+    mode: "beginner"
+  - name: spacing
+    type: dropdown
+    label: "Spacing"
+    description: "Output spacing (mean, min, max pixel size)"
+    options:
+      - label: Mean
+        value: "mean"
+      - label: Min
+        value: "min"
+      - label: Max
+        value: "max"
+    default: "mean"
+    cli_tag: "--spacing"
+    cli_order: 1
+    optional: True
+    section_id: "fusion"
+    mode: "beginner"
+  - name: tile_size
+    type: textbox
+    label: "Tile size(s)"
+    description: "Tile size(s) (e.g. 1024 or 1024,1024,1024)"
+    default: "1024,1024"
+    cli_tag: "--tile_size"
+    cli_order: 2
+    optional: True
+    section_id: "fusion"
+    mode: "advanced"
+  - name: ome_version
+    type: dropdown
+    label: "OME version"
+    description: "OME version (0.4, ...)"
+    options:
+      - label: "0.4"
+        value: "0.4"
+      - label: "0.5"
+        value: "0.5"
+    default: "0.5"
+    cli_tag: "--ome_version"
+    cli_order: 3
+    optional: True
+    section_id: "fusion"
+    mode: "advanced"
+  - name: preview_fusion
+    type: pushbutton
+    label: "Preview"
+    description: "Preview fused result"
+    cli_order: 4
+    section_id: "fusion"
+    mode: "beginner"
+
 display_only:
   - name: coordinate_system
     type: dropdown
