@@ -42,7 +42,7 @@ outputs:
     format:
       - omezarr
     folder_name: "output/"
-    file_count: "single"
+    file_count: "multiple"
     unique_string:
       - "*"
     section_id: "input_output"

@@ -886,22 +886,28 @@ def squeeze_sim_dims(sim, transform_key):
 def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
     # functionality copied from registration.register_pair_of_msims()
     shapes = []
+    good_pairs = []
     if pairs is None:
         pairs = np.transpose(np.triu_indices(len(sims), 1))
     for pair in pairs:
         sim1, sim2 = squeeze_sim_dims(sims[pair[0]], transform_key), squeeze_sim_dims(sims[pair[1]], transform_key)
-        result = _get_overlap_bboxes(
-            sim1,
-            sim2,
-            input_transform_key=transform_key,
-            output_transform_key=transform_key,
-            overlap_tolerance=overlap_tolerance,
-        )
-        points = result['intersection'].intersections
-        hull = ConvexHull(points)
-        shape = points[hull.vertices]
-        shapes.append(shape)
-    return shapes, pairs
+        # catch in case there is no overlap
+        try:
+            result = _get_overlap_bboxes(
+                sim1,
+                sim2,
+                input_transform_key=transform_key,
+                output_transform_key=transform_key,
+                overlap_tolerance=overlap_tolerance,
+            )
+            points = result['intersection'].intersections
+            hull = ConvexHull(points)
+            shape = points[hull.vertices]
+            shapes.append(shape)
+            good_pairs.append(pair)
+        except:
+            pass
+    return shapes, good_pairs
 
 
 def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):

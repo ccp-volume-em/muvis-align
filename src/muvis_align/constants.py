@@ -8,6 +8,7 @@ default_ome_zarr_version = '0.5'
 default_chunk_size = 1024
 
 prereg_mappings_name = 'prereg_mappings.csv'
+default_pair_mappings_name = 'pair_mappings.json'
 default_mappings_name = 'mappings.json'
 original_positions_name = 'positions_original.pdf'
 metrics_name = 'metrics.json'

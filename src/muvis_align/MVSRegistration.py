@@ -49,6 +49,9 @@ class MVSRegistration:
         self.sims = []
         self.sources = []
         self.metrics = {}
+        self.register_indices = None
+        self.output_params = {}
+
         if input_path is not None:
             self.init(operation=operation, label=label, input_path=input_path, output_path=output_path,
                       source_metadata=source_metadata, extra_metadata=extra_metadata,
@@ -250,8 +253,6 @@ class MVSRegistration:
 
             if 'register' in operation:
                 logging.info(metrics['summary'])
-                output_mappings = {file_labels[key]: np.array(mapping.sel(t=0)).tolist() for key, mapping in mappings.items()}
-                export_json(mappings_filename, output_mappings)
                 output_metrics = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}': value for keys, value in metrics['pairs'].items()}
                 export_json(output + metrics_name, output_metrics)
                 data = []
@@ -715,11 +716,19 @@ class MVSRegistration:
         return fuse_func
 
     def register(self, sims, register_sims=None, register_indices=None, params=None):
-        self.register_pairs(sims, register_sims=register_sims, params=params)
+        pair_results = self.register_pairs(sims, register_sims=register_sims, register_indices=register_indices, params=params)
+        self.save_pair_mappings(pair_results['pair_mappings'])
         results = self.register_global(sims, self.msims, register_indices=register_indices, params=params)
+        self.save_mappings(results['mappings'])
         return results
 
-    def register_pairs(self, sims, register_sims=None, params=None):
+    def register_pairs(self, sims, register_sims=None, register_indices=None, params=None):
+        if register_indices is None:
+            if self.register_indices is not None:
+                register_indices = self.register_indices
+            else:
+                register_indices = range(len(sims))
+
         operation = self.operation
         pairing = params.get('pairing',
                              params.get('registration', {}).get('pairing', '')).lower()
@@ -835,6 +844,10 @@ class MVSRegistration:
         except NotEnoughOverlapError:
             g_reg_computed = g_reg
 
+        mappings = nx.get_edge_attributes(g_reg_computed, 'transform')
+        mappings_dict = {(register_indices[indices[0]], register_indices[indices[1]]): mapping
+                         for indices, mapping in mappings.items()}
+
         metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []), self.source_transform_key,
                                     reg_channel=reg_channel_index, n_parallel_pairs=n_parallel_pairwise_regs)
 
@@ -847,11 +860,18 @@ class MVSRegistration:
             'pairs_graph': self.pairs_graph,
             'msims': msims_reg,
             'pairs': pairs,
+            'pair_mappings': mappings_dict,
             'metrics': metrics
         }
 
     def register_global(self, sims, msims, register_indices=None, params=None,
                         pairs_graph=None):
+        if register_indices is None:
+            if self.register_indices is not None:
+                register_indices = self.register_indices
+            else:
+                register_indices = range(len(msims))
+
         if pairs_graph is not None:
             g_reg_computed = pairs_graph
         else:
@@ -946,9 +966,6 @@ class MVSRegistration:
         }
 
         # ******* end MVS registration functions
-
-        if register_indices is None:
-            register_indices = range(len(msims))
 
         # copy transforms from register sims to unmodified sims
         for reg_msim, index in zip(msims, register_indices):
@@ -1064,6 +1081,19 @@ class MVSRegistration:
             else:
                 fused_image = sims
         return fused_image, saving_zarr
+
+    def save_pair_mappings(self, mappings):
+        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
+        file_labels = self.file_labels
+        output_mappings = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}': np.array(mapping.sel(t=0)).tolist()
+                           for keys, mapping in mappings.items()}
+        export_json(pair_mappings_filename, output_mappings)
+
+    def save_mappings(self, mappings):
+        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        output_mappings = {self.file_labels[key]: np.array(mapping.sel(t=0)).tolist()
+                           for key, mapping in mappings.items()}
+        export_json(mappings_filename, output_mappings)
 
     def save_thumbnail(self, output_filename, nom_sims=None, transform_key=None):
         output_params = self.params_general['output']

@@ -118,8 +118,11 @@ class Interface:
 
     def input_output_process(self):
         params = self.params['input_output']
+        output = str(params['output_path'])
+        if not output.endswith(os.sep):
+            output += os.sep
         ok = self.reg.init(input_path=str(params['input_path']),
-                           output_path=str(params['output_path']),
+                           output_path=output,
                            overwrite=params['overwrite'])
         if ok:
             self.update_metadata_source()
@@ -410,7 +413,8 @@ class Interface:
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
-                self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['registration'])
+                results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['registration'])
+                self.reg.save_pair_mappings(results['pair_mappings'])
                 self.update_registered()
 
     def modify_pair_registration(self):
@@ -418,6 +422,7 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align','Store modified registration?',
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
+                # update transforms back into graph
                 transform = self.calc_mod_pair_transform()
                 pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, 'transform')
                 qualities = nx.get_edge_attributes(self.reg.pairs_graph, 'quality')
@@ -427,6 +432,7 @@ class Interface:
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1
                 nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, 'transform')
                 nx.set_edge_attributes(self.reg.pairs_graph, qualities, 'quality')
+                self.reg.save_pair_mappings(pair_transforms)
 
             self.view_mode = ViewMode.OVERVIEW
             self._clear_napari_view(self.viewer)
@@ -475,8 +481,10 @@ class Interface:
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
-                self.reg.register_global(self.reg.sims, self.reg.msims, register_indices=self.reg.register_indices,
-                                         params=self.params['registration'])
+                results = self.reg.register_global(self.reg.sims, self.reg.msims,
+                                                   register_indices=self.reg.register_indices,
+                                                   params=self.params['registration'])
+                self.reg.save_mappings(results['mappings'])
                 self.update_registered()
 
     def update_registered(self):
@@ -487,3 +495,4 @@ class Interface:
         self.populate_metrics_table(self.reg.metrics)
         self.update_overview()
         self.update_view(overlaps=True)
+
