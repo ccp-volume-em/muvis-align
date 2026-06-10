@@ -191,7 +191,7 @@ class MVSRegistration:
 
         output_filename = operation.split()[0] + 'ed'
 
-        if not self.overwrite and os.path.exists(output_filename):
+        if not self.overwrite and self.output_exists(output_filename, output_format):
             logging.warning(f'Skipping existing output {output_filename}')
             return False
 
@@ -1061,8 +1061,9 @@ class MVSRegistration:
             if fuse_func:
                 saving_zarr = output_filename is not None
                 output_chunksize = None
-                if saving_zarr and not output_filename.lower().endswith('.zarr'):
-                    output_filename += '.ome.zarr'
+                if saving_zarr:
+                    if not output_filename.lower().endswith('.zarr'):
+                        output_filename += zarr_extension
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
                     if tile_size is not None:
                         if not isinstance(tile_size, (list, tuple)):
@@ -1082,8 +1083,6 @@ class MVSRegistration:
                         zarr_options=zarr_options,
                         output_chunksize=output_chunksize
                     )
-                if saving_zarr:
-                    open(output_filename.rstrip('.zarr').rstrip('.ome'), 'w')
             else:
                 fused_image = sims
         return fused_image, saving_zarr
@@ -1200,3 +1199,11 @@ class MVSRegistration:
             return metrics.get(metric)
         else:
             return metrics
+
+    def output_exists(self, output_filename, output_format):
+        output_filename = self.output + output_filename + output_format
+        if output_format == zarr_extension:
+            return (os.path.exists(os.path.join(output_filename, '.zattrs')) or
+                    os.path.exists(os.path.join(output_filename, 'zarr.json')))
+        else:
+            return os.path.exists(output_filename)

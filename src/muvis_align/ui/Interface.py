@@ -9,7 +9,6 @@ from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
 
-from muvis_align.constants import fused_name
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
@@ -241,7 +240,6 @@ class Interface:
         shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in sims]
         refs = [str(index) for index in range(len(sims))]
         labels = list(self.reg.file_labels)
-        scale = si_utils.get_spacing_from_sim(sims[0], asarray=True)
         face_colors = [(1, 1, 1) for _ in range(len(sims))]
         if overlaps:
             shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key)
@@ -521,13 +519,17 @@ class Interface:
         reply = QMessageBox.question(None, 'muvis-align', message,
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
+            operation = self.params['registration']['operation']
+            output_filename = operation.split()[0] + 'ed'
+            print(output_filename)
             tile_size = self.params['fusion']['tile_size']
             if ',' in tile_size:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]
             elif isinstance(tile_size, str):
                 tile_size = int(tile_size.strip())
             fused_image, _ = self.reg.fuse(self.reg.sims, fusion_method=self.params['fusion']['method'],
-                                           output_spacing=self.params['fusion']['spacing'], output_filename=fused_name,
+                                           output_spacing=self.params['fusion']['spacing'],
+                                           output_filename=output_filename,
                                            tile_size=tile_size, ome_version=self.params['fusion']['ome_version'])
             self._clear_napari_view(self.viewer)
             self._add_napari_image(self.viewer, fused_image, 'Fused')

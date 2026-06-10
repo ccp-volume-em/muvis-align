@@ -63,5 +63,3 @@ def save_image(filename, data, output_format=zarr_extension,
         if 'tif' in output_format:
             save_ome_tiff(str(filename) + tiff_extension, data.data, dimension_order, pixel_size,
                           channels, positions, rotation, tile_size=tile_size, compression=compression, scaler=scaler)
-
-        open(str(filename), 'w')
