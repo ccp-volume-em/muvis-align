@@ -92,7 +92,7 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
     return metric_results
 
 
-def calc_sims_metrics(sims, pair_transforms, qualities, base_transform_key=None, metric_methods='all',
+def calc_sims_metrics(sims, pair_transforms, qualities=None, base_transform_key=None, metric_methods='all',
                       reg_channel=None, n_parallel_pairs=None):
     if base_transform_key is None:
         reg_keys = si_utils.get_tranform_keys_from_sim(sims[0])
@@ -105,7 +105,8 @@ def calc_sims_metrics(sims, pair_transforms, qualities, base_transform_key=None,
             pairs=list(pair_transforms.keys())
         )
     nx.set_edge_attributes(pairs_graph, pair_transforms, 'transform')
-    nx.set_edge_attributes(pairs_graph, qualities, 'quality')
+    if qualities:
+        nx.set_edge_attributes(pairs_graph, qualities, 'quality')
     return calc_pair_metrics(msims=msims, pairs_graph=pairs_graph, base_transform_key=base_transform_key,
                              metric_methods=metric_methods, reg_channel=reg_channel, n_parallel_pairs=n_parallel_pairs)
 
