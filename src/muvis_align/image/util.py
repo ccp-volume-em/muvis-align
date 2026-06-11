@@ -679,6 +679,14 @@ def get_transforms(sims):
     return list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
 
 
+def copy_transforms(source_sims, target_sims, transform_key):
+    for source_sim, target_sim in zip(source_sims, target_sims):
+        si_utils.set_sim_affine(
+            target_sim,
+            si_utils.get_affine_from_sim(source_sim, transform_key=transform_key),
+            transform_key=transform_key)
+
+
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
     if position is None:
         position = si_utils.get_origin_from_sim(sim)

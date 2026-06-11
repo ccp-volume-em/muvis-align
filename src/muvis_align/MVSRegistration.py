@@ -297,11 +297,11 @@ class MVSRegistration:
 
         image_paths = []
         if save_images:
-            if self.output_params.get('thumbnail'):
-                with Timer('create thumbnail', self.logging_time):
-                    self.create_thumbnail('thumb_' + output_filename,
-                                          nom_sims=sims,
-                                          transform_key=transform_key)
+            if self.output_params.get('preview'):
+                with Timer('create preview', self.logging_time):
+                    self.create_preview('preview_' + output_filename,
+                                        nom_sims=sims,
+                                        transform_key=transform_key)
 
             if 'register' in operation or 'stack' in operation:
                 with Timer('fuse image', self.logging_time):
@@ -1014,7 +1014,6 @@ class MVSRegistration:
 
     def fuse(self, sims, fusion_method=None, output_spacing='mean', transform_key=None,
              output_filename=None, tile_size=None, ome_version=default_ome_zarr_version):
-        fused_image = None
         if output_filename is not None:
             output_filename = self.output + output_filename
         sim0 = sims[0]
@@ -1100,35 +1099,32 @@ class MVSRegistration:
                            for key, mapping in mappings.items()}
         export_json(mappings_filename, output_mappings)
 
-    def create_thumbnail(self, output_filename=None, nom_sims=None, transform_key=None):
+    def create_preview(self, output_filename=None, nom_sims=None, transform_key=None):
         output_params = self.params_general['output']
-        thumbnail_scale = output_params.get('thumbnail_scale', 16)
+        preview_scale = output_params.get('preview_scale', 16)
         is_stack = ('stack' in self.operation)
         if isinstance(self.extra_metadata, dict):
             z_scale = self.extra_metadata.get('scale', {}).get('z')
         else:
             z_scale = None
 
-        sims = self.init_sims(target_scale=thumbnail_scale, store=False)
+        sims = self.init_sims(target_scale=preview_scale, store=False)
         if is_stack:
             sims = make_sims_3d(sims, z_scale, self.positions)
 
         if nom_sims is not None:
             if sims[0].sizes['x'] >= nom_sims[0].sizes['x']:
-                logging.warning('Unable to generate scaled down thumbnail due to lack of source pyramid sizes')
+                logging.warning('Unable to generate scaled down preview due to lack of source pyramid sizes')
                 return None
 
             if transform_key is not None and transform_key != self.source_transform_key:
-                for nom_sim, sim in zip(nom_sims, sims):
-                    si_utils.set_sim_affine(sim,
-                                            si_utils.get_affine_from_sim(nom_sim, transform_key=transform_key),
-                                            transform_key=transform_key)
+                copy_transforms(nom_sims, sims, transform_key)
         fusion_method = self.fusion_params.get('method', '')
         fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method, transform_key=transform_key,
                                           output_spacing='max', output_filename=output_filename)
-        if output_filename and (not is_saved or 'tif' in output_params.get('thumbnail')):
+        if output_filename and (not is_saved or 'tif' in output_params.get('preview')):
             self.save(output_filename, fused_image.squeeze(), transform_key=transform_key,
-                      format=output_params.get('thumbnail'), ome_version=output_params.get('ome_version'))
+                      format=output_params.get('preview'), ome_version=output_params.get('ome_version'))
         return fused_image
 
     def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None,

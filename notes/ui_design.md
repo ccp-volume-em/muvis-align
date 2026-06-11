@@ -47,6 +47,6 @@ fused preview
 - select output tile size
 - compression
 - #pyramid sizes
-- select thumbnail pixel size to export thumbnail (leave blank for full size export)
+- select preview pixel size to export preview (leave blank for full size)
 - set output path
 - export fused button

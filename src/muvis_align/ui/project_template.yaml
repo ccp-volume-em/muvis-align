@@ -129,9 +129,19 @@ parameters:
     type: integer
     label: "Target downscale factor"
     description: "Downscale factor for input images"
-    default: "1"
+    default: 1
     cli_tag: "--target_scale"
     cli_order: 8
+    optional: True
+    section_id: "input_output"
+    mode: "advanced"
+  - name: preview_scale
+    type: integer
+    label: "Preview downscale factor"
+    description: "Downscale factor for preview images"
+    default: 16
+    cli_tag: "--preview_scale"
+    cli_order: 9
     optional: True
     section_id: "input_output"
     mode: "advanced"
@@ -142,7 +152,7 @@ parameters:
     description: "If enabled, tiles will be displayed as shapes"
     default: True
     cli_tag: "--preview_shapes"
-    cli_order: 10
+    cli_order: 12
     optional: True
     append_value: False
     section_id: "input_output"
@@ -153,7 +163,7 @@ parameters:
     description: "If enabled, tiles will be previewed as images"
     default: True
     cli_tag: "--preview_images"
-    cli_order: 11
+    cli_order: 13
     optional: True
     append_value: False
     section_id: "input_output"
@@ -164,7 +174,7 @@ parameters:
     description: "If enabled, any existing output data will be overwritten"
     default: True
     cli_tag: "--overwrite"
-    cli_order: 13
+    cli_order: 14
     optional: True
     append_value: False
     section_id: "input_output"
@@ -485,14 +495,14 @@ display_only:
         value: "source_metadata"
     default: "source_metadata"
     section_id: "input_output"
-    cli_order: 8
+    cli_order: 10
   - name: metadata_table
     type: table
     label: " "
     default: []
     description: "Metadata"
     section_id: "input_output"
-    cli_order: 9
+    cli_order: 11
 
   - name: metrics_table
     type: table

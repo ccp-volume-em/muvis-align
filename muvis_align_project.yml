@@ -10,7 +10,8 @@ input_output:
   metadata_table: []
   output_path: C:\Users\Y\PycharmProjects\muvis-align\output
   overwrite: true
-  preview_images: false
+  preview_images: true
+  preview_scale: 4
   preview_shapes: true
   source_position_x: source
   source_position_y: source

@@ -13,7 +13,7 @@ from muvis_align.file.project_yaml import read_params, get_template_params, writ
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, get_sim_shape_2d, get_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms
+    draw_keypoints_matches_napari, get_transforms, copy_transforms
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.bilayers_util import get_section_dict, to_magicgui_choices
@@ -134,6 +134,9 @@ class Interface:
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
+            preview_scale = self.params['input_output']['preview_scale']
+            self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
+                                                   store=False)
             target_scale = self.params['input_output']['target_scale']
             self.reg.init_sims(source_metadata=self.source_metadata, target_scale=target_scale)
         sims = self.reg.sims
@@ -219,13 +222,17 @@ class Interface:
         if show_preprocessed:
             sims = self.reg.register_sims
         else:
-            sims = self.reg.sims
+            sims = self.preview_sims
+            copy_transforms(self.reg.sims, sims, transform_key)
         fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method=fusion_method)
         fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
         fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
         if fused is not None:
             if layer_name in viewer.layers:
-                viewer.layers[layer_name].data = fused
+                layer = viewer.layers[layer_name]
+                layer.data = fused
+                layer.scale = fused_scale
+                layer.translate = fused_position
             else:
                 image_layer = viewer.add_image(fused, name=layer_name, scale=fused_scale, translate=fused_position)
                 current_index = viewer.layers.index(image_layer)
@@ -302,7 +309,6 @@ class Interface:
         return layer
 
     def on_image_data_changed(self, event):
-        #layer = event.source
         self.pair_metrics_timer.stop()
         self.pair_metrics_timer.start()
 
@@ -504,14 +510,9 @@ class Interface:
     def preview_fusion(self):
         self.reg.params_general = {'output': {}}
         self.reg.fusion_params = self.params['fusion']
-        #self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key, fusion_method=self.params['fusion']['fusion_method'])
-        fused_image = self.reg.create_thumbnail(nom_sims=self.reg.sims, transform_key=self.reg.reg_transform_key)
-        if fused_image is None:
-            show_warning('Fusion preview failed, possibly missing source pyramid sizes.')
-        else:
-            self._clear_napari_view(self.viewer)
-            self._add_napari_image(self.viewer, fused_image, 'Fused')
-            self.view_mode = ViewMode.FUSED
+        self._clear_napari_view(self.viewer)
+        self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key, fusion_method=self.params['fusion']['method'])
+        self.view_mode = ViewMode.FUSED
 
     def fusion_process(self):
         message = 'Fusion was already performed. ' if self.reg.is_fused() else ''

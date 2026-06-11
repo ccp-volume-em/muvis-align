@@ -36,8 +36,8 @@ general:
     compression: null
     npyramid_add: 4
     pyramid_downsample: 2
-    thumbnail: ome.zarr
-    thumbnail_scale: 32
+    preview: ome.zarr
+    preview_scale: 32
   break_on_error: False
   metadata_summary: False
   chunk_size: [1024, 1024]
@@ -66,16 +66,16 @@ general:
 
 #### Output options:
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `format` | str | Output format: `ome.zarr` or `ome.tiff` (or both: `ome.zarr, ome.tiff`) |
-| `clear` | bool | Delete output directory before processing |
-| `tile_size` | list | Tile size for zarr output `[x, y]` or `[x, y, z]` |
-| `compression` | str/list | Compression method(s) |
-| `npyramid_add` | int | Number of pyramid levels to add |
-| `pyramid_downsample` | int | Downsampling factor for pyramid |
-| `thumbnail` | str | Thumbnail format |
-| `thumbnail_scale` | int | Thumbnail scale factor |
+| Parameter            | Type | Description                                                             |
+|----------------------|------|-------------------------------------------------------------------------|
+| `format`             | str | Output format: `ome.zarr` or `ome.tiff` (or both: `ome.zarr, ome.tiff`) |
+| `clear`              | bool | Delete output directory before processing                               |
+| `tile_size`          | list | Tile size for zarr output `[x, y]` or `[x, y, z]`                       |
+| `compression`        | str/list | Compression method(s)                                                   |
+| `npyramid_add`       | int | Number of pyramid levels to add                                         |
+| `pyramid_downsample` | int | Downsampling factor for pyramid                                         |
+| `preview`            | str | Preview format                                                          |
+| `preview_scale`      | int | Preview scale factor                                                    |
 
 #### Other options:
 
