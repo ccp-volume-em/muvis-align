@@ -217,21 +217,21 @@ def calc_pyramid(xyzct: tuple, npyramid_add: int = 0, pyramid_downsample: float 
 def get_level_from_scale(source_scales, source_pixel_size, target_scale=1):
     # Only downscaling
     mean_source_pixel_size = float(np.mean([source_pixel_size[dim] for dim in 'xy']))
-    if isinstance(target_scale, dict):
-        target_pixel_size = target_scale
-        target_scale = float(np.mean([target_scale[dim] for dim in 'xy'])) / mean_source_pixel_size
-    elif isinstance(target_scale, str):
+    if isinstance(target_scale, str):
         index = target_scale.find(next(filter(str.isalpha, target_scale)))
         pixel_size = convert_to_um(float(target_scale[:index]), target_scale[index:])
-        target_pixel_size = {dim: pixel_size for dim in 'xy'}
-        target_scale = pixel_size / mean_source_pixel_size
+        target_scale = {dim: pixel_size for dim in 'xy'}
+    if isinstance(target_scale, dict):
+        target_pixel_size = target_scale
+        mean_target_pixel_size = float(np.mean([target_pixel_size[dim] for dim in 'xy']))
+        target_scale = mean_target_pixel_size / mean_source_pixel_size
     else:
-        target_pixel_size = source_pixel_size
+        target_pixel_size = {dim: float(source_pixel_size[dim] * target_scale) for dim in source_pixel_size}
     best_level, best_scale = 0, target_scale
     for level, scale in enumerate(source_scales):
         if np.isclose(scale, target_scale, rtol=1e-4):
-            target_pixel_size = {dim: float(source_pixel_size[dim] * scale) for dim in source_pixel_size}
-            return level, 1, target_pixel_size
+            best_level, best_scale = level, 1
+            break
         if scale <= target_scale:
             best_level, best_scale = level, target_scale / scale
     if best_level == 0 and best_scale < 1:
@@ -677,6 +677,14 @@ def detect_area_points(image):
 
 def get_transforms(sims):
     return list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+
+
+def copy_transforms(source_sims, target_sims, transform_key):
+    for source_sim, target_sim in zip(source_sims, target_sims):
+        si_utils.set_sim_affine(
+            target_sim,
+            si_utils.get_affine_from_sim(source_sim, transform_key=transform_key),
+            transform_key=transform_key)
 
 
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):

@@ -129,9 +129,19 @@ parameters:
     type: integer
     label: "Target downscale factor"
     description: "Downscale factor for input images"
-    default: "1"
+    default: 1
     cli_tag: "--target_scale"
     cli_order: 8
+    optional: True
+    section_id: "input_output"
+    mode: "advanced"
+  - name: preview_scale
+    type: integer
+    label: "Preview downscale factor"
+    description: "Downscale factor for preview images"
+    default: 16
+    cli_tag: "--preview_scale"
+    cli_order: 9
     optional: True
     section_id: "input_output"
     mode: "advanced"
@@ -142,7 +152,7 @@ parameters:
     description: "If enabled, tiles will be displayed as shapes"
     default: True
     cli_tag: "--preview_shapes"
-    cli_order: 10
+    cli_order: 12
     optional: True
     append_value: False
     section_id: "input_output"
@@ -153,7 +163,7 @@ parameters:
     description: "If enabled, tiles will be previewed as images"
     default: True
     cli_tag: "--preview_images"
-    cli_order: 11
+    cli_order: 13
     optional: True
     append_value: False
     section_id: "input_output"
@@ -164,7 +174,7 @@ parameters:
     description: "If enabled, any existing output data will be overwritten"
     default: True
     cli_tag: "--overwrite"
-    cli_order: 13
+    cli_order: 14
     optional: True
     append_value: False
     section_id: "input_output"
@@ -405,6 +415,76 @@ parameters:
     section_id: "registration"
     mode: "beginner"
 
+  # fusion
+  - name: method
+    type: dropdown
+    label: "Method"
+    description: "Method for fusion (average, exclusive, additive, compose)"
+    options:
+      - label: Average
+        value: "average"
+      - label: Exclusive
+        value: "exclusive"
+      - label: Additive
+        value: "additive"
+      - label: Compose
+        value: "compose"
+    default: "average"
+    cli_tag: "--method"
+    cli_order: 0
+    optional: True
+    section_id: "fusion"
+    mode: "beginner"
+  - name: spacing
+    type: dropdown
+    label: "Spacing"
+    description: "Output spacing (mean, min, max pixel size)"
+    options:
+      - label: Mean
+        value: "mean"
+      - label: Min
+        value: "min"
+      - label: Max
+        value: "max"
+    default: "mean"
+    cli_tag: "--spacing"
+    cli_order: 1
+    optional: True
+    section_id: "fusion"
+    mode: "beginner"
+  - name: tile_size
+    type: textbox
+    label: "Tile size(s)"
+    description: "Tile size(s) (e.g. 1024 or 1024,1024,1024)"
+    default: "1024,1024"
+    cli_tag: "--tile_size"
+    cli_order: 2
+    optional: True
+    section_id: "fusion"
+    mode: "advanced"
+  - name: ome_version
+    type: dropdown
+    label: "OME version"
+    description: "OME version (0.4, ...)"
+    options:
+      - label: "0.4"
+        value: "0.4"
+      - label: "0.5"
+        value: "0.5"
+    default: "0.5"
+    cli_tag: "--ome_version"
+    cli_order: 3
+    optional: True
+    section_id: "fusion"
+    mode: "advanced"
+  - name: preview_fusion
+    type: pushbutton
+    label: "Preview"
+    description: "Preview fused result"
+    cli_order: 4
+    section_id: "fusion"
+    mode: "beginner"
+
 display_only:
   - name: coordinate_system
     type: dropdown
@@ -415,14 +495,14 @@ display_only:
         value: "source_metadata"
     default: "source_metadata"
     section_id: "input_output"
-    cli_order: 8
+    cli_order: 10
   - name: metadata_table
     type: table
     label: " "
     default: []
     description: "Metadata"
     section_id: "input_output"
-    cli_order: 9
+    cli_order: 11
 
   - name: metrics_table
     type: table

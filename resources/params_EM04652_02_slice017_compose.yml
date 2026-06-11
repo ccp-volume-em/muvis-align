@@ -18,8 +18,8 @@ general:
     compression:
     npyramid_add: 4
     pyramid_downsample: 2
-    thumbnail:
-    thumbnail_scale: 1um
+    preview:
+    preview_scale: 1um
 
 operations:
   - operation: register

@@ -1,3 +1,9 @@
+fusion:
+  method: average
+  ome_version: '0.5'
+  preview_fusion: false
+  spacing: mean
+  tile_size: 1024,1024
 input_output:
   coordinate_system: source_metadata
   input_path: C:\Users\Y\PycharmProjects\muvis-align\data\S000\*.zarr
@@ -5,6 +11,7 @@ input_output:
   output_path: C:\Users\Y\PycharmProjects\muvis-align\output
   overwrite: true
   preview_images: true
+  preview_scale: 4
   preview_shapes: true
   source_position_x: source
   source_position_y: source

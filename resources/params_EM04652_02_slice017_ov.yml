@@ -17,8 +17,8 @@ general:
     compression:
     npyramid_add: 4
     pyramid_downsample: 2
-    thumbnail: ome.zarr
-    thumbnail_scale: 16
+    preview: ome.zarr
+    preview_scale: 16
 
 operations:
   - operation: register stack

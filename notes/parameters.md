@@ -53,4 +53,4 @@
   - export fusion/save
     - output_spacing
     - path
-    - thumbnail
+    - preview

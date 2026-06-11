@@ -67,6 +67,9 @@ class MVSRegistration:
     def is_global_registered(self):
         return self.state.value >= RegState.GLOBAL_REG.value
 
+    def is_fused(self):
+        return self.state.value >= RegState.FUSED.value
+
     def init_params(self, params_general, params, label='', input_path=None, global_rotation=None, global_center=None):
         self.params_general = params_general
         self.params = params
@@ -188,7 +191,7 @@ class MVSRegistration:
 
         output_filename = operation.split()[0] + 'ed'
 
-        if not self.overwrite and os.path.exists(output_filename):
+        if not self.overwrite and self.output_exists(output_filename, output_format):
             logging.warning(f'Skipping existing output {output_filename}')
             return False
 
@@ -294,9 +297,9 @@ class MVSRegistration:
 
         image_paths = []
         if save_images:
-            if self.output_params.get('thumbnail'):
-                with Timer('create thumbnail', self.logging_time):
-                    self.save_thumbnail('thumb_' + output_filename,
+            if self.output_params.get('preview'):
+                with Timer('create preview', self.logging_time):
+                    self.create_preview('preview_' + output_filename,
                                         nom_sims=sims,
                                         transform_key=transform_key)
 
@@ -311,6 +314,7 @@ class MVSRegistration:
                     fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method, output_spacing=output_spacing,
                                                       transform_key=transform_key, output_filename=output_filename,
                                                       tile_size=output_tile_size, ome_version=output_ome_version)
+                    self.state = RegState.FUSED
             else:
                 fused_image = sims
                 is_saved = False
@@ -367,7 +371,7 @@ class MVSRegistration:
             self.sources.append(create_dask_source(filename, source_metadata))
 
     def init_sims(self, source_metadata={}, extra_metadata={}, z_scale=None, chunk_size=default_chunk_size,
-                  target_scale=None):
+                  target_scale=None, store=True):
         if not source_metadata:
             source_metadata = self.source_metadata
         if not extra_metadata:
@@ -542,11 +546,12 @@ class MVSRegistration:
             final_scales.append(scale)
             final_translations.append(translation)
 
-        self.scales = final_scales
-        self.positions = final_translations
-        self.rotations = rotations
-        self.sims = sims
-        self.state = RegState.SIMS_INIT
+        if store:
+            self.sims = sims
+            self.scales = final_scales
+            self.positions = final_translations
+            self.rotations = rotations
+            self.state = RegState.SIMS_INIT
         return sims
 
     def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):
@@ -1055,8 +1060,9 @@ class MVSRegistration:
             if fuse_func:
                 saving_zarr = output_filename is not None
                 output_chunksize = None
-                if saving_zarr and not output_filename.lower().endswith('.zarr'):
-                    output_filename += '.ome.zarr'
+                if saving_zarr:
+                    if not output_filename.lower().endswith('.zarr'):
+                        output_filename += zarr_extension
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
                     if tile_size is not None:
                         if not isinstance(tile_size, (list, tuple)):
@@ -1076,8 +1082,6 @@ class MVSRegistration:
                         zarr_options=zarr_options,
                         output_chunksize=output_chunksize
                     )
-                if saving_zarr:
-                    open(output_filename.rstrip('.zarr').rstrip('.ome'), 'w')
             else:
                 fused_image = sims
         return fused_image, saving_zarr
@@ -1095,35 +1099,33 @@ class MVSRegistration:
                            for key, mapping in mappings.items()}
         export_json(mappings_filename, output_mappings)
 
-    def save_thumbnail(self, output_filename, nom_sims=None, transform_key=None):
+    def create_preview(self, output_filename=None, nom_sims=None, transform_key=None):
         output_params = self.params_general['output']
-        thumbnail_scale = output_params.get('thumbnail_scale', 16)
+        preview_scale = output_params.get('preview_scale', 16)
         is_stack = ('stack' in self.operation)
         if isinstance(self.extra_metadata, dict):
             z_scale = self.extra_metadata.get('scale', {}).get('z')
         else:
             z_scale = None
 
-        sims = self.init_sims(target_scale=thumbnail_scale)
+        sims = self.init_sims(target_scale=preview_scale, store=False)
         if is_stack:
             sims = make_sims_3d(sims, z_scale, self.positions)
 
         if nom_sims is not None:
             if sims[0].sizes['x'] >= nom_sims[0].sizes['x']:
-                logging.warning('Unable to generate scaled down thumbnail due to lack of source pyramid sizes')
-                return
+                logging.warning('Unable to generate scaled down preview due to lack of source pyramid sizes')
+                return None
 
             if transform_key is not None and transform_key != self.source_transform_key:
-                for nom_sim, sim in zip(nom_sims, sims):
-                    si_utils.set_sim_affine(sim,
-                                            si_utils.get_affine_from_sim(nom_sim, transform_key=transform_key),
-                                            transform_key=transform_key)
-        fused_image, is_saved = self.fuse(sims, transform_key=transform_key, output_spacing='max',
-                                          output_filename=output_filename)
-        if not is_saved or 'tif' in output_params.get('thumbnail'):
+                copy_transforms(nom_sims, sims, transform_key)
+        fusion_method = self.fusion_params.get('method', '')
+        fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method, transform_key=transform_key,
+                                          output_spacing='max', output_filename=output_filename)
+        if output_filename and (not is_saved or 'tif' in output_params.get('preview')):
             self.save(output_filename, fused_image.squeeze(), transform_key=transform_key,
-                      format=output_params.get('thumbnail'), ome_version=output_params.get('ome_version'))
-        self.state = RegState.FUSED
+                      format=output_params.get('preview'), ome_version=output_params.get('ome_version'))
+        return fused_image
 
     def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None,
              tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=0, ome_version=default_ome_zarr_version):
@@ -1193,3 +1195,11 @@ class MVSRegistration:
             return metrics.get(metric)
         else:
             return metrics
+
+    def output_exists(self, output_filename, output_format):
+        output_filename = self.output + output_filename + output_format
+        if output_format == zarr_extension:
+            return (os.path.exists(os.path.join(output_filename, '.zattrs')) or
+                    os.path.exists(os.path.join(output_filename, 'zarr.json')))
+        else:
+            return os.path.exists(output_filename)
