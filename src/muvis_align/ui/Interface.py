@@ -52,13 +52,13 @@ class Interface:
         self.reset()
 
     def reset(self):
-        self.init_progress_done = False
         self.source_metadata = {}
         self.view_mode = None
         self.selected_shape_index = None
         self.reg.reset()
         self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
+        self.enable_tabs(False, 2)
 
     def get_function(self, function_label):
         if hasattr(self, function_label):
@@ -130,32 +130,37 @@ class Interface:
     def input_output_process(self):
         params = self.params['input_output']
         output = str(params['output_path'])
-        if not output.endswith(os.sep):
-            output += os.sep
-        ok = self.reg.init(input_path=str(params['input_path']),
-                           output_path=output,
-                           overwrite=params['overwrite'])
-        if ok:
-            self.update_metadata_source()
-            self.populate_image_selection()
-            self.enable_tabs(True, 2)
-            self.init_progress()
+        if not self.reg.is_initialised():
+            if not output.endswith(os.sep):
+                output += os.sep
+            ok = self.reg.init(input_path=str(params['input_path']),
+                               output_path=output,
+                               overwrite=params['overwrite'])
+            if ok:
+                self.update_metadata_source()
+                self.populate_image_selection()
+                self.enable_tabs(True, 2)
+                self.init_progress()
+            else:
+                show_warning('No input images found')
         else:
-            show_warning('No input images found')
+            self.update_registered()
 
     def init_progress(self):
-        if not self.init_progress_done:
-            self.reg.init_progress(self.params['registration']['operation'], zarr_extension)
-            tab_index = None
-            if self.reg.is_fused() or self.reg.is_global_registered():
-                tab_index = 4
-            elif self.reg.is_pairs_registered():
-                tab_index = 3
-            if tab_index is not None:
-                self.enable_tabs(True, tab_index)
-                self.select_tab(tab_index)
-                self.update_registered()
-            self.init_progress_done = True
+        output_filename = self.params['registration']['operation'].split()[0] + 'ed'
+        self.reg.init_progress(output_filename, zarr_extension)
+        if self.reg.is_fused():
+            self.enable_tabs(True, 4)
+            self.select_tab(4)
+            self.preview_fusion()
+        elif self.reg.is_global_registered():
+            self.enable_tabs(True, 4)
+            self.select_tab(3)
+            self.update_registered()
+        elif self.reg.is_pairs_registered():
+            self.enable_tabs(True, 3)
+            self.select_tab(3)
+            self.update_registered()
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
@@ -217,7 +222,7 @@ class Interface:
             transform_key = self.reg.reg_transform_key
         elif 'transform' in transforms:
             transform_key = 'transform'
-        elif self.reg.source_transform_key:
+        elif self.reg.source_transform_key in transforms:
             transform_key = self.reg.source_transform_key
         else:
             transform_key = None
@@ -225,20 +230,20 @@ class Interface:
 
     def update_overview(self, overlaps=True):
         transform_key = self.get_best_transform_key()
+        self._clear_napari_view(self.overview)
         self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', transform_key,
                                    overlaps=overlaps)
 
     def update_view(self, overlaps=False, show_preprocessed=False):
         transform_key = self.get_best_transform_key()
-        if self.view_mode != ViewMode.OVERVIEW or show_preprocessed:
-            self._clear_napari_view(self.viewer)
-            self.view_mode = ViewMode.OVERVIEW
+        self._clear_napari_view(self.viewer)
         if self.params['input_output']['preview_images'] or show_preprocessed:
             self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
                                      show_preprocessed=show_preprocessed)
         if self.params['input_output']['preview_shapes'] and not show_preprocessed:
             self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', transform_key,
                                        overlaps=overlaps)
+        self.view_mode = ViewMode.OVERVIEW
 
     def _clear_napari_view(self, viewer):
         viewer.layers.clear()
@@ -253,17 +258,11 @@ class Interface:
         fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
         fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
         if fused is not None:
-            if layer_name in viewer.layers:
-                layer = viewer.layers[layer_name]
-                layer.data = fused
-                layer.scale = fused_scale
-                layer.translate = fused_position
-            else:
-                image_layer = viewer.add_image(fused, name=layer_name, scale=fused_scale, translate=fused_position)
-                current_index = viewer.layers.index(image_layer)
-                # ensure image layer goes on 'bottom'
-                if current_index > 0:
-                    viewer.layers.move(current_index, 0)
+            image_layer = viewer.add_image(fused, name=layer_name, scale=fused_scale, translate=fused_position)
+            current_index = viewer.layers.index(image_layer)
+            # ensure image layer goes on 'bottom'
+            if current_index > 0:
+                viewer.layers.move(current_index, 0)
 
     def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
         if isinstance(viewer, ViewerWidget):
@@ -282,28 +281,21 @@ class Interface:
         if len(shapes) > 0:
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
-            if layer_name in viewer.layers:
-                layer = viewer.layers[layer_name]
-                layer.data = shapes
-                layer.face_color = face_colors
-                layer.text = text
-                layer.features = features
-            else:
-                viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
-                                  face_color=face_colors, opacity=0.5, edge_width=0.1)
+            viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
+                              face_color=face_colors, opacity=0.5, edge_width=0.1)
 
-                # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
-                #                           face_color=face_colors)
-                # @viewer.mouse_move_callbacks.append
-                # def on_mouse_move(viewer, event):
-                #     self.selected_shape_index = layer._value[0]
-                #
-                # @viewer.mouse_drag_callbacks.append
-                # def on_mouse_drag(viewer, event):
-                #     if event.type == "mouse_press" and event.button == 1:
-                #         if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
-                #             self.on_selection_change(refs[self.selected_shape_index])
-                #     yield
+            # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
+            #                           face_color=face_colors)
+            # @viewer.mouse_move_callbacks.append
+            # def on_mouse_move(viewer, event):
+            #     self.selected_shape_index = layer._value[0]
+            #
+            # @viewer.mouse_drag_callbacks.append
+            # def on_mouse_drag(viewer, event):
+            #     if event.type == "mouse_press" and event.button == 1:
+            #         if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
+            #             self.on_selection_change(refs[self.selected_shape_index])
+            #     yield
 
     def _update_napari_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
 
@@ -538,8 +530,8 @@ class Interface:
                                                    register_indices=self.reg.register_indices,
                                                    params=self.params['registration'])
                 self.reg.save_mappings(results['mappings'])
-                self.update_registered()
                 self.enable_tabs(True, 4)
+                self.update_registered()
 
     def preview_fusion(self):
         self.reg.params_general = {'output': {}}

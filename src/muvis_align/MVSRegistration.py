@@ -561,7 +561,7 @@ class MVSRegistration:
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
         self.check_progress(output_filename, output_format)
 
-        if self.state == RegState.GLOBAL_REG:
+        if self.is_global_registered():
             # load mapping
             sims = self.sims
             is_stack = ('stack' in self.operation)
@@ -583,7 +583,7 @@ class MVSRegistration:
             if is_stack:
                 sims = make_sims_3d(sims, z_scale, self.positions)
             self.sims = sims
-        elif self.state == RegState.PAIRS_REG:
+        elif self.is_pairs_registered():
             # load pair mapping and initialise pair_graph
             pairs = import_json(pair_mappings_filename)
             indexed_pair_transforms = {}
@@ -1256,7 +1256,9 @@ class MVSRegistration:
             return metrics
 
     def output_exists(self, output_filename, output_format):
-        output_filename = self.output + output_filename + '.' + output_format
+        if not output_format.startswith('.'):
+            output_format = '.' + output_format
+        output_filename = self.output + output_filename + output_format
         if output_format == zarr_extension:
             return (os.path.exists(os.path.join(output_filename, '.zattrs')) or
                     os.path.exists(os.path.join(output_filename, 'zarr.json')))
