@@ -9,6 +9,7 @@ from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
 
+from muvis_align.constants import zarr_extension
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
@@ -29,10 +30,11 @@ class ViewMode(Enum):
 
 
 class Interface:
-    def __init__(self, viewer, overview, enable_tabs, verbose=False):
+    def __init__(self, viewer, overview, enable_tabs, select_tab, verbose=False):
         self.viewer = viewer
         self.overview = overview
         self.enable_tabs = enable_tabs
+        self.select_tab = select_tab
         self.verbose = verbose
         self.raw_template = get_project_template()
         if not self.raw_template:
@@ -40,16 +42,23 @@ class Interface:
         self.template = get_section_dict(self.raw_template, ['inputs', 'parameters', 'display_only', 'outputs'])
         self.param_widgets = {}
         self.params = {}
-        self.source_metadata = {}
         self.transform_key = 'source_metadata'
-        self.view_mode = None
-        self.selected_shape_index = None
         self.pair_metrics_timer = QTimer()
         self.pair_metrics_timer.setSingleShot(True)
         self.pair_metrics_timer.setInterval(1000)
         self.pair_metrics_timer.timeout.connect(self.update_pair_metrics)
 
         self.reg = MVSRegistration()
+        self.reset()
+
+    def reset(self):
+        self.init_progress_done = False
+        self.source_metadata = {}
+        self.view_mode = None
+        self.selected_shape_index = None
+        self.reg.reset()
+        self._clear_napari_view(self.overview)
+        self._clear_napari_view(self.viewer)
 
     def get_function(self, function_label):
         if hasattr(self, function_label):
@@ -64,6 +73,7 @@ class Interface:
         self.pair_metrics_timer.stop()
 
     def project_path(self, path):
+        self.reset()
         self.params_path = path
         self.params = get_template_params(self.template)
         if os.path.exists(path):
@@ -129,8 +139,23 @@ class Interface:
             self.update_metadata_source()
             self.populate_image_selection()
             self.enable_tabs(True, 2)
+            self.init_progress()
         else:
             show_warning('No input images found')
+
+    def init_progress(self):
+        if not self.init_progress_done:
+            self.reg.init_progress(self.params['registration']['operation'], zarr_extension)
+            tab_index = None
+            if self.reg.is_fused() or self.reg.is_global_registered():
+                tab_index = 4
+            elif self.reg.is_pairs_registered():
+                tab_index = 3
+            if tab_index is not None:
+                self.enable_tabs(True, tab_index)
+                self.select_tab(tab_index)
+                self.update_registered()
+            self.init_progress_done = True
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
@@ -431,8 +456,15 @@ class Interface:
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
+                if len(self.reg.register_sims) == 0:
+                    params_features = self.params['pre_processing']
+                    self.reg.preprocess(self.reg.sims, **params_features)
                 results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['registration'])
-                self.reg.save_pair_mappings(results['pair_mappings'])
+                qualities = {key: metric['transform']['quality']
+                             for key, metric in results['metrics']['pairs'].items()}
+                bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
+                          nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
+                self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
                 self.update_registered()
 
     def modify_pair_registration(self):
@@ -450,7 +482,9 @@ class Interface:
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1
                 nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, 'transform')
                 nx.set_edge_attributes(self.reg.pairs_graph, qualities, 'quality')
-                self.reg.save_pair_mappings(pair_transforms)
+                bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
+                          nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
+                self.reg.save_pair_mappings(pair_transforms, qualities, bboxes)
 
             self.view_mode = ViewMode.OVERVIEW
             self._clear_napari_view(self.viewer)
