@@ -19,7 +19,7 @@ class MainWidget(QTabWidget):
         self.overview.min_height = 200
         viewer.window.add_dock_widget(self.overview, name='muvis-align', area='left', add_vertical_stretch=False)
 
-        self.interface = Interface(viewer, self.overview, self.enable_tabs, self.verbose)
+        self.interface = Interface(viewer, self.overview, self.enable_tabs, self.select_tab, self.verbose)
 
         self.tab_labels = []
         self.widgets = self.create_widgets()
@@ -42,6 +42,9 @@ class MainWidget(QTabWidget):
         for index in range(self.count()):
             if (set and (tab_index < 0 or index <= tab_index)) or (not set and index >= tab_index):
                 self.setTabEnabled(index, set)
+
+    def select_tab(self, tab_index):
+        self.setCurrentIndex(tab_index)
 
     def project_path_set(self):
         self.enable_tabs(True, 1)
