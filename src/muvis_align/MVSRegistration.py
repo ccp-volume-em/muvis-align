@@ -248,8 +248,6 @@ class MVSRegistration:
 
             if 'register' in operation:
                 logging.info(metrics['summary'])
-                output_metrics = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}': value for keys, value in metrics['pairs'].items()}
-                export_json(output + metrics_name, output_metrics)
                 data = []
                 for label, sim, mapping, scale, position, rotation\
                         in zip(file_labels, sims, mappings.values(), self.scales, self.positions, self.rotations):
@@ -559,6 +557,7 @@ class MVSRegistration:
     def init_progress(self, output_filename, output_format):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        metrics_filename = self.output + metrics_name
         self.check_progress(output_filename, output_format)
 
         if self.is_global_registered():
@@ -583,6 +582,15 @@ class MVSRegistration:
             if is_stack:
                 sims = make_sims_3d(sims, z_scale, self.positions)
             self.sims = sims
+            metrics = import_json(metrics_filename)
+            indexed_metrics = {}
+            for key, value in metrics.items():
+                key1, key2 = key.split('-')
+                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                indexed_metrics[indexed_key] = value
+            self.metrics = {
+                'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
+            }
         elif self.is_pairs_registered():
             # load pair mapping and initialise pair_graph
             pairs = import_json(pair_mappings_filename)
@@ -598,6 +606,10 @@ class MVSRegistration:
                 indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
             self.pairs = list(indexed_pair_transforms.keys())
+            self.metrics = {
+                'summary': {'transform': {'quality': np.mean(list(indexed_qualities.values()))}},
+                'pairs': {key: {'transform': {'quality': value.item()}} for key, value in indexed_qualities.items()}
+            }
             with dask.config.set(scheduler='single-threaded'):
                 self.pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
                     self.msims,
@@ -781,6 +793,7 @@ class MVSRegistration:
         self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
         results = self.register_global(sims, self.msims, register_indices=register_indices, params=params)
         self.save_mappings(results['mappings'])
+        self.save_metrics(results['metrics'])
         return results
 
     def register_pairs(self, sims, register_sims=None, register_indices=None, params=None):
@@ -1157,6 +1170,13 @@ class MVSRegistration:
         output_mappings = {self.file_labels[key]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
         export_json(mappings_filename, output_mappings)
+
+    def save_metrics(self, metrics):
+        metrics_filename = self.output + metrics_name
+        output_metrics = {f'{self.file_labels[keys[0]]}-{self.file_labels[keys[1]]}':
+                              {metric: float(value) for metric, value in metric_dict[self.reg_transform_key].items()}
+                          for keys, metric_dict in metrics['pairs'].items() if metric_dict[self.reg_transform_key]}
+        export_json(metrics_filename, output_metrics)
 
     def create_preview(self, output_filename=None, nom_sims=None, transform_key=None):
         output_params = self.params_general['output']

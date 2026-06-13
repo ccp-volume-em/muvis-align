@@ -42,6 +42,7 @@ class Interface:
         self.template = get_section_dict(self.raw_template, ['inputs', 'parameters', 'display_only', 'outputs'])
         self.param_widgets = {}
         self.params = {}
+        self.metrics_methods = ['ncc', 'ssim', 'onmi']
         self.transform_key = 'source_metadata'
         self.pair_metrics_timer = QTimer()
         self.pair_metrics_timer.setSingleShot(True)
@@ -143,8 +144,10 @@ class Interface:
                 self.init_progress()
             else:
                 show_warning('No input images found')
-        else:
+        elif self.reg.is_pairs_registered():
             self.update_registered()
+        else:
+            self.update_metadata_source()
 
     def init_progress(self):
         output_filename = self.params['registration']['operation'].split()[0] + 'ed'
@@ -333,7 +336,7 @@ class Interface:
         # filter only selected pair
         sims = [self.reg.sims[index] for index in self.pair_indices]
         transforms = {(0, 1): self.calc_mod_pair_transform()}
-        metrics = calc_sims_metrics(sims, transforms, metric_methods=['ncc', 'ssim', 'onmi'])
+        metrics = calc_sims_metrics(sims, transforms, metric_methods=self.metrics_methods)
         self.populate_metrics_table(metrics)
 
     def preview_registration(self):
@@ -356,7 +359,7 @@ class Interface:
         qualities = {
             (0, 1): np.array(results['quality'])
         }
-        metrics = calc_sims_metrics(reg_sims, transforms, qualities, metric_methods=['ncc', 'ssim', 'onmi'])
+        metrics = calc_sims_metrics(reg_sims, transforms, qualities, metric_methods=self.metrics_methods)
         self.populate_metrics_table(metrics)
 
         fixed_points = results.get('fixed_points', [])
@@ -451,7 +454,8 @@ class Interface:
                 if len(self.reg.register_sims) == 0:
                     params_features = self.params['pre_processing']
                     self.reg.preprocess(self.reg.sims, **params_features)
-                results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims, params=self.params['registration'])
+                results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
+                                                  params=self.params['registration'] | {'metrics': self.metrics_methods})
                 qualities = {key: metric['transform']['quality']
                              for key, metric in results['metrics']['pairs'].items()}
                 bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
@@ -530,6 +534,7 @@ class Interface:
                                                    register_indices=self.reg.register_indices,
                                                    params=self.params['registration'])
                 self.reg.save_mappings(results['mappings'])
+                self.reg.save_metrics(results['metrics'])
                 self.enable_tabs(True, 4)
                 self.update_registered()
 
