@@ -654,6 +654,18 @@ class MVSRegistration:
                     has_overlaps.append(True)
         return min_dists, has_overlaps
 
+    def check_preprocess(self,
+                         flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
+        if normalisation:
+            if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
+                normalisation = None
+            elif isinstance(normalisation, bool) and normalisation == False:
+                normalisation = None
+        if flatfield_quantiles or normalisation or gaussian_sigma or filter_foreground:
+            return True
+        else:
+            return False
+
     def preprocess(self, sims,
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
         modified = False

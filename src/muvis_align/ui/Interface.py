@@ -1,6 +1,7 @@
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
+from napari.utils import progress
 from napari.utils.notifications import show_warning
 import networkx as nx
 import numpy as np
@@ -8,6 +9,7 @@ import os.path
 from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
+from tqdm.dask import TqdmCallback
 
 from muvis_align.constants import zarr_extension
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
@@ -17,6 +19,7 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
     draw_keypoints_matches_napari, get_transforms, copy_transforms
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
+from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
 from muvis_align.ui.bilayers_util import get_section_dict, to_magicgui_choices
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb, \
     calculate_rigid_difference
@@ -60,6 +63,10 @@ class Interface:
         self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
         self.enable_tabs(False, 2)
+
+    def get_all_widgets(self):
+        all_widgets = {name: param_widget.widget for name, param_widget in self.param_widgets.items()}
+        return all_widgets
 
     def get_function(self, function_label):
         if hasattr(self, function_label):
@@ -183,9 +190,13 @@ class Interface:
 
     def pre_processing_process(self):
         params_features = self.params['pre_processing']
-        _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
-        if modified:
-            self.update_view(show_preprocessed=True)
+        if self.reg.check_preprocess(**params_features):
+            with TqdmCallback(tqdm_class=progress, desc='Pre-processing', bar_format=" "), \
+                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                 VisibleActivityDock(self.viewer):
+                _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
+            if modified:
+                self.update_view(show_preprocessed=True)
         self.enable_tabs(True, 3)
 
     def populate_coordinate_systems(self, coord_systems):
@@ -454,8 +465,11 @@ class Interface:
                 if len(self.reg.register_sims) == 0:
                     params_features = self.params['pre_processing']
                     self.reg.preprocess(self.reg.sims, **params_features)
-                results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
-                                                  params=self.params['registration'] | {'metrics': self.metrics_methods})
+                with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
+                     TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                     VisibleActivityDock(self.viewer):
+                    results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
+                                                      params=self.params['registration'] | {'metrics': self.metrics_methods})
                 qualities = {key: metric['transform']['quality']
                              for key, metric in results['metrics']['pairs'].items()}
                 bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
@@ -530,9 +544,12 @@ class Interface:
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self._clear_napari_view(self.viewer)
-                results = self.reg.register_global(self.reg.sims, self.reg.msims,
-                                                   register_indices=self.reg.register_indices,
-                                                   params=self.params['registration'])
+                with TqdmCallback(tqdm_class=progress, desc='Global registration', bar_format=" "), \
+                     TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                     VisibleActivityDock(self.viewer):
+                    results = self.reg.register_global(self.reg.sims, self.reg.msims,
+                                                       register_indices=self.reg.register_indices,
+                                                       params=self.params['registration'])
                 self.reg.save_mappings(results['mappings'])
                 self.reg.save_metrics(results['metrics'])
                 self.enable_tabs(True, 4)
@@ -559,10 +576,13 @@ class Interface:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]
             elif isinstance(tile_size, str):
                 tile_size = int(tile_size.strip())
-            fused_image, _ = self.reg.fuse(self.reg.sims, fusion_method=self.params['fusion']['method'],
-                                           output_spacing=self.params['fusion']['spacing'],
-                                           output_filename=output_filename,
-                                           tile_size=tile_size, ome_version=self.params['fusion']['ome_version'])
+            with TqdmCallback(tqdm_class=progress, desc='Fusion', bar_format=" "), \
+                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                 VisibleActivityDock(self.viewer):
+                fused_image, _ = self.reg.fuse(self.reg.sims, fusion_method=self.params['fusion']['method'],
+                                               output_spacing=self.params['fusion']['spacing'],
+                                               output_filename=output_filename,
+                                               tile_size=tile_size, ome_version=self.params['fusion']['ome_version'])
             self._clear_napari_view(self.viewer)
             self._add_napari_image(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
