@@ -1,0 +1,131 @@
+{
+  "attributes": {
+    "ome": {
+      "version": "0.5",
+      "multiscales": [
+        {
+          "datasets": [
+            {
+              "path": "0",
+              "coordinateTransformations": [
+                {
+                  "type": "scale",
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.03200000000000003,
+                    0.03200000000000003
+                  ]
+                },
+                {
+                  "type": "translation",
+                  "translation": [
+                    0,
+                    0,
+                    0.1,
+                    24.0,
+                    24.0
+                  ]
+                }
+              ]
+            },
+            {
+              "path": "1",
+              "coordinateTransformations": [
+                {
+                  "type": "scale",
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.06400000000000006,
+                    0.06400000000000006
+                  ]
+                },
+                {
+                  "type": "translation",
+                  "translation": [
+                    0,
+                    0,
+                    0.1,
+                    24.016,
+                    24.016
+                  ]
+                }
+              ]
+            },
+            {
+              "path": "2",
+              "coordinateTransformations": [
+                {
+                  "type": "scale",
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0,
+                    0.1280000000000001,
+                    0.1280000000000001
+                  ]
+                },
+                {
+                  "type": "translation",
+                  "translation": [
+                    0,
+                    0,
+                    0.1,
+                    24.048000000000002,
+                    24.048000000000002
+                  ]
+                }
+              ]
+            }
+          ],
+          "name": "/",
+          "axes": [
+            {
+              "name": "t",
+              "type": "time"
+            },
+            {
+              "name": "c",
+              "type": "channel"
+            },
+            {
+              "name": "z",
+              "type": "space",
+              "unit": "micrometer"
+            },
+            {
+              "name": "y",
+              "type": "space",
+              "unit": "micrometer"
+            },
+            {
+              "name": "x",
+              "type": "space",
+              "unit": "micrometer"
+            }
+          ]
+        }
+      ]
+    },
+    "omero": {
+      "channels": [
+        {
+          "color": "ffffff",
+          "label": "0",
+          "active": true,
+          "window": {
+            "end": 51122,
+            "max": 51122,
+            "min": 0,
+            "start": 36574
+          }
+        }
+      ]
+    }
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

@@ -868,12 +868,12 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
 
 
 def get_sim_shape_2d(sim, transform_key=None):
-    sim = sim.squeeze()
     stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
     points = mv_graph.get_vertices_from_stack_props(stack_props)
     if points.shape[1] == 3:
         # remove z coordinate
         points = points[:, 1:]
+    points = list(map(list, set(map(tuple, points))))
     if len(points) >= 8:
         # remove redundant x/y vertices
         points = points[:4]

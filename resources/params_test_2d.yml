@@ -8,7 +8,7 @@ general:
 operations:
   - operation: register
     input:
-      path: data/S000/*.zarr
+      path: data/2d/S000*.zarr
       source_metadata: source
     registration:
       pairing: orthogonal

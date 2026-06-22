@@ -9,8 +9,8 @@ operations:
   - operation: register
     input:
       path:
-        - data/S000/S000_000_000.ome.zarr
-        - data/S001/S001_000_001.ome.zarr
+        - data/2d/S000_000_000.ome.zarr
+        - data/2d/S001_000_001.ome.zarr
       labels:
         - S000_000_000
         - S001_000_001
