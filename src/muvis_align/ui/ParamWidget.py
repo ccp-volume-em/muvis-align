@@ -1,5 +1,8 @@
+from qtpy.QtWidgets import QHeaderView
+
+
 class ParamWidget:
-    def __init__(self, param_name, widget, interface, to_str):
+    def __init__(self, param_name, widget, interface, to_str=False):
         self.param_name = param_name
         self.widget = widget
         self.interface = interface
@@ -20,3 +23,6 @@ class ParamWidget:
         if self.to_str:
             value = str(value)
         self.interface.change_param(self.param_name, value)
+
+    def set_table_column_resize_mode(self, mode=QHeaderView.Stretch):
+        self.widget.native.horizontalHeader().setSectionResizeMode(mode)

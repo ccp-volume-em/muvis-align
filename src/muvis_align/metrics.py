@@ -9,6 +9,7 @@ from skimage.metrics import structural_similarity, normalized_mutual_information
 from sklearn.metrics import euclidean_distances
 from xarray import DataArray
 
+from muvis_align.constants import default_transform_key, default_quality_key
 from src.muvis_align.image.util import image_reshape
 from src.muvis_align.util import apply_transform
 
@@ -41,7 +42,7 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
             n_parallel_pairs=n_parallel_pairs
         )
 
-    qualities = nx.get_edge_attributes(pairs_graph, 'quality')
+    qualities = nx.get_edge_attributes(pairs_graph, default_quality_key)
 
     quality_values = []
     for pair_key, value in qualities.items():
@@ -50,11 +51,11 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
                 value = value.sel(t=0)
             value = value.item()
         if value:
-            metric_results['pairs'][pair_key]['transform']['quality'] = value
+            metric_results['pairs'][pair_key][default_transform_key][default_quality_key] = value
             quality_values.append(value)
 
     value = float(np.nanmean(quality_values)) if quality_values else None
-    metric_results['summary']['transform']['quality'] = value
+    metric_results['summary'][default_transform_key][default_quality_key] = value
 
     return metric_results
 
@@ -84,10 +85,10 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
                     value = value.sel(t=0)
                 value = value.item()
             if value:
-                metric_results['pairs'][pair_key][reg_transform_key]['quality'] = value
+                metric_results['pairs'][pair_key][reg_transform_key][default_quality_key] = value
                 quality_values.append(value)
 
-        metric_results['summary'][reg_transform_key]['quality'] = float(np.nanmean(quality_values))
+        metric_results['summary'][reg_transform_key][default_quality_key] = float(np.nanmean(quality_values))
 
     return metric_results
 
@@ -104,9 +105,9 @@ def calc_sims_metrics(sims, pair_transforms, qualities=None, base_transform_key=
             transform_key=base_transform_key,
             pairs=list(pair_transforms.keys())
         )
-    nx.set_edge_attributes(pairs_graph, pair_transforms, 'transform')
+    nx.set_edge_attributes(pairs_graph, pair_transforms, default_transform_key)
     if qualities:
-        nx.set_edge_attributes(pairs_graph, qualities, 'quality')
+        nx.set_edge_attributes(pairs_graph, qualities, default_quality_key)
     return calc_pair_metrics(msims=msims, pairs_graph=pairs_graph, base_transform_key=base_transform_key,
                              metric_methods=metric_methods, reg_channel=reg_channel, n_parallel_pairs=n_parallel_pairs)
 

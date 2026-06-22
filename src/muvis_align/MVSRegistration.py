@@ -45,18 +45,22 @@ class MVSRegistration:
                  source_metadata={}, extra_metadata={},
                  global_rotation=None, global_center=None,
                  overwrite=True, clear=False, ui='', verbose=False, debug=False):
-        self.state = RegState.UNINIT
-        self.sims = []
-        self.sources = []
-        self.metrics = {}
-        self.register_indices = None
-        self.output_params = {}
+        self.reset()
 
         if input_path is not None:
             self.init(operation=operation, label=label, input_path=input_path, output_path=output_path,
                       source_metadata=source_metadata, extra_metadata=extra_metadata,
                       global_rotation=global_rotation, global_center=global_center,
                       overwrite=overwrite, clear=clear, ui=ui, verbose=verbose, debug=debug)
+
+    def reset(self):
+        self.state = RegState.UNINIT
+        self.sims = []
+        self.register_sims = []
+        self.sources = []
+        self.metrics = {}
+        self.register_indices = None
+        self.output_params = {}
 
     def is_initialised(self):
         return self.state.value >= RegState.INIT.value
@@ -165,6 +169,7 @@ class MVSRegistration:
             channels = []
         normalise_orientation = 'norm' in source_metadata
         output_params = self.output_params
+        general_output_params = self.params_general.get('output', {})
         overlap_threshold = self.register_params.get('overlap_threshold', self.params.get('overlap_threshold', 0.5))
         save_images = self.output_params.get('save_images', self.params.get('save_images', True))
 
@@ -174,12 +179,12 @@ class MVSRegistration:
         is_transition = ('transition' in operation)
         is_channel_overlay = (len(channels) > 1)
 
-        output_format = output_params.get('format', self.params_general.get('format', zarr_extension))
-        output_tile_size = output_params.get('tile_size', self.params_general.get('tile_size'))
-        output_compression = output_params.get('compression', self.params_general.get('compression'))
-        output_pyramid_downsample = output_params.get('pyramid_downsample', self.params_general.get('pyramid_downsample', 2))
-        output_npyramid_add = output_params.get('npyramid_add', self.params_general.get('npyramid_add', 0))
-        output_ome_version = output_params.get('ome_version', self.params_general.get('ome_version', default_ome_zarr_version))
+        output_format = output_params.get('format', general_output_params.get('format', zarr_extension))
+        output_tile_size = output_params.get('tile_size', general_output_params.get('tile_size'))
+        output_compression = output_params.get('compression', general_output_params.get('compression'))
+        output_pyramid_downsample = output_params.get('pyramid_downsample', general_output_params.get('pyramid_downsample', 2))
+        output_npyramid_add = output_params.get('npyramid_add', general_output_params.get('npyramid_add', 0))
+        output_ome_version = output_params.get('ome_version', general_output_params.get('ome_version', default_ome_zarr_version))
 
         mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
 
@@ -187,11 +192,11 @@ class MVSRegistration:
             logging.warning('Skipping (no images)')
             return False
 
-        mappings_filename = output + output_params.get('mappings', default_mappings_name)
-
         output_filename = operation.split()[0] + 'ed'
 
-        if not self.overwrite and self.output_exists(output_filename, output_format):
+        self.check_progress(output_filename, output_format)
+
+        if self.is_fused() and not self.overwrite:
             logging.warning(f'Skipping existing output {output_filename}')
             return False
 
@@ -205,6 +210,8 @@ class MVSRegistration:
         with Timer('pre-process', self.logging_time):
             register_sims, register_indices, _ = self.preprocess(sims, **self.preprocess_params)
 
+        self.init_progress(output_filename, output_format)
+
         data = []
         for label, sim, scale in zip(file_labels, sims, self.scales):
             position, rotation = get_data_mapping(sim, transform_key=self.source_transform_key)
@@ -216,11 +223,11 @@ class MVSRegistration:
         if len(filenames) == 1 and save_images and not 'register' in operation and not 'stack' in operation:
             logging.warning('Skipping operation (single image)')
             self.save(output_filename, sims[0], translations0=self.positions,
-                      format = output_format,
-                      tile_size = output_tile_size,
-                      pyramid_downsample = output_pyramid_downsample,
-                      npyramid_add = output_npyramid_add,
-                      ome_version = output_ome_version)
+                      format=output_format,
+                      tile_size=output_tile_size,
+                      pyramid_downsample=output_pyramid_downsample,
+                      npyramid_add=output_npyramid_add,
+                      ome_version=output_ome_version)
             return False
 
         _, has_overlaps = self.validate_overlap(sims, file_labels, is_simple_stack, is_simple_stack or is_channel_overlay)
@@ -228,22 +235,7 @@ class MVSRegistration:
         if overall_overlap < overlap_threshold:
             raise ValueError(f'Not enough overlap: {overall_overlap * 100:.1f}%')
 
-        if not self.overwrite and os.path.exists(mappings_filename):
-            logging.info('Loading registration mappings...')
-            # load registration mappings
-            mappings = import_json(mappings_filename)
-            # copy transforms to sims
-            for sim, label in zip(sims, file_labels):
-                mapping = param_utils.affine_to_xaffine(np.array(mappings[label]))
-                if is_stack:
-                    transform = param_utils.identity_transform(ndim=3)
-                    transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
-                else:
-                    transform = mapping
-                si_utils.set_sim_affine(sim, transform, transform_key=self.reg_transform_key)
-            if is_stack:
-                sims = make_sims_3d(sims, z_scale, self.positions)
-        else:
+        if not self.is_global_registered() or self.overwrite:
             if 'register' in operation:
                 with Timer('register', self.logging_time):
                     results = self.register(sims, register_sims, register_indices, self.register_params)
@@ -256,8 +248,6 @@ class MVSRegistration:
 
             if 'register' in operation:
                 logging.info(metrics['summary'])
-                output_metrics = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}': value for keys, value in metrics['pairs'].items()}
-                export_json(output + metrics_name, output_metrics)
                 data = []
                 for label, sim, mapping, scale, position, rotation\
                         in zip(file_labels, sims, mappings.values(), self.scales, self.positions, self.rotations):
@@ -554,6 +544,88 @@ class MVSRegistration:
             self.state = RegState.SIMS_INIT
         return sims
 
+    def check_progress(self, output_filename, output_format):
+        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
+        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        if self.output_exists(output_filename, output_format):
+            self.state = RegState.FUSED
+        elif os.path.exists(mappings_filename):
+            self.state = RegState.GLOBAL_REG
+        elif os.path.exists(pair_mappings_filename):
+            self.state = RegState.PAIRS_REG
+
+    def init_progress(self, output_filename, output_format):
+        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
+        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        metrics_filename = self.output + metrics_name
+        self.check_progress(output_filename, output_format)
+
+        if self.is_pairs_registered():
+            # load pair mapping and initialise pair_graph
+            pairs = import_json(pair_mappings_filename)
+            indexed_pair_transforms = {}
+            indexed_qualities = {}
+            indexed_bboxes = {}
+            for key, value in pairs.items():
+                key1, key2 = key.split('-')
+                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                indexed_pair_transforms[indexed_key] = (
+                    param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
+                indexed_qualities[indexed_key] = np.array(value[default_quality_key])
+                indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+            self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
+            self.pairs = list(indexed_pair_transforms.keys())
+            self.metrics = {
+                'summary': {default_transform_key: {default_quality_key: np.mean(list(indexed_qualities.values()))}},
+                'pairs': {key: {default_transform_key: {default_quality_key: value.item()}}
+                          for key, value in indexed_qualities.items()}
+            }
+            with dask.config.set(scheduler='single-threaded'):
+                self.pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
+                    self.msims,
+                    transform_key=self.source_transform_key,
+                    pairs=self.pairs
+                )
+            nx.set_edge_attributes(self.pairs_graph, indexed_pair_transforms, default_transform_key)
+            nx.set_edge_attributes(self.pairs_graph, indexed_qualities, default_quality_key)
+            nx.set_edge_attributes(self.pairs_graph, indexed_bboxes, 'bbox')
+
+        if self.is_global_registered():
+            # load mapping
+            sims = self.sims
+            is_stack = ('stack' in self.operation)
+            if isinstance(self.extra_metadata, dict):
+                z_scale = self.extra_metadata.get('scale', {}).get('z')
+            else:
+                z_scale = None
+
+            mappings = import_json(mappings_filename)
+            # copy transforms to sims
+            for sim, label in zip(sims, self.file_labels):
+                mapping = param_utils.affine_to_xaffine(np.array(mappings[label]))
+                if is_stack:
+                    value = param_utils.identity_transform(ndim=3)
+                    value.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
+                else:
+                    value = mapping
+                si_utils.set_sim_affine(sim, value, transform_key=self.reg_transform_key)
+            if is_stack:
+                sims = make_sims_3d(sims, z_scale, self.positions)
+            self.sims = sims
+            self.msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
+            metrics = import_json(metrics_filename)
+            indexed_metrics = {}
+            for key, value in metrics.items():
+                key1, key2 = key.split('-')
+                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                indexed_metrics[indexed_key] = value
+            self.metrics = {
+                'summary': {default_transform_key:
+                                {self.reg_transform_key: np.mean([value[default_quality_key]
+                                                                  for value in indexed_metrics.values()])}},
+                'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
+            }
+
     def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):
         min_dists = []
         has_overlaps = []
@@ -587,6 +659,18 @@ class MVSRegistration:
                 else:
                     has_overlaps.append(True)
         return min_dists, has_overlaps
+
+    def check_preprocess(self,
+                         flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
+        if normalisation:
+            if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
+                normalisation = None
+            elif isinstance(normalisation, bool) and normalisation == False:
+                normalisation = None
+        if flatfield_quantiles or normalisation or gaussian_sigma or filter_foreground:
+            return True
+        else:
+            return False
 
     def preprocess(self, sims,
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
@@ -722,9 +806,12 @@ class MVSRegistration:
 
     def register(self, sims, register_sims=None, register_indices=None, params=None):
         pair_results = self.register_pairs(sims, register_sims=register_sims, register_indices=register_indices, params=params)
-        self.save_pair_mappings(pair_results['pair_mappings'])
+        qualities = {key: metric[default_transform_key][default_quality_key] for key, metric in pair_results['metrics']['pairs'].items()}
+        bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
+        self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
         results = self.register_global(sims, self.msims, register_indices=register_indices, params=params)
         self.save_mappings(results['mappings'])
+        self.save_metrics(results['metrics'])
         return results
 
     def register_pairs(self, sims, register_sims=None, register_indices=None, params=None):
@@ -849,7 +936,7 @@ class MVSRegistration:
         except NotEnoughOverlapError:
             g_reg_computed = g_reg
 
-        mappings = nx.get_edge_attributes(g_reg_computed, 'transform')
+        mappings = nx.get_edge_attributes(g_reg_computed, default_transform_key)
         mappings_dict = {(register_indices[indices[0]], register_indices[indices[1]]): mapping
                          for indices, mapping in mappings.items()}
 
@@ -1086,10 +1173,13 @@ class MVSRegistration:
                 fused_image = sims
         return fused_image, saving_zarr
 
-    def save_pair_mappings(self, mappings):
+    def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         file_labels = self.file_labels
-        output_mappings = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}': np.array(mapping.sel(t=0)).tolist()
+        output_mappings = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}':
+                               {'mapping': np.array(mapping.sel(t=0)).tolist(),
+                                default_quality_key: float(qualities[keys]),
+                                'bbox': bboxes[keys]}
                            for keys, mapping in mappings.items()}
         export_json(pair_mappings_filename, output_mappings)
 
@@ -1098,6 +1188,13 @@ class MVSRegistration:
         output_mappings = {self.file_labels[key]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
         export_json(mappings_filename, output_mappings)
+
+    def save_metrics(self, metrics):
+        metrics_filename = self.output + metrics_name
+        output_metrics = {f'{self.file_labels[keys[0]]}-{self.file_labels[keys[1]]}':
+                              {metric: float(value) for metric, value in metric_dict[self.reg_transform_key].items()}
+                          for keys, metric_dict in metrics['pairs'].items() if metric_dict[self.reg_transform_key]}
+        export_json(metrics_filename, output_metrics)
 
     def create_preview(self, output_filename=None, nom_sims=None, transform_key=None):
         output_params = self.params_general['output']
@@ -1197,6 +1294,8 @@ class MVSRegistration:
             return metrics
 
     def output_exists(self, output_filename, output_format):
+        if not output_format.startswith('.'):
+            output_format = '.' + output_format
         output_filename = self.output + output_filename + output_format
         if output_format == zarr_extension:
             return (os.path.exists(os.path.join(output_filename, '.zattrs')) or

@@ -146,13 +146,24 @@ parameters:
     section_id: "input_output"
     mode: "advanced"
 
+  - name: overwrite
+    type: checkbox
+    label: "Overwrite output data"
+    description: "If enabled, any existing output data will be overwritten"
+    default: True
+    cli_tag: "--overwrite"
+    cli_order: 13
+    optional: True
+    append_value: False
+    section_id: "input_output"
+    mode: "beginner"
   - name: preview_shapes
     type: checkbox
     label: "Preview shape data"
     description: "If enabled, tiles will be displayed as shapes"
     default: True
     cli_tag: "--preview_shapes"
-    cli_order: 12
+    cli_order: 14
     optional: True
     append_value: False
     section_id: "input_output"
@@ -163,18 +174,7 @@ parameters:
     description: "If enabled, tiles will be previewed as images"
     default: True
     cli_tag: "--preview_images"
-    cli_order: 13
-    optional: True
-    append_value: False
-    section_id: "input_output"
-    mode: "beginner"
-  - name: overwrite
-    type: checkbox
-    label: "Overwrite output data"
-    description: "If enabled, any existing output data will be overwritten"
-    default: True
-    cli_tag: "--overwrite"
-    cli_order: 14
+    cli_order: 15
     optional: True
     append_value: False
     section_id: "input_output"
@@ -438,7 +438,7 @@ parameters:
   - name: spacing
     type: dropdown
     label: "Spacing"
-    description: "Output spacing (mean, min, max pixel size)"
+    description: "Output spacing (mean, min (highest resolution), max (lowest resolution) pixel size)"
     options:
       - label: Mean
         value: "mean"
