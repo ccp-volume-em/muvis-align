@@ -107,10 +107,12 @@ def create_section_container(section_id, section_template, interface,
 
     if add_button:
         name = section_id + '_process'
-        widget = create_widget(name=name, label='Process', widget_type='PushButton')
+        full_name = section_id + '.' + name
+        widget = create_widget(name=full_name, label='Process', widget_type='PushButton')
         interface_function = interface.get_function(name)
         if interface_function is not None:
             widget.clicked.connect(interface_function)
+        interface.param_widgets[full_name] = ParamWidget(full_name, widget, interface)
         widgets.append(widget)
 
     return Container(widgets=widgets)

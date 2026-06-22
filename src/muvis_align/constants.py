@@ -15,4 +15,7 @@ metrics_name = 'metrics.json'
 metrics_tabular_name = 'mappings.csv'
 registered_positions_name = 'positions_registered.pdf'
 
+default_transform_key = 'transform'
+default_quality_key = 'quality'
+
 NAPARI_PROJECT_TEMPLATE = 'ui/project_template.yaml'

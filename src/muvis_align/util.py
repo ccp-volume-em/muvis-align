@@ -715,7 +715,7 @@ def metric_to_color(value):
     return color
 
 
-def metric_to_rgb(value, min_light=0, max_light=1, range=1.0):
+def metric_to_rgb(value, min_light=0, max_light=1, output_range=1.0):
     # metric range 0...1 to red-yellow-green ranged rgb
     if value is None or np.isnan(value):
         return 0, 0, 0
@@ -733,10 +733,10 @@ def metric_to_rgb(value, min_light=0, max_light=1, range=1.0):
         r *= factor
         g *= factor
         b *= factor
-    r *= range
-    g *= range
-    b *= range
-    if isinstance(range, int):
+    r *= output_range
+    g *= output_range
+    b *= output_range
+    if isinstance(output_range, int):
         r, g, b = int(r), int(g), int(b)
     return r, g, b
 

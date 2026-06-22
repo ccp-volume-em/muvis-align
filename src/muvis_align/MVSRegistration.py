@@ -560,6 +560,36 @@ class MVSRegistration:
         metrics_filename = self.output + metrics_name
         self.check_progress(output_filename, output_format)
 
+        if self.is_pairs_registered():
+            # load pair mapping and initialise pair_graph
+            pairs = import_json(pair_mappings_filename)
+            indexed_pair_transforms = {}
+            indexed_qualities = {}
+            indexed_bboxes = {}
+            for key, value in pairs.items():
+                key1, key2 = key.split('-')
+                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                indexed_pair_transforms[indexed_key] = (
+                    param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
+                indexed_qualities[indexed_key] = np.array(value[default_quality_key])
+                indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+            self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
+            self.pairs = list(indexed_pair_transforms.keys())
+            self.metrics = {
+                'summary': {default_transform_key: {default_quality_key: np.mean(list(indexed_qualities.values()))}},
+                'pairs': {key: {default_transform_key: {default_quality_key: value.item()}}
+                          for key, value in indexed_qualities.items()}
+            }
+            with dask.config.set(scheduler='single-threaded'):
+                self.pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
+                    self.msims,
+                    transform_key=self.source_transform_key,
+                    pairs=self.pairs
+                )
+            nx.set_edge_attributes(self.pairs_graph, indexed_pair_transforms, default_transform_key)
+            nx.set_edge_attributes(self.pairs_graph, indexed_qualities, default_quality_key)
+            nx.set_edge_attributes(self.pairs_graph, indexed_bboxes, 'bbox')
+
         if self.is_global_registered():
             # load mapping
             sims = self.sims
@@ -582,6 +612,7 @@ class MVSRegistration:
             if is_stack:
                 sims = make_sims_3d(sims, z_scale, self.positions)
             self.sims = sims
+            self.msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
             metrics = import_json(metrics_filename)
             indexed_metrics = {}
             for key, value in metrics.items():
@@ -589,36 +620,11 @@ class MVSRegistration:
                 indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
                 indexed_metrics[indexed_key] = value
             self.metrics = {
+                'summary': {default_transform_key:
+                                {self.reg_transform_key: np.mean([value[default_quality_key]
+                                                                  for value in indexed_metrics.values()])}},
                 'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
             }
-        elif self.is_pairs_registered():
-            # load pair mapping and initialise pair_graph
-            pairs = import_json(pair_mappings_filename)
-            indexed_pair_transforms = {}
-            indexed_qualities = {}
-            indexed_bboxes = {}
-            for key, value in pairs.items():
-                key1, key2 = key.split('-')
-                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
-                indexed_pair_transforms[indexed_key] =(
-                    param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
-                indexed_qualities[indexed_key] = np.array(value['quality'])
-                indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
-            self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
-            self.pairs = list(indexed_pair_transforms.keys())
-            self.metrics = {
-                'summary': {'transform': {'quality': np.mean(list(indexed_qualities.values()))}},
-                'pairs': {key: {'transform': {'quality': value.item()}} for key, value in indexed_qualities.items()}
-            }
-            with dask.config.set(scheduler='single-threaded'):
-                self.pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
-                    self.msims,
-                    transform_key=self.source_transform_key,
-                    pairs=self.pairs
-                )
-            nx.set_edge_attributes(self.pairs_graph, indexed_pair_transforms, 'transform')
-            nx.set_edge_attributes(self.pairs_graph, indexed_qualities, 'quality')
-            nx.set_edge_attributes(self.pairs_graph, indexed_bboxes, 'bbox')
 
     def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):
         min_dists = []
@@ -800,7 +806,7 @@ class MVSRegistration:
 
     def register(self, sims, register_sims=None, register_indices=None, params=None):
         pair_results = self.register_pairs(sims, register_sims=register_sims, register_indices=register_indices, params=params)
-        qualities = {key: metric['transform']['quality'] for key, metric in pair_results['metrics']['pairs'].items()}
+        qualities = {key: metric[default_transform_key][default_quality_key] for key, metric in pair_results['metrics']['pairs'].items()}
         bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
         self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
         results = self.register_global(sims, self.msims, register_indices=register_indices, params=params)
@@ -930,7 +936,7 @@ class MVSRegistration:
         except NotEnoughOverlapError:
             g_reg_computed = g_reg
 
-        mappings = nx.get_edge_attributes(g_reg_computed, 'transform')
+        mappings = nx.get_edge_attributes(g_reg_computed, default_transform_key)
         mappings_dict = {(register_indices[indices[0]], register_indices[indices[1]]): mapping
                          for indices, mapping in mappings.items()}
 
@@ -1172,7 +1178,7 @@ class MVSRegistration:
         file_labels = self.file_labels
         output_mappings = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}':
                                {'mapping': np.array(mapping.sel(t=0)).tolist(),
-                                'quality': float(qualities[keys]),
+                                default_quality_key: float(qualities[keys]),
                                 'bbox': bboxes[keys]}
                            for keys, mapping in mappings.items()}
         export_json(pair_mappings_filename, output_mappings)

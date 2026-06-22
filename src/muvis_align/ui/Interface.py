@@ -11,7 +11,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
 from tqdm.dask import TqdmCallback
 
-from muvis_align.constants import zarr_extension
+from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
@@ -45,8 +45,10 @@ class Interface:
         self.template = get_section_dict(self.raw_template, ['inputs', 'parameters', 'display_only', 'outputs'])
         self.param_widgets = {}
         self.params = {}
+        self.pre_processing_performed = False
         self.metrics_methods = ['ncc', 'ssim', 'onmi']
         self.transform_key = 'source_metadata'
+
         self.pair_metrics_timer = QTimer()
         self.pair_metrics_timer.setSingleShot(True)
         self.pair_metrics_timer.setInterval(1000)
@@ -190,13 +192,13 @@ class Interface:
 
     def pre_processing_process(self):
         params_features = self.params['pre_processing']
-        if self.reg.check_preprocess(**params_features):
+        if self.reg.check_preprocess(**params_features) or self.pre_processing_performed:
             with TqdmCallback(tqdm_class=progress, desc='Pre-processing', bar_format=" "), \
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
                 _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
-            if modified:
-                self.update_view(show_preprocessed=True)
+            self.pre_processing_performed = modified
+            self.update_view(show_preprocessed=True)
         self.enable_tabs(True, 3)
 
     def populate_coordinate_systems(self, coord_systems):
@@ -219,6 +221,7 @@ class Interface:
                 for sim in sims]
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((data, self.reg.file_labels, properties))
+        table_widget.set_table_column_resize_mode()
         table_widget.read_only = True   # https://github.com/pyapp-kit/magicgui/issues/348
 
     def populate_image_selection(self):
@@ -234,8 +237,8 @@ class Interface:
         transforms = get_transforms(self.reg.sims)
         if self.reg.reg_transform_key in transforms:
             transform_key = self.reg.reg_transform_key
-        elif 'transform' in transforms:
-            transform_key = 'transform'
+        elif default_transform_key in transforms:
+            transform_key = default_transform_key
         elif self.reg.source_transform_key in transforms:
             transform_key = self.reg.source_transform_key
         else:
@@ -251,10 +254,10 @@ class Interface:
     def update_view(self, overlaps=False, show_preprocessed=False):
         transform_key = self.get_best_transform_key()
         self._clear_napari_view(self.viewer)
-        if self.params['input_output']['preview_images'] or show_preprocessed:
+        if self.params['input_output']['preview_images']:
             self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
                                      show_preprocessed=show_preprocessed)
-        if self.params['input_output']['preview_shapes'] and not show_preprocessed:
+        if self.params['input_output']['preview_shapes']:
             self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', transform_key,
                                        overlaps=overlaps)
         self.view_mode = ViewMode.OVERVIEW
@@ -406,6 +409,7 @@ class Interface:
                         if metric_value is not None and metric_key not in metric_keys:
                             metric_keys.append(metric_key)
 
+        transform_keys = [transform_key.split('_')[0] for transform_key in transform_keys]
         is_metric_cols = (len(transform_keys) <= 1 and len(metric_keys) >= 1)
         col_headers = metric_keys if is_metric_cols else transform_keys
 
@@ -435,12 +439,13 @@ class Interface:
         table_widget = self.param_widgets.get('registration.metrics_table')
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((metrics_table, item_keys, col_headers))
+        table_widget.set_table_column_resize_mode()
         for rowi in range(len(item_keys)):
             for coli in range(len(col_headers)):
                 table_cell = table_widget.get_native_item(rowi, coli)
                 if table_cell is not None:
                     table_cell.setBackground(
-                        QColor(*metric_to_rgb(metrics_table[rowi][coli], range=255, max_light=0.5)))
+                        QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
         table_widget.read_only = True
 
     def update_registered(self):
@@ -461,16 +466,15 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
-                self._clear_napari_view(self.viewer)
-                if len(self.reg.register_sims) == 0:
-                    params_features = self.params['pre_processing']
-                    self.reg.preprocess(self.reg.sims, **params_features)
                 with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
                      TemporarilyDisabledWidgets(self.get_all_widgets()), \
                      VisibleActivityDock(self.viewer):
+                    if len(self.reg.register_sims) == 0:
+                        params_features = self.params['pre_processing']
+                        self.reg.preprocess(self.reg.sims, **params_features)
                     results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
                                                       params=self.params['registration'] | {'metrics': self.metrics_methods})
-                qualities = {key: metric['transform']['quality']
+                qualities = {key: metric[default_transform_key][default_quality_key]
                              for key, metric in results['metrics']['pairs'].items()}
                 bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
                           nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
@@ -484,21 +488,21 @@ class Interface:
             if reply == QMessageBox.Yes:
                 # update transforms back into graph
                 transform = self.calc_mod_pair_transform()
-                pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, 'transform')
-                qualities = nx.get_edge_attributes(self.reg.pairs_graph, 'quality')
+                pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, default_transform_key)
+                qualities = nx.get_edge_attributes(self.reg.pairs_graph, default_quality_key)
                 if 't' in pair_transforms[self.pair_indices].dims:
                     transform = transform.expand_dims({'t': [0]})
                 pair_transforms[self.pair_indices] = transform
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1
-                nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, 'transform')
-                nx.set_edge_attributes(self.reg.pairs_graph, qualities, 'quality')
+                nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, default_transform_key)
+                nx.set_edge_attributes(self.reg.pairs_graph, qualities, default_quality_key)
                 bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
                           nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
                 self.reg.save_pair_mappings(pair_transforms, qualities, bboxes)
 
             self.view_mode = ViewMode.OVERVIEW
-            self._clear_napari_view(self.viewer)
             self.update_registered()
+            self.temp_widget_state.restore()
         else:
             self.view_mode = ViewMode.PAIRS
             labels = self.reg.file_labels
@@ -507,24 +511,26 @@ class Interface:
             index1 = labels.index(label1)
             index2 = labels.index(label2)
             indices = index1, index2
-            colors = [(0, 1, 0), (1, 0, 1)]
-            pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, 'transform')
+            colors = [(0, 1, 0), (1, 0, 1)]     # green, purple
+            pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, default_transform_key)
             if indices not in pair_transforms and tuple(reversed(indices)) in pair_transforms:
                 indices = tuple(reversed(indices))
 
             if indices not in pair_transforms:
                 show_warning('No pair registration found for selected images')
             else:
+                widgets = self.get_all_widgets()
+                widgets.pop('registration.modify_pair_registration')
+                self.temp_widget_state = TemporarilyDisabledWidgets(widgets)
+                self.temp_widget_state.init()
                 self.pair_indices = indices
                 pair_transform = np.array(pair_transforms[indices].sel(t=0))
                 eye = np.eye(max(pair_transform.shape))
                 pair_transforms = pair_transform, eye
                 self._clear_napari_view(self.viewer)
-                self.image_pair_layers = []
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    layer = self._add_napari_image(self.viewer, self.reg.sims[sim_index], labels[sim_index],
-                                                   pair_transforms[index], color, affine_event=True)
-                    self.image_pair_layers.append(layer)
+                    self._add_napari_image(self.viewer, self.reg.sims[sim_index], labels[sim_index],
+                                           pair_transforms[index], color, affine_event=True)
                 self.update_pair_metrics()
 
     def calc_mod_pair_transform(self):
@@ -543,7 +549,6 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
-                self._clear_napari_view(self.viewer)
                 with TqdmCallback(tqdm_class=progress, desc='Global registration', bar_format=" "), \
                      TemporarilyDisabledWidgets(self.get_all_widgets()), \
                      VisibleActivityDock(self.viewer):
