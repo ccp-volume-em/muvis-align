@@ -1,7 +1,7 @@
 general:
   overwrite: True
   logging:
-    verbose: True
+    verbose: False
   output:
     format: ome.zarr
 

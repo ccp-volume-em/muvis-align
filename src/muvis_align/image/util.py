@@ -1006,3 +1006,40 @@ def make_sims_3d(sims, z_scale=None, positions=None):
                 si_utils.set_sim_affine(sim, transform_3d, transform_key=transform_key)
         new_sims.append(sim)
     return new_sims
+
+
+def make_sims_2d(sims):
+    new_sims = []
+    for index, sim in enumerate(sims):
+        # check if already 2D
+        if 'z' in sim.dims:
+            sim = sim.squeeze('z')
+        # set 2D affine transforms from 3D registration params
+        for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+            transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+            if 3 not in transform.shape:
+                has_t = 't' in transform.dims
+                if has_t:
+                    transform = transform.sel(t=0)
+                transform = transform[:3, :3]
+                if has_t:
+                    transform.loc[{dim: transform.coords[dim] for dim in transform.sel(t=0).dims}] = transform.sel(t=0)
+                si_utils.set_sim_affine(sim, transform, transform_key=transform_key)
+        new_sims.append(sim)
+    return new_sims
+
+
+def print_sim_info(data):
+    if isinstance(data, xr.DataArray):
+        sim = data
+        msim = msi_utils.get_msim_from_sim(sim)
+    else:
+        msim = data
+        sim = msi_utils.get_sim_from_msim(msim)
+
+    print('dims', sim.dims)
+    print('position dims', tuple(si_utils.get_origin_from_sim(sim).keys()))
+    print('transform shapes', end=' ')
+    for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+        print(msi_utils.get_transform_from_msim(msim, transform_key).shape, end=' ')
+    print()

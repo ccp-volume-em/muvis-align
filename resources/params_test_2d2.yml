@@ -10,6 +10,7 @@ operations:
     input:
       path: data/2d2/*.zarr
       source_metadata: source
+      extra_metadata: {scale: {z: 0.1}}
     registration:
       pairing: orthogonal
       transform_type: rigid
