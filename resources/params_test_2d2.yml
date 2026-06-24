@@ -8,14 +8,14 @@ general:
 operations:
   - operation: register
     input:
-      path: data/2d2/*.zarr
+      path: data/*/*.zarr
       source_metadata: source
       extra_metadata: {scale: {z: 0.1}}
     registration:
       pairing: orthogonal
       transform_type: rigid
-      method: sift
-      gaussian_sigma: 1
+      method: orb
+      gaussian_sigma: 2
       normalisation: True
       max_keypoints: 5000
       inlier_threshold_factor: 0.05

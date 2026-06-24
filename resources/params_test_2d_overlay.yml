@@ -1,7 +1,7 @@
 general:
   overwrite: True
   logging:
-    verbose: False
+    verbose: True
   output:
     format: ome.zarr
 
@@ -9,8 +9,8 @@ operations:
   - operation: register
     input:
       path:
-        - data/2d/S000_000_000.ome.zarr
-        - data/2d/S001_000_001.ome.zarr
+        - data/S000/S000_000_000.ome.zarr
+        - data/S001/S001_000_001.ome.zarr
       labels:
         - S000_000_000
         - S001_000_001
@@ -20,7 +20,7 @@ operations:
       pairing: orthogonal
       transform_type: rigid
       method: orb
-      gaussian_sigma: 2.5
+      gaussian_sigma: 2
       normalisation: True
       max_keypoints: 5000
       inlier_threshold_factor: 0.05

@@ -55,6 +55,8 @@ class MVSRegistration:
 
     def reset(self):
         self.state = RegState.UNINIT
+        self.source_metadata = {}
+        self.extra_metadata = {}
         self.sims = []
         self.register_sims = []
         self.sources = []
@@ -391,10 +393,9 @@ class MVSRegistration:
         rotations = []
 
         is_3d = (source0.get_size().get('z', 0) > 1)
-        z_positions = set([source.get_position().get('z', 0) for source in self.sources])
         is_stack = ('stack' in self.operation)
+        output_order = 'zyx' if is_3d else 'yx'
 
-        output_order = 'zyx' if is_3d or len(z_positions) > 1 else 'yx'
         ndims = len(output_order)
         if source0.get_nchannels() > 1:
             output_order += 'c'
@@ -543,7 +544,7 @@ class MVSRegistration:
             self.rotations = rotations
             self.state = RegState.SIMS_INIT
 
-        print_sim_info(sims[0])
+        #print_sim_info(sims[0])
         return sims
 
     def check_progress(self, output_filename, output_format):
@@ -619,6 +620,8 @@ class MVSRegistration:
                 si_utils.set_sim_affine(sim, transform, transform_key=self.reg_transform_key)
             if make_3d:
                 sims = make_sims_3d(sims, z_scale, self.positions)
+            if not is_3d:
+                self.sims = make_sims_2d(self.sims)
             self.sims = sims
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
             metrics = import_json(metrics_filename)
@@ -682,7 +685,8 @@ class MVSRegistration:
             return False
 
     def preprocess(self, sims,
-                   flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
+                   flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False,
+                   **kwargs):
         modified = False
         # normalise pixel size: take max pixel size
         max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
@@ -815,7 +819,9 @@ class MVSRegistration:
 
     def register(self, sims, register_sims=None, register_indices=None, params=None):
         pair_results = self.register_pairs(sims, register_sims=register_sims, register_indices=register_indices, params=params)
-        qualities = {key: metric[default_transform_key][default_quality_key] for key, metric in pair_results['metrics']['pairs'].items()}
+        qualities = {key: metric[default_transform_key][default_quality_key]
+                     for key, metric in pair_results['metrics']['pairs'].items()
+                     if default_quality_key in metric[default_transform_key]}
         bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
         self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
         results = self.register_global(sims, self.msims, register_indices=register_indices, params=params)
@@ -1038,7 +1044,7 @@ class MVSRegistration:
         else:
             msims_reg = register_msims
 
-        print_sim_info(msims_reg[0])
+        #print_sim_info(msims_reg[0])
 
         try:
             with dask.config.set(scheduler='threads'):
@@ -1252,8 +1258,12 @@ class MVSRegistration:
                 if len(diffs) > 0:
                     z_scale = min(diffs)
 
+        z_positions = [position.get('z') for position in self.positions if 'z' in position]
+        if len(set(z_positions)) > 1:
+            sims = make_sims_3d(sims, z_scale=z_scale, positions=self.positions)
+
         output_stack_properties = calc_output_properties(sims, transform_key,
-                                                         output_spacing=output_spacing, z_scale=z_scale)
+                                                         output_spacing_method=output_spacing, z_scale=z_scale)
 
         if self.verbose:
             logging.info(f'Output stack: {numpy_to_native(output_stack_properties)}')
@@ -1308,7 +1318,8 @@ class MVSRegistration:
                                {'mapping': np.array(mapping.sel(t=0)).tolist(),
                                 default_quality_key: float(qualities[keys]),
                                 'bbox': bboxes[keys]}
-                           for keys, mapping in mappings.items()}
+                           for keys, mapping in mappings.items()
+                           if keys in qualities}
         export_json(pair_mappings_filename, output_mappings)
 
     def save_mappings(self, mappings):

@@ -1,20 +1,20 @@
 general:
   overwrite: True
   logging:
-    verbose: False
+    verbose: True
   output:
     format: ome.zarr
 
 operations:
   - operation: register
     input:
-      path: data/2d/S000*.zarr
+      path: data/S000/*.zarr
       source_metadata: source
     registration:
       pairing: orthogonal
       transform_type: rigid
-      method: sift
-      gaussian_sigma: 1
+      method: orb
+      gaussian_sigma: 2
       normalisation: True
       max_keypoints: 5000
       inlier_threshold_factor: 0.05

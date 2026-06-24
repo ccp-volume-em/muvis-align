@@ -803,16 +803,19 @@ def get_sim_physical_size(sim):
     return physical_size
 
 
-def calc_output_properties(sims, transform_key, output_spacing=None, z_scale=None):
+def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None):
     spacings = [si_utils.get_spacing_from_sim(sim) for sim in sims]
     dims = list(spacings[0])
-    if not output_spacing or 'mean' in output_spacing.lower():
+    output_spacing = {}
+    if output_spacing_method:
+        output_spacing_method = output_spacing_method.lower()
+    if not output_spacing_method or 'mean' in output_spacing_method:
         output_spacing = {dim: np.mean([spacing[dim] for spacing in spacings]) for dim in dims}
-    elif 'max' in output_spacing.lower():
+    elif 'max' in output_spacing_method:
         output_spacing = {dim: max([spacing[dim] for spacing in spacings]) for dim in dims}
-    elif 'min' in output_spacing.lower():
+    elif 'min' in output_spacing_method:
         output_spacing = {dim: min([spacing[dim] for spacing in spacings]) for dim in dims}
-    if z_scale is not None:
+    if z_scale and 'z' in dims:
         output_spacing['z'] = z_scale
     output_properties = fusion.calc_fusion_stack_properties(
         sims,
@@ -868,12 +871,14 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
 
 
 def get_sim_shape_2d(sim, transform_key=None):
+    if 't' in sim.dims:
+        sim = sim.sel(t=0)
     stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
     points = mv_graph.get_vertices_from_stack_props(stack_props)
     if points.shape[1] == 3:
         # remove z coordinate
         points = points[:, 1:]
-    points = list(map(list, set(map(tuple, points))))
+    points = np.array(list(map(list, set(map(tuple, points)))))
     if len(points) >= 8:
         # remove redundant x/y vertices
         points = points[:4]
@@ -1039,7 +1044,6 @@ def print_sim_info(data):
 
     print('dims', sim.dims)
     print('position dims', tuple(si_utils.get_origin_from_sim(sim).keys()))
-    print('transform shapes', end=' ')
     for transform_key in si_utils.get_tranform_keys_from_sim(sim):
-        print(msi_utils.get_transform_from_msim(msim, transform_key).shape, end=' ')
+        print(transform_key, msi_utils.get_transform_from_msim(msim, transform_key).shape, end=' ')
     print()
