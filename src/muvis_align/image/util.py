@@ -870,30 +870,18 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
     return translation, rotation
 
 
-def get_sim_shape_2d(sim, transform_key=None):
+def get_sim_shape(sim, transform_key=None):
     if 't' in sim.dims:
         sim = sim.sel(t=0)
     stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
     points = mv_graph.get_vertices_from_stack_props(stack_props)
-    if points.shape[1] == 3:
-        # remove z coordinate
+    if points.shape[1] == 3 and len(set(points[:, 0])) == 1:
+        # remove constant z coordinate
         points = points[:, 1:]
     points = np.array(list(map(list, set(map(tuple, points)))))
-    if len(points) >= 8:
-        # remove redundant x/y vertices
-        points = points[:4]
     hull = ConvexHull(points)
     shape = points[hull.vertices]
     return shape
-
-
-def squeeze_sim_dims(sim, transform_key):
-    sim = sim.copy()
-    affine = si_utils.get_affine_from_sim(sim, transform_key)
-    if "t" in affine.dims:
-        affine = affine.isel(t=0)
-        si_utils.set_sim_affine(sim, affine, transform_key)
-    return sim
 
 
 def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
@@ -988,6 +976,15 @@ def combine_transforms(transforms):
         else:
             combined_transform = np.dot(transform, combined_transform)
     return combined_transform
+
+
+def squeeze_sim_dims(sim, transform_key):
+    sim = sim.copy()
+    affine = si_utils.get_affine_from_sim(sim, transform_key)
+    if "t" in affine.dims:
+        affine = affine.isel(t=0)
+        si_utils.set_sim_affine(sim, affine, transform_key)
+    return sim
 
 
 def make_sims_3d(sims, z_scale=None, positions=None):

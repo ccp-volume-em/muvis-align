@@ -3,6 +3,7 @@ from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.utils import progress
 from napari.utils.notifications import show_warning
+from napari_bbox.boundingbox import BoundingBoxLayer
 import networkx as nx
 import numpy as np
 import os.path
@@ -15,7 +16,7 @@ from muvis_align.constants import zarr_extension, default_transform_key, default
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
-    affine_from_intrinsic_affine, get_sim_shape_2d, get_overlap_shapes, get_overlap_images, \
+    affine_from_intrinsic_affine, get_sim_shape, get_overlap_shapes, get_overlap_images, \
     draw_keypoints_matches_napari, get_transforms, copy_transforms
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
@@ -187,6 +188,7 @@ class Interface:
         self.populate_coordinate_systems(coord_systems)
         if self.reg.is_initialised():
             self.populate_metadata_table(sims)
+            self.check_3d_view()
             self.update_overview()
             self.update_view()
 
@@ -245,6 +247,12 @@ class Interface:
             transform_key = None
         return transform_key
 
+    def check_3d_view(self):
+        is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
+        ndisplay = 3 if is_3d else 2
+        self.viewer.dims.ndisplay = ndisplay
+        self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
+
     def update_overview(self, overlaps=True):
         transform_key = self.get_best_transform_key()
         self._clear_napari_view(self.overview)
@@ -285,10 +293,11 @@ class Interface:
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
         sims = self.reg.sims
-        shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in sims]
+        shapes = np.array([get_sim_shape(sim, transform_key=transform_key) for sim in sims])
         refs = [str(index) for index in range(len(sims))]
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(sims))]
+        overlaps=False
         if overlaps:
             shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key)
             shapes += shapes2
@@ -298,8 +307,14 @@ class Interface:
         if len(shapes) > 0:
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
-            viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
-                              face_color=face_colors, opacity=0.5, edge_width=0.1)
+            is_3d = (shapes.shape[-1] == 3)
+            if is_3d:
+                bbox_layer = BoundingBoxLayer(shapes, name=layer_name, text=text, features=features,
+                                              face_color=face_colors, opacity=0.5, edge_width=100)
+                self.viewer.add_layer(bbox_layer)
+            else:
+                viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
+                                  face_color=face_colors, opacity=0.5, edge_width=0.1)
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
             #                           face_color=face_colors)
