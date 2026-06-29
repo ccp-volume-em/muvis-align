@@ -251,7 +251,7 @@ class Interface:
         is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
         ndisplay = 3 if is_3d else 2
         self.viewer.dims.ndisplay = ndisplay
-        self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
+        #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
     def update_overview(self, overlaps=True):
         transform_key = self.get_best_transform_key()
@@ -594,7 +594,6 @@ class Interface:
         if reply == QMessageBox.Yes:
             operation = self.params['registration']['operation']
             output_filename = operation.split()[0] + 'ed'
-            print(output_filename)
             tile_size = self.params['fusion']['tile_size']
             if ',' in tile_size:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]
