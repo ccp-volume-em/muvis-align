@@ -26,35 +26,29 @@ class ZarrDaskSource(DaskSource):
         self.shape = self.shapes[0]
         self.dtype = self.data[0].dtype
         axes = self.metadata['axes']
-        self.dimension_order = ''.join([axis['name'] for axis in axes])
+        dims = ''.join([axis['name'] for axis in axes])
+        self.dimension_order = dims
         units = {axis['name']: axis['unit'] for axis in axes if 'unit' in axis}
 
         pixel_sizes = []
         position = {}
         channels = []
         scales = []
-        scale0 = 1
+        scale_factors = []
+        scale0 = {}
         for ct_index, transforms in enumerate(self.metadata.get('coordinateTransformations', [])):
-            pixel_size = {}
-            scale1 = []
-            position1 = None
+            scale = {}
+            position = {}
             for transform in transforms:
                 if transform['type'] == 'scale':
-                    scale1 = transform['scale']
+                    scale = {dim: value for dim, value in zip(dims, transform['scale']) if dim in 'xyz'}
                 if transform['type'] == 'translation':
-                    position1 = transform.get('translation')
-            scale = np.mean([scale1[index] for index, dim in enumerate(self.dimension_order) if dim in 'xy'])
+                    position = {dim: value for dim, value in zip(dims, transform['translation']) if dim in 'xyz'}
             if ct_index == 0:
                 scale0 = scale
-            for index, dim in enumerate(self.dimension_order):
-                if dim in 'xyz':
-                    pixel_size[dim] = convert_to_um(scale1[index], units.get(dim, ''))
-                    if ct_index == 0:
-                        if position1 is not None:
-                            position[dim] = (position1[index], units.get(dim, ''))
-                        else:
-                            position[dim] = 0
-            scales.append(scale / scale0)
+            scales.append(scale)
+            scale_factors.append({dim: value / scale0.get(dim, 1) for dim, value in scale.items()})
+            pixel_size = {dim: convert_to_um(value, units.get(dim, '')) for dim, value in scale.items()}
             pixel_sizes.append(pixel_size)
 
         colormaps = self.metadata.get('colormap', [])
@@ -69,6 +63,7 @@ class ZarrDaskSource(DaskSource):
         self.rotation = 0
         self.channels = channels
         self.scales = scales
+        self.scale_factors = scale_factors
 
     def get_data(self, level=0):
         if level < 0:

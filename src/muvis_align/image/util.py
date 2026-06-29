@@ -214,28 +214,33 @@ def calc_pyramid(xyzct: tuple, npyramid_add: int = 0, pyramid_downsample: float 
     return sizes_add
 
 
-def get_level_from_scale(source_scales, source_pixel_size, target_scale=1):
+def get_level_from_scale(source, target_scale=1):
     # Only downscaling
-    mean_source_pixel_size = float(np.mean([source_pixel_size[dim] for dim in 'xy']))
-    if isinstance(target_scale, str):
+    if isinstance(target_scale, dict):
+        # dict of desired pixel size
+        target_pixel_size = target_scale
+        target_scale = {dim: target_pixel_size[dim] / source_pixel_size for dim, source_pixel_size in source.get_pixel_size().items()}
+    elif isinstance(target_scale, str):
+        # target pixel size with unit
         index = target_scale.find(next(filter(str.isalpha, target_scale)))
         pixel_size = convert_to_um(float(target_scale[:index]), target_scale[index:])
-        target_scale = {dim: pixel_size for dim in 'xy'}
-    if isinstance(target_scale, dict):
-        target_pixel_size = target_scale
-        mean_target_pixel_size = float(np.mean([target_pixel_size[dim] for dim in 'xy']))
-        target_scale = mean_target_pixel_size / mean_source_pixel_size
+        target_pixel_size = {dim: pixel_size for dim in source.get_pixel_size()}
+        target_scale = {dim: pixel_size / source_pixel_size for dim, source_pixel_size in source.get_pixel_size().items()}
     else:
-        target_pixel_size = {dim: float(source_pixel_size[dim] * target_scale) for dim in source_pixel_size}
+        # target scale factor
+        target_pixel_size = {dim: float(source.get_pixel_size()[dim] * target_scale) for dim in source.get_pixel_size()}
+        target_scale = {dim: target_scale for dim in source.get_pixel_size()}
     best_level, best_scale = 0, target_scale
-    for level, scale in enumerate(source_scales):
-        if np.isclose(scale, target_scale, rtol=1e-4):
-            best_level, best_scale = level, 1
+    for level, factors in enumerate(source.scale_factors):
+        if any(np.isclose(factors[dim], target_scale[dim], rtol=1e-4) for dim in factors):
+            best_level, best_scale = level, {dim: target_scale[dim] / factors[dim] for dim in factors}
             break
-        if scale <= target_scale:
-            best_level, best_scale = level, target_scale / scale
-    if best_level == 0 and best_scale < 1:
-        best_scale = 1
+        if any(factors[dim] <= target_scale[dim] for dim in factors):
+            best_level, best_scale = level, {dim: target_scale[dim] / factors[dim] for dim in factors}
+    if best_level == 0:
+        for dim in best_scale:
+            if best_scale[dim] < 1:
+                best_scale[dim] = 1
     return best_level, best_scale, target_pixel_size
 
 
@@ -804,9 +809,11 @@ def get_sim_physical_size(sim):
 
 
 def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None):
+    output_spacing = {}
     spacings = [si_utils.get_spacing_from_sim(sim) for sim in sims]
     dims = list(spacings[0])
-    output_spacing = {}
+    is_3d = (sims[0].sizes.get('z', 0) > 1)
+
     if output_spacing_method:
         output_spacing_method = output_spacing_method.lower()
     if not output_spacing_method or 'mean' in output_spacing_method:
@@ -815,7 +822,8 @@ def calc_output_properties(sims, transform_key, output_spacing_method=None, z_sc
         output_spacing = {dim: max([spacing[dim] for spacing in spacings]) for dim in dims}
     elif 'min' in output_spacing_method:
         output_spacing = {dim: min([spacing[dim] for spacing in spacings]) for dim in dims}
-    if z_scale and 'z' in dims:
+
+    if z_scale and 'z' in dims and not is_3d:
         output_spacing['z'] = z_scale
     output_properties = fusion.calc_fusion_stack_properties(
         sims,
@@ -823,7 +831,7 @@ def calc_output_properties(sims, transform_key, output_spacing_method=None, z_sc
         output_spacing,
         mode='union',
     )
-    if 'z' in output_properties['shape']:
+    if 'z' in output_properties['shape'] and not is_3d:
         z_positions = sorted(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims]))
         z_shape = len(z_positions)
         if z_shape <= 1:

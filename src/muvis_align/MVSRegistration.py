@@ -441,7 +441,7 @@ class MVSRegistration:
             rescale = 1
             if target_scale:
                 # Only downscaling
-                level, rescale, scale = get_level_from_scale(source.scales, scale, target_scale)
+                level, rescale, scale = get_level_from_scale(source, target_scale)
             if 'invert' in source_metadata:
                 translation['x'] = -translation['x']
                 translation['y'] = -translation['y']
@@ -457,8 +457,8 @@ class MVSRegistration:
                 rotation = self.global_rotation
 
             dask_data = source.get_data(level=level)
-            if rescale != 1:
-                new_shape = [int(size / rescale) if dim in 'xy' else 1
+            if any(value != 1 for value in rescale.values()):
+                new_shape = [int(size / rescale[dim]) if dim in 'xyz' else 1
                              for dim, size in zip(source.dimension_order, dask_data.shape)]
                 dask_data = resize(dask_data, new_shape, preserve_range=True).astype(dask_data.dtype)
             image = redimension_data(dask_data, source.dimension_order, output_order)

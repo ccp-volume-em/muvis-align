@@ -16,6 +16,7 @@ class DaskSource:
         self.pixel_sizes = []
         self.pixel_size = {}
         self.scales = []
+        self.scale_factors = []
         self.position = {}
         self.rotation = 0
         self.channels = []
