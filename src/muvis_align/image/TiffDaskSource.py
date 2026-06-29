@@ -21,11 +21,12 @@ class TiffDaskSource(DaskSource):
             page = tiff.pages.first
         if hasattr(page, 'levels') and len(page.levels) >= len(pages):
             pages = page.levels
+        self.dimension_order = page.axes.lower()
+        self.dtype = page.dtype.type
         self.pages = pages
         self.shapes = [page.shape for page in pages]
         self.shape = self.shapes[0]
-        self.dtype = page.dtype.type
-        self.dimension_order = page.axes.lower()
+        self.scale_factors = [{dim: value0 / value for dim, value, value0 in zip(self.dimension_order, shape, self.shape)} for shape in self.shapes]
         photometric = page.keyframe.photometric
         nchannels = self.get_nchannels()
         self.is_rgb = (photometric in (PHOTOMETRIC.RGB, PHOTOMETRIC.PALETTE) and nchannels in (3, 4))
