@@ -6,8 +6,9 @@ import os.path
 from src.muvis_align.constants import zarr_extension
 from src.muvis_align.image.ome_helper import save_image
 from src.muvis_align.image.util import redimension_data
-from src.muvis_align.util import get_unique_file_labels
 from src.muvis_align.image.source_helper import create_dask_source
+from src.muvis_align.Timer import Timer
+from src.muvis_align.util import get_unique_file_labels
 
 
 def convert_to_zarr(filename, output_filename, source_metadata, output_order='tczyx'):
@@ -66,6 +67,8 @@ if __name__ == "__main__":
     for folder in folders:
         if os.path.isdir(folder):
             filenames = sorted(glob.glob(os.path.join(folder, '*.tif')))
-            output_filename = os.path.join(output_path, folder)
-            print('Converting stack ' + folder + ' to ' + output_filename)
-            convert_stack_to_zarr(filenames, output_filename, source_metadata)
+            if filenames:
+                output_filename = os.path.join(output_path, folder)
+                print('Converting stack ' + folder + ' to ' + output_filename)
+                with Timer(''):
+                    convert_stack_to_zarr(filenames, output_filename, source_metadata)
