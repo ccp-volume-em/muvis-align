@@ -180,8 +180,7 @@ class Interface:
             preview_scale = self.params['input_output']['preview_scale']
             self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
                                                    store=False)
-            target_scale = self.params['input_output']['target_scale']
-            self.reg.init_sims(source_metadata=self.source_metadata, target_scale=target_scale)
+            self.reg.init_sims(source_metadata=self.source_metadata)
         sims = self.reg.sims
 
         coord_systems = get_transforms(sims)

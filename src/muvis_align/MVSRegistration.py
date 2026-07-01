@@ -197,7 +197,7 @@ class MVSRegistration:
             return False
 
         with Timer('init sims', self.logging_time):
-            sims = self.init_sims(target_scale=self.preprocess_params.get('scale'))
+            sims = self.init_sims()
         self.sims = sims
 
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
@@ -438,7 +438,7 @@ class MVSRegistration:
                             logging.warning(f'Could not find SBEMimage config for {filename}.')
 
             level = 0
-            rescale = 1
+            rescale = {}
             if target_scale:
                 # Only downscaling
                 level, rescale, scale = get_level_from_scale(source, target_scale)
@@ -672,25 +672,29 @@ class MVSRegistration:
                     has_overlaps.append(True)
         return min_dists, has_overlaps
 
-    def check_preprocess(self,
+    def check_preprocess(self, scale=None,
                          flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
         if normalisation:
             if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
                 normalisation = None
             elif isinstance(normalisation, bool) and normalisation == False:
                 normalisation = None
-        if flatfield_quantiles or normalisation or gaussian_sigma or filter_foreground:
+        if (scale and scale != 1) or flatfield_quantiles or normalisation or gaussian_sigma or filter_foreground:
             return True
         else:
             return False
 
-    def preprocess(self, sims,
+    def preprocess(self, sims, scale=None,
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False,
                    **kwargs):
         modified = False
         # normalise pixel size: take max pixel size
         max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
         scales0 = self.scales
+
+        if scale and scale != 1:
+            sims = self.init_sims(target_scale=scale, store=False)
+            modified = True
 
         if filter_foreground:
             foreground_map = calc_foreground_map(sims)

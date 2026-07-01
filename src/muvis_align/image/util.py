@@ -6,7 +6,7 @@ from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrins
     get_affine_from_intrinsic_affine
 from scipy.spatial import ConvexHull
 from skimage.filters import gaussian
-from skimage.feature import plot_matched_features
+from skimage.feature import blob_log, blob_dog, plot_matched_features
 from skimage.transform import downscale_local_mean
 import xarray as xr
 from xarray import DataTree
@@ -546,8 +546,9 @@ def create_compression_filter(compression: list) -> tuple:
     return compressor, compression_filters
 
 
-def gaussian_filter_image(image, sigma):
-    nchannels = image.shape[2] if image.ndim == 3 else 1
+def gaussian_filter_image(image, sigma, is_3d=False):
+    ndims = 4 if is_3d else 3
+    nchannels = image.shape[-1] if image.ndim > ndims else 1
     if nchannels not in [1, 3]:
         new_image = np.zeros_like(image)
         for channeli in range(nchannels):
@@ -581,13 +582,16 @@ def get_image_window(image, low=0.01, high=0.99):
     return window
 
 
-def normalise_values(image: np.ndarray, min_value: float, max_value: float) -> np.ndarray:
+def normalise_values(image: np.ndarray, min_value: float=None, max_value: float=None) -> np.ndarray:
+    if min_value is None or max_value is None:
+        min_value, max_value = get_image_window(image)
     image = (image.astype(np.float32) - min_value) / (max_value - min_value)
     return image.clip(0, 1)
 
 
-def norm_image_variance(image0):
-    if len(image0.shape) == 3 and image0.shape[2] == 4:
+def norm_image_variance(image0, is_3d=False):
+    ncoldims = 4 if is_3d else 3
+    if len(image0.shape) == ncoldims and image0.shape[-1] == 4:
         image, alpha = image0[..., :3], image0[..., 3]
     else:
         image, alpha = image0, None
@@ -598,8 +602,9 @@ def norm_image_variance(image0):
     return normimage
 
 
-def norm_image_variance2(image0):
-    if len(image0.shape) == 3 and image0.shape[2] == 4:
+def norm_image_variance2(image0, is_3d=False):
+    ncoldims = 4 if is_3d else 3
+    if len(image0.shape) == ncoldims and image0.shape[-1] == 4:
         image, alpha = image0[..., :3], image0[..., 3]
     else:
         image, alpha = image0, None
@@ -657,12 +662,12 @@ def invert_data(data):
             return data
 
 
-def detect_area_points(image):
+def detect_area_points(data):
     method = cv.THRESH_OTSU
     threshold = -5
     contours = []
     while len(contours) <= 1 and threshold <= 255:
-        _, binimage = cv.threshold(np.array(uint8_image(image)), threshold, 255, method)
+        _, binimage = cv.threshold(np.array(uint8_image(data)), threshold, 255, method)
         contours0 = cv.findContours(binimage, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         contours = contours0[0] if len(contours0) == 2 else contours0[1]
         method = cv.THRESH_BINARY
@@ -678,6 +683,13 @@ def detect_area_points(image):
     #    cv.circle(image, tuple(np.round(point[0]).astype(int)), radius, (255, 0, 0), -1)
     #show_image(image)
     return area_points
+
+
+def detect_volume_points(data):
+    blobs = blob_log(data, min_sigma=1, max_sigma=30, num_sigma=10, threshold=0.1)
+    if blobs.shape[1] > 3:
+        blobs = blobs[:, :3]
+    return blobs
 
 
 def get_transforms(sims):

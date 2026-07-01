@@ -3,6 +3,7 @@ import glob
 from multiview_stitcher import spatial_image_utils as si_utils
 import os.path
 
+from muvis_align.logging import init_logging
 from src.muvis_align.constants import zarr_extension
 from src.muvis_align.image.ome_helper import save_image
 from src.muvis_align.image.util import redimension_data
@@ -59,16 +60,19 @@ if __name__ == "__main__":
 
 
     folders = glob.glob('D:/slides/Emb3_2x2_Mosaic_2CAMs/*')
+    file_pattern = 'CAM1--*.tif'
     output_path = 'D:/slides/Emb3_2x2_Mosaic_2CAMs/'
     source_metadata = {
         'scale': {'x': 6.5, 'y': 6.5, 'z': 6.5},
-        'position': {'y': 'Y*13300', 'x': 'X*13300', 'z': 0}}
+        'position': {'y': 'Y*12000', 'x': 'X*12000', 'z': 0}}
+
+    init_logging()
 
     for folder in folders:
         if os.path.isdir(folder):
-            filenames = sorted(glob.glob(os.path.join(folder, '*.tif')))
+            filenames = sorted(glob.glob(os.path.join(folder, file_pattern)))
             if filenames:
                 output_filename = os.path.join(output_path, folder)
-                print('Converting stack ' + folder + ' to ' + output_filename)
+                print(f'Converting stack {folder} ({len(filenames)} files) to {output_filename}')
                 with Timer(''):
                     convert_stack_to_zarr(filenames, output_filename, source_metadata)
