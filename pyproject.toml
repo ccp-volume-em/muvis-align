@@ -41,10 +41,11 @@ dependencies = [
     "rocrate>=0.15.0",
     "matplotlib",
     "tqdm",
-    "multiview-stitcher>=v0.1.53",
+    "multiview-stitcher>=v0.1.56",
     "opencv-python",
     "spatial-image",
     "multiscale-spatial-image",
+    "probreg",
     "magic-class",
 ]
 
