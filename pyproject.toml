@@ -45,7 +45,6 @@ dependencies = [
     "opencv-python",
     "spatial-image",
     "multiscale-spatial-image",
-    "probreg",
     "napari_bbox",
     "magic-class",
 ]
@@ -54,6 +53,7 @@ dependencies = [
 # Allow easily installation with the full, default napari installation
 # (including Qt backend) using muvis-align[all].
 all = ["napari[all]"]
+cpd = ["probreg"]
 
 [dependency-groups]
 dev = [

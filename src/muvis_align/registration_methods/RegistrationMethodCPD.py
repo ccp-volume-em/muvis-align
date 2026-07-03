@@ -1,6 +1,9 @@
 import logging
 import numpy as np
-from probreg import cpd
+try:
+    from probreg import cpd
+except ImportError:
+    cpd = None
 from spatial_image import SpatialImage
 
 from src.muvis_align.metrics import calc_match_metrics
@@ -32,6 +35,11 @@ class RegistrationMethodCPD(RegistrationMethod):
         return points
 
     def registration(self, fixed_data: SpatialImage, moving_data: SpatialImage, **kwargs) -> dict:
+        if cpd is None:
+            raise ImportError(
+                "The 'probreg' package is required for CPD registration. "
+                "Install it with: pip install muvis-align[cpd]"
+            )
         ndim = 3 if self.is_3d else 2
 
         full_size_min = np.min(self.full_size)
