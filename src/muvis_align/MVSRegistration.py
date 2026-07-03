@@ -147,7 +147,7 @@ class MVSRegistration:
         if self.clear:
             shutil.rmtree(output_dir, ignore_errors=True)
         if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+            os.makedirs(output_dir, exist_ok=True)
 
         return True
 
