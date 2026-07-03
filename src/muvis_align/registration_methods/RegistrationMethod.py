@@ -8,11 +8,19 @@ class RegistrationMethod(ABC):
     def __init__(self, source, params, debug=False):
         self.source_type = source.dtype
         if hasattr(source, 'dims'):
-            self.full_size = si_utils.get_shape_from_sim(source, asarray=True)
-            self.ndims = 2 + int('z' in source.dims)
+            self.full_size = [size for size in list(si_utils.get_shape_from_sim(source).values())
+                              if size > 1]
+            self.ndims = len(si_utils.get_spatial_dims_from_sim(source))
+            self.is_3d = ('z' in source.dims and source.sizes['z'] > 1)
         else:
-            self.full_size = [size for size in source.shape if size > 4]    # try to filter channel dimension
+            self.full_size = [size for dim, size in zip(source.dimension_order, source.shape)
+                              if dim in 'xyz' and size > 1]
             self.ndims = len(self.full_size)
+            if 'z' in source.dimension_order:
+                z_index = source.dimension_order.index('z')
+                self.is_3d = (source.shape[z_index] > 1)
+            else:
+                self.is_3d = False
         self.params = params
         self.debug = debug
         self.count = 0  # for debugging

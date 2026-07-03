@@ -114,6 +114,8 @@ def calc_sims_metrics(sims, pair_transforms, qualities=None, base_transform_key=
 
 def calc_match_metrics(points1, points2, transform, threshold, lowe_ratio=None):
     metrics = {}
+    final_matches = []
+    inliers = []
     transformed_points1 = apply_transform(points1, transform)
     npoints1, npoints2 = len(points1), len(points2)
     npoints = min(npoints1, npoints2)
@@ -145,17 +147,24 @@ def calc_match_metrics(points1, points2, transform, threshold, lowe_ratio=None):
         matching_distances = []
         for sorted_match in sorted_matches:
             i, match = matches[sorted_match]
-            for ji, j in enumerate(match):
+            for j_index, j in enumerate(match):
                 if j not in done:
                     # found best, available match
                     distance0 = distance_matrix[i, j]
-                    distance1 = distance_matrix[i, match[ji + 1]] if ji + 1 < len(match) else np.inf
+                    # second best match distance
+                    distance1 = distance_matrix[i, match[j_index + 1]] if j_index + 1 < len(match) else np.inf
                     matching_distances.append(distance0)    # use all distances to also weigh in the non-matches
+                    final_matches.append((int(i), int(j)))
                     if distance0 < threshold and (lowe_ratio is None or distance0 < lowe_ratio * distance1):
                         done.append(j)
                         nmatches += 1
+                        inliers.append(True)
+                    else:
+                        inliers.append(False)
                     break
 
+    metrics['matches'] = final_matches
+    metrics['inliers'] = inliers
     metrics['nmatches'] = nmatches
     metrics['match_rate'] = nmatches / npoints if npoints > 0 else 0
     distance = np.mean(matching_distances) if nmatches > 0 else np.inf

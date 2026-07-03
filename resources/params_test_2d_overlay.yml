@@ -20,7 +20,7 @@ operations:
       pairing: orthogonal
       transform_type: rigid
       method: orb
-      gaussian_sigma: 2.5
+      gaussian_sigma: 2
       normalisation: True
       max_keypoints: 5000
       inlier_threshold_factor: 0.05

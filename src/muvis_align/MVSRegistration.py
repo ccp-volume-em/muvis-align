@@ -55,6 +55,8 @@ class MVSRegistration:
 
     def reset(self):
         self.state = RegState.UNINIT
+        self.source_metadata = {}
+        self.extra_metadata = {}
         self.sims = []
         self.register_sims = []
         self.sources = []
@@ -145,7 +147,7 @@ class MVSRegistration:
         if self.clear:
             shutil.rmtree(output_dir, ignore_errors=True)
         if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+            os.makedirs(output_dir, exist_ok=True)
 
         return True
 
@@ -173,12 +175,6 @@ class MVSRegistration:
         overlap_threshold = self.register_params.get('overlap_threshold', self.params.get('overlap_threshold', 0.5))
         save_images = self.output_params.get('save_images', self.params.get('save_images', True))
 
-        is_stack = ('stack' in operation)
-        is_3d = ('3d' in operation)
-        is_simple_stack = is_stack and not is_3d
-        is_transition = ('transition' in operation)
-        is_channel_overlay = (len(channels) > 1)
-
         output_format = output_params.get('format', general_output_params.get('format', zarr_extension))
         output_tile_size = output_params.get('tile_size', general_output_params.get('tile_size'))
         output_compression = output_params.get('compression', general_output_params.get('compression'))
@@ -201,9 +197,14 @@ class MVSRegistration:
             return False
 
         with Timer('init sims', self.logging_time):
-            sims = self.init_sims(target_scale=self.preprocess_params.get('scale'))
+            sims = self.init_sims()
         self.sims = sims
 
+        is_3d = (self.sources[0].get_size().get('z', 0) > 1)
+        is_stack = ('stack' in operation)
+        is_simple_stack = is_stack and not is_3d
+        is_transition = ('transition' in operation)
+        is_channel_overlay = (len(channels) > 1)
         if not z_scale:
             z_scale = self.scales[0].get('z', 1)
 
@@ -230,7 +231,8 @@ class MVSRegistration:
                       ome_version=output_ome_version)
             return False
 
-        _, has_overlaps = self.validate_overlap(sims, file_labels, is_simple_stack, is_simple_stack or is_channel_overlay)
+        _, has_overlaps = self.validate_overlap(sims, file_labels, is_stack=is_simple_stack,
+                                                expect_large_overlap=is_simple_stack or is_channel_overlay)
         overall_overlap = np.mean(has_overlaps)
         if overall_overlap < overlap_threshold:
             raise ValueError(f'Not enough overlap: {overall_overlap * 100:.1f}%')
@@ -390,10 +392,10 @@ class MVSRegistration:
         translations = []
         rotations = []
 
+        is_3d = (source0.get_size().get('z', 0) > 1)
         is_stack = ('stack' in self.operation)
-        has_z_size = (source0.get_size().get('z', 0) > 0)
+        output_order = 'zyx' if is_3d else 'yx'
 
-        output_order = 'zyx' if has_z_size else 'yx'
         ndims = len(output_order)
         if source0.get_nchannels() > 1:
             output_order += 'c'
@@ -436,10 +438,10 @@ class MVSRegistration:
                             logging.warning(f'Could not find SBEMimage config for {filename}.')
 
             level = 0
-            rescale = 1
+            rescale = {}
             if target_scale:
                 # Only downscaling
-                level, rescale, scale = get_level_from_scale(source.scales, scale, target_scale)
+                level, rescale, scale = get_level_from_scale(source, target_scale)
             if 'invert' in source_metadata:
                 translation['x'] = -translation['x']
                 translation['y'] = -translation['y']
@@ -448,7 +450,6 @@ class MVSRegistration:
             else:
                 z_position = 0
             if last_z_position is not None and z_position != last_z_position:
-                different_z_positions = True
                 delta_zs.append(z_position - last_z_position)
             if 'rotation' in source_metadata:
                 rotation = source_metadata['rotation']
@@ -456,8 +457,8 @@ class MVSRegistration:
                 rotation = self.global_rotation
 
             dask_data = source.get_data(level=level)
-            if rescale != 1:
-                new_shape = [int(size / rescale) if dim in 'xy' else 1
+            if any(value != 1 for value in rescale.values()):
+                new_shape = [int(size / rescale[dim]) if dim in 'xyz' else 1
                              for dim, size in zip(source.dimension_order, dask_data.shape)]
                 dask_data = resize(dask_data, new_shape, preserve_range=True).astype(dask_data.dtype)
             image = redimension_data(dask_data, source.dimension_order, output_order)
@@ -542,6 +543,8 @@ class MVSRegistration:
             self.positions = final_translations
             self.rotations = rotations
             self.state = RegState.SIMS_INIT
+
+        #print_sim_info(sims[0])
         return sims
 
     def check_progress(self, output_filename, output_format):
@@ -558,6 +561,7 @@ class MVSRegistration:
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
         metrics_filename = self.output + metrics_name
+        is_3d = (self.sources[0].get_size().get('z', 0) > 1)
         self.check_progress(output_filename, output_format)
 
         if self.is_pairs_registered():
@@ -573,6 +577,8 @@ class MVSRegistration:
                     param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
                 indexed_qualities[indexed_key] = np.array(value[default_quality_key])
                 indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+            if not is_3d:
+                self.sims = make_sims_2d(self.sims)
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
             self.pairs = list(indexed_pair_transforms.keys())
             self.metrics = {
@@ -593,7 +599,10 @@ class MVSRegistration:
         if self.is_global_registered():
             # load mapping
             sims = self.sims
+
             is_stack = ('stack' in self.operation)
+            z_positions = set([source.get_position().get('z', 0) for source in self.sources])
+            make_3d = len(z_positions) > 1 or is_stack
             if isinstance(self.extra_metadata, dict):
                 z_scale = self.extra_metadata.get('scale', {}).get('z')
             else:
@@ -603,14 +612,16 @@ class MVSRegistration:
             # copy transforms to sims
             for sim, label in zip(sims, self.file_labels):
                 mapping = param_utils.affine_to_xaffine(np.array(mappings[label]))
-                if is_stack:
-                    value = param_utils.identity_transform(ndim=3)
-                    value.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
+                if make_3d:
+                    transform = param_utils.identity_transform(ndim=3)
+                    transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
                 else:
-                    value = mapping
-                si_utils.set_sim_affine(sim, value, transform_key=self.reg_transform_key)
-            if is_stack:
+                    transform = mapping
+                si_utils.set_sim_affine(sim, transform, transform_key=self.reg_transform_key)
+            if make_3d:
                 sims = make_sims_3d(sims, z_scale, self.positions)
+            if not is_3d:
+                self.sims = make_sims_2d(self.sims)
             self.sims = sims
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
             metrics = import_json(metrics_filename)
@@ -622,7 +633,8 @@ class MVSRegistration:
             self.metrics = {
                 'summary': {default_transform_key:
                                 {self.reg_transform_key: np.mean([value[default_quality_key]
-                                                                  for value in indexed_metrics.values()])}},
+                                                                  for value in indexed_metrics.values()
+                                                                  if default_quality_key in value])}},
                 'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
             }
 
@@ -660,24 +672,29 @@ class MVSRegistration:
                     has_overlaps.append(True)
         return min_dists, has_overlaps
 
-    def check_preprocess(self,
+    def check_preprocess(self, scale=None,
                          flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
         if normalisation:
             if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
                 normalisation = None
             elif isinstance(normalisation, bool) and normalisation == False:
                 normalisation = None
-        if flatfield_quantiles or normalisation or gaussian_sigma or filter_foreground:
+        if (scale and scale != 1) or flatfield_quantiles or normalisation or gaussian_sigma or filter_foreground:
             return True
         else:
             return False
 
-    def preprocess(self, sims,
-                   flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
+    def preprocess(self, sims, scale=None,
+                   flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False,
+                   **kwargs):
         modified = False
         # normalise pixel size: take max pixel size
         max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
         scales0 = self.scales
+
+        if scale and scale != 1:
+            sims = self.init_sims(target_scale=scale, store=False)
+            modified = True
 
         if filter_foreground:
             foreground_map = calc_foreground_map(sims)
@@ -806,13 +823,157 @@ class MVSRegistration:
 
     def register(self, sims, register_sims=None, register_indices=None, params=None):
         pair_results = self.register_pairs(sims, register_sims=register_sims, register_indices=register_indices, params=params)
-        qualities = {key: metric[default_transform_key][default_quality_key] for key, metric in pair_results['metrics']['pairs'].items()}
+        qualities = {key: metric[default_transform_key][default_quality_key]
+                     for key, metric in pair_results['metrics']['pairs'].items()
+                     if default_quality_key in metric[default_transform_key]}
         bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
         self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
         results = self.register_global(sims, self.msims, register_indices=register_indices, params=params)
         self.save_mappings(results['mappings'])
         self.save_metrics(results['metrics'])
         return results
+
+    def register_full(self, sims, register_sims=None, register_indices=None, register_params=None):
+        metrics = {}
+        if register_params:
+            params = register_params
+        else:
+            params = self.params
+        sim0 = sims[0]
+        ndims = si_utils.get_ndim_from_sim(sim0)
+
+        operation = self.operation
+        pairing = params.get('pairing', '')
+        post_registration_quality_threshold = params.get('post_registration_quality_threshold')
+        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
+
+        is_3d = (self.sources[0].get_size().get('z', 0) > 1)
+        is_stack = ('stack' in operation)
+
+        return_dict = True
+
+        reg_channel = params.get('channel', 0)
+        if isinstance(reg_channel, int):
+            reg_channel_index = reg_channel
+            reg_channel = None
+        else:
+            reg_channel_index = None
+
+        groupwise_resolution_method = params.get('groupwise_resolution_method', 'global_optimization')
+        groupwise_resolution_kwargs = None
+        if groupwise_resolution_method == 'global_optimization' and 'transform_type' in params:
+           groupwise_resolution_kwargs = {
+                'transform': params['transform_type']  # options include 'translation', 'rigid', 'affine', 'similarity'
+            }
+        if groupwise_resolution_method == 'shortest_paths':
+            return_dict = False
+
+        if register_sims is None:
+            register_sims = sims
+        if is_stack and not is_3d:
+            # register in 2d; pairwise consecutive views
+            register_sims = [si_utils.max_project_sim(sim, dim='z') if 'z' in sim.dims else sim
+                             for sim in register_sims]
+            pairs = [(index, index + 1) for index in range(len(register_sims) - 1)]
+        elif 'ortho' in pairing or 'overla' in pairing:
+            origins = np.array([get_sim_position_final(sim, position, get_center=True)
+                                for sim, position in zip(sims, self.positions)])
+            sizes = [get_sim_physical_size(sim) for sim in sims]
+            pairs, _ = get_pairs(origins, sizes, pairing)
+            logging.info(f'#pairs: {len(pairs)}')
+            #for pair in pairs:
+            #    print(f'{self.file_labels[pair[0]]} - {self.file_labels[pair[1]]}')
+        else:
+            pairs = None
+
+        reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(register_sims[0])
+
+        logging.info(f'Registration method: {reg_method}')
+
+        try:
+            logging.info('Registering...')
+            register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
+            reg_result = registration.register(
+                register_msims,
+                reg_channel=reg_channel,
+                reg_channel_index=reg_channel_index,
+                transform_key=self.source_transform_key,
+                new_transform_key=self.reg_transform_key,
+
+                pairs=pairs,
+                pre_registration_pruning_method=None,
+
+                pairwise_reg_func=pairwise_reg_func,
+                pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
+
+                groupwise_resolution_method=groupwise_resolution_method,
+                groupwise_resolution_kwargs=groupwise_resolution_kwargs,
+
+                post_registration_do_quality_filter=(post_registration_quality_threshold is not None),
+                post_registration_quality_threshold=post_registration_quality_threshold,
+
+                n_parallel_pairwise_regs=n_parallel_pairwise_regs,
+
+                plot_summary=self.mpl_ui,
+                return_dict=return_dict,
+            )
+
+            if register_indices is None:
+                register_indices = range(len(register_msims))
+
+            # copy transforms from register sims to unmodified sims
+            for reg_msim, index in zip(register_msims, register_indices):
+                si_utils.set_sim_affine(
+                    sims[index],
+                    msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key),
+                    transform_key=self.reg_transform_key)
+
+            # set missing transforms
+            for sim in sims:
+                if self.reg_transform_key not in si_utils.get_tranform_keys_from_sim(sim):
+                    si_utils.set_sim_affine(
+                        sim,
+                        param_utils.identity_transform(ndim=ndims, t_coords=[0]),
+                        transform_key=self.reg_transform_key)
+
+            if return_dict:
+                mappings = reg_result['params']
+                # re-index from subset of sims
+                residual_error_dict = reg_result.get('groupwise_resolution', {}).get('metrics', {}).get('residuals', {})
+                residual_error_dict = {(register_indices[key[0]], register_indices[key[1]]): value.item()
+                                       for key, value in residual_error_dict.items()}
+                registration_qualities_dict = reg_result.get('pairwise_registration', {}).get('metrics', {}).get('qualities', {})
+                registration_qualities_dict = {(register_indices[key[0]], register_indices[key[1]]): value
+                                               for key, value in registration_qualities_dict.items()}
+
+                reg_channel = params.get('channel', 0)
+                metrics = calc_global_metrics(register_msims, self.source_transform_key, self.reg_transform_key,
+                                              params.get('metrics', []), reg_channel=reg_channel,
+                                              reg_results=reg_result,
+                                              n_parallel_pairs=n_parallel_pairwise_regs)
+            else:
+                mappings = reg_result
+                reg_result = {}
+                residual_error_dict = {}
+                registration_qualities_dict = {}
+
+        except NotEnoughOverlapError:
+            logging.warning('Not enough overlap')
+            reg_result = {}
+            mappings = [param_utils.identity_transform(ndim=ndims, t_coords=[0])] * len(sims)
+            residual_error_dict = {}
+            registration_qualities_dict = {}
+
+        # re-index from subset of sims
+        mappings_dict = {index: mapping for index, mapping in zip(register_indices, mappings)}
+
+        self.metrics = metrics
+        self.state = RegState.GLOBAL_REG
+        return {'reg_result': reg_result,
+                'mappings': mappings_dict,
+                'residual_errors': residual_error_dict,
+                'registration_qualities': registration_qualities_dict,
+                'metrics': metrics}
 
     def register_pairs(self, sims, register_sims=None, register_indices=None, params=None):
         if register_indices is None:
@@ -829,8 +990,8 @@ class MVSRegistration:
         if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
             n_parallel_pairwise_regs = None
 
+        is_3d = (self.sources[0].get_size().get('z', 0) > 1)
         is_stack = ('stack' in operation)
-        is_3d = ('3d' in operation)
 
         reg_channel = params.get('channel', 0)
         if isinstance(reg_channel, int):
@@ -887,6 +1048,8 @@ class MVSRegistration:
         else:
             msims_reg = register_msims
 
+        #print_sim_info(msims_reg[0])
+
         try:
             with dask.config.set(scheduler='threads'):
                 g_reg = mv_graph.build_view_adjacency_graph_from_msims(
@@ -907,31 +1070,6 @@ class MVSRegistration:
                 )
 
                 # ******* end MVS registration functions
-
-                # reg_result = registration.register(
-                #     register_msims,
-                #     reg_channel=reg_channel,
-                #     reg_channel_index=reg_channel_index,
-                #     transform_key=self.source_transform_key,
-                #     new_transform_key=self.reg_transform_key,
-                #
-                #     pairs=pairs,
-                #     pre_registration_pruning_method=None,
-                #
-                #     pairwise_reg_func=pairwise_reg_func,
-                #     pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
-                #
-                #     groupwise_resolution_method=groupwise_resolution_method,
-                #     groupwise_resolution_kwargs=groupwise_resolution_kwargs,
-                #
-                #     post_registration_do_quality_filter=(post_registration_quality_threshold is not None),
-                #     post_registration_quality_threshold=post_registration_quality_threshold,
-                #
-                #     n_parallel_pairwise_regs=n_parallel_pairwise_regs,
-                #
-                #     plot_summary=self.mpl_ui,
-                #     return_dict=return_dict,
-                # )
 
         except NotEnoughOverlapError:
             g_reg_computed = g_reg
@@ -1124,8 +1262,12 @@ class MVSRegistration:
                 if len(diffs) > 0:
                     z_scale = min(diffs)
 
+        z_positions = [position.get('z') for position in self.positions if 'z' in position]
+        if len(set(z_positions)) > 1:
+            sims = make_sims_3d(sims, z_scale=z_scale, positions=self.positions)
+
         output_stack_properties = calc_output_properties(sims, transform_key,
-                                                         output_spacing=output_spacing, z_scale=z_scale)
+                                                         output_spacing_method=output_spacing, z_scale=z_scale)
 
         if self.verbose:
             logging.info(f'Output stack: {numpy_to_native(output_stack_properties)}')
@@ -1180,7 +1322,8 @@ class MVSRegistration:
                                {'mapping': np.array(mapping.sel(t=0)).tolist(),
                                 default_quality_key: float(qualities[keys]),
                                 'bbox': bboxes[keys]}
-                           for keys, mapping in mappings.items()}
+                           for keys, mapping in mappings.items()
+                           if keys in qualities}
         export_json(pair_mappings_filename, output_mappings)
 
     def save_mappings(self, mappings):

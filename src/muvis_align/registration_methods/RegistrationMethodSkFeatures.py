@@ -46,10 +46,18 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
         points = []
         desc = []
 
+        if 't' in data0.dims:
+            data0 = data0.isel(t=0)
         if 'z' in data0.dims:
             # make data 2D
             data0 = data0.max('z')
+        if 'c' in data0.dims:
+            if data0.sizes['c'] > 1:
+                data0 = data0.max('c')
+            else:
+                data0 = data0.isel(c=0)
         data = self.convert_data_to_float(np.nan_to_num(data0))
+
         if gaussian_sigma:
             data = gaussian_filter_image(data, gaussian_sigma)
         if self.normalisation:
@@ -157,8 +165,10 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
             }
 
         full_size_min = np.min(self.full_size)
-        mean_size_min = np.mean([np.min([size for size in data.shape if size > 4]) for data in [fixed_data, moving_data]])
-        mean_size_dist = np.mean([np.linalg.norm(data.shape) for data in [fixed_data, moving_data]])
+        sizes = [[size for size in list(si_utils.get_shape_from_sim(data).values()) if size > 1]
+                 for data in [fixed_data, moving_data]]
+        mean_size_min = np.mean([np.min(size) for size in sizes])
+        mean_size_dist = np.mean([np.linalg.norm(size) for size in sizes])
         scale = mean_size_min / full_size_min
         gaussian_sigma = self.full_size_gaussian_sigma * (scale ** (1/2))
         mean_size = np.mean([np.linalg.norm(data.shape) / np.sqrt(self.ndims) for data in [fixed_data, moving_data]])

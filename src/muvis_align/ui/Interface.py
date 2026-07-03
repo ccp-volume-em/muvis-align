@@ -3,6 +3,7 @@ from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.utils import progress
 from napari.utils.notifications import show_warning
+from napari_bbox.boundingbox import BoundingBoxLayer
 import networkx as nx
 import numpy as np
 import os.path
@@ -15,7 +16,7 @@ from muvis_align.constants import zarr_extension, default_transform_key, default
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
-    affine_from_intrinsic_affine, get_sim_shape_2d, get_overlap_shapes, get_overlap_images, \
+    affine_from_intrinsic_affine, get_sim_shape, get_overlap_shapes, get_overlap_images, \
     draw_keypoints_matches_napari, get_transforms, copy_transforms
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
@@ -65,6 +66,7 @@ class Interface:
         self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
         self.enable_tabs(False, 2)
+        self.select_tab(1)
 
     def get_all_widgets(self):
         all_widgets = {name: param_widget.widget for name, param_widget in self.param_widgets.items()}
@@ -149,7 +151,6 @@ class Interface:
             if ok:
                 self.update_metadata_source()
                 self.populate_image_selection()
-                self.enable_tabs(True, 2)
                 self.init_progress()
             else:
                 show_warning('No input images found')
@@ -167,26 +168,29 @@ class Interface:
             self.preview_fusion()
         elif self.reg.is_global_registered():
             self.enable_tabs(True, 4)
-            self.select_tab(3)
+            self.select_tab(4)
             self.update_registered()
         elif self.reg.is_pairs_registered():
             self.enable_tabs(True, 3)
             self.select_tab(3)
             self.update_registered()
+        else:
+            self.enable_tabs(True, 2)
+            self.select_tab(2)
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
             preview_scale = self.params['input_output']['preview_scale']
             self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
                                                    store=False)
-            target_scale = self.params['input_output']['target_scale']
-            self.reg.init_sims(source_metadata=self.source_metadata, target_scale=target_scale)
+            self.reg.init_sims(source_metadata=self.source_metadata)
         sims = self.reg.sims
 
         coord_systems = get_transforms(sims)
         self.populate_coordinate_systems(coord_systems)
         if self.reg.is_initialised():
             self.populate_metadata_table(sims)
+            self.check_3d_view()
             self.update_overview()
             self.update_view()
 
@@ -200,6 +204,7 @@ class Interface:
             self.pre_processing_performed = modified
             self.update_view(show_preprocessed=True)
         self.enable_tabs(True, 3)
+        self.select_tab(3)
 
     def populate_coordinate_systems(self, coord_systems):
         param_widget = self.param_widgets.get('input_output.coordinate_system')
@@ -245,6 +250,12 @@ class Interface:
             transform_key = None
         return transform_key
 
+    def check_3d_view(self):
+        is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
+        ndisplay = 3 if is_3d else 2
+        self.viewer.dims.ndisplay = ndisplay
+        #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
+
     def update_overview(self, overlaps=True):
         transform_key = self.get_best_transform_key()
         self._clear_napari_view(self.overview)
@@ -282,24 +293,34 @@ class Interface:
                 viewer.layers.move(current_index, 0)
 
     def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+        bb_supported = True
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
+            bb_supported = False
         sims = self.reg.sims
-        shapes = [get_sim_shape_2d(sim, transform_key=transform_key) for sim in sims]
+        shapes = [get_sim_shape(sim, transform_key=transform_key, force_2d=not bb_supported) for sim in sims]
         refs = [str(index) for index in range(len(sims))]
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(sims))]
+
         if overlaps:
-            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key)
-            shapes += shapes2
+            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key, force_2d=not bb_supported)
+            shapes.extend(shapes2)
             refs += [f'{index1} {index2}' for index1, index2 in pairs]
             labels += ['' for _ in pairs]
             face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
         if len(shapes) > 0:
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
-            viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
-                              face_color=face_colors, opacity=0.5, edge_width=0.1)
+            shapes = np.array(shapes)
+            is_3d = (shapes.shape[-1] == 3)
+            if is_3d and bb_supported:
+                bbox_layer = BoundingBoxLayer(shapes, name=layer_name, text=text, features=features,
+                                              face_color=face_colors, opacity=0.5, edge_width=100)
+                self.viewer.add_layer(bbox_layer)
+            else:
+                viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
+                                  face_color=face_colors, opacity=0.5, edge_width=0.1)
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
             #                           face_color=face_colors)
@@ -359,6 +380,10 @@ class Interface:
         label2 = self.param_widgets.get('registration.reg_preview_image2').get_value()
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
+
+        if len(self.reg.register_sims) == 0:
+            params_features = self.params['pre_processing']
+            self.reg.preprocess(self.reg.sims, **params_features)
         reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
         overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
         overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
@@ -575,7 +600,6 @@ class Interface:
         if reply == QMessageBox.Yes:
             operation = self.params['registration']['operation']
             output_filename = operation.split()[0] + 'ed'
-            print(output_filename)
             tile_size = self.params['fusion']['tile_size']
             if ',' in tile_size:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]

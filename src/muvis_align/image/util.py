@@ -6,7 +6,7 @@ from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrins
     get_affine_from_intrinsic_affine
 from scipy.spatial import ConvexHull
 from skimage.filters import gaussian
-from skimage.feature import plot_matched_features
+from skimage.feature import blob_log, blob_dog, plot_matched_features
 from skimage.transform import downscale_local_mean
 import xarray as xr
 from xarray import DataTree
@@ -214,28 +214,36 @@ def calc_pyramid(xyzct: tuple, npyramid_add: int = 0, pyramid_downsample: float 
     return sizes_add
 
 
-def get_level_from_scale(source_scales, source_pixel_size, target_scale=1):
+def get_level_from_scale(source, target_scale=1):
     # Only downscaling
-    mean_source_pixel_size = float(np.mean([source_pixel_size[dim] for dim in 'xy']))
-    if isinstance(target_scale, str):
+    if isinstance(target_scale, dict):
+        # dict of desired pixel size
+        target_pixel_size = target_scale
+        target_scale = {dim: target_pixel_size[dim] / source_pixel_size
+                        for dim, source_pixel_size in source.get_pixel_size().items()}
+    elif isinstance(target_scale, str):
+        # target pixel size with unit
         index = target_scale.find(next(filter(str.isalpha, target_scale)))
         pixel_size = convert_to_um(float(target_scale[:index]), target_scale[index:])
-        target_scale = {dim: pixel_size for dim in 'xy'}
-    if isinstance(target_scale, dict):
-        target_pixel_size = target_scale
-        mean_target_pixel_size = float(np.mean([target_pixel_size[dim] for dim in 'xy']))
-        target_scale = mean_target_pixel_size / mean_source_pixel_size
+        target_pixel_size = {dim: pixel_size for dim in source.get_pixel_size()}
+        target_scale = {dim: pixel_size / source_pixel_size
+                        for dim, source_pixel_size in source.get_pixel_size().items()}
     else:
-        target_pixel_size = {dim: float(source_pixel_size[dim] * target_scale) for dim in source_pixel_size}
+        # target scale factor
+        target_pixel_size = {dim: float(source_pixel_size * target_scale)
+                             for dim, source_pixel_size in source.get_pixel_size().items()}
+        target_scale = {dim: target_scale for dim in source.get_pixel_size()}
     best_level, best_scale = 0, target_scale
-    for level, scale in enumerate(source_scales):
-        if np.isclose(scale, target_scale, rtol=1e-4):
-            best_level, best_scale = level, 1
+    for level, factors in enumerate(source.scale_factors):
+        if any(np.isclose(factors[dim], target_scale[dim], rtol=1e-4) for dim in factors):
+            best_level, best_scale = level, {dim: target_scale[dim] / factors[dim] for dim in factors}
             break
-        if scale <= target_scale:
-            best_level, best_scale = level, target_scale / scale
-    if best_level == 0 and best_scale < 1:
-        best_scale = 1
+        if any(factors[dim] <= target_scale[dim] for dim in factors):
+            best_level, best_scale = level, {dim: target_scale[dim] / factors[dim] for dim in factors}
+    if best_level == 0:
+        for dim in best_scale:
+            if best_scale[dim] < 1:
+                best_scale[dim] = 1
     return best_level, best_scale, target_pixel_size
 
 
@@ -433,24 +441,78 @@ def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers
 
 def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], inliers=[],
                                   points_color='black', match_color='red', inlier_color='lime'):
-    # create napari image and shapes layers
-    shape = np.max([image.shape for image in [image1, image2]], axis=0)
-    shape_y, shape_x = shape[:2]
-    if shape_x > 2 * shape_y:
-        merge_axis = 0
-        offset2 = [shape_y, 0]
-    else:
-        merge_axis = 1
-        offset2 = [0, shape_x]
-    image = np.concatenate([
-        np.pad(image1, ((0, shape[0] - image1.shape[0]), (0, shape[1] - image1.shape[1]))),
-        np.pad(image2, ((0, shape[0] - image2.shape[0]), (0, shape[1] - image2.shape[1])))
-    ], axis=merge_axis)
+    def _as_points_array(points):
+        points = np.asarray(points)
+        if points.size == 0:
+            points = np.empty((0, 0), dtype=float)
+        elif points.ndim == 1:
+            points = points[None, :]
+        return points.astype(float, copy=False)
 
-    # Build combined points (in y, x order for napari)
-    p1 = points1[:, :2] if len(points1) else np.empty((0, 2))
-    p2 = points2[:, :2] + offset2 if len(points2) else np.empty((0, 2))
-    points_data = np.vstack([p1, p2]) if (len(p1) or len(p2)) else np.empty((0, 2))
+    def _get_image_spatial_dims(image):
+        image = np.asarray(image)
+        if image.ndim <= 2:
+            return image.ndim
+        if image.shape[-1] in (3, 4):
+            return image.ndim - 1
+        return min(image.ndim, 3)
+
+    points1 = _as_points_array(points1)
+    points2 = _as_points_array(points2)
+    images = [image for image in (image1, image2) if image is not None]
+
+    point_dims = [pts.shape[1] for pts in (points1, points2) if len(pts) > 0]
+
+    # Infer spatial dims from points when present, otherwise from images.
+    if len(point_dims) > 0:
+        spatial_dims = min(max(point_dims), 3)
+    elif len(images) > 0:
+        spatial_dims = max(_get_image_spatial_dims(image) for image in images)
+    else:
+        spatial_dims = 2
+
+    # Infer spatial shape from images when present; otherwise from points.
+    if len(images) > 0:
+        shape = np.max([
+            np.array(np.asarray(image).shape[:spatial_dims], dtype=int)
+            for image in images
+        ], axis=0)
+    else:
+        shape = np.ones(spatial_dims, dtype=int)
+        all_points = [points[:, :spatial_dims] for points in (points1, points2)
+                      if len(points) > 0 and points.shape[1] >= spatial_dims]
+        if len(all_points) > 0:
+            points_shape = np.ceil(np.max(np.vstack(all_points), axis=0)).astype(int) + 1
+            shape = np.maximum(shape, points_shape)
+
+    # Concatenate along the smallest spatial axis to keep the merged view compact.
+    merge_axis = int(np.argmin(shape))
+    offset2 = np.zeros(spatial_dims, dtype=float)
+    offset2[merge_axis] = shape[merge_axis]
+
+    # Pad each image to the same shape before concatenation; include non-spatial axes.
+    max_ndim = max((image.ndim for image in images), default=spatial_dims)
+    target_shape = np.ones(max_ndim, dtype=int)
+    target_shape[:spatial_dims] = shape
+    for image in images:
+        ext_shape = np.array(image.shape + (1,) * (max_ndim - image.ndim), dtype=int)
+        target_shape = np.maximum(target_shape, ext_shape)
+
+    def _pad_image(image):
+        if image is None:
+            return np.zeros(tuple(target_shape), dtype=np.float32)
+        image = np.asarray(image)
+        if image.ndim < max_ndim:
+            image = image.reshape(image.shape + (1,) * (max_ndim - image.ndim))
+        padding = tuple((0, max(target_shape[axis] - image.shape[axis], 0)) for axis in range(max_ndim))
+        return np.pad(image, padding)
+
+    image = np.concatenate([_pad_image(image1), _pad_image(image2)], axis=merge_axis)
+
+    # Build combined points in napari's expected coordinate order.
+    p1 = points1[:, :spatial_dims] if (len(points1) > 0 and points1.shape[1] >= spatial_dims) else np.empty((0, spatial_dims))
+    p2 = points2[:, :spatial_dims] + offset2 if (len(points2) > 0 and points2.shape[1] >= spatial_dims) else np.empty((0, spatial_dims))
+    points_data = np.vstack([p1, p2]) if (len(p1) or len(p2)) else np.empty((0, spatial_dims))
 
     # Build match lines as a shapes layer (each line is [[y1, x1], [y2, x2]])
     line_data = []
@@ -462,8 +524,12 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
             is_inlier = inliers[i] if i < len(inliers) else False
             if is_inlier == do_inliers:
                 i1, i2 = int(match[0]), int(match[1])
-                start = points1[i1, :2]
-                end = points2[i2, :2] + offset2
+                if i1 >= len(points1) or i2 >= len(points2):
+                    continue
+                if points1.shape[1] < spatial_dims or points2.shape[1] < spatial_dims:
+                    continue
+                start = points1[i1, :spatial_dims]
+                end = points2[i2, :spatial_dims] + offset2
                 line_data.append(np.array([start, end], dtype=float))
                 edge_colors.append(inlier_color if is_inlier else match_color)
 
@@ -473,7 +539,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
             {
                 "name": "matches_image",
                 # For 2D grayscale this is ignored by napari; for RGB it is inferred.
-                "rgb": (image.ndim == 3 and image.shape[-1] in (3, 4)),
+                "rgb": (image.ndim >= 3 and image.shape[-1] in (3, 4)),
             },
             "image",
         )
@@ -489,6 +555,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "face_color": points_color,
                     "border_color": "transparent",
                     "symbol": "ring",
+                    "opacity": 0.5,
                 },
                 "points",
             )
@@ -502,8 +569,8 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "name": "matches",
                     "shape_type": "line",
                     "edge_color": edge_colors,
-                    "edge_width": 1.5,
-                    "opacity": 0.8,
+                    "edge_width": 1,
+                    "opacity": 0.25,
                 },
                 "shapes",
             )
@@ -541,8 +608,9 @@ def create_compression_filter(compression: list) -> tuple:
     return compressor, compression_filters
 
 
-def gaussian_filter_image(image, sigma):
-    nchannels = image.shape[2] if image.ndim == 3 else 1
+def gaussian_filter_image(image, sigma, is_3d=False):
+    ndims = 4 if is_3d else 3
+    nchannels = image.shape[-1] if image.ndim > ndims else 1
     if nchannels not in [1, 3]:
         new_image = np.zeros_like(image)
         for channeli in range(nchannels):
@@ -576,13 +644,16 @@ def get_image_window(image, low=0.01, high=0.99):
     return window
 
 
-def normalise_values(image: np.ndarray, min_value: float, max_value: float) -> np.ndarray:
+def normalise_values(image: np.ndarray, min_value: float=None, max_value: float=None) -> np.ndarray:
+    if min_value is None or max_value is None:
+        min_value, max_value = get_image_window(image)
     image = (image.astype(np.float32) - min_value) / (max_value - min_value)
     return image.clip(0, 1)
 
 
-def norm_image_variance(image0):
-    if len(image0.shape) == 3 and image0.shape[2] == 4:
+def norm_image_variance(image0, is_3d=False):
+    ncoldims = 4 if is_3d else 3
+    if len(image0.shape) == ncoldims and image0.shape[-1] == 4:
         image, alpha = image0[..., :3], image0[..., 3]
     else:
         image, alpha = image0, None
@@ -593,8 +664,9 @@ def norm_image_variance(image0):
     return normimage
 
 
-def norm_image_variance2(image0):
-    if len(image0.shape) == 3 and image0.shape[2] == 4:
+def norm_image_variance2(image0, is_3d=False):
+    ncoldims = 4 if is_3d else 3
+    if len(image0.shape) == ncoldims and image0.shape[-1] == 4:
         image, alpha = image0[..., :3], image0[..., 3]
     else:
         image, alpha = image0, None
@@ -652,12 +724,12 @@ def invert_data(data):
             return data
 
 
-def detect_area_points(image):
+def detect_area_points(data):
     method = cv.THRESH_OTSU
     threshold = -5
     contours = []
     while len(contours) <= 1 and threshold <= 255:
-        _, binimage = cv.threshold(np.array(uint8_image(image)), threshold, 255, method)
+        _, binimage = cv.threshold(np.array(uint8_image(data)), threshold, 255, method)
         contours0 = cv.findContours(binimage, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         contours = contours0[0] if len(contours0) == 2 else contours0[1]
         method = cv.THRESH_BINARY
@@ -673,6 +745,13 @@ def detect_area_points(image):
     #    cv.circle(image, tuple(np.round(point[0]).astype(int)), radius, (255, 0, 0), -1)
     #show_image(image)
     return area_points
+
+
+def detect_volume_points(data):
+    blobs = blob_log(data, min_sigma=1, max_sigma=30, num_sigma=10, threshold=0.1)
+    if blobs.shape[1] > 3:
+        blobs = blobs[:, :3]
+    return blobs
 
 
 def get_transforms(sims):
@@ -803,16 +882,22 @@ def get_sim_physical_size(sim):
     return physical_size
 
 
-def calc_output_properties(sims, transform_key, output_spacing=None, z_scale=None):
+def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None):
+    output_spacing = {}
     spacings = [si_utils.get_spacing_from_sim(sim) for sim in sims]
     dims = list(spacings[0])
-    if not output_spacing or 'mean' in output_spacing.lower():
+    is_3d = (sims[0].sizes.get('z', 0) > 1)
+
+    if output_spacing_method:
+        output_spacing_method = output_spacing_method.lower()
+    if not output_spacing_method or 'mean' in output_spacing_method:
         output_spacing = {dim: np.mean([spacing[dim] for spacing in spacings]) for dim in dims}
-    elif 'max' in output_spacing.lower():
+    elif 'max' in output_spacing_method:
         output_spacing = {dim: max([spacing[dim] for spacing in spacings]) for dim in dims}
-    elif 'min' in output_spacing.lower():
+    elif 'min' in output_spacing_method:
         output_spacing = {dim: min([spacing[dim] for spacing in spacings]) for dim in dims}
-    if z_scale is not None:
+
+    if z_scale and 'z' in dims and not is_3d:
         output_spacing['z'] = z_scale
     output_properties = fusion.calc_fusion_stack_properties(
         sims,
@@ -820,7 +905,7 @@ def calc_output_properties(sims, transform_key, output_spacing=None, z_scale=Non
         output_spacing,
         mode='union',
     )
-    if 'z' in output_properties['shape']:
+    if 'z' in output_properties['shape'] and not is_3d:
         z_positions = sorted(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims]))
         z_shape = len(z_positions)
         if z_shape <= 1:
@@ -867,31 +952,21 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
     return translation, rotation
 
 
-def get_sim_shape_2d(sim, transform_key=None):
-    sim = sim.squeeze()
+def get_sim_shape(sim, transform_key=None, force_2d=False):
+    if 't' in sim.dims:
+        sim = sim.sel(t=0)
     stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
     points = mv_graph.get_vertices_from_stack_props(stack_props)
-    if points.shape[1] == 3:
-        # remove z coordinate
+    if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
+        # remove constant z coordinate
         points = points[:, 1:]
-    if len(points) >= 8:
-        # remove redundant x/y vertices
-        points = points[:4]
+    points = np.array(list(map(list, set(map(tuple, points)))))
     hull = ConvexHull(points)
     shape = points[hull.vertices]
     return shape
 
 
-def squeeze_sim_dims(sim, transform_key):
-    sim = sim.copy()
-    affine = si_utils.get_affine_from_sim(sim, transform_key)
-    if "t" in affine.dims:
-        affine = affine.isel(t=0)
-        si_utils.set_sim_affine(sim, affine, transform_key)
-    return sim
-
-
-def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
+def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, force_2d=False):
     # functionality copied from registration.register_pair_of_msims()
     shapes = []
     good_pairs = []
@@ -909,6 +984,10 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
                 overlap_tolerance=overlap_tolerance,
             )
             points = result['intersection'].intersections
+            if points.shape[1] == 3 and force_2d:
+                # remove constant z coordinate
+                points = points[:, 1:]
+            points = np.array(list(map(list, set(map(tuple, points)))))
             hull = ConvexHull(points)
             shape = points[hull.vertices]
             shapes.append(shape)
@@ -985,6 +1064,15 @@ def combine_transforms(transforms):
     return combined_transform
 
 
+def squeeze_sim_dims(sim, transform_key):
+    sim = sim.copy()
+    affine = si_utils.get_affine_from_sim(sim, transform_key)
+    if "t" in affine.dims:
+        affine = affine.isel(t=0)
+        si_utils.set_sim_affine(sim, affine, transform_key)
+    return sim
+
+
 def make_sims_3d(sims, z_scale=None, positions=None):
     new_sims = []
     if not z_scale:
@@ -1006,3 +1094,39 @@ def make_sims_3d(sims, z_scale=None, positions=None):
                 si_utils.set_sim_affine(sim, transform_3d, transform_key=transform_key)
         new_sims.append(sim)
     return new_sims
+
+
+def make_sims_2d(sims):
+    new_sims = []
+    for index, sim in enumerate(sims):
+        # check if already 2D
+        if 'z' in sim.dims:
+            sim = sim.squeeze('z')
+        # set 2D affine transforms from 3D registration params
+        for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+            transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+            if 3 not in transform.shape:
+                has_t = 't' in transform.dims
+                if has_t:
+                    transform = transform.sel(t=0)
+                transform = transform[:3, :3]
+                if has_t:
+                    transform.loc[{dim: transform.coords[dim] for dim in transform.sel(t=0).dims}] = transform.sel(t=0)
+                si_utils.set_sim_affine(sim, transform, transform_key=transform_key)
+        new_sims.append(sim)
+    return new_sims
+
+
+def print_sim_info(data):
+    if isinstance(data, xr.DataArray):
+        sim = data
+        msim = msi_utils.get_msim_from_sim(sim)
+    else:
+        msim = data
+        sim = msi_utils.get_sim_from_msim(msim)
+
+    print('dims', sim.dims)
+    print('position dims', tuple(si_utils.get_origin_from_sim(sim).keys()))
+    for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+        print(transform_key, msi_utils.get_transform_from_msim(msim, transform_key).shape, end=' ')
+    print()

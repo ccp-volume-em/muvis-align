@@ -54,6 +54,7 @@ def save_image(filename, data, output_format=zarr_extension,
         if 'zar' in output_format:
             if isinstance(data, list):
                 # experimental
+                # TODO: don't use scaler here as it doesn't allow 3D pyramid sizes
                 save_ome_zarr(str(filename) + zarr_extension, data, dimension_order, pixel_size,
                               channels, positions, rotations, compression=compression, scaler=scaler,
                               ome_version=ome_version)

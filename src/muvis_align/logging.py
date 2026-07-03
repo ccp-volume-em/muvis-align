@@ -8,7 +8,7 @@ from src.muvis_align.constants import version
 def init_logging(log_filename='log/muvis-align.log', log_format='%(asctime)s %(levelname)s: %(message)s', verbose=False):
     basepath = os.path.dirname(log_filename)
     if basepath and not os.path.exists(basepath):
-        os.makedirs(basepath)
+        os.makedirs(basepath, exist_ok=True)
 
     handlers = [logging.FileHandler(log_filename, encoding='utf-8')]
     if verbose:

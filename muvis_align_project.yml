@@ -25,6 +25,7 @@ pre_processing:
   filter_foreground: false
   flatfield_quantiles: ''
   normalisation: 'False'
+  scale: 1
 registration:
   gaussian_sigma: 2.0
   inlier_threshold_factor: 0.05

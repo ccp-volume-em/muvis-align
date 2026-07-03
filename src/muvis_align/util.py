@@ -210,7 +210,9 @@ def find_all_numbers(text: str) -> list:
 
 
 def split_path_parts(text: str) -> list:
-    return text.replace('/', '_').replace('\\', '_').replace('.', '_').split('_')
+    return [part for part in
+            text.replace('/', '_').replace('\\', '_').replace('.', '_').replace('-', '_').split('_')
+            if part]
 
 
 def split_numeric(text: str) -> list:

@@ -125,16 +125,6 @@ parameters:
     section_id: "input_output"
     mode: "advanced"
 
-  - name: target_scale
-    type: integer
-    label: "Target downscale factor"
-    description: "Downscale factor for input images"
-    default: 1
-    cli_tag: "--target_scale"
-    cli_order: 8
-    optional: True
-    section_id: "input_output"
-    mode: "advanced"
   - name: preview_scale
     type: integer
     label: "Preview downscale factor"
@@ -181,13 +171,23 @@ parameters:
     mode: "beginner"
 
     # pre-processing
+  - name: scale
+    type: integer
+    label: "Target downscale factor"
+    description: "Downscale factor for input images"
+    default: 1
+    cli_tag: "--scale"
+    cli_order: 1
+    optional: True
+    section_id: "pre_processing"
+    mode: "advanced"
   - name: flatfield_quantiles
     type: textbox
     label: "Flat-field quantiles"
     description: "One or two quantile values for flat-field correction, separated by comma (e.g. 0.5 or 0.01,0.99)"
     default: ""
     cli_tag: "--flatfield_quantiles"
-    cli_order: 1
+    cli_order: 2
     optional: True
     section_id: "pre_processing"
     mode: "beginner"
@@ -197,7 +197,7 @@ parameters:
     description: "Normalisation method ('global' for global normalisation, any other value for regular normalisation)"
     default: "False"
     cli_tag: "--global_normalisation"
-    cli_order: 2
+    cli_order: 3
     optional: True
     section_id: "pre_processing"
     mode: "beginner"
@@ -207,7 +207,7 @@ parameters:
     description: "Sigma for Gaussian filtering (value of 0 or empty for no filtering)"
     default:
     cli_tag: "--global_gaussian_sigma"
-    cli_order: 3
+    cli_order: 4
     optional: True
     section_id: "pre_processing"
     mode: "beginner"
@@ -217,7 +217,7 @@ parameters:
     description: "If enabled, filter tile images with low image signal (e.g. empty tiles)"
     default: False
     cli_tag: "--filter_foreground"
-    cli_order: 4
+    cli_order: 5
     optional: True
     append_value: False
     section_id: "pre_processing"
