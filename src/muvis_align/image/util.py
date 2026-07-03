@@ -952,12 +952,12 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
     return translation, rotation
 
 
-def get_sim_shape(sim, transform_key=None):
+def get_sim_shape(sim, transform_key=None, force_2d=False):
     if 't' in sim.dims:
         sim = sim.sel(t=0)
     stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
     points = mv_graph.get_vertices_from_stack_props(stack_props)
-    if points.shape[1] == 3 and len(set(points[:, 0])) == 1:
+    if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
         # remove constant z coordinate
         points = points[:, 1:]
     points = np.array(list(map(list, set(map(tuple, points)))))
@@ -966,7 +966,7 @@ def get_sim_shape(sim, transform_key=None):
     return shape
 
 
-def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
+def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, force_2d=False):
     # functionality copied from registration.register_pair_of_msims()
     shapes = []
     good_pairs = []
@@ -984,6 +984,10 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0):
                 overlap_tolerance=overlap_tolerance,
             )
             points = result['intersection'].intersections
+            if points.shape[1] == 3 and force_2d:
+                # remove constant z coordinate
+                points = points[:, 1:]
+            points = np.array(list(map(list, set(map(tuple, points)))))
             hull = ConvexHull(points)
             shape = points[hull.vertices]
             shapes.append(shape)

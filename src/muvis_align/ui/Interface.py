@@ -293,25 +293,28 @@ class Interface:
                 viewer.layers.move(current_index, 0)
 
     def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+        bb_supported = True
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
+            bb_supported = False
         sims = self.reg.sims
-        shapes = np.array([get_sim_shape(sim, transform_key=transform_key) for sim in sims])
+        shapes = [get_sim_shape(sim, transform_key=transform_key, force_2d=not bb_supported) for sim in sims]
         refs = [str(index) for index in range(len(sims))]
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(sims))]
-        overlaps=False
+
         if overlaps:
-            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key)
-            shapes += shapes2
+            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key, force_2d=not bb_supported)
+            shapes.extend(shapes2)
             refs += [f'{index1} {index2}' for index1, index2 in pairs]
             labels += ['' for _ in pairs]
             face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
         if len(shapes) > 0:
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
+            shapes = np.array(shapes)
             is_3d = (shapes.shape[-1] == 3)
-            if is_3d:
+            if is_3d and bb_supported:
                 bbox_layer = BoundingBoxLayer(shapes, name=layer_name, text=text, features=features,
                                               face_color=face_colors, opacity=0.5, edge_width=100)
                 self.viewer.add_layer(bbox_layer)
