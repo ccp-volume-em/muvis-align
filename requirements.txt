@@ -4,5 +4,6 @@ opencv-python
 probreg
 spatial-image
 multiscale-spatial-image
+napari_bbox
 magic-class
 rocrate>=0.15.0

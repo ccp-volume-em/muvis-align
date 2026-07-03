@@ -46,6 +46,7 @@ dependencies = [
     "spatial-image",
     "multiscale-spatial-image",
     "probreg",
+    "napari_bbox",
     "magic-class",
 ]
 
