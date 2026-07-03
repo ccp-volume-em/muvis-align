@@ -29,6 +29,7 @@ class ZarrDaskSource(DaskSource):
         dims = ''.join([axis['name'] for axis in axes])
         self.dimension_order = dims
         units = {axis['name']: axis['unit'] for axis in axes if 'unit' in axis}
+        dims_used = [dim for dim, shape in zip(dims, self.shape) if dim in 'xyz' and shape > 1]
 
         pixel_sizes = []
         position = {}
@@ -41,9 +42,9 @@ class ZarrDaskSource(DaskSource):
             position = {}
             for transform in transforms:
                 if transform['type'] == 'scale':
-                    scale = {dim: value for dim, value in zip(dims, transform['scale']) if dim in 'xyz'}
+                    scale = {dim: value for dim, value in zip(dims, transform['scale']) if dim in dims_used}
                 if transform['type'] == 'translation':
-                    position = {dim: value for dim, value in zip(dims, transform['translation']) if dim in 'xyz'}
+                    position = {dim: value for dim, value in zip(dims, transform['translation']) if dim in dims_used}
             if ct_index == 0:
                 scale0 = scale
             scales.append(scale)

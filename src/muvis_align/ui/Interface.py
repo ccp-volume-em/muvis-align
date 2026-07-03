@@ -66,6 +66,7 @@ class Interface:
         self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
         self.enable_tabs(False, 2)
+        self.select_tab(1)
 
     def get_all_widgets(self):
         all_widgets = {name: param_widget.widget for name, param_widget in self.param_widgets.items()}
@@ -150,7 +151,6 @@ class Interface:
             if ok:
                 self.update_metadata_source()
                 self.populate_image_selection()
-                self.enable_tabs(True, 2)
                 self.init_progress()
             else:
                 show_warning('No input images found')
@@ -168,12 +168,15 @@ class Interface:
             self.preview_fusion()
         elif self.reg.is_global_registered():
             self.enable_tabs(True, 4)
-            self.select_tab(3)
+            self.select_tab(4)
             self.update_registered()
         elif self.reg.is_pairs_registered():
             self.enable_tabs(True, 3)
             self.select_tab(3)
             self.update_registered()
+        else:
+            self.enable_tabs(True, 2)
+            self.select_tab(2)
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
@@ -201,6 +204,7 @@ class Interface:
             self.pre_processing_performed = modified
             self.update_view(show_preprocessed=True)
         self.enable_tabs(True, 3)
+        self.select_tab(3)
 
     def populate_coordinate_systems(self, coord_systems):
         param_widget = self.param_widgets.get('input_output.coordinate_system')

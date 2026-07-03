@@ -219,16 +219,19 @@ def get_level_from_scale(source, target_scale=1):
     if isinstance(target_scale, dict):
         # dict of desired pixel size
         target_pixel_size = target_scale
-        target_scale = {dim: target_pixel_size[dim] / source_pixel_size for dim, source_pixel_size in source.get_pixel_size().items()}
+        target_scale = {dim: target_pixel_size[dim] / source_pixel_size
+                        for dim, source_pixel_size in source.get_pixel_size().items()}
     elif isinstance(target_scale, str):
         # target pixel size with unit
         index = target_scale.find(next(filter(str.isalpha, target_scale)))
         pixel_size = convert_to_um(float(target_scale[:index]), target_scale[index:])
         target_pixel_size = {dim: pixel_size for dim in source.get_pixel_size()}
-        target_scale = {dim: pixel_size / source_pixel_size for dim, source_pixel_size in source.get_pixel_size().items()}
+        target_scale = {dim: pixel_size / source_pixel_size
+                        for dim, source_pixel_size in source.get_pixel_size().items()}
     else:
         # target scale factor
-        target_pixel_size = {dim: float(source.get_pixel_size()[dim] * target_scale) for dim in source.get_pixel_size()}
+        target_pixel_size = {dim: float(source_pixel_size * target_scale)
+                             for dim, source_pixel_size in source.get_pixel_size().items()}
         target_scale = {dim: target_scale for dim in source.get_pixel_size()}
     best_level, best_scale = 0, target_scale
     for level, factors in enumerate(source.scale_factors):
@@ -438,24 +441,78 @@ def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers
 
 def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], inliers=[],
                                   points_color='black', match_color='red', inlier_color='lime'):
-    # create napari image and shapes layers
-    shape = np.max([image.shape for image in [image1, image2]], axis=0)
-    shape_y, shape_x = shape[:2]
-    if shape_x > 2 * shape_y:
-        merge_axis = 0
-        offset2 = [shape_y, 0]
-    else:
-        merge_axis = 1
-        offset2 = [0, shape_x]
-    image = np.concatenate([
-        np.pad(image1, ((0, shape[0] - image1.shape[0]), (0, shape[1] - image1.shape[1]))),
-        np.pad(image2, ((0, shape[0] - image2.shape[0]), (0, shape[1] - image2.shape[1])))
-    ], axis=merge_axis)
+    def _as_points_array(points):
+        points = np.asarray(points)
+        if points.size == 0:
+            points = np.empty((0, 0), dtype=float)
+        elif points.ndim == 1:
+            points = points[None, :]
+        return points.astype(float, copy=False)
 
-    # Build combined points (in y, x order for napari)
-    p1 = points1[:, :2] if len(points1) else np.empty((0, 2))
-    p2 = points2[:, :2] + offset2 if len(points2) else np.empty((0, 2))
-    points_data = np.vstack([p1, p2]) if (len(p1) or len(p2)) else np.empty((0, 2))
+    def _get_image_spatial_dims(image):
+        image = np.asarray(image)
+        if image.ndim <= 2:
+            return image.ndim
+        if image.shape[-1] in (3, 4):
+            return image.ndim - 1
+        return min(image.ndim, 3)
+
+    points1 = _as_points_array(points1)
+    points2 = _as_points_array(points2)
+    images = [image for image in (image1, image2) if image is not None]
+
+    point_dims = [pts.shape[1] for pts in (points1, points2) if len(pts) > 0]
+
+    # Infer spatial dims from points when present, otherwise from images.
+    if len(point_dims) > 0:
+        spatial_dims = min(max(point_dims), 3)
+    elif len(images) > 0:
+        spatial_dims = max(_get_image_spatial_dims(image) for image in images)
+    else:
+        spatial_dims = 2
+
+    # Infer spatial shape from images when present; otherwise from points.
+    if len(images) > 0:
+        shape = np.max([
+            np.array(np.asarray(image).shape[:spatial_dims], dtype=int)
+            for image in images
+        ], axis=0)
+    else:
+        shape = np.ones(spatial_dims, dtype=int)
+        all_points = [points[:, :spatial_dims] for points in (points1, points2)
+                      if len(points) > 0 and points.shape[1] >= spatial_dims]
+        if len(all_points) > 0:
+            points_shape = np.ceil(np.max(np.vstack(all_points), axis=0)).astype(int) + 1
+            shape = np.maximum(shape, points_shape)
+
+    # Concatenate along the smallest spatial axis to keep the merged view compact.
+    merge_axis = int(np.argmin(shape))
+    offset2 = np.zeros(spatial_dims, dtype=float)
+    offset2[merge_axis] = shape[merge_axis]
+
+    # Pad each image to the same shape before concatenation; include non-spatial axes.
+    max_ndim = max((image.ndim for image in images), default=spatial_dims)
+    target_shape = np.ones(max_ndim, dtype=int)
+    target_shape[:spatial_dims] = shape
+    for image in images:
+        ext_shape = np.array(image.shape + (1,) * (max_ndim - image.ndim), dtype=int)
+        target_shape = np.maximum(target_shape, ext_shape)
+
+    def _pad_image(image):
+        if image is None:
+            return np.zeros(tuple(target_shape), dtype=np.float32)
+        image = np.asarray(image)
+        if image.ndim < max_ndim:
+            image = image.reshape(image.shape + (1,) * (max_ndim - image.ndim))
+        padding = tuple((0, max(target_shape[axis] - image.shape[axis], 0)) for axis in range(max_ndim))
+        return np.pad(image, padding)
+
+    image = np.concatenate([_pad_image(image1), _pad_image(image2)], axis=merge_axis)
+
+    # Build combined points in napari's expected coordinate order.
+    p1 = points1[:, :spatial_dims] if (len(points1) > 0 and points1.shape[1] >= spatial_dims) else np.empty((0, spatial_dims))
+    p2 = points2[:, :spatial_dims] + offset2 if (len(points2) > 0 and points2.shape[1] >= spatial_dims) else np.empty((0, spatial_dims))
+    points_data = np.vstack([p1, p2]) if (len(p1) or len(p2)) else np.empty((0, spatial_dims))
 
     # Build match lines as a shapes layer (each line is [[y1, x1], [y2, x2]])
     line_data = []
@@ -467,8 +524,12 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
             is_inlier = inliers[i] if i < len(inliers) else False
             if is_inlier == do_inliers:
                 i1, i2 = int(match[0]), int(match[1])
-                start = points1[i1, :2]
-                end = points2[i2, :2] + offset2
+                if i1 >= len(points1) or i2 >= len(points2):
+                    continue
+                if points1.shape[1] < spatial_dims or points2.shape[1] < spatial_dims:
+                    continue
+                start = points1[i1, :spatial_dims]
+                end = points2[i2, :spatial_dims] + offset2
                 line_data.append(np.array([start, end], dtype=float))
                 edge_colors.append(inlier_color if is_inlier else match_color)
 
@@ -478,7 +539,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
             {
                 "name": "matches_image",
                 # For 2D grayscale this is ignored by napari; for RGB it is inferred.
-                "rgb": (image.ndim == 3 and image.shape[-1] in (3, 4)),
+                "rgb": (image.ndim >= 3 and image.shape[-1] in (3, 4)),
             },
             "image",
         )
@@ -494,6 +555,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "face_color": points_color,
                     "border_color": "transparent",
                     "symbol": "ring",
+                    "opacity": 0.5,
                 },
                 "points",
             )
@@ -507,8 +569,8 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "name": "matches",
                     "shape_type": "line",
                     "edge_color": edge_colors,
-                    "edge_width": 1.5,
-                    "opacity": 0.8,
+                    "edge_width": 1,
+                    "opacity": 0.25,
                 },
                 "shapes",
             )

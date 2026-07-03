@@ -26,7 +26,9 @@ class RegistrationMethodCPD(RegistrationMethod):
             points = detect_volume_points(data)
         else:
             area_points = detect_area_points(data)
-            points = [point for point, stat in area_points]
+            # OpenCV contour centers are returned in x,y order, while the
+            # registration pipeline uses image-axis order y,x.
+            points = [np.flip(point) for point, stat in area_points]
         return points
 
     def registration(self, fixed_data: SpatialImage, moving_data: SpatialImage, **kwargs) -> dict:
@@ -45,15 +47,17 @@ class RegistrationMethodCPD(RegistrationMethod):
 
         transform = None
         quality = 0
+        metrics = {}
         if len(moving_points) > 1 and len(fixed_points) > 1:
             moving_points_3d = points_to_3d(moving_points) if not self.is_3d else moving_points
             fixed_points_3d = points_to_3d(fixed_points) if not self.is_3d else fixed_points
-            result_cpd = cpd.registration_cpd(moving_points_3d, fixed_points_3d, maxiter=self.max_iter)
+            # Keep direction consistent with other methods: transform fixed -> moving.
+            result_cpd = cpd.registration_cpd(fixed_points_3d, moving_points_3d, maxiter=self.max_iter)
             transformation = result_cpd.transformation
 
             transform = np.eye(ndim + 1)
-            transform[:ndim, :ndim] = transformation.rot * transformation.scale
-            transform[:ndim, -1] = transformation.t
+            transform[:ndim, :ndim] = transformation.rot[:ndim, :ndim] * transformation.scale
+            transform[:ndim, -1] = transformation.t[:ndim]
 
             metrics = calc_match_metrics(fixed_points, moving_points, transform, threshold)
             quality = metrics['match_rate']

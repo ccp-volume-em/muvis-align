@@ -46,9 +46,16 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
         points = []
         desc = []
 
+        if 't' in data0.dims:
+            data0 = data0.isel(t=0)
         if 'z' in data0.dims:
             # make data 2D
             data0 = data0.max('z')
+        if 'c' in data0.dims:
+            if data0.sizes['c'] > 1:
+                data0 = data0.max('c')
+            else:
+                data0 = data0.isel(c=0)
         data = self.convert_data_to_float(np.nan_to_num(data0))
 
         if gaussian_sigma:

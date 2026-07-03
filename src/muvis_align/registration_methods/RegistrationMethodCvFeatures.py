@@ -14,7 +14,8 @@ class RegistrationMethodCvFeatures(RegistrationMethod):
     def __init__(self, source, params, debug=False):
         super().__init__(source, params, debug)
         self.method = params.get('name', 'sift').lower()
-        self.gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 1))
+        self.full_size_gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 1))
+        self.gaussian_sigma = self.full_size_gaussian_sigma
         self.downscale_factor = params.get('downscale_factor', params.get('downscale', np.sqrt(2)))
         self.nkeypoints = params.get('max_keypoints', 5000)
         self.cross_check = params.get('cross_check', True)
@@ -31,13 +32,22 @@ class RegistrationMethodCvFeatures(RegistrationMethod):
 
 
     def detect_features(self, data0, gaussian_sigma=None):
+        if 't' in data0.dims:
+            data0 = data0.isel(t=0)
         if 'z' in data0.dims:
             # make data 2D
             data0 = data0.max('z')
+        if 'c' in data0.dims:
+            if data0.sizes['c'] > 1:
+                data0 = data0.max('c')
+            else:
+                data0 = data0.isel(c=0)
         data = self.convert_data_to_float(data0)
         data = np.array(norm_image_variance2(data))
-        if self.gaussian_sigma:
-            data = cv.GaussianBlur(data, (self.gaussian_sigma, self.gaussian_sigma), 0)
+        if gaussian_sigma is None:
+            gaussian_sigma = self.full_size_gaussian_sigma
+        if gaussian_sigma:
+            data = cv.GaussianBlur(data, (0, 0), gaussian_sigma)
 
         #feature_model = cv.SIFT_create(contrastThreshold=0.1)
         feature_model = cv.ORB_create(nfeatures=self.nkeypoints, patchSize=8, edgeThreshold=7)
@@ -76,6 +86,8 @@ class RegistrationMethodCvFeatures(RegistrationMethod):
         return transform, quality, matches, inliers
 
     def registration(self, fixed_data: SpatialImage, moving_data: SpatialImage, **kwargs) -> dict:
+        transform = None
+        quality = 0
         full_size_dist = np.linalg.norm(self.full_size)
         mean_size_dist = np.mean([np.linalg.norm(data.shape) for data in [fixed_data, moving_data]])
         scale = mean_size_dist / full_size_dist
