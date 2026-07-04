@@ -221,9 +221,15 @@ class Interface:
         # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
         table_widget = self.param_widgets.get('input_output.metadata_table')
         properties = ['position', 'size']
-        data = [[print_dict_simple(get_sim_position_final(sim, transform_keys=transform_keys)),
-                 print_dict_simple(get_sim_physical_size(sim))]
-                for sim in sims]
+        if transform_keys is None:
+            positions = self.reg.positions
+            scales = self.reg.scales
+        else:
+            positions = [get_sim_position_final(sim, transform_keys=transform_keys) for sim in sims]
+            scales = [get_sim_physical_size(sim) for sim in sims]
+        data = [[print_dict_simple(position),
+                 print_dict_simple(scale)]
+                for position, scale in zip(positions, scales)]
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((data, self.reg.file_labels, properties))
         table_widget.set_table_column_resize_mode()
