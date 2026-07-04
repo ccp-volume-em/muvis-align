@@ -141,13 +141,17 @@ class MVSRegistration:
         self.source_metadata = source_metadata
         self.extra_metadata = extra_metadata
 
-        output_path = output_path.format_map(split_numeric_dict(self.filenames[0]))
-        self.output = os.path.join(self.input_dir, output_path)    # preserve trailing slash: do not use os.path.normpath()
-        output_dir = os.path.dirname(self.output)
-        if self.clear:
-            shutil.rmtree(output_dir, ignore_errors=True)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok=True)
+        try:
+            output_path = output_path.format_map(split_numeric_dict(self.filenames[0]))
+            self.output = os.path.join(self.input_dir, output_path)    # preserve trailing slash: do not use os.path.normpath()
+            output_dir = os.path.dirname(self.output)
+            if self.clear:
+                shutil.rmtree(output_dir, ignore_errors=True)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir, exist_ok=True)
+        except Exception as e:
+            logging.error(f"Error initializing output directory: {e}")
+            return False
 
         return True
 
