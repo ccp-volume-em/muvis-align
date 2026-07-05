@@ -77,7 +77,8 @@ RUN apt-get update && \
 ENV DISPLAY=:100
 ENV XPRA_PORT=9876
 ENV XPRA_START="python3 -m napari --with muvis-align"
-ENV XPRA_EXIT_WITH_CLIENT="yes"
+ENV XPRA_EXIT_WITH_CHILDREN="yes"
+ENV XPRA_EXIT_WITH_CLIENT="no"
 ENV XPRA_XVFB_SCREEN="1920x1080x24+32"
 EXPOSE 9876
 
@@ -85,7 +86,8 @@ CMD echo "Launching napari on Xpra. Connect via http://localhost:$XPRA_PORT or $
     xpra start \
     --bind-tcp=0.0.0.0:$XPRA_PORT \
     --html=on \
-    --start="$XPRA_START" \
+    --start-child="$XPRA_START" \
+    --exit-with-children="$XPRA_EXIT_WITH_CHILDREN" \
     --exit-with-client="$XPRA_EXIT_WITH_CLIENT" \
     --daemon=no \
     --xvfb="/usr/bin/Xvfb +extension Composite -screen 0 $XPRA_XVFB_SCREEN -nolisten tcp -noreset" \
