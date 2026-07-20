@@ -48,8 +48,10 @@ class ZarrDaskSource(DaskSource):
             if ct_index == 0:
                 scale0 = scale
             scales.append(scale)
-            scale_factors.append({dim: value / scale0.get(dim, 1) for dim, value in scale.items()})
-            pixel_size = {dim: convert_to_um(value, units.get(dim, '')) for dim, value in scale.items()}
+            scale_factors.append({dim: value / scale0.get(dim, 1)
+                                  for dim, value in scale.items() if dim in 'xyz'})
+            pixel_size = {dim: convert_to_um(value, units.get(dim, ''))
+                          for dim, value in scale.items() if dim in 'xyz'}
             pixel_sizes.append(pixel_size)
 
         colormaps = self.metadata.get('colormap', [])

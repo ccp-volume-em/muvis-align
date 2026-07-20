@@ -93,6 +93,7 @@ class Interface:
             self.update_widgets()
         else:
             self.write_params()
+            self.update_input_output_path()
 
     def update_widgets(self):
         for param_name, param_widget in self.param_widgets.items():
@@ -110,6 +111,13 @@ class Interface:
             self.params[keys[0]] = {}
         self.params[keys[0]][keys[1]] = value
         self.write_params()
+
+    def update_input_output_path(self):
+        params = self.params['input_output']
+        widget = self.param_widgets.get('input_output.input_path')
+        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('input_path', '')))
+        widget = self.param_widgets.get('input_output.output_path')
+        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('output_path', '')))
 
     def source_position_z(self, value):
         if is_valid_value(value):
@@ -187,6 +195,7 @@ class Interface:
         sims = self.reg.sims
 
         coord_systems = get_transforms(sims)
+        self.populate_channels()
         self.populate_coordinate_systems(coord_systems)
         if self.reg.is_initialised():
             self.populate_metadata_table(sims)
@@ -206,10 +215,16 @@ class Interface:
         self.enable_tabs(True, 3)
         self.select_tab(3)
 
+    def populate_channels(self):
+        channels = list({channel.get('label', '') for source in self.reg.sources for channel in source.get_channels()})
+        choices = {channel: channel for channel in channels}
+        param_widget = self.param_widgets.get('registration.channel')
+        param_widget.set_choices(choices)
+
     def populate_coordinate_systems(self, coord_systems):
-        param_widget = self.param_widgets.get('input_output.coordinate_system')
         choices = {coord_system: coord_system.replace('_', ' ').capitalize() for coord_system in coord_systems}
-        param_widget.widget.choices = to_magicgui_choices(choices)
+        param_widget = self.param_widgets.get('input_output.coordinate_system')
+        param_widget.set_choices(choices)
 
     def coordinate_system(self, transform_key):
         self.transform_key = transform_key
@@ -292,11 +307,23 @@ class Interface:
         fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
         fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
         if fused is not None:
-            image_layer = viewer.add_image(fused, name=layer_name, scale=fused_scale, translate=fused_position)
-            current_index = viewer.layers.index(image_layer)
-            # ensure image layer goes on 'bottom'
-            if current_index > 0:
-                viewer.layers.move(current_index, 0)
+            source = self.reg.sources[0]
+            channels = source.get_channels()
+            name = [channel.get('label', index) for index, channel in enumerate(channels)]
+            colors = [channel.get('color', [1, 1, 1, 1]) for channel in channels]
+            if len(channels) > 0:
+                channel_axis = fused.dims.index('c') \
+                    if len(colors) > 0 and 'c' in source.dimension_order else None
+                scale = [fused_scale] * len(channels)
+                translate = [fused_position] * len(channels)
+            else:
+                name = name[0] if len(name) > 0 else layer_name
+                colors = colors[0] if len(colors) > 0 else None
+                channel_axis = None
+                scale = fused_scale
+                translate = fused_position
+            viewer.add_image(fused, name=name,channel_axis=channel_axis, colormap=colors,
+                             scale=scale, translate=translate)
 
     def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
         bb_supported = True
@@ -605,7 +632,7 @@ class Interface:
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             operation = self.params['registration']['operation']
-            output_filename = operation.split()[0] + 'ed'
+            output_filename = operation.split()[-1] + 'ed'
             tile_size = self.params['fusion']['tile_size']
             if ',' in tile_size:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]

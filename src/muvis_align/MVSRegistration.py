@@ -402,7 +402,10 @@ class MVSRegistration:
 
         ndims = len(output_order)
         if source0.get_nchannels() > 1:
-            output_order += 'c'
+            if source0.is_rgb:
+                output_order = output_order + 'c'
+            else:
+                output_order = 'c' + output_order
 
         last_z_position = None
         different_z_positions = False
@@ -462,7 +465,7 @@ class MVSRegistration:
 
             dask_data = source.get_data(level=level)
             if any(value != 1 for value in rescale.values()):
-                new_shape = [int(size / rescale[dim]) if dim in 'xyz' else 1
+                new_shape = [int(size / rescale.get(dim, 1))
                              for dim, size in zip(source.dimension_order, dask_data.shape)]
                 dask_data = resize(dask_data, new_shape, preserve_range=True).astype(dask_data.dtype)
             image = redimension_data(dask_data, source.dimension_order, output_order)

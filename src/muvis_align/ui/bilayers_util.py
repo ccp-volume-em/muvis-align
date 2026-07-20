@@ -65,13 +65,16 @@ class MagicGuiFieldSpec(BaseModel):
 
 
 def to_magicgui_choices(choices):
-    def _get_choice_label(choice):
-        return choices[choice]
+    if isinstance(choices, dict):
+        def _get_choice_label(choice):
+            return choices[choice]
 
-    return {
-        'choices': choices.keys(),
-        'key': _get_choice_label,
-    }
+        return {
+            'choices': choices.keys(),
+            'key': _get_choice_label,
+        }
+    else:
+        return choices
 
 
 def get_section_dict(template, keys=None):

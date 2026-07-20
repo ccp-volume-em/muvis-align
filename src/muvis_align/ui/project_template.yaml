@@ -15,9 +15,7 @@ inputs:
     label: "Input data"
     description: "Input data"
     file_count: "multiple"
-    unique_string:
-      - "*"
-    default: "data/*/*.zarr"
+    default:
     cli_tag: "--input_path"
     cli_order: 0
     optional: False
@@ -27,7 +25,6 @@ inputs:
       - zarr
       - omezarr
     section_id: "input_output"
-    folder_name: "/data"
     mode: "beginner"
 
 outputs:
@@ -37,14 +34,11 @@ outputs:
     description: "Output data"
     cli_tag: "--output_path"
     cli_order: 12
-    default: "output/"
+    default: "output"
     optional: False
     format:
       - omezarr
-    folder_name: "output/"
     file_count: "multiple"
-    unique_string:
-      - "*"
     section_id: "input_output"
     mode: "beginner"
     depth: True
@@ -192,10 +186,17 @@ parameters:
     section_id: "pre_processing"
     mode: "beginner"
   - name: normalisation
-    type: textbox
+    type: dropdown
     label: "Normalisation"
-    description: "Normalisation method ('global' for global normalisation, any other value for regular normalisation)"
-    default: "False"
+    description: "Normalisation method (Single for per-tile, Global for global normalisation)"
+    options:
+      - label: Single
+        value: "single"
+      - label: Global
+        value: "global"
+      - label: None
+        value:
+    default:
     cli_tag: "--global_normalisation"
     cli_order: 3
     optional: True
@@ -225,9 +226,14 @@ parameters:
 
     # registration / feature explorer
   - name: operation
-    type: textbox
+    type: dropdown
     label: "Operation"
-    description: "Operation (e.g. 'register', 'stack', '2d', '3d')"
+    description: "Operation (e.g. register, or stack only)"
+    options:
+      - label: Register
+        value: "register"
+      - label: Stack
+        value: "stack"
     default: "register"
     cli_tag: "--operation"
     cli_order: 0
@@ -236,12 +242,12 @@ parameters:
     section_id: "registration"
     mode: "beginner"
   - name: channel
-    type: textbox
+    type: dropdown
     label: "Registration channel"
-    description: "Channel to use for registration (name or index, e.g. 'DAPI' or '0')"
+    description: "Channel to use for registration"
     default:
     cli_tag: "--channel"
-    cli_order: 5
+    cli_order: 1
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -258,7 +264,7 @@ parameters:
         value: "overlay"
     default: "default"
     cli_tag: "--pairing"
-    cli_order: 6
+    cli_order: 2
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -277,7 +283,7 @@ parameters:
         value: "similarity"
     default: "rigid"
     cli_tag: "--transform_type"
-    cli_order: 7
+    cli_order: 3
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -298,7 +304,7 @@ parameters:
         value: "ants"
     default: "phase_correlation"
     cli_tag: "--method"
-    cli_order: 8
+    cli_order: 4
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -308,7 +314,7 @@ parameters:
     description: "If enabled, normalise overlaps in registration function"
     default: True
     cli_tag: "--normalisation"
-    cli_order: 9
+    cli_order: 5
     optional: True
     append_value: False
     section_id: "registration"
@@ -319,7 +325,7 @@ parameters:
     description: "Sigma for Gaussian filtering of overlaps (value of 0 or empty for no filtering)"
     default:
     cli_tag: "--gaussian_sigma"
-    cli_order: 10
+    cli_order: 6
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -329,7 +335,7 @@ parameters:
     description: "Maximum keypoints for feature-based registration methods like SIFT and ORB"
     default: 5000
     cli_tag: "--max_keypoints"
-    cli_order: 11
+    cli_order: 7
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -339,7 +345,7 @@ parameters:
     description: "Inlier threshold factor for RANSAC in feature-based registration methods, relative value (0...1)"
     default: 0.05
     cli_tag: "--max_keypoints"
-    cli_order: 12
+    cli_order: 8
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -349,7 +355,7 @@ parameters:
     description: "Maximum RANSAC trials for feature-based registration methods"
     default: 1000
     cli_tag: "--max_trials"
-    cli_order: 13
+    cli_order: 9
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -359,7 +365,7 @@ parameters:
     description: "Number of RANSAC iterations for feature-based registration methods"
     default: 3
     cli_tag: "--ransac_iterations"
-    cli_order: 14
+    cli_order: 10
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -369,7 +375,7 @@ parameters:
     description: "Number of parallel threads for pairwise registrations (0 / blank for automatic detection)"
     default:
     cli_tag: "--n_parallel_pairwise_regs"
-    cli_order: 15
+    cli_order: 11
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -379,7 +385,7 @@ parameters:
     description: "Select image for registration preview"
     default:
     cli_tag: "--reg_preview_image1"
-    cli_order: 16
+    cli_order: 12
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -389,7 +395,7 @@ parameters:
     description: "Select image for registration preview"
     default:
     cli_tag: "--reg_preview_image2"
-    cli_order: 17
+    cli_order: 13
     optional: True
     section_id: "registration"
     mode: "beginner"
@@ -397,21 +403,21 @@ parameters:
     type: pushbutton
     label: "Preview"
     description: "Preview registration"
-    cli_order: 19
+    cli_order: 15
     section_id: "registration"
     mode: "beginner"
   - name: pair_registration
     type: pushbutton
     label: "Pair registration"
     description: "Run pair registration"
-    cli_order: 20
+    cli_order: 16
     section_id: "registration"
     mode: "beginner"
   - name: modify_pair_registration
     type: pushbutton
     label: "Modify pair registration"
     description: "Modify pair registration"
-    cli_order: 21
+    cli_order: 17
     section_id: "registration"
     mode: "beginner"
 
@@ -494,20 +500,20 @@ display_only:
       - label: Source metadata
         value: "source_metadata"
     default: "source_metadata"
-    section_id: "input_output"
     cli_order: 10
+    section_id: "input_output"
   - name: metadata_table
     type: table
     label: " "
     default: []
     description: "Metadata"
-    section_id: "input_output"
     cli_order: 11
+    section_id: "input_output"
 
   - name: metrics_table
     type: table
     label: " "
     default: []
     description: "Metrics"
+    cli_order: 14
     section_id: "registration"
-    cli_order: 18
