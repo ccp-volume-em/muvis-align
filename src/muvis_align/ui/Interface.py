@@ -16,8 +16,8 @@ from muvis_align.constants import zarr_extension, default_transform_key, default
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
-    affine_from_intrinsic_affine, get_sim_shape, get_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms
+    affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
+    draw_keypoints_matches_napari, get_transforms, copy_transforms, validate_element_length, make_sims_3d
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
@@ -188,10 +188,19 @@ class Interface:
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
+            self.reg.init_sims(source_metadata=self.source_metadata)
+
             preview_scale = self.params['input_output']['preview_scale']
             self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
                                                    store=False)
-            self.reg.init_sims(source_metadata=self.source_metadata)
+            z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
+            is_multi_z_shapes = (len(z_positions) > 1)
+            if is_multi_z_shapes:
+                positions = []
+                for position in self.reg.positions:
+                    position['z'] = z_positions.index(position.get('z', 0))
+                    positions.append(position)
+                self.preview_sims = make_sims_3d(self.preview_sims, positions=positions)
         sims = self.reg.sims
 
         coord_systems = get_transforms(sims)
@@ -297,7 +306,8 @@ class Interface:
     def _clear_napari_view(self, viewer):
         viewer.layers.clear()
 
-    def _update_napari_data(self, viewer, layer_name, transform_key, fusion_method='additive', show_preprocessed=False):
+    def _update_napari_data(self, viewer, layer_name, transform_key, fusion_method='additive',
+                            show_preprocessed=False):
         if show_preprocessed:
             sims = self.reg.register_sims
         else:
@@ -317,7 +327,7 @@ class Interface:
                 scale = [fused_scale] * len(channels)
                 translate = [fused_position] * len(channels)
             else:
-                name = name[0] if len(name) > 0 else layer_name
+                name = name[0] if len(name) > 0 and name[0] else layer_name
                 colors = colors[0] if len(colors) > 0 else None
                 channel_axis = None
                 scale = fused_scale
@@ -326,34 +336,44 @@ class Interface:
                              scale=scale, translate=translate)
 
     def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+        sims = self.preview_sims
         bb_supported = True
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
             bb_supported = False
-        sims = self.reg.sims
-        shapes = [get_sim_shape(sim, transform_key=transform_key, force_2d=not bb_supported) for sim in sims]
+        is_3d = (sims[0].sizes.get('z', 0) > 1)
+        is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+        force_2d = not bb_supported or (is_multi_z_shapes and not is_3d)
+        do_3d = ('z' in sims[0].dims and not force_2d)
+        shapes = create_sim_shapes(sims, transform_key=transform_key, force_2d=force_2d)
         refs = [str(index) for index in range(len(sims))]
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(sims))]
 
         if overlaps:
-            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key, force_2d=not bb_supported)
+            shapes2, pairs = create_overlap_shapes(sims, transform_key=transform_key, force_2d=force_2d)
             shapes.extend(shapes2)
             refs += [f'{index1} {index2}' for index1, index2 in pairs]
             labels += ['' for _ in pairs]
             face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
         if len(shapes) > 0:
+            # TODO: fix this work-around for incorrect 2d/3d rectangles:
+            expected_npoints = 8 if do_3d else 4
+            good_indices = validate_element_length(shapes, expected_npoints)
+            shapes = [shapes[index] for index in good_indices]
+            face_colors = [face_colors[index] for index in good_indices]
+            labels = np.array(labels)[good_indices]
+            refs = np.array(refs)[good_indices]
+
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
-            shapes = np.array(shapes)
-            is_3d = (shapes.shape[-1] == 3)
-            if is_3d and bb_supported:
-                bbox_layer = BoundingBoxLayer(shapes, name=layer_name, text=text, features=features,
-                                              face_color=face_colors, opacity=0.5, edge_width=100)
+            if do_3d:
+                bbox_layer = BoundingBoxLayer(np.array(shapes), name=layer_name, text=text, features=features,
+                                              face_color=face_colors, opacity=0.25, edge_width=100, edge_color='cyan')
                 self.viewer.add_layer(bbox_layer)
             else:
-                viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
-                                  face_color=face_colors, opacity=0.5, edge_width=0.1)
+                viewer.add_shapes(np.array(shapes), name=layer_name, text=text, features=features,
+                                  face_color=face_colors, opacity=0.25, edge_width=0.1, edge_color='cyan')
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
             #                           face_color=face_colors)
@@ -622,7 +642,8 @@ class Interface:
         self.reg.params_general = {'output': {}}
         self.reg.fusion_params = self.params['fusion']
         self._clear_napari_view(self.viewer)
-        self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key, fusion_method=self.params['fusion']['method'])
+        self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key,
+                                 fusion_method=self.params['fusion']['method'])
         self.view_mode = ViewMode.FUSED
 
     def fusion_process(self):

@@ -952,24 +952,48 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
     return translation, rotation
 
 
-def get_sim_shape(sim, transform_key=None, force_2d=False):
-    if 't' in sim.dims:
-        sim = sim.sel(t=0)
-    stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
-    points = mv_graph.get_vertices_from_stack_props(stack_props)
-    if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
-        # remove constant z coordinate
-        points = points[:, 1:]
-    points = np.array(list(map(list, set(map(tuple, points)))))
-    hull = ConvexHull(points)
-    shape = points[hull.vertices]
-    return shape
+def extract_z_scale(positions, scales=None):
+    z_scale = None
+
+    if scales is not None:
+        z_scale0 = np.mean([scale.get('z', 0) for scale in scales])
+        if z_scale0 > 0:
+            z_scale = z_scale0
+
+    if z_scale is None:
+        z_positions = [position.get('z') for position in positions if 'z' in position]
+        if len(z_positions) > 1:
+            diffs = np.diff(sorted(set(z_positions)))
+            if len(diffs) > 0:
+                z_scale = min(diffs)
+    return z_scale
 
 
-def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, force_2d=False):
-    # functionality copied from registration.register_pair_of_msims()
+def create_sim_shapes(sims, transform_key=None,  force_2d=False):
+    shapes = []
+    is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+    for sim in sims:
+        if 't' in sim.dims:
+            sim = sim.sel(t=0)
+        stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
+        points = mv_graph.get_vertices_from_stack_props(stack_props)
+        if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
+            # remove constant z coordinate
+            points = points[:, 1:]
+        points = np.array(list(map(list, set(map(tuple, points)))))
+        hull = ConvexHull(points)
+        shape = points[hull.vertices]
+        if is_multi_z_shapes:
+            z_position = si_utils.get_origin_from_sim(sim).get('z', 0)
+            shape = [[z_position] + list(element) for element in shape]
+        shapes.append(shape)
+    return shapes
+
+
+def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
     shapes = []
     good_pairs = []
+    is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
     if pairs is None:
         pairs = np.transpose(np.triu_indices(len(sims), 1))
     for pair in pairs:
@@ -979,9 +1003,7 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, for
             result = _get_overlap_bboxes(
                 sim1,
                 sim2,
-                input_transform_key=transform_key,
-                output_transform_key=transform_key,
-                overlap_tolerance=overlap_tolerance,
+                input_transform_key=transform_key
             )
             points = result['intersection'].intersections
             if points.shape[1] == 3 and force_2d:
@@ -990,6 +1012,9 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, for
             points = np.array(list(map(list, set(map(tuple, points)))))
             hull = ConvexHull(points)
             shape = points[hull.vertices]
+            if is_multi_z_shapes:
+                z_position = si_utils.get_origin_from_sim(sim1).get('z', 0)
+                shape = [[z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
         except:
@@ -997,15 +1022,22 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, for
     return shapes, good_pairs
 
 
-def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):
+def validate_element_length(data, expected_length):
+    good_indices = []
+    for index, element in enumerate(data):
+        if len(element) == expected_length:
+            good_indices.append(index)
+    return good_indices
+
+
+def get_overlap_images(sim1, sim2, transform_key):
     sims = [sim1.squeeze(), sim2.squeeze()]
     # functionality copied from registration.register_pair_of_msims()
     spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
     result = _get_overlap_bboxes(
         sims[0],
         sims[1],
-        input_transform_key=transform_key,
-        overlap_tolerance=overlap_tolerance,
+        input_transform_key=transform_key
     )
     lowers, uppers = result['lowers'], result['uppers']
 

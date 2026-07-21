@@ -5,10 +5,31 @@ from napari_bbox.boundingbox import BoundingBoxLayer
 from qtpy.QtCore import QObject, QThread, Signal, Slot
 from threading import Thread
 
-from src.muvis_align.image.util import get_sim_shape
+from src.muvis_align.image.util import create_sim_shape
 
 
-class NapariTest(QThread):
+class NapariTest2d:
+    def __init__(self):
+        self.viewer = napari.Viewer()
+
+    def start(self):
+        shape_data = [
+            # Shape 1: Constrained entirely to Z=0
+            np.array([[0, 10, 10], [0, 10, 90], [0, 90, 90], [0, 90, 10]]),
+            # Shape 2: Constrained entirely to Z=1
+            np.array([[1, 20, 20], [1, 20, 80], [1, 80, 80], [1, 80, 20]])
+        ]
+
+        # Add the 3D shapes layer to the viewer
+        shapes_layer = self.viewer.add_shapes(
+            shape_data,
+            shape_type='rectangle',
+            name='3D_Rectangle',
+            edge_width=3
+        )
+
+
+class NapariTest3d(QThread):
     update_shapes = Signal(str, list, list)
     update_data = Signal(str, list)
     update_bounds = Signal(str, list, list)
@@ -59,7 +80,7 @@ class NapariTest(QThread):
         # self.update_shapes.emit('layer', all_vertices, ['label'])
 
         sims = [create_sim(shape=(10, 30, 60)), create_sim(shape=(5, 20, 40), position={'x':5,'y':0,'z':0})]
-        self.update_bounds.emit('layer', [get_sim_shape(sim).tolist() for sim in sims], ['label1', 'label2'])
+        self.update_bounds.emit('layer', [create_sim_shape(sim).tolist() for sim in sims], ['label1', 'label2'])
 
     @Slot(str, list, list)
     def _update_shapes(self, layer_name, shapes, labels):
@@ -108,6 +129,7 @@ def create_sim(shape, scale={'z': 1, 'x': 1, 'y': 1}, position={'x': 0, 'y': 0, 
 
 
 if __name__ == '__main__':
-    napari_test = NapariTest(ndisplay=3)
+    #napari_test = NapariTest3d(ndisplay=3)
+    napari_test = NapariTest2d()
     napari_test.start()
     napari.run()

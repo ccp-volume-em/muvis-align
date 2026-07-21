@@ -44,7 +44,7 @@ class ZarrDaskSource(DaskSource):
                 if transform['type'] == 'scale':
                     scale = {dim: value for dim, value in zip(dims, transform['scale']) if dim in dims_used}
                 if transform['type'] == 'translation':
-                    position = {dim: value for dim, value in zip(dims, transform['translation']) if dim in dims_used}
+                    position = {dim: value for dim, value in zip(dims, transform['translation'])}
             if ct_index == 0:
                 scale0 = scale
             scales.append(scale)

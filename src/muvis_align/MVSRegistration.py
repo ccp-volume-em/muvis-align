@@ -1248,26 +1248,22 @@ class MVSRegistration:
              output_filename=None, tile_size=None, ome_version=default_ome_zarr_version):
         if output_filename is not None:
             output_filename = self.output + output_filename
+
         sim0 = sims[0]
-        if transform_key is None:
-            transform_key = self.reg_transform_key
-        if isinstance(self.extra_metadata, dict):
-            z_scale = self.extra_metadata.get('scale', {}).get('z')
-            channels = self.extra_metadata.get('channels', [])
-        else:
-            z_scale = None
-            channels = []
+
+        channels = self.extra_metadata.get('channels', []) if isinstance(self.extra_metadata, dict) else []
         is_channel_overlay = (len(channels) > 1)
 
-        if z_scale is None and self.scales is not None:
-            z_scale0 = np.mean([scale.get('z', 0) for scale in self.scales])
-            if z_scale0 > 0:
-                z_scale = z_scale0
+        if transform_key is None:
+            transform_key = self.reg_transform_key
+
+        if isinstance(self.extra_metadata, dict):
+            z_scale = self.extra_metadata.get('scale', {}).get('z')
+        else:
+            z_scale = None
+
         if z_scale is None:
-            if 'z' in sim0.dims:
-                diffs = np.diff(sorted(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])))
-                if len(diffs) > 0:
-                    z_scale = min(diffs)
+            z_scale = extract_z_scale(self.positions, self.scales)
 
         z_positions = [position.get('z') for position in self.positions if 'z' in position]
         if len(set(z_positions)) > 1:
