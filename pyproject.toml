@@ -45,9 +45,9 @@ dependencies = [
     "opencv-python",
     "spatial-image",
     "multiscale-spatial-image",
-    "probreg",
     "napari_bbox",
     "magic-class",
+    "probreg; python_version < '3.13' and sys_platform != 'win32'",
 ]
 
 [project.optional-dependencies]

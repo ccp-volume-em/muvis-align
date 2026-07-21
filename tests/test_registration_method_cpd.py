@@ -1,3 +1,7 @@
+import pytest
+
+pytest.importorskip("probreg")
+
 import numpy as np
 
 from src.muvis_align.registration_methods.RegistrationMethodCPD import (

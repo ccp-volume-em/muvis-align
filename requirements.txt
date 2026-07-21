@@ -1,9 +1,9 @@
 multiview-stitcher>=v0.1.53
 pydantic>=2
 opencv-python
-probreg
 spatial-image
 multiscale-spatial-image
 napari_bbox
 magic-class
 rocrate>=0.15.0
+probreg
