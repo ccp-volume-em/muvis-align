@@ -188,7 +188,10 @@ class Interface:
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
-            self.reg.init_sims(source_metadata=self.source_metadata)
+            try:
+                self.reg.init_sims(source_metadata=self.source_metadata)
+            except ValueError as e:
+                show_warning('Unable to read source data\n' + str(e))
 
             preview_scale = self.params['input_output']['preview_scale']
             self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
