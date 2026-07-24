@@ -24,6 +24,7 @@ pre_processing:
   flatfield_quantiles: ''
   scale: 1
 registration:
+  gaussian_sigma: 3.0
   inlier_threshold_factor: 0.05
   max_keypoints: 5000
   max_trials: 1000
@@ -37,5 +38,5 @@ registration:
   preview_registration: false
   ransac_iterations: 3
   reg_preview_image1: S000_000_000
-  reg_preview_image2: S001_000_000
+  reg_preview_image2: S000_000_001
   transform_type: rigid

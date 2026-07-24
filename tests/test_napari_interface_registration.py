@@ -253,7 +253,7 @@ class TestNapariInterfaceRegistration:
     def test_interface_pair_registration_mock(
         self, mock_question, make_napari_viewer, project_config
     ):
-        """Test pair_registration method with mocked UI components."""
+        """Test pair_registration method with mocked UI components and bbox handling."""
         viewer = make_napari_viewer()
         mock_question.return_value = True  # Simulate "Yes" click
         
@@ -266,13 +266,27 @@ class TestNapariInterfaceRegistration:
                     with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
                         with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
                             with patch.object(interface, 'get_all_widgets', return_value={}):
+                                # Create mock bbox DataArray WITHOUT 't' dimension (this is the key test)
+                                import xarray as xr
+                                import networkx as nx
+                                mock_bbox = xr.DataArray(
+                                    [[1, 2], [3, 4]],
+                                    dims=['x_in', 'x_out'],
+                                    coords={'x_in': [0, 1], 'x_out': [0, 1]}
+                                )
+                                
                                 with patch.object(interface.reg, 'register_pairs', return_value={
                                     'pair_mappings': {},
                                     'metrics': {'pairs': {}}
                                 }):
-                                    with patch.object(interface.reg, 'save_pair_mappings'):
-                                        with patch.object(interface, 'update_registered'):
-                                            interface.pair_registration()
+                                    # Mock nx.get_edge_attributes to return bbox without 't' dimension
+                                    with patch('networkx.get_edge_attributes') as mock_get_attrs:
+                                        mock_get_attrs.return_value = {('key1', 'key2'): mock_bbox}
+                                        
+                                        with patch.object(interface.reg, 'save_pair_mappings'):
+                                            with patch.object(interface, 'update_registered'):
+                                                # This should not raise KeyError
+                                                interface.pair_registration()
 
     @patch('src.muvis_align.ui.Interface.QMessageBox.question')
     def test_interface_registration_process_mock(
@@ -380,6 +394,104 @@ class TestNapariInterfaceRegistration:
         assert interface.raw_template is not None
         assert interface.template is not None
         assert isinstance(interface.template, dict)
+
+    @patch('src.muvis_align.ui.Interface.QMessageBox.question')
+    def test_modify_pair_registration_with_bbox(self, mock_question, make_napari_viewer, project_config):
+        """Test modify_pair_registration with bbox handling (no 't' dimension)."""
+        try:
+            from PyQt5.QtWidgets import QMessageBox
+        except ModuleNotFoundError:
+            pytest.skip("PyQt5 not available in test environment")
+        
+        viewer = make_napari_viewer()
+        mock_question.return_value = QMessageBox.Yes  # Simulate "Yes" click
+
+        with patch('src.muvis_align._widget.ViewerWidget'):
+            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
+
+        interface.view_mode = ViewMode.PAIRS
+        interface.pair_indices = ('key1', 'key2')
+        
+        # Mock the temp_widget_state that gets called in modify_pair_registration
+        interface.temp_widget_state = MagicMock()
+
+        with patch.object(interface, 'calc_mod_pair_transform') as mock_calc:
+            with patch('networkx.get_edge_attributes') as mock_get_attrs:
+                # Create mock bbox DataArray WITHOUT 't' dimension
+                import xarray as xr
+                mock_bbox = xr.DataArray(
+                    [[1, 2], [3, 4]],
+                    dims=['x_in', 'x_out'],
+                    coords={'x_in': [0, 1], 'x_out': [0, 1]}
+                )
+                
+                # Mock transform with 't' dimension for the pair_transforms
+                mock_transform_with_t = xr.DataArray(
+                    [[[1, 0], [0, 1], [0, 0]]],
+                    dims=['t', 'rows', 'cols'],
+                    coords={'t': [0]}
+                )
+                
+                # Set up return values - first call gets pair_transforms, second gets qualities, third gets bboxes
+                mock_get_attrs.side_effect = [
+                    {interface.pair_indices: mock_transform_with_t},  # pair_transforms
+                    {interface.pair_indices: 0.95},  # qualities
+                    {interface.pair_indices: mock_bbox}  # bboxes (without 't' dimension)
+                ]
+                
+                mock_calc.return_value = mock_transform_with_t
+                
+                with patch('networkx.set_edge_attributes'):
+                    with patch.object(interface.reg, 'save_pair_mappings') as mock_save:
+                        with patch.object(interface, 'update_registered'):
+                            # This should not raise KeyError
+                            interface.modify_pair_registration()
+                            
+                            # Verify save_pair_mappings was called
+                            assert mock_save.called
+
+    def test_global_registration_with_dimension_mismatch(self, make_napari_viewer, project_config):
+        """Test update_registered with dimension mismatch in transforms (copy_transforms fix)."""
+        viewer = make_napari_viewer()
+        
+        with patch('src.muvis_align._widget.ViewerWidget'):
+            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
+        
+        # Create mock sims with different transform dimensions
+        import xarray as xr
+        import numpy as np
+        
+        # Source sims with 't' dimension in transform
+        mock_sim_with_t = MagicMock()
+        mock_sim_with_t.dims = ('t', 'c', 'y', 'x')
+        mock_sim_with_t.attrs = {
+            'transforms': {
+                'registered': xr.DataArray(
+                    np.eye(3).reshape(1, 3, 3),
+                    dims=['t', 'x_in', 'x_out'],
+                    coords={'t': [0], 'x_in': ['y', 'x', '1'], 'x_out': ['y', 'x', '1']}
+                )
+            }
+        }
+        
+        interface.reg.sims = [mock_sim_with_t]
+        interface.preview_sims = [MagicMock()]
+        
+        # Mock the missing reg_transform_key attribute on MVSRegistration
+        interface.reg.reg_transform_key = 'registered'
+        
+        with patch('src.muvis_align.ui.Interface.si_utils.get_tranform_keys_from_sim', return_value=['registered']):
+            with patch('src.muvis_align.ui.Interface.copy_transforms') as mock_copy:
+                with patch.object(interface, 'populate_coordinate_systems'):
+                    with patch.object(interface, 'populate_metadata_table'):
+                        with patch.object(interface, 'populate_metrics_table'):
+                            with patch.object(interface, 'update_overview'):
+                                with patch.object(interface, 'update_view'):
+                                    # This should not raise KeyError about dimension mismatch
+                                    interface.update_registered()
+                                    
+                                    # Verify copy_transforms was called
+                                    assert mock_copy.called
 
 
 class TestProjectConfigurationFiles:

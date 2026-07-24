@@ -47,6 +47,37 @@ def grayscale_image(image):
         return image
 
 
+def _adapt_transform_to_image_dims(sim, transform, transform_key):
+    """
+    Extract only the spatial dimensions from transform that match the image.
+    
+    For 2D images, extracts the 3x3 submatrix from a 4x4 transform.
+    Handles dimension mismatch between transforms and images.
+    """
+    sim_spatial_dims = si_utils.get_spatial_dims_from_sim(sim)
+    transform = sim.attrs['transforms'][transform_key]
+    
+    # Get dimensions from transform coordinates
+    transform_spatial_dims = list(transform.coords['x_in'].values)
+    
+    # Count actual spatial dims (exclude '1' padding)
+    transform_spatial_dim_count = len([d for d in transform_spatial_dims if d != '1'])
+    sim_spatial_dim_count = len(sim_spatial_dims)
+    
+    if transform_spatial_dim_count == sim_spatial_dim_count:
+        # Transform already matches - no adaptation needed
+        return transform
+    
+    # Find which spatial dims are in both sim and transform (ignoring '1' padding)
+    relevant_dims = [d for d in sim_spatial_dims if d in transform_spatial_dims]
+    
+    # Extract submatrix for only relevant dimensions (+ 1 for homogeneous coordinate)
+    relevant_dim_names = relevant_dims + ['1']
+    adapted = transform.sel(x_in=relevant_dim_names, x_out=relevant_dim_names)
+    
+    return adapted
+
+
 def color_image(image):
     nchannels = image.shape[2] if len(image.shape) > 2 else 1
     if nchannels == 1:
@@ -775,7 +806,15 @@ def copy_transforms(source_sims, target_sims, transform_key):
         transform_dims = np.array(transform.coords['x_in'])
         if len(transform_dims) - 1 != len(dims):
             new_transform = param_utils.identity_transform(ndim=len(dims))
-            new_transform.loc[{dim: transform.coords[dim] for dim in transform.dims}] = transform
+            # Get common non-t dimensions for assignment
+            common_dims = [dim for dim in transform.dims if dim in new_transform.dims and dim != 't']
+            if len(common_dims) > 0:
+                # Select t=0 if it exists in transform, then assign
+                if 't' in transform.dims:
+                    transform_slice = transform.sel(t=0)
+                else:
+                    transform_slice = transform
+                new_transform.loc[{dim: transform_slice.coords[dim] for dim in common_dims}] = transform_slice
             transform = new_transform
         si_utils.set_sim_affine(
             target_sim,
@@ -1051,6 +1090,13 @@ def get_overlap_images(sim1, sim2, transform_key):
     sims = [sim1.squeeze(), sim2.squeeze()]
     # functionality copied from registration.register_pair_of_msims()
     spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
+    
+    # Adapt transforms to match image dimensions (handles 3D transform on 2D images)
+    for sim in sims:
+        original_transform = sim.attrs['transforms'][transform_key]
+        adapted_transform = _adapt_transform_to_image_dims(sim, original_transform, transform_key)
+        sim.attrs['transforms'][transform_key] = adapted_transform
+    
     result = _get_overlap_bboxes(
         sims[0],
         sims[1],

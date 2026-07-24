@@ -1056,6 +1056,25 @@ class MVSRegistration:
             msims_reg = register_msims
 
         #print_sim_info(msims_reg[0])
+        
+        # Normalize transforms to match image dimensions in each scale level
+        # (handles mixed 3D/4D transforms in multiscale images)
+        for msim in msims_reg:
+            for scale_node in msim.ds.values():
+                if 'source_metadata' in scale_node.ds.data_vars:
+                    img_data = scale_node.ds['image']
+                    if hasattr(img_data, 'data'):
+                        img_data = img_data.data
+                    # Get spatial dims from image shape
+                    spatial_dims = [d for d in img_data.dims if d not in ('t', 'c')]
+                    # Get current transform
+                    current_transform = scale_node.ds.data_vars[self.source_transform_key]
+                    transform_spatial_dims = [d for d in current_transform.coords['x_in'].values if d != '1']
+                    # Adapt if mismatch
+                    if len(transform_spatial_dims) != len(spatial_dims):
+                        relevant_dim_names = spatial_dims + ['1']
+                        adapted = current_transform.sel(x_in=relevant_dim_names, x_out=relevant_dim_names)
+                        scale_node.ds[self.source_transform_key] = adapted
 
         try:
             with dask.config.set(scheduler='threads'):

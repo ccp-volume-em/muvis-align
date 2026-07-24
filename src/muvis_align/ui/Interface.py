@@ -556,8 +556,11 @@ class Interface:
                 qualities = {key: metric[default_transform_key][default_quality_key]
                              for key, metric in results['metrics']['pairs'].items()
                              if default_quality_key in metric[default_transform_key]}
-                bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
-                          nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
+                bboxes = {}
+                for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
+                    if 't' in value.dims:
+                        value = value.sel(t=0)
+                    bboxes[key] = np.array(value).tolist()
                 self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
                 self.update_registered()
 
@@ -576,8 +579,11 @@ class Interface:
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1
                 nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, default_transform_key)
                 nx.set_edge_attributes(self.reg.pairs_graph, qualities, default_quality_key)
-                bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
-                          nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
+                bboxes = {}
+                for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
+                    if 't' in value.dims:
+                        value = value.sel(t=0)
+                    bboxes[key] = np.array(value).tolist()
                 self.reg.save_pair_mappings(pair_transforms, qualities, bboxes)
 
             self.view_mode = ViewMode.OVERVIEW
