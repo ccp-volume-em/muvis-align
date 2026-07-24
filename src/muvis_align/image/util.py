@@ -758,11 +758,28 @@ def get_transforms(sims):
     return list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
 
 
+def check_sim_dims(sim):
+    origin = si_utils.get_origin_from_sim(sim)
+    dims = {'dims': sim.dims,
+            'origin': list(origin.keys())}
+    for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+        transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+        dims[transform_key] = np.array(transform.coords['x_in'])
+    return dims
+
+
 def copy_transforms(source_sims, target_sims, transform_key):
+    dims = list(si_utils.get_origin_from_sim(target_sims[0]).keys())
     for source_sim, target_sim in zip(source_sims, target_sims):
+        transform = si_utils.get_affine_from_sim(source_sim, transform_key=transform_key)
+        transform_dims = np.array(transform.coords['x_in'])
+        if len(transform_dims) - 1 != len(dims):
+            new_transform = param_utils.identity_transform(ndim=len(dims))
+            new_transform.loc[{dim: transform.coords[dim] for dim in transform.dims}] = transform
+            transform = new_transform
         si_utils.set_sim_affine(
             target_sim,
-            si_utils.get_affine_from_sim(source_sim, transform_key=transform_key),
+            transform,
             transform_key=transform_key)
 
 

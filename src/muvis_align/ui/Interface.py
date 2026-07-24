@@ -529,6 +529,7 @@ class Interface:
     def update_registered(self):
         sims = self.reg.sims
         coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+        copy_transforms(sims, self.preview_sims, self.get_best_transform_key())
         self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
         self.populate_metrics_table(self.reg.metrics)
@@ -553,7 +554,8 @@ class Interface:
                     results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
                                                       params=self.params['registration'] | {'metrics': self.metrics_methods})
                 qualities = {key: metric[default_transform_key][default_quality_key]
-                             for key, metric in results['metrics']['pairs'].items()}
+                             for key, metric in results['metrics']['pairs'].items()
+                             if default_quality_key in metric[default_transform_key]}
                 bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
                           nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
                 self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)

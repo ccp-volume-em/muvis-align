@@ -1321,12 +1321,14 @@ class MVSRegistration:
     def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         file_labels = self.file_labels
-        output_mappings = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}':
-                               {'mapping': np.array(mapping.sel(t=0)).tolist(),
-                                default_quality_key: float(qualities[keys]),
-                                'bbox': bboxes[keys]}
-                           for keys, mapping in mappings.items()
-                           if keys in qualities}
+        output_mappings = {}
+        for keys, mapping in mappings.items():
+            label_key = f'{file_labels[keys[0]]}-{file_labels[keys[1]]}'
+            output_mappings[label_key] = {'mapping': np.array(mapping.sel(t=0)).tolist()}
+            if keys in qualities:
+                output_mappings[label_key][default_quality_key] = float(qualities[keys])
+            if keys in bboxes:
+                output_mappings[label_key]['bbox'] = bboxes[keys]
         export_json(pair_mappings_filename, output_mappings)
 
     def save_mappings(self, mappings):
