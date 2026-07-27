@@ -451,7 +451,7 @@ class TestNapariInterfaceRegistration:
                             assert mock_save.called
 
     def test_global_registration_with_dimension_mismatch(self, make_napari_viewer, project_config):
-        """Test update_registered with dimension mismatch in transforms (copy_transforms fix)."""
+        """Test update_registered handles sims with transforms that include a t dimension."""
         viewer = make_napari_viewer()
         
         with patch('src.muvis_align._widget.ViewerWidget'):
@@ -481,17 +481,19 @@ class TestNapariInterfaceRegistration:
         interface.reg.reg_transform_key = 'registered'
         
         with patch('src.muvis_align.ui.Interface.si_utils.get_tranform_keys_from_sim', return_value=['registered']):
-            with patch('src.muvis_align.ui.Interface.copy_transforms') as mock_copy:
-                with patch.object(interface, 'populate_coordinate_systems'):
-                    with patch.object(interface, 'populate_metadata_table'):
-                        with patch.object(interface, 'populate_metrics_table'):
-                            with patch.object(interface, 'update_overview'):
-                                with patch.object(interface, 'update_view'):
-                                    # This should not raise KeyError about dimension mismatch
-                                    interface.update_registered()
-                                    
-                                    # Verify copy_transforms was called
-                                    assert mock_copy.called
+            with patch.object(interface, 'populate_coordinate_systems') as mock_pop_coord:
+                with patch.object(interface, 'populate_metadata_table') as mock_pop_meta:
+                    with patch.object(interface, 'populate_metrics_table') as mock_pop_metrics:
+                        with patch.object(interface, 'update_overview') as mock_overview:
+                            with patch.object(interface, 'update_view') as mock_view:
+                                # This should not raise KeyError about dimension mismatch
+                                interface.update_registered()
+
+                                assert mock_pop_coord.called
+                                assert mock_pop_meta.called
+                                assert mock_pop_metrics.called
+                                assert mock_overview.called
+                                assert mock_view.called
 
 
 class TestProjectConfigurationFiles:
