@@ -1067,7 +1067,8 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
             result = _get_overlap_bboxes(
                 sim1,
                 sim2,
-                input_transform_key=transform_key
+                input_transform_key=transform_key,
+                output_transform_key=transform_key,
             )
             points = result['intersection'].intersections
             if points.shape[1] == 3 and force_2d:

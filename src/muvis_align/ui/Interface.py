@@ -157,11 +157,13 @@ class Interface:
                                output_path=output,
                                overwrite=params['overwrite'])
             if ok:
-                self.update_metadata_source()
-                self.populate_image_selection()
-                self.init_progress()
-            else:
+                ok = self.update_metadata_source()
+                if ok:
+                    self.populate_image_selection()
+                    self.init_progress()
+            if not ok:
                 show_warning('No input images found')
+                self.reg.state = RegState.UNINIT
         elif self.reg.is_global_registered():
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
         elif self.reg.is_pairs_registered():
@@ -196,6 +198,7 @@ class Interface:
                 self.reg.init_sims(source_metadata=self.source_metadata)
             except ValueError as e:
                 show_warning('Unable to read source data\n' + str(e))
+                return False
 
             preview_scale = self.params['input_output']['preview_scale']
             self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
@@ -218,6 +221,8 @@ class Interface:
             self.check_3d_view()
             self.update_overview()
             self.update_view()
+
+        return True
 
     def pre_processing_process(self):
         params_features = self.params['pre_processing']

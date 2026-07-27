@@ -13,7 +13,10 @@ def create_dask_source(filename, source_metadata=None):
     elif '.zar' in filename.lower():
         dask_source = ZarrDaskSource(filename, source_metadata)
     else:
-        raise ValueError(f'Unsupported file type: {ext}')
+        if ext:
+            raise ValueError(f'Unsupported file type: {ext}')
+        else:
+            raise ValueError(f'Unsupported: {filename}')
     return dask_source
 
 
