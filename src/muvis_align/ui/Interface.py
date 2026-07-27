@@ -224,17 +224,22 @@ class Interface:
 
         return True
 
-    def pre_processing_process(self):
+    def run_pre_processing(self):
         params_features = self.params['pre_processing']
         if self.reg.check_preprocess(**params_features) or self.pre_processing_performed:
             with TqdmCallback(tqdm_class=progress, desc='Pre-processing', bar_format=" "), \
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
                 _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
-            self.pre_processing_performed = modified
-            self.update_view(show_preprocessed=True)
+        else:
+            _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
+        self.pre_processing_performed = modified
+
+    def pre_processing_process(self):
+        self.run_pre_processing()
         self.enable_tabs(True, 3)
         self.select_tab(3)
+        self.update_view(show_preprocessed=True)
 
     def populate_channels(self):
         channels = list({channel.get('label', '') for source in self.reg.sources for channel in source.get_channels()})
@@ -448,9 +453,6 @@ class Interface:
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
 
-        if len(self.reg.register_sims) == 0:
-            params_features = self.params['pre_processing']
-            self.reg.preprocess(self.reg.sims, **params_features)
         reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
         overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
         overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
@@ -549,6 +551,37 @@ class Interface:
         self.update_overview(transform_key=view_transform_key)
         self.update_view(transform_key=view_transform_key, overlaps=True)
 
+    def run_pair_registration(self):
+        with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
+                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                VisibleActivityDock(self.viewer):
+            results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
+                                              params=self.params['registration'] | {'metrics': self.metrics_methods})
+
+        qualities = {key: metric[default_transform_key][default_quality_key]
+                     for key, metric in results['metrics']['pairs'].items()
+                     if default_quality_key in metric[default_transform_key]}
+        bboxes = {}
+        for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
+            if 't' in value.dims:
+                value = value.sel(t=0)
+            bboxes[key] = np.array(value).tolist()
+        self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
+        return results
+
+    def run_global_registration(self):
+        with TqdmCallback(tqdm_class=progress, desc='Global registration', bar_format=" "), \
+                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                VisibleActivityDock(self.viewer):
+            results = self.reg.register_global(self.reg.sims, self.reg.msims,
+                                               register_indices=self.reg.register_indices,
+                                               params=self.params['registration'])
+
+        self.reg.save_mappings(results['mappings'])
+        self.reg.save_mappings_csv(results['mappings'])
+        self.reg.save_metrics(results['metrics'])
+        return results
+
     def pair_registration(self):
         if self.reg.is_global_registered():
             show_warning('Global registration was already performed')
@@ -558,23 +591,7 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
-                with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
-                     TemporarilyDisabledWidgets(self.get_all_widgets()), \
-                     VisibleActivityDock(self.viewer):
-                    if len(self.reg.register_sims) == 0:
-                        params_features = self.params['pre_processing']
-                        self.reg.preprocess(self.reg.sims, **params_features)
-                    results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
-                                                      params=self.params['registration'] | {'metrics': self.metrics_methods})
-                qualities = {key: metric[default_transform_key][default_quality_key]
-                             for key, metric in results['metrics']['pairs'].items()
-                             if default_quality_key in metric[default_transform_key]}
-                bboxes = {}
-                for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
-                    if 't' in value.dims:
-                        value = value.sel(t=0)
-                    bboxes[key] = np.array(value).tolist()
-                self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
+                self.run_pair_registration()
                 self.update_registered(view_transform_key=self.reg.source_transform_key)
 
     def modify_pair_registration(self):
@@ -640,26 +657,21 @@ class Interface:
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
-        if not self.reg.is_pairs_registered():
-            show_warning('Perform pair registration first')
+        if self.reg.is_global_registered():
+            message = 'Global registration was already performed. Run global registration?'
+        elif not self.reg.is_pairs_registered():
+            message = 'Pair registration not performed yet. Run both pair and global registration?'
         else:
-            message = 'Global registration was already performed. ' if self.reg.is_global_registered() else ''
-            message += 'Run global registration?'
-            reply = QMessageBox.question(None, 'muvis-align', message,
-                                         QMessageBox.Yes|QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                with TqdmCallback(tqdm_class=progress, desc='Global registration', bar_format=" "), \
-                     TemporarilyDisabledWidgets(self.get_all_widgets()), \
-                     VisibleActivityDock(self.viewer):
-                    results = self.reg.register_global(self.reg.sims, self.reg.msims,
-                                                       register_indices=self.reg.register_indices,
-                                                       params=self.params['registration'])
-                self.reg.save_mappings(results['mappings'])
-                self.reg.save_mappings_csv(results['mappings'])
-                self.reg.save_metrics(results['metrics'])
-                copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
-                self.enable_tabs(True, 4)
-                self.update_registered(view_transform_key=self.reg.reg_transform_key)
+            message = 'Run global registration?'
+        reply = QMessageBox.question(None, 'muvis-align', message,
+                                     QMessageBox.Yes|QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if not self.reg.is_pairs_registered():
+                self.run_pair_registration()
+            self.run_global_registration()
+            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            self.enable_tabs(True, 4)
+            self.update_registered(view_transform_key=self.reg.reg_transform_key)
 
     def preview_fusion(self):
         self.reg.params_general = {'output': {}}
