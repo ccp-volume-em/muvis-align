@@ -827,9 +827,17 @@ def get_sim_position_final(sim, position=None, transform_keys=None, get_center=F
         position = si_utils.get_origin_from_sim(sim)
     if transform_keys is None or len(transform_keys) == 0:
         transform_keys = si_utils.get_tranform_keys_from_sim(sim)
-    transform = combine_transforms([np.array(si_utils.get_affine_from_sim(sim, transform_key))
-                                    for transform_key in transform_keys])
-    transform_dims = si_utils.get_affine_from_sim(sim, transform_keys[0])['x_in'].data.tolist()
+
+    transforms = []
+    transform_dims = []
+    for transform_key in transform_keys:
+        transform = si_utils.get_affine_from_sim(sim, transform_key)
+        if 't' in transform.dims:
+            transform = transform.isel(t=0)
+        transforms.append(np.array(transform))
+        transform_dims = transform['x_in'].data.tolist()
+    transform = combine_transforms(transforms)
+
     new_position = apply_transform_dict([position], transform, transform_dims)[0]
     for dim in position.keys():
         if dim not in new_position:
@@ -1065,6 +1073,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
             if points.shape[1] == 3 and force_2d:
                 # remove constant z coordinate
                 points = points[:, 1:]
+            # remove duplicate points
             points = np.array(list(map(list, set(map(tuple, points)))))
             hull = ConvexHull(points)
             shape = points[hull.vertices]
@@ -1073,7 +1082,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
                 shape = [[z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
-        except:
+        except AttributeError:
             pass
     return shapes, good_pairs
 
@@ -1161,10 +1170,16 @@ def combine_transforms(transforms):
 
 def squeeze_sim_dims(sim, transform_key):
     sim = sim.copy()
+    if 't' in sim.dims:
+        sim = sim.isel(t=0)
+    if 'c' in sim.dims and sim.sizes.get('c', 0) <= 1:
+        sim = sim.isel(c=0)
     affine = si_utils.get_affine_from_sim(sim, transform_key)
-    if "t" in affine.dims:
+    if 't' in affine.dims:
         affine = affine.isel(t=0)
-        si_utils.set_sim_affine(sim, affine, transform_key)
+    if 'c' in affine.dims:
+        affine = affine.isel(c=0)
+    si_utils.set_sim_affine(sim, affine, transform_key)
     return sim
 
 

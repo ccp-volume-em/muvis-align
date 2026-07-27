@@ -162,8 +162,10 @@ class Interface:
                 self.init_progress()
             else:
                 show_warning('No input images found')
+        elif self.reg.is_global_registered():
+            self.update_registered(view_transform_key=self.reg.reg_transform_key)
         elif self.reg.is_pairs_registered():
-            self.update_registered()
+            self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
             self.update_metadata_source()
 
@@ -173,15 +175,17 @@ class Interface:
         if self.reg.is_fused():
             self.enable_tabs(True, 4)
             self.select_tab(4)
+            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
             self.preview_fusion()
         elif self.reg.is_global_registered():
             self.enable_tabs(True, 4)
             self.select_tab(4)
-            self.update_registered()
+            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            self.update_registered(view_transform_key=self.reg.reg_transform_key)
         elif self.reg.is_pairs_registered():
             self.enable_tabs(True, 3)
             self.select_tab(3)
-            self.update_registered()
+            self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
             self.enable_tabs(True, 2)
             self.select_tab(2)
@@ -289,14 +293,16 @@ class Interface:
         self.viewer.dims.ndisplay = ndisplay
         #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
-    def update_overview(self, overlaps=True):
-        transform_key = self.get_best_transform_key()
+    def update_overview(self, transform_key=None, overlaps=True):
+        if transform_key is None:
+            transform_key = self.get_best_transform_key()
         self._clear_napari_view(self.overview)
         self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', transform_key,
                                    overlaps=overlaps)
 
-    def update_view(self, overlaps=False, show_preprocessed=False):
-        transform_key = self.get_best_transform_key()
+    def update_view(self, transform_key=None, overlaps=False, show_preprocessed=False):
+        if transform_key is None:
+            transform_key = self.get_best_transform_key()
         self._clear_napari_view(self.viewer)
         if self.params['input_output']['preview_images']:
             self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
@@ -529,15 +535,14 @@ class Interface:
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
         table_widget.read_only = True
 
-    def update_registered(self):
+    def update_registered(self, view_transform_key=None):
         sims = self.reg.sims
         coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
-        copy_transforms(sims, self.preview_sims, self.get_best_transform_key())
         self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
         self.populate_metrics_table(self.reg.metrics)
-        self.update_overview()
-        self.update_view(overlaps=True)
+        self.update_overview(transform_key=view_transform_key)
+        self.update_view(transform_key=view_transform_key, overlaps=True)
 
     def pair_registration(self):
         if self.reg.is_global_registered():
@@ -565,7 +570,7 @@ class Interface:
                         value = value.sel(t=0)
                     bboxes[key] = np.array(value).tolist()
                 self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
-                self.update_registered()
+                self.update_registered(view_transform_key=self.reg.source_transform_key)
 
     def modify_pair_registration(self):
         if self.view_mode == ViewMode.PAIRS:
@@ -590,7 +595,7 @@ class Interface:
                 self.reg.save_pair_mappings(pair_transforms, qualities, bboxes)
 
             self.view_mode = ViewMode.OVERVIEW
-            self.update_registered()
+            self.update_registered(view_transform_key=self.reg.source_transform_key)
             self.temp_widget_state.restore()
         else:
             self.view_mode = ViewMode.PAIRS
@@ -645,9 +650,11 @@ class Interface:
                                                        register_indices=self.reg.register_indices,
                                                        params=self.params['registration'])
                 self.reg.save_mappings(results['mappings'])
+                self.reg.save_mappings_csv(results['mappings'])
                 self.reg.save_metrics(results['metrics'])
+                copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
                 self.enable_tabs(True, 4)
-                self.update_registered()
+                self.update_registered(view_transform_key=self.reg.reg_transform_key)
 
     def preview_fusion(self):
         self.reg.params_general = {'output': {}}

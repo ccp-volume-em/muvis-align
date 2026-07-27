@@ -186,8 +186,6 @@ class MVSRegistration:
         output_npyramid_add = output_params.get('npyramid_add', general_output_params.get('npyramid_add', 0))
         output_ome_version = output_params.get('ome_version', general_output_params.get('ome_version', default_ome_zarr_version))
 
-        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
-
         if len(filenames) == 0:
             logging.warning('Skipping (no images)')
             return False
@@ -218,6 +216,7 @@ class MVSRegistration:
         self.init_progress(output_filename, output_format)
 
         data = []
+        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
         for label, sim, scale in zip(file_labels, sims, self.scales):
             position, rotation = get_data_mapping(sim, transform_key=self.source_transform_key)
             position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
@@ -254,20 +253,7 @@ class MVSRegistration:
 
             if 'register' in operation:
                 logging.info(metrics['summary'])
-                data = []
-                for label, sim, mapping, scale, position, rotation\
-                        in zip(file_labels, sims, mappings.values(), self.scales, self.positions, self.rotations):
-                    if not normalise_orientation:
-                        # rotation already in msim affine transform
-                        rotation = None
-                    position, rotation = get_data_mapping(sim, transform_key=self.reg_transform_key,
-                                                          transform=mapping,
-                                                          translation0=position,
-                                                          rotation=rotation)
-                    position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
-                    row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
-                    data.append(row)
-                export_csv(output + metrics_tabular_name, data, header=mappings_header)
+                self.save_mappings_csv(mappings, normalise_orientation=normalise_orientation)
 
                 for reg_label, reg_item in reg_result.items():
                     if isinstance(reg_item, dict):
@@ -582,8 +568,10 @@ class MVSRegistration:
                 indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
                 indexed_pair_transforms[indexed_key] = (
                     param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
-                indexed_qualities[indexed_key] = np.array(value[default_quality_key])
-                indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+                if default_quality_key in value:
+                    indexed_qualities[indexed_key] = np.array(value[default_quality_key])
+                if 'bbox' in value:
+                    indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             if not is_3d:
                 self.sims = make_sims_2d(self.sims)
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
@@ -1355,6 +1343,26 @@ class MVSRegistration:
         output_mappings = {self.file_labels[key]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
         export_json(mappings_filename, output_mappings)
+
+    def save_mappings_csv(self, mappings, normalise_orientation=False):
+        data = []
+        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
+        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_tabular_name)
+        for label, sim, mapping, scale, position, rotation \
+                in zip(self.file_labels, self.sims, mappings.values(), self.scales, self.positions, self.rotations):
+            if not normalise_orientation:
+                # rotation already in msim affine transform
+                rotation = None
+            position, rotation = get_data_mapping(sim,
+                                                  transform_key=self.reg_transform_key,
+                                                  transform=mapping,
+                                                  translation0=position,
+                                                  rotation=rotation)
+            position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
+            row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [
+                rotation]
+            data.append(row)
+        export_csv(mappings_filename, data, header=mappings_header)
 
     def save_metrics(self, metrics):
         metrics_filename = self.output + metrics_name
