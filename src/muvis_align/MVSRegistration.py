@@ -186,8 +186,6 @@ class MVSRegistration:
         output_npyramid_add = output_params.get('npyramid_add', general_output_params.get('npyramid_add', 0))
         output_ome_version = output_params.get('ome_version', general_output_params.get('ome_version', default_ome_zarr_version))
 
-        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
-
         if len(filenames) == 0:
             logging.warning('Skipping (no images)')
             return False
@@ -218,6 +216,7 @@ class MVSRegistration:
         self.init_progress(output_filename, output_format)
 
         data = []
+        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
         for label, sim, scale in zip(file_labels, sims, self.scales):
             position, rotation = get_data_mapping(sim, transform_key=self.source_transform_key)
             position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
@@ -254,20 +253,7 @@ class MVSRegistration:
 
             if 'register' in operation:
                 logging.info(metrics['summary'])
-                data = []
-                for label, sim, mapping, scale, position, rotation\
-                        in zip(file_labels, sims, mappings.values(), self.scales, self.positions, self.rotations):
-                    if not normalise_orientation:
-                        # rotation already in msim affine transform
-                        rotation = None
-                    position, rotation = get_data_mapping(sim, transform_key=self.reg_transform_key,
-                                                          transform=mapping,
-                                                          translation0=position,
-                                                          rotation=rotation)
-                    position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
-                    row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
-                    data.append(row)
-                export_csv(output + metrics_tabular_name, data, header=mappings_header)
+                self.save_mappings_csv(mappings, normalise_orientation=normalise_orientation)
 
                 for reg_label, reg_item in reg_result.items():
                     if isinstance(reg_item, dict):
@@ -402,7 +388,10 @@ class MVSRegistration:
 
         ndims = len(output_order)
         if source0.get_nchannels() > 1:
-            output_order += 'c'
+            if source0.is_rgb:
+                output_order = output_order + 'c'
+            else:
+                output_order = 'c' + output_order
 
         last_z_position = None
         different_z_positions = False
@@ -462,7 +451,7 @@ class MVSRegistration:
 
             dask_data = source.get_data(level=level)
             if any(value != 1 for value in rescale.values()):
-                new_shape = [int(size / rescale[dim]) if dim in 'xyz' else 1
+                new_shape = [int(size / rescale.get(dim, 1))
                              for dim, size in zip(source.dimension_order, dask_data.shape)]
                 dask_data = resize(dask_data, new_shape, preserve_range=True).astype(dask_data.dtype)
             image = redimension_data(dask_data, source.dimension_order, output_order)
@@ -579,8 +568,10 @@ class MVSRegistration:
                 indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
                 indexed_pair_transforms[indexed_key] = (
                     param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
-                indexed_qualities[indexed_key] = np.array(value[default_quality_key])
-                indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+                if default_quality_key in value:
+                    indexed_qualities[indexed_key] = np.array(value[default_quality_key])
+                if 'bbox' in value:
+                    indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             if not is_3d:
                 self.sims = make_sims_2d(self.sims)
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
@@ -1053,6 +1044,25 @@ class MVSRegistration:
             msims_reg = register_msims
 
         #print_sim_info(msims_reg[0])
+        
+        # Normalize transforms to match image dimensions in each scale level
+        # (handles mixed 3D/4D transforms in multiscale images)
+        for msim in msims_reg:
+            for scale_node in msim.ds.values():
+                if 'source_metadata' in scale_node.ds.data_vars:
+                    img_data = scale_node.ds['image']
+                    if hasattr(img_data, 'data'):
+                        img_data = img_data.data
+                    # Get spatial dims from image shape
+                    spatial_dims = [d for d in img_data.dims if d not in ('t', 'c')]
+                    # Get current transform
+                    current_transform = scale_node.ds.data_vars[self.source_transform_key]
+                    transform_spatial_dims = [d for d in current_transform.coords['x_in'].values if d != '1']
+                    # Adapt if mismatch
+                    if len(transform_spatial_dims) != len(spatial_dims):
+                        relevant_dim_names = spatial_dims + ['1']
+                        adapted = current_transform.sel(x_in=relevant_dim_names, x_out=relevant_dim_names)
+                        scale_node.ds[self.source_transform_key] = adapted
 
         try:
             with dask.config.set(scheduler='threads'):
@@ -1245,26 +1255,22 @@ class MVSRegistration:
              output_filename=None, tile_size=None, ome_version=default_ome_zarr_version):
         if output_filename is not None:
             output_filename = self.output + output_filename
+
         sim0 = sims[0]
-        if transform_key is None:
-            transform_key = self.reg_transform_key
-        if isinstance(self.extra_metadata, dict):
-            z_scale = self.extra_metadata.get('scale', {}).get('z')
-            channels = self.extra_metadata.get('channels', [])
-        else:
-            z_scale = None
-            channels = []
+
+        channels = self.extra_metadata.get('channels', []) if isinstance(self.extra_metadata, dict) else []
         is_channel_overlay = (len(channels) > 1)
 
-        if z_scale is None and self.scales is not None:
-            z_scale0 = np.mean([scale.get('z', 0) for scale in self.scales])
-            if z_scale0 > 0:
-                z_scale = z_scale0
+        if transform_key is None:
+            transform_key = self.reg_transform_key
+
+        if isinstance(self.extra_metadata, dict):
+            z_scale = self.extra_metadata.get('scale', {}).get('z')
+        else:
+            z_scale = None
+
         if z_scale is None:
-            if 'z' in sim0.dims:
-                diffs = np.diff(sorted(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])))
-                if len(diffs) > 0:
-                    z_scale = min(diffs)
+            z_scale = extract_z_scale(self.positions, self.scales)
 
         z_positions = [position.get('z') for position in self.positions if 'z' in position]
         if len(set(z_positions)) > 1:
@@ -1322,12 +1328,14 @@ class MVSRegistration:
     def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         file_labels = self.file_labels
-        output_mappings = {f'{file_labels[keys[0]]}-{file_labels[keys[1]]}':
-                               {'mapping': np.array(mapping.sel(t=0)).tolist(),
-                                default_quality_key: float(qualities[keys]),
-                                'bbox': bboxes[keys]}
-                           for keys, mapping in mappings.items()
-                           if keys in qualities}
+        output_mappings = {}
+        for keys, mapping in mappings.items():
+            label_key = f'{file_labels[keys[0]]}-{file_labels[keys[1]]}'
+            output_mappings[label_key] = {'mapping': np.array(mapping.sel(t=0)).tolist()}
+            if keys in qualities:
+                output_mappings[label_key][default_quality_key] = float(qualities[keys])
+            if keys in bboxes:
+                output_mappings[label_key]['bbox'] = bboxes[keys]
         export_json(pair_mappings_filename, output_mappings)
 
     def save_mappings(self, mappings):
@@ -1335,6 +1343,26 @@ class MVSRegistration:
         output_mappings = {self.file_labels[key]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
         export_json(mappings_filename, output_mappings)
+
+    def save_mappings_csv(self, mappings, normalise_orientation=False):
+        data = []
+        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
+        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_tabular_name)
+        for label, sim, mapping, scale, position, rotation \
+                in zip(self.file_labels, self.sims, mappings.values(), self.scales, self.positions, self.rotations):
+            if not normalise_orientation:
+                # rotation already in msim affine transform
+                rotation = None
+            position, rotation = get_data_mapping(sim,
+                                                  transform_key=self.reg_transform_key,
+                                                  transform=mapping,
+                                                  translation0=position,
+                                                  rotation=rotation)
+            position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
+            row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [
+                rotation]
+            data.append(row)
+        export_csv(mappings_filename, data, header=mappings_header)
 
     def save_metrics(self, metrics):
         metrics_filename = self.output + metrics_name

@@ -34,21 +34,45 @@ class DaskSource:
             if 'position' in source_metadata:
                 translation = source_metadata['position']
                 if 'x' in translation:
-                    self.position['x'] = eval_context(translation, 'x', 0, context)
+                    if 'source' not in translation['x']:
+                        self.position['x'] = eval_context(translation, 'x', 0, context)
+                    if 'invert' in translation['x']:
+                        if isinstance(self.position['x'], (tuple, list)):
+                            self.position['x'] = -self.position['x'][0], self.position['x'][1]
+                        else:
+                            self.position['x'] = -self.position['x']
                 if 'y' in translation:
-                    self.position['y'] = eval_context(translation, 'y', 0, context)
+                    if 'source' not in translation['y']:
+                        self.position['y'] = eval_context(translation, 'y', 0, context)
+                    if 'invert' in translation['y']:
+                        if isinstance(self.position['y'], (tuple, list)):
+                            self.position['y'] = -self.position['y'][0], self.position['y'][1]
+                        else:
+                            self.position['y'] = -self.position['y']
                 if 'z' in translation:
-                    self.position['z'] = eval_context(translation, 'z', 0, context)
+                    if 'source' not in translation['z']:
+                        self.position['z'] = eval_context(translation, 'z', 0, context)
+                    if 'invert' in translation['z']:
+                        if isinstance(self.position['z'], (tuple, list)):
+                            self.position['z'] = -self.position['z'][0], self.position['z'][1]
+                        else:
+                            self.position['z'] = -self.position['z']
             if 'scale' in source_metadata:
                 scale = source_metadata['scale']
                 if 'x' in scale:
-                    self.pixel_size['x'] = eval_context(scale, 'x', 1, context)
+                    if 'source' not in scale['x']:
+                        self.pixel_size['x'] = eval_context(scale, 'x', 1, context)
                 if 'y' in scale:
-                    self.pixel_size['y'] = eval_context(scale, 'y', 1, context)
+                    if 'source' not in scale['y']:
+                        self.pixel_size['y'] = eval_context(scale, 'y', 1, context)
                 if 'z' in scale:
-                    self.pixel_size['z'] = eval_context(scale, 'z', 1, context)
+                    if 'source' not in scale['z']:
+                        self.pixel_size['z'] = eval_context(scale, 'z', 1, context)
             if 'rotation' in source_metadata:
-                self.rotation = eval_context(source_metadata, 'rotation', 0, context)
+                if 'source' not in source_metadata['rotation']:
+                    self.rotation = eval_context(source_metadata, 'rotation', 0, context)
+                if 'invert' in source_metadata['rotation']:
+                    self.rotation = -self.rotation
 
         if len(self.scales) == 0:
             for shape in self.shapes:

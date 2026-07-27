@@ -1,7 +1,8 @@
 from ome_zarr.io import parse_url
 from ome_zarr.reader import Reader
-import zarr
 from ome_zarr.writer import write_image
+from skimage.transform import resize
+import zarr
 
 from muvis_align.image.source_helper import create_dask_source
 from muvis_align.image.util import get_level_from_scale
@@ -37,17 +38,20 @@ def read_dask(url, target_scale=16):
     print('level', level)
     print('rescale', rescale)
     print('scale', scale)
+    data = source.get_data()
     if any(value != 1 for value in rescale.values()):
-        new_shape = [int(size / rescale[dim]) if dim in 'xyz' else 1
+        new_shape = [int(size / rescale.get(dim, 1))
                      for dim, size in zip(source.dimension_order, source.shapes[level])]
         print(source.shapes[level], ' -> ', new_shape)
+        data = resize(data, new_shape, preserve_range=True).astype(data.dtype)
     return source
 
 
 if __name__ == '__main__':
     # Example URL of remote data
-    # url = "https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.4/idr0062A/6001240.zarr"
-    # url = "https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.5/idr0062A/6001240_labels.zarr"
-    url = 'D:/slides/Emb3_2x2_Mosaic_2CAMs/RL00--X00--Y00--C00.ome.zarr'
+    #url = "https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.4/idr0062A/6001240.zarr"
+    #url = "https://uk1s3.embassy.ebi.ac.uk/idr/zarr/v0.5/idr0062A/6001240_labels.zarr"
+    #url = 'D:/slides/Emb3_2x2_Mosaic_2CAMs/RL00--X00--Y00--C00.ome.zarr'
+    url = r'D:\slides\EM04768_01_substrate_04\Stitched\registered.ome.tiff'
     #zarr_test(url)
     read_dask(url)

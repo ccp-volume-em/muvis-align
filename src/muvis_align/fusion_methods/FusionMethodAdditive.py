@@ -19,4 +19,4 @@ class FusionMethodAdditive(FusionMethod):
             Fusion of input views
         """
         maxval = 2 ** (8 * self.source_type.itemsize) - 1
-        return (np.nansum(transformed_views, axis=0, dtype=transformed_views[0].dtype) // 2).clip(0, maxval)
+        return np.nanmean(transformed_views, axis=0, dtype=transformed_views[0].dtype).clip(0, maxval)

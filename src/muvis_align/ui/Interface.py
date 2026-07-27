@@ -16,8 +16,8 @@ from muvis_align.constants import zarr_extension, default_transform_key, default
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
-    affine_from_intrinsic_affine, get_sim_shape, get_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms
+    affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
+    draw_keypoints_matches_napari, get_transforms, copy_transforms, validate_element_length, make_sims_3d
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
@@ -93,6 +93,7 @@ class Interface:
             self.update_widgets()
         else:
             self.write_params()
+            self.update_input_output_path()
 
     def update_widgets(self):
         for param_name, param_widget in self.param_widgets.items():
@@ -110,6 +111,13 @@ class Interface:
             self.params[keys[0]] = {}
         self.params[keys[0]][keys[1]] = value
         self.write_params()
+
+    def update_input_output_path(self):
+        params = self.params['input_output']
+        widget = self.param_widgets.get('input_output.input_path')
+        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('input_path', '')))
+        widget = self.param_widgets.get('input_output.output_path')
+        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('output_path', '')))
 
     def source_position_z(self, value):
         if is_valid_value(value):
@@ -149,13 +157,17 @@ class Interface:
                                output_path=output,
                                overwrite=params['overwrite'])
             if ok:
-                self.update_metadata_source()
-                self.populate_image_selection()
-                self.init_progress()
-            else:
+                ok = self.update_metadata_source()
+                if ok:
+                    self.populate_image_selection()
+                    self.init_progress()
+            if not ok:
                 show_warning('No input images found')
+                self.reg.state = RegState.UNINIT
+        elif self.reg.is_global_registered():
+            self.update_registered(view_transform_key=self.reg.reg_transform_key)
         elif self.reg.is_pairs_registered():
-            self.update_registered()
+            self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
             self.update_metadata_source()
 
@@ -165,28 +177,44 @@ class Interface:
         if self.reg.is_fused():
             self.enable_tabs(True, 4)
             self.select_tab(4)
+            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
             self.preview_fusion()
         elif self.reg.is_global_registered():
             self.enable_tabs(True, 4)
             self.select_tab(4)
-            self.update_registered()
+            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            self.update_registered(view_transform_key=self.reg.reg_transform_key)
         elif self.reg.is_pairs_registered():
             self.enable_tabs(True, 3)
             self.select_tab(3)
-            self.update_registered()
+            self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
             self.enable_tabs(True, 2)
             self.select_tab(2)
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
+            try:
+                self.reg.init_sims(source_metadata=self.source_metadata)
+            except ValueError as e:
+                show_warning('Unable to read source data\n' + str(e))
+                return False
+
             preview_scale = self.params['input_output']['preview_scale']
             self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
                                                    store=False)
-            self.reg.init_sims(source_metadata=self.source_metadata)
+            z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
+            is_multi_z_shapes = (len(z_positions) > 1)
+            if is_multi_z_shapes:
+                positions = []
+                for position in self.reg.positions:
+                    position['z'] = z_positions.index(position.get('z', 0))
+                    positions.append(position)
+                self.preview_sims = make_sims_3d(self.preview_sims, positions=positions)
         sims = self.reg.sims
 
         coord_systems = get_transforms(sims)
+        self.populate_channels()
         self.populate_coordinate_systems(coord_systems)
         if self.reg.is_initialised():
             self.populate_metadata_table(sims)
@@ -194,22 +222,35 @@ class Interface:
             self.update_overview()
             self.update_view()
 
-    def pre_processing_process(self):
+        return True
+
+    def run_pre_processing(self):
         params_features = self.params['pre_processing']
         if self.reg.check_preprocess(**params_features) or self.pre_processing_performed:
             with TqdmCallback(tqdm_class=progress, desc='Pre-processing', bar_format=" "), \
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
                 _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
-            self.pre_processing_performed = modified
-            self.update_view(show_preprocessed=True)
+        else:
+            _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
+        self.pre_processing_performed = modified
+
+    def pre_processing_process(self):
+        self.run_pre_processing()
         self.enable_tabs(True, 3)
         self.select_tab(3)
+        self.update_view(show_preprocessed=True)
+
+    def populate_channels(self):
+        channels = list({channel.get('label', '') for source in self.reg.sources for channel in source.get_channels()})
+        choices = {channel: channel for channel in channels}
+        param_widget = self.param_widgets.get('registration.channel')
+        param_widget.set_choices(choices)
 
     def populate_coordinate_systems(self, coord_systems):
-        param_widget = self.param_widgets.get('input_output.coordinate_system')
         choices = {coord_system: coord_system.replace('_', ' ').capitalize() for coord_system in coord_systems}
-        param_widget.widget.choices = to_magicgui_choices(choices)
+        param_widget = self.param_widgets.get('input_output.coordinate_system')
+        param_widget.set_choices(choices)
 
     def coordinate_system(self, transform_key):
         self.transform_key = transform_key
@@ -262,14 +303,16 @@ class Interface:
         self.viewer.dims.ndisplay = ndisplay
         #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
-    def update_overview(self, overlaps=True):
-        transform_key = self.get_best_transform_key()
+    def update_overview(self, transform_key=None, overlaps=True):
+        if transform_key is None:
+            transform_key = self.get_best_transform_key()
         self._clear_napari_view(self.overview)
         self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', transform_key,
                                    overlaps=overlaps)
 
-    def update_view(self, overlaps=False, show_preprocessed=False):
-        transform_key = self.get_best_transform_key()
+    def update_view(self, transform_key=None, overlaps=False, show_preprocessed=False):
+        if transform_key is None:
+            transform_key = self.get_best_transform_key()
         self._clear_napari_view(self.viewer)
         if self.params['input_output']['preview_images']:
             self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
@@ -282,7 +325,8 @@ class Interface:
     def _clear_napari_view(self, viewer):
         viewer.layers.clear()
 
-    def _update_napari_data(self, viewer, layer_name, transform_key, fusion_method='additive', show_preprocessed=False):
+    def _update_napari_data(self, viewer, layer_name, transform_key, fusion_method='additive',
+                            show_preprocessed=False):
         if show_preprocessed:
             sims = self.reg.register_sims
         else:
@@ -292,41 +336,63 @@ class Interface:
         fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
         fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
         if fused is not None:
-            image_layer = viewer.add_image(fused, name=layer_name, scale=fused_scale, translate=fused_position)
-            current_index = viewer.layers.index(image_layer)
-            # ensure image layer goes on 'bottom'
-            if current_index > 0:
-                viewer.layers.move(current_index, 0)
+            source = self.reg.sources[0]
+            channels = source.get_channels()
+            name = [channel.get('label', index) for index, channel in enumerate(channels)]
+            colors = [channel.get('color', [1, 1, 1, 1]) for channel in channels]
+            if len(channels) > 0:
+                channel_axis = fused.dims.index('c') \
+                    if len(colors) > 0 and 'c' in source.dimension_order else None
+                scale = [fused_scale] * len(channels)
+                translate = [fused_position] * len(channels)
+            else:
+                name = name[0] if len(name) > 0 and name[0] else layer_name
+                colors = colors[0] if len(colors) > 0 else None
+                channel_axis = None
+                scale = fused_scale
+                translate = fused_position
+            viewer.add_image(fused, name=name,channel_axis=channel_axis, colormap=colors,
+                             scale=scale, translate=translate)
 
     def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+        sims = self.preview_sims
         bb_supported = True
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
             bb_supported = False
-        sims = self.reg.sims
-        shapes = [get_sim_shape(sim, transform_key=transform_key, force_2d=not bb_supported) for sim in sims]
+        is_3d = (sims[0].sizes.get('z', 0) > 1)
+        is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+        force_2d = not bb_supported or (is_multi_z_shapes and not is_3d)
+        do_3d = ('z' in sims[0].dims and not force_2d)
+        shapes = create_sim_shapes(sims, transform_key=transform_key, force_2d=force_2d)
         refs = [str(index) for index in range(len(sims))]
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(sims))]
 
         if overlaps:
-            shapes2, pairs = get_overlap_shapes(sims, transform_key=transform_key, force_2d=not bb_supported)
+            shapes2, pairs = create_overlap_shapes(sims, transform_key=transform_key, force_2d=force_2d)
             shapes.extend(shapes2)
             refs += [f'{index1} {index2}' for index1, index2 in pairs]
             labels += ['' for _ in pairs]
             face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
         if len(shapes) > 0:
+            # TODO: fix this work-around for incorrect 2d/3d rectangles:
+            expected_npoints = 8 if do_3d else 4
+            good_indices = validate_element_length(shapes, expected_npoints)
+            shapes = [shapes[index] for index in good_indices]
+            face_colors = [face_colors[index] for index in good_indices]
+            labels = np.array(labels)[good_indices]
+            refs = np.array(refs)[good_indices]
+
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
-            shapes = np.array(shapes)
-            is_3d = (shapes.shape[-1] == 3)
-            if is_3d and bb_supported:
-                bbox_layer = BoundingBoxLayer(shapes, name=layer_name, text=text, features=features,
-                                              face_color=face_colors, opacity=0.5, edge_width=100)
+            if do_3d:
+                bbox_layer = BoundingBoxLayer(np.array(shapes), name=layer_name, text=text, features=features,
+                                              face_color=face_colors, opacity=0.25, edge_width=100, edge_color='cyan')
                 self.viewer.add_layer(bbox_layer)
             else:
-                viewer.add_shapes(shapes, name=layer_name, text=text, features=features,
-                                  face_color=face_colors, opacity=0.5, edge_width=0.1)
+                viewer.add_shapes(np.array(shapes), name=layer_name, text=text, features=features,
+                                  face_color=face_colors, opacity=0.25, edge_width=0.1, edge_color='cyan')
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
             #                           face_color=face_colors)
@@ -387,9 +453,6 @@ class Interface:
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
 
-        if len(self.reg.register_sims) == 0:
-            params_features = self.params['pre_processing']
-            self.reg.preprocess(self.reg.sims, **params_features)
         reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
         overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
         overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
@@ -479,14 +542,45 @@ class Interface:
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
         table_widget.read_only = True
 
-    def update_registered(self):
+    def update_registered(self, view_transform_key=None):
         sims = self.reg.sims
         coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
         self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
         self.populate_metrics_table(self.reg.metrics)
-        self.update_overview()
-        self.update_view(overlaps=True)
+        self.update_overview(transform_key=view_transform_key)
+        self.update_view(transform_key=view_transform_key, overlaps=True)
+
+    def run_pair_registration(self):
+        with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
+                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                VisibleActivityDock(self.viewer):
+            results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
+                                              params=self.params['registration'] | {'metrics': self.metrics_methods})
+
+        qualities = {key: metric[default_transform_key][default_quality_key]
+                     for key, metric in results['metrics']['pairs'].items()
+                     if default_quality_key in metric[default_transform_key]}
+        bboxes = {}
+        for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
+            if 't' in value.dims:
+                value = value.sel(t=0)
+            bboxes[key] = np.array(value).tolist()
+        self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
+        return results
+
+    def run_global_registration(self):
+        with TqdmCallback(tqdm_class=progress, desc='Global registration', bar_format=" "), \
+                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                VisibleActivityDock(self.viewer):
+            results = self.reg.register_global(self.reg.sims, self.reg.msims,
+                                               register_indices=self.reg.register_indices,
+                                               params=self.params['registration'])
+
+        self.reg.save_mappings(results['mappings'])
+        self.reg.save_mappings_csv(results['mappings'])
+        self.reg.save_metrics(results['metrics'])
+        return results
 
     def pair_registration(self):
         if self.reg.is_global_registered():
@@ -497,20 +591,8 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
-                with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
-                     TemporarilyDisabledWidgets(self.get_all_widgets()), \
-                     VisibleActivityDock(self.viewer):
-                    if len(self.reg.register_sims) == 0:
-                        params_features = self.params['pre_processing']
-                        self.reg.preprocess(self.reg.sims, **params_features)
-                    results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
-                                                      params=self.params['registration'] | {'metrics': self.metrics_methods})
-                qualities = {key: metric[default_transform_key][default_quality_key]
-                             for key, metric in results['metrics']['pairs'].items()}
-                bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
-                          nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
-                self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
-                self.update_registered()
+                self.run_pair_registration()
+                self.update_registered(view_transform_key=self.reg.source_transform_key)
 
     def modify_pair_registration(self):
         if self.view_mode == ViewMode.PAIRS:
@@ -527,12 +609,15 @@ class Interface:
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1
                 nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, default_transform_key)
                 nx.set_edge_attributes(self.reg.pairs_graph, qualities, default_quality_key)
-                bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in
-                          nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items()}
+                bboxes = {}
+                for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
+                    if 't' in value.dims:
+                        value = value.sel(t=0)
+                    bboxes[key] = np.array(value).tolist()
                 self.reg.save_pair_mappings(pair_transforms, qualities, bboxes)
 
             self.view_mode = ViewMode.OVERVIEW
-            self.update_registered()
+            self.update_registered(view_transform_key=self.reg.source_transform_key)
             self.temp_widget_state.restore()
         else:
             self.view_mode = ViewMode.PAIRS
@@ -572,30 +657,28 @@ class Interface:
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
-        if not self.reg.is_pairs_registered():
-            show_warning('Perform pair registration first')
+        if self.reg.is_global_registered():
+            message = 'Global registration was already performed. Run global registration?'
+        elif not self.reg.is_pairs_registered():
+            message = 'Pair registration not performed yet. Run both pair and global registration?'
         else:
-            message = 'Global registration was already performed. ' if self.reg.is_global_registered() else ''
-            message += 'Run global registration?'
-            reply = QMessageBox.question(None, 'muvis-align', message,
-                                         QMessageBox.Yes|QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                with TqdmCallback(tqdm_class=progress, desc='Global registration', bar_format=" "), \
-                     TemporarilyDisabledWidgets(self.get_all_widgets()), \
-                     VisibleActivityDock(self.viewer):
-                    results = self.reg.register_global(self.reg.sims, self.reg.msims,
-                                                       register_indices=self.reg.register_indices,
-                                                       params=self.params['registration'])
-                self.reg.save_mappings(results['mappings'])
-                self.reg.save_metrics(results['metrics'])
-                self.enable_tabs(True, 4)
-                self.update_registered()
+            message = 'Run global registration?'
+        reply = QMessageBox.question(None, 'muvis-align', message,
+                                     QMessageBox.Yes|QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if not self.reg.is_pairs_registered():
+                self.run_pair_registration()
+            self.run_global_registration()
+            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            self.enable_tabs(True, 4)
+            self.update_registered(view_transform_key=self.reg.reg_transform_key)
 
     def preview_fusion(self):
         self.reg.params_general = {'output': {}}
         self.reg.fusion_params = self.params['fusion']
         self._clear_napari_view(self.viewer)
-        self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key, fusion_method=self.params['fusion']['method'])
+        self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key,
+                                 fusion_method=self.params['fusion']['method'])
         self.view_mode = ViewMode.FUSED
 
     def fusion_process(self):
@@ -605,7 +688,7 @@ class Interface:
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             operation = self.params['registration']['operation']
-            output_filename = operation.split()[0] + 'ed'
+            output_filename = operation.split()[-1] + 'ed'
             tile_size = self.params['fusion']['tile_size']
             if ',' in tile_size:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]

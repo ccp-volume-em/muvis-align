@@ -39,17 +39,20 @@ class ZarrDaskSource(DaskSource):
         scale0 = {}
         for ct_index, transforms in enumerate(self.metadata.get('coordinateTransformations', [])):
             scale = {}
-            position = {}
+            scale_position = {}
             for transform in transforms:
                 if transform['type'] == 'scale':
                     scale = {dim: value for dim, value in zip(dims, transform['scale']) if dim in dims_used}
                 if transform['type'] == 'translation':
-                    position = {dim: value for dim, value in zip(dims, transform['translation']) if dim in dims_used}
+                    scale_position = {dim: value for dim, value in zip(dims, transform['translation'])}
             if ct_index == 0:
                 scale0 = scale
+                position = scale_position
             scales.append(scale)
-            scale_factors.append({dim: value / scale0.get(dim, 1) for dim, value in scale.items()})
-            pixel_size = {dim: convert_to_um(value, units.get(dim, '')) for dim, value in scale.items()}
+            scale_factors.append({dim: value / scale0.get(dim, 1)
+                                  for dim, value in scale.items() if dim in 'xyz'})
+            pixel_size = {dim: convert_to_um(value, units.get(dim, ''))
+                          for dim, value in scale.items() if dim in 'xyz'}
             pixel_sizes.append(pixel_size)
 
         colormaps = self.metadata.get('colormap', [])

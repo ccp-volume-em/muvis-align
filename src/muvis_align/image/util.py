@@ -47,6 +47,37 @@ def grayscale_image(image):
         return image
 
 
+def _adapt_transform_to_image_dims(sim, transform, transform_key):
+    """
+    Extract only the spatial dimensions from transform that match the image.
+    
+    For 2D images, extracts the 3x3 submatrix from a 4x4 transform.
+    Handles dimension mismatch between transforms and images.
+    """
+    sim_spatial_dims = si_utils.get_spatial_dims_from_sim(sim)
+    transform = sim.attrs['transforms'][transform_key]
+    
+    # Get dimensions from transform coordinates
+    transform_spatial_dims = list(transform.coords['x_in'].values)
+    
+    # Count actual spatial dims (exclude '1' padding)
+    transform_spatial_dim_count = len([d for d in transform_spatial_dims if d != '1'])
+    sim_spatial_dim_count = len(sim_spatial_dims)
+    
+    if transform_spatial_dim_count == sim_spatial_dim_count:
+        # Transform already matches - no adaptation needed
+        return transform
+    
+    # Find which spatial dims are in both sim and transform (ignoring '1' padding)
+    relevant_dims = [d for d in sim_spatial_dims if d in transform_spatial_dims]
+    
+    # Extract submatrix for only relevant dimensions (+ 1 for homogeneous coordinate)
+    relevant_dim_names = relevant_dims + ['1']
+    adapted = transform.sel(x_in=relevant_dim_names, x_out=relevant_dim_names)
+    
+    return adapted
+
+
 def color_image(image):
     nchannels = image.shape[2] if len(image.shape) > 2 else 1
     if nchannels == 1:
@@ -758,11 +789,36 @@ def get_transforms(sims):
     return list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
 
 
+def check_sim_dims(sim):
+    origin = si_utils.get_origin_from_sim(sim)
+    dims = {'dims': sim.dims,
+            'origin': list(origin.keys())}
+    for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+        transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+        dims[transform_key] = np.array(transform.coords['x_in'])
+    return dims
+
+
 def copy_transforms(source_sims, target_sims, transform_key):
+    dims = list(si_utils.get_origin_from_sim(target_sims[0]).keys())
     for source_sim, target_sim in zip(source_sims, target_sims):
+        transform = si_utils.get_affine_from_sim(source_sim, transform_key=transform_key)
+        transform_dims = np.array(transform.coords['x_in'])
+        if len(transform_dims) - 1 != len(dims):
+            new_transform = param_utils.identity_transform(ndim=len(dims))
+            # Get common non-t dimensions for assignment
+            common_dims = [dim for dim in transform.dims if dim in new_transform.dims and dim != 't']
+            if len(common_dims) > 0:
+                # Select t=0 if it exists in transform, then assign
+                if 't' in transform.dims:
+                    transform_slice = transform.sel(t=0)
+                else:
+                    transform_slice = transform
+                new_transform.loc[{dim: transform_slice.coords[dim] for dim in common_dims}] = transform_slice
+            transform = new_transform
         si_utils.set_sim_affine(
             target_sim,
-            si_utils.get_affine_from_sim(source_sim, transform_key=transform_key),
+            transform,
             transform_key=transform_key)
 
 
@@ -771,9 +827,17 @@ def get_sim_position_final(sim, position=None, transform_keys=None, get_center=F
         position = si_utils.get_origin_from_sim(sim)
     if transform_keys is None or len(transform_keys) == 0:
         transform_keys = si_utils.get_tranform_keys_from_sim(sim)
-    transform = combine_transforms([np.array(si_utils.get_affine_from_sim(sim, transform_key))
-                                    for transform_key in transform_keys])
-    transform_dims = si_utils.get_affine_from_sim(sim, transform_keys[0])['x_in'].data.tolist()
+
+    transforms = []
+    transform_dims = []
+    for transform_key in transform_keys:
+        transform = si_utils.get_affine_from_sim(sim, transform_key)
+        if 't' in transform.dims:
+            transform = transform.isel(t=0)
+        transforms.append(np.array(transform))
+        transform_dims = transform['x_in'].data.tolist()
+    transform = combine_transforms(transforms)
+
     new_position = apply_transform_dict([position], transform, transform_dims)[0]
     for dim in position.keys():
         if dim not in new_position:
@@ -952,24 +1016,48 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
     return translation, rotation
 
 
-def get_sim_shape(sim, transform_key=None, force_2d=False):
-    if 't' in sim.dims:
-        sim = sim.sel(t=0)
-    stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
-    points = mv_graph.get_vertices_from_stack_props(stack_props)
-    if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
-        # remove constant z coordinate
-        points = points[:, 1:]
-    points = np.array(list(map(list, set(map(tuple, points)))))
-    hull = ConvexHull(points)
-    shape = points[hull.vertices]
-    return shape
+def extract_z_scale(positions, scales=None):
+    z_scale = None
+
+    if scales is not None:
+        z_scale0 = np.mean([scale.get('z', 0) for scale in scales])
+        if z_scale0 > 0:
+            z_scale = z_scale0
+
+    if z_scale is None:
+        z_positions = [position.get('z') for position in positions if 'z' in position]
+        if len(z_positions) > 1:
+            diffs = np.diff(sorted(set(z_positions)))
+            if len(diffs) > 0:
+                z_scale = min(diffs)
+    return z_scale
 
 
-def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, force_2d=False):
-    # functionality copied from registration.register_pair_of_msims()
+def create_sim_shapes(sims, transform_key=None,  force_2d=False):
+    shapes = []
+    is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+    for sim in sims:
+        if 't' in sim.dims:
+            sim = sim.sel(t=0)
+        stack_props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
+        points = mv_graph.get_vertices_from_stack_props(stack_props)
+        if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
+            # remove constant z coordinate
+            points = points[:, 1:]
+        points = np.array(list(map(list, set(map(tuple, points)))))
+        hull = ConvexHull(points)
+        shape = points[hull.vertices]
+        if is_multi_z_shapes:
+            z_position = si_utils.get_origin_from_sim(sim).get('z', 0)
+            shape = [[z_position] + list(element) for element in shape]
+        shapes.append(shape)
+    return shapes
+
+
+def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
     shapes = []
     good_pairs = []
+    is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
     if pairs is None:
         pairs = np.transpose(np.triu_indices(len(sims), 1))
     for pair in pairs:
@@ -981,15 +1069,18 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, for
                 sim2,
                 input_transform_key=transform_key,
                 output_transform_key=transform_key,
-                overlap_tolerance=overlap_tolerance,
             )
             points = result['intersection'].intersections
             if points.shape[1] == 3 and force_2d:
                 # remove constant z coordinate
                 points = points[:, 1:]
+            # remove duplicate points
             points = np.array(list(map(list, set(map(tuple, points)))))
             hull = ConvexHull(points)
             shape = points[hull.vertices]
+            if is_multi_z_shapes:
+                z_position = si_utils.get_origin_from_sim(sim1).get('z', 0)
+                shape = [[z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
         except:
@@ -997,15 +1088,29 @@ def get_overlap_shapes(sims, transform_key, pairs=None, overlap_tolerance=0, for
     return shapes, good_pairs
 
 
-def get_overlap_images(sim1, sim2, transform_key, overlap_tolerance=0):
+def validate_element_length(data, expected_length):
+    good_indices = []
+    for index, element in enumerate(data):
+        if len(element) == expected_length:
+            good_indices.append(index)
+    return good_indices
+
+
+def get_overlap_images(sim1, sim2, transform_key):
     sims = [sim1.squeeze(), sim2.squeeze()]
     # functionality copied from registration.register_pair_of_msims()
     spatial_dims = si_utils.get_spatial_dims_from_sim(sim1)
+    
+    # Adapt transforms to match image dimensions (handles 3D transform on 2D images)
+    for sim in sims:
+        original_transform = sim.attrs['transforms'][transform_key]
+        adapted_transform = _adapt_transform_to_image_dims(sim, original_transform, transform_key)
+        sim.attrs['transforms'][transform_key] = adapted_transform
+    
     result = _get_overlap_bboxes(
         sims[0],
         sims[1],
-        input_transform_key=transform_key,
-        overlap_tolerance=overlap_tolerance,
+        input_transform_key=transform_key
     )
     lowers, uppers = result['lowers'], result['uppers']
 
@@ -1066,10 +1171,16 @@ def combine_transforms(transforms):
 
 def squeeze_sim_dims(sim, transform_key):
     sim = sim.copy()
+    if 't' in sim.dims:
+        sim = sim.isel(t=0)
+    if 'c' in sim.dims and sim.sizes.get('c', 0) <= 1:
+        sim = sim.isel(c=0)
     affine = si_utils.get_affine_from_sim(sim, transform_key)
-    if "t" in affine.dims:
+    if 't' in affine.dims:
         affine = affine.isel(t=0)
-        si_utils.set_sim_affine(sim, affine, transform_key)
+    if 'c' in affine.dims:
+        affine = affine.isel(c=0)
+    si_utils.set_sim_affine(sim, affine, transform_key)
     return sim
 
 
