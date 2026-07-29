@@ -1,4 +1,5 @@
 import cv2 as cv
+from itertools import product
 import numpy as np
 from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph, metrics
 from multiview_stitcher import spatial_image_utils as si_utils
@@ -1033,6 +1034,18 @@ def extract_z_scale(positions, scales=None):
     return z_scale
 
 
+def _minimal_bb_vertices(points):
+    mins = points.min(axis=0)
+    maxs = points.max(axis=0)
+    corners = np.array(list(product(*zip(mins, maxs))), dtype=float)
+    if corners.shape[1] == 2:
+        # itertools.product yields corners in [min,min],[min,max],[max,min],[max,max]
+        # order, which draws a crossed/bowtie quadrilateral instead of a rectangle.
+        # Reorder to a proper CCW polygon: [min,min],[max,min],[max,max],[min,max]
+        corners = corners[[0, 2, 3, 1]]
+    return corners
+
+
 def create_sim_shapes(sims, transform_key=None,  force_2d=False):
     shapes = []
     is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
@@ -1044,9 +1057,7 @@ def create_sim_shapes(sims, transform_key=None,  force_2d=False):
         if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
             # remove constant z coordinate
             points = points[:, 1:]
-        points = np.array(list(map(list, set(map(tuple, points)))))
-        hull = ConvexHull(points)
-        shape = points[hull.vertices]
+        shape = _minimal_bb_vertices(points)
         if is_multi_z_shapes:
             z_position = si_utils.get_origin_from_sim(sim).get('z', 0)
             shape = [[z_position] + list(element) for element in shape]
@@ -1074,10 +1085,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
             if points.shape[1] == 3 and force_2d:
                 # remove constant z coordinate
                 points = points[:, 1:]
-            # remove duplicate points
-            points = np.array(list(map(list, set(map(tuple, points)))))
-            hull = ConvexHull(points)
-            shape = points[hull.vertices]
+            shape = _minimal_bb_vertices(points)
             if is_multi_z_shapes:
                 z_position = si_utils.get_origin_from_sim(sim1).get('z', 0)
                 shape = [[z_position] + list(element) for element in shape]
