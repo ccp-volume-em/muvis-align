@@ -17,7 +17,8 @@ from muvis_align.file.project_yaml import read_params, get_template_params, writ
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms, validate_element_length, make_sims_3d
+    draw_keypoints_matches_napari, get_transforms, copy_transforms, validate_element_length, make_sims_3d, \
+    set_oriented_bounding_box_edges
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
@@ -390,6 +391,7 @@ class Interface:
                 bbox_layer = BoundingBoxLayer(np.array(shapes), name=layer_name, text=text, features=features,
                                               face_color=face_colors, opacity=0.25, edge_width=100, edge_color='cyan')
                 self.viewer.add_layer(bbox_layer)
+                set_oriented_bounding_box_edges(bbox_layer, shapes)
             else:
                 viewer.add_shapes(np.array(shapes), name=layer_name, text=text, features=features,
                                   face_color=face_colors, opacity=0.25, edge_width=0.1, edge_color='cyan')

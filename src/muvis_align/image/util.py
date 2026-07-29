@@ -1,5 +1,4 @@
 import cv2 as cv
-from itertools import product
 import numpy as np
 from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph, metrics
 from multiview_stitcher import spatial_image_utils as si_utils
@@ -7,7 +6,7 @@ from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrins
     get_affine_from_intrinsic_affine
 from scipy.spatial import ConvexHull
 from skimage.filters import gaussian
-from skimage.feature import blob_log, blob_dog, plot_matched_features
+from skimage.feature import blob_log, plot_matched_features
 from skimage.transform import downscale_local_mean
 import xarray as xr
 from xarray import DataTree
@@ -1034,16 +1033,120 @@ def extract_z_scale(positions, scales=None):
     return z_scale
 
 
-def _minimal_bb_vertices(points):
-    mins = points.min(axis=0)
-    maxs = points.max(axis=0)
-    corners = np.array(list(product(*zip(mins, maxs))), dtype=float)
-    if corners.shape[1] == 2:
-        # itertools.product yields corners in [min,min],[min,max],[max,min],[max,max]
-        # order, which draws a crossed/bowtie quadrilateral instead of a rectangle.
-        # Reorder to a proper CCW polygon: [min,min],[max,min],[max,max],[min,max]
-        corners = corners[[0, 2, 3, 1]]
-    return corners
+def _minimal_bb_vertices(points, return_edge_path=False):
+    """Return the corners of an oriented bounding box around *points*.
+
+    Corners are ordered around one face before the corresponding corners on
+    the opposite face.  If ``return_edge_path`` is true, return the continuous
+    path used to render all edges of a 3D box without diagonals.
+    """
+    points = np.asarray(points, dtype=float)
+    if points.ndim != 2 or points.shape[1] not in (2, 3):
+        raise ValueError("points must be an (N, 2) or (N, 3) array")
+    if len(points) == 0:
+        raise ValueError("at least one point is required")
+
+    centered = points - points.mean(axis=0)
+    if points.shape[1] == 2:
+        hull = ConvexHull(points) if np.linalg.matrix_rank(centered) == 2 else None
+        hull_points = points[hull.vertices] if hull is not None else points
+        edges = np.diff(np.vstack((hull_points, hull_points[0])), axis=0)
+        directions = edges[np.linalg.norm(edges, axis=1) > 0]
+        if len(directions) == 0:
+            axes = np.eye(2)
+        else:
+            directions /= np.linalg.norm(directions, axis=1)[:, None]
+            candidates = np.stack(
+                (
+                    directions,
+                    np.column_stack((-directions[:, 1], directions[:, 0])),
+                ),
+                axis=1,
+            )
+            areas = []
+            for candidate in candidates:
+                projected = points @ candidate.T
+                areas.append(np.prod(np.ptp(projected, axis=0)))
+            axes = candidates[np.argmin(areas)]
+    else:
+        rank = np.linalg.matrix_rank(centered)
+        candidates = []
+        if rank == 3:
+            hull = ConvexHull(points)
+            for simplex, normal in zip(hull.simplices, hull.equations[:, :3]):
+                z_axis = normal / np.linalg.norm(normal)
+                face = points[simplex]
+                for start, end in ((0, 1), (1, 2), (2, 0)):
+                    x_axis = face[end] - face[start]
+                    x_axis -= np.dot(x_axis, z_axis) * z_axis
+                    length = np.linalg.norm(x_axis)
+                    if length == 0:
+                        continue
+                    x_axis /= length
+                    y_axis = np.cross(z_axis, x_axis)
+                    candidates.append(np.stack((x_axis, y_axis, z_axis)))
+
+        if candidates:
+            volumes = []
+            for candidate in candidates:
+                projected = points @ candidate.T
+                volumes.append(np.prod(np.ptp(projected, axis=0)))
+            axes = candidates[np.argmin(volumes)]
+        else:
+            # A deterministic orthonormal basis also gives sensible output for
+            # lower-rank inputs, for which a 3D minimum-volume box is not unique.
+            _, _, vh = np.linalg.svd(centered, full_matrices=True)
+            axes = vh
+
+    projected = points @ axes.T
+    mins = projected.min(axis=0)
+    maxs = projected.max(axis=0)
+    face_order = np.array([[0, 0], [1, 0], [1, 1], [0, 1]])
+    corner_bits = face_order
+    if points.shape[1] == 3:
+        corner_bits = np.vstack(
+            (
+                np.column_stack((face_order, np.zeros(4, dtype=int))),
+                np.column_stack((face_order, np.ones(4, dtype=int))),
+            )
+        )
+    local_corners = mins + corner_bits * (maxs - mins)
+    corners = local_corners @ axes
+
+    if not return_edge_path:
+        return corners
+    if points.shape[1] != 3:
+        raise ValueError("an edge path is only defined for 3D boxes")
+    edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
+    return corners[edge_path]
+
+
+def set_oriented_bounding_box_edges(layer, shapes):
+    """Correct napari-bbox's edge mesh for oriented 3D boxes.
+
+    napari-bbox lexicographically sorts 3D vertices before applying a path
+    intended for axis-aligned boxes.  Sorting destroys the topology of a
+    rotated box and makes some of those edges diagonals.  Rebuild each private
+    edge mesh from our known face-ordered vertices until napari-bbox preserves
+    input ordering itself.
+    """
+    data_view = layer._data_view
+    for index, shape in enumerate(shapes):
+        bounding_box = data_view.bounding_boxes[index]
+        if bounding_box.ndisplay != 3:
+            raise RuntimeError(
+                "The BoundingBoxLayer must be added to a 3D viewer before "
+                "correcting its oriented edge mesh."
+            )
+        bounding_box._set_meshes(
+            _minimal_bb_vertices(
+                np.asarray(shape)[:, -3:],
+                return_edge_path=True,
+            ),
+            closed=False,
+            face=False,
+        )
+        data_view._update_mesh_vertices(index, edge=True)
 
 
 def create_sim_shapes(sims, transform_key=None,  force_2d=False):
