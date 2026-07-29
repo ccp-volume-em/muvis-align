@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from muvis_align.image.util import (
     _minimal_bb_vertices,
+    create_bounding_box_surface,
     create_sim_shapes,
     set_oriented_bounding_box_edges,
 )
@@ -194,6 +195,29 @@ def test_oriented_edge_path_is_applied_to_napari_layer():
     )
     bounding_box._set_meshes.assert_called_once()
     layer._data_view._update_mesh_vertices.assert_called_once_with(0, edge=True)
+
+
+def test_bounding_box_surface_preserves_per_box_colors():
+    shapes = [
+        _minimal_bb_vertices(DATASETS["0"]),
+        _minimal_bb_vertices(DATASETS["[0 1]"]),
+    ]
+    colors = [(1, 1, 1), (0.2, 0.4, 0.6)]
+
+    (vertices, faces), vertex_colors = create_bounding_box_surface(
+        shapes, colors
+    )
+
+    assert vertices.shape == (16, 3)
+    assert faces.shape == (24, 3)
+    assert np.all(faces[:12] < 8)
+    assert np.all(faces[12:] >= 8)
+    np.testing.assert_allclose(
+        vertex_colors[:8], np.tile([1, 1, 1, 1], (8, 1))
+    )
+    np.testing.assert_allclose(
+        vertex_colors[8:], np.tile([0.2, 0.4, 0.6, 1], (8, 1))
+    )
 
 
 def test_create_sim_shapes_matches_oriented_box_for_force_2d():

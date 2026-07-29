@@ -1199,14 +1199,6 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
     return shapes, good_pairs
 
 
-def validate_element_length(data, expected_length):
-    good_indices = []
-    for index, element in enumerate(data):
-        if len(element) == expected_length:
-            good_indices.append(index)
-    return good_indices
-
-
 def get_overlap_images(sim1, sim2, transform_key):
     sims = [sim1.squeeze(), sim2.squeeze()]
     # functionality copied from registration.register_pair_of_msims()

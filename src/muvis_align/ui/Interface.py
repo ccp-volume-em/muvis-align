@@ -17,8 +17,7 @@ from muvis_align.file.project_yaml import read_params, get_template_params, writ
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms, validate_element_length, make_sims_3d, \
-    set_oriented_bounding_box_edges
+    draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, set_oriented_bounding_box_edges
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
@@ -377,20 +376,12 @@ class Interface:
             labels += ['' for _ in pairs]
             face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
         if len(shapes) > 0:
-            # TODO: fix this work-around for incorrect 2d/3d rectangles:
-            expected_npoints = 8 if do_3d else 4
-            good_indices = validate_element_length(shapes, expected_npoints)
-            shapes = [shapes[index] for index in good_indices]
-            face_colors = [face_colors[index] for index in good_indices]
-            labels = np.array(labels)[good_indices]
-            refs = np.array(refs)[good_indices]
-
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
             if do_3d:
                 bbox_layer = BoundingBoxLayer(np.array(shapes), name=layer_name, text=text, features=features,
                                               face_color=face_colors, opacity=0.25, edge_width=100, edge_color='cyan')
-                self.viewer.add_layer(bbox_layer)
+                viewer.add_layer(bbox_layer)
                 set_oriented_bounding_box_edges(bbox_layer, shapes)
             else:
                 viewer.add_shapes(np.array(shapes), name=layer_name, text=text, features=features,
@@ -455,6 +446,8 @@ class Interface:
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
 
+        if not self.reg.register_sims:
+            self.run_pre_processing()
         reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
         overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
         overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
