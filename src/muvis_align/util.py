@@ -357,6 +357,10 @@ def split_value_unit_list(text: str) -> list:
     return value_units
 
 
+def check_contains_value(value, contains_value):
+    return isinstance(value, (dict, str)) and contains_value in value
+
+
 def eval_context(data, key, default_value, context):
     value = data.get(key, default_value)
     if isinstance(value, str):

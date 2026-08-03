@@ -3,6 +3,7 @@ general:
   metadata_summary: False
   chunk_size: [4096, 4096]
   break_on_error: True
+  overwrite: True
   logging:
     filename: log/muvis-align-empiar12193.log
     format: '%(asctime)s %(levelname)s: %(message)s'
@@ -11,7 +12,7 @@ general:
     verbose: True
   output:
     clear: False
-    overwrite: False
+    overwrite: True
     format: ome.zarr
     tile_size: [4096, 4096]
     compression:
@@ -22,9 +23,10 @@ general:
 
 operations:
   - operation: register match S
-    input: /nemo/project/proj-ccp-vem/datasets/12193/data/S*/*.tiff
-    #input: D:/slides/12193/data_subset_small/S*/*.tiff
-    source_metadata: {'scale': {'x': 0.004, 'y': 0.004}, 'position': {'y':'fn[-3]*24', 'x':'fn[-2]*24'}}
+    input:
+      #path: /nemo/project/proj-ccp-vem/datasets/12193/data/S*/*.tiff
+      path: D:/slides/12193/data_subset_small/S*/*.tiff
+      source_metadata: {'scale': {'x': 0.004, 'y': 0.004}, 'position': {'y':'fn[-3]*24', 'x':'fn[-2]*24'}}
     preprocessing:
       #normalisation: global  # normalise in custom registration function instead
       scale: 4
@@ -41,9 +43,10 @@ operations:
     output: ../../stitched/S{S}/
 
   - operation: register stack
-    input: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S*/registered.ome.zarr
-    #input: D:/slides/12193/stitched/S*/registered.ome.zarr
-    source_metadata: source
+    input:
+      path: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S*/registered.ome.zarr
+      #path: D:/slides/12193/stitched/S*/registered.ome.zarr
+      source_metadata: source
     extra_metadata: {'scale': {'z': 0.1}}
     preprocessing:
       #normalisation: individual  # normalise in custom registration function instead
