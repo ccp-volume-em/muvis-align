@@ -37,15 +37,19 @@ RUN apt-get update && \
 # Set working directory
 WORKDIR /app
 
-# Copy project files
+# Copy dependency declarations first so source changes do not invalidate
+# the dependency installation layers.
 COPY requirements.txt .
-COPY run.py .
-COPY pyproject.toml .
-COPY src/ src/
 
 # Install dependencies
 RUN pip install -r requirements.txt
 RUN pip install napari[all]
+
+# Copy project files after dependencies have been installed.
+COPY run.py .
+COPY pyproject.toml .
+COPY src/ src/
+
 RUN pip install .
 
 ENTRYPOINT ["python3", "-m", "napari", "--plugin", "muvis-align"]
@@ -100,5 +104,10 @@ ENTRYPOINT []
 
 # Build:
 # docker build -t muvis-align-xpra .
+
 # Run:
 # docker run -v "D:\slides:/data" -p 9876:9876 muvis-align-xpra
+
+# Push:
+# docker tag muvis-align-xpra quay.io/ccp-volume-em/muvis-align-xpra:v0.0.1
+# docker push quay.io/ccp-volume-em/muvis-align-xpra:v0.0.1
