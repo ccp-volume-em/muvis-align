@@ -339,8 +339,8 @@ class Interface:
             source = self.reg.sources[0]
             channels = source.get_channels()
             name = [channel.get('label', index) for index, channel in enumerate(channels)]
-            colors = [channel.get('color', [1, 1, 1, 1]) for channel in channels]
-            if len(channels) > 0:
+            colors = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
+            if len(channels) > 1:
                 channel_axis = fused.dims.index('c') \
                     if len(colors) > 0 and 'c' in source.dimension_order else None
                 scale = [fused_scale] * len(channels)
