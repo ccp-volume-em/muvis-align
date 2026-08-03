@@ -23,3 +23,7 @@ updates:
       github-actions:
         patterns:
           - "*"
+    ignore:
+      # @v2 is a floating tag that already tracks the latest 2.x release
+      - dependency-name: "hynek/build-and-inspect-python-package"
+        update-types: ["version-update:semver-minor", "version-update:semver-patch"]
