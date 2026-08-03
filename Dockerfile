@@ -32,7 +32,7 @@ RUN apt-get update && \
         libxrender1 \
         libxi6 \
         libxcb-shape0 \
-        && apt-get clean \
+        && apt-get clean
 
 # Set working directory
 WORKDIR /app
@@ -74,7 +74,9 @@ RUN apt-get update && \
         menu-xdg \
         xdg-utils \
         xterm \
-        sshfs && \
+        sshfs \
+        x11-xkb-utils \
+        xkb-data && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -84,17 +86,30 @@ ENV XPRA_START="python3 -m napari --with muvis-align"
 ENV XPRA_EXIT_WITH_CHILDREN="yes"
 ENV XPRA_EXIT_WITH_CLIENT="no"
 ENV XPRA_XVFB_SCREEN="1920x1080x24+32"
+ENV XDG_RUNTIME_DIR=/tmp/runtime-muvis
+# Debian's Xpra module is installed for /usr/bin/python3. Xpra uses this
+# interpreter for helper processes such as the IBus daemonizer.
+ENV XPRA_PYTHON_EXECFILE_COMMAND=/usr/bin/python3
 EXPOSE 9876
 
 CMD echo "Launching napari on Xpra. Connect via http://localhost:$XPRA_PORT or $(hostname -i):$XPRA_PORT"; \
-    xpra start \
+    PATH=/usr/bin:/usr/local/bin:$PATH xpra start \
     --bind-tcp=0.0.0.0:$XPRA_PORT \
     --html=on \
+    --socket-dir="$XDG_RUNTIME_DIR/xpra" \
+    --mdns=no \
+    --dbus=no \
+    --printing=no \
+    --webcam=no \
+    --speaker=disabled \
+    --microphone=disabled \
+    --resize-display=no \
+    --dpi=96 \
     --start-child="$XPRA_START" \
     --exit-with-children="$XPRA_EXIT_WITH_CHILDREN" \
     --exit-with-client="$XPRA_EXIT_WITH_CLIENT" \
     --daemon=no \
-    --xvfb="/usr/bin/Xvfb +extension Composite -screen 0 $XPRA_XVFB_SCREEN -nolisten tcp -noreset" \
+    --xvfb="/usr/bin/Xvfb +extension Composite -screen 0 $XPRA_XVFB_SCREEN -dpi 96 -nolisten tcp -noreset" \
     --pulseaudio=no \
     --notifications=no \
     --bell=no \
