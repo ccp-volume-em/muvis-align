@@ -380,12 +380,14 @@ class Interface:
             features = {'refs': refs, 'labels': labels}
             if do_3d:
                 bbox_layer = BoundingBoxLayer(np.array(shapes), name=layer_name, text=text, features=features,
-                                              face_color=face_colors, opacity=0.25, edge_width=100, edge_color='cyan')
+                                              face_color=face_colors, opacity=0.25, edge_width=100, edge_color='cyan',
+                                              blending='translucent_no_depth')
                 viewer.add_layer(bbox_layer)
                 set_oriented_bounding_box_edges(bbox_layer, shapes)
             else:
                 viewer.add_shapes(np.array(shapes), name=layer_name, text=text, features=features,
-                                  face_color=face_colors, opacity=0.25, edge_width=0.1, edge_color='cyan')
+                                  face_color=face_colors, opacity=0.25, edge_width=0.1, edge_color='cyan',
+                                  blending='translucent_no_depth')
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
             #                           face_color=face_colors)

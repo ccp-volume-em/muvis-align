@@ -571,6 +571,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                 "name": "matches_image",
                 # For 2D grayscale this is ignored by napari; for RGB it is inferred.
                 "rgb": (image.ndim >= 3 and image.shape[-1] in (3, 4)),
+                "blending": "translucent_no_depth"
             },
             "image",
         )
