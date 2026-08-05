@@ -577,6 +577,7 @@ CanonicalRegState = interface_module.RegState
 def bare_interface():
     interface = CanonicalInterface.__new__(CanonicalInterface)
     interface.reg = MagicMock()
+    interface.param_widgets = {}
     interface.reg.file_labels = ["image-0"]
     interface.preview_sims = [
         SimpleNamespace(dims=("z", "y", "x"), sizes={"z": 2})
