@@ -238,6 +238,7 @@ class Interface:
     def pre_processing_process(self):
         self.run_pre_processing()
         self.enable_tabs(True, 3)
+        self.enable_modify_pair_registration(False)
         self.select_tab(3)
         self.update_view(show_preprocessed=True)
 
@@ -549,6 +550,9 @@ class Interface:
         self.update_view(transform_key=view_transform_key, overlaps=True)
 
     def run_pair_registration(self):
+        if not self.reg.register_sims:
+            self.run_pre_processing()
+
         with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
                 VisibleActivityDock(self.viewer):
@@ -668,6 +672,7 @@ class Interface:
             self.run_global_registration()
             copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
             self.enable_tabs(True, 4)
+            self.enable_modify_pair_registration()
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
 
     def preview_fusion(self):
@@ -702,3 +707,8 @@ class Interface:
             self._add_napari_image(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
+
+    def enable_modify_pair_registration(self, enabled=True):
+        widget = self.param_widgets.get('registration.modify_pair_registration')
+        if widget:
+            widget.widget.enabled = enabled
