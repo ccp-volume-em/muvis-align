@@ -437,9 +437,9 @@ class Interface:
 
     def update_pair_metrics(self):
         # filter only selected pair
-        sims = [self.reg.sims[index] for index in self.pair_indices]
+        reg_sims = [self.reg.sims[index] for index in self.pair_indices]
         transforms = {(0, 1): self.calc_mod_pair_transform()}
-        metrics = calc_sims_metrics(sims, transforms, metric_methods=self.metrics_methods)
+        metrics = calc_sims_metrics(reg_sims, transforms, metric_methods=self.metrics_methods)
         self.populate_metrics_table(metrics)
 
     def preview_registration(self):
@@ -549,6 +549,11 @@ class Interface:
         self.update_overview(transform_key=view_transform_key)
         self.update_view(transform_key=view_transform_key, overlaps=True)
 
+    def enable_modify_pair_registration(self, enabled=True):
+        widget = self.param_widgets.get('registration.modify_pair_registration')
+        if widget:
+            widget.widget.enabled = enabled
+
     def run_pair_registration(self):
         if not self.reg.register_sims:
             self.run_pre_processing()
@@ -646,7 +651,7 @@ class Interface:
                 pair_transforms = pair_transform, eye
                 self._clear_napari_view(self.viewer)
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._add_napari_image(self.viewer, self.reg.sims[sim_index], labels[sim_index],
+                    self._add_napari_image(self.viewer, self.preview_sims[sim_index], labels[sim_index],
                                            pair_transforms[index], color, affine_event=True)
                 self.update_pair_metrics()
 
@@ -707,8 +712,3 @@ class Interface:
             self._add_napari_image(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
-
-    def enable_modify_pair_registration(self, enabled=True):
-        widget = self.param_widgets.get('registration.modify_pair_registration')
-        if widget:
-            widget.widget.enabled = enabled
