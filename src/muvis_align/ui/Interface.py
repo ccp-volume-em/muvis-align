@@ -437,7 +437,7 @@ class Interface:
 
     def update_pair_metrics(self):
         # filter only selected pair
-        reg_sims = [self.reg.sims[index] for index in self.pair_indices]
+        reg_sims = [self.reg.register_sims[index] for index in self.pair_indices]
         transforms = {(0, 1): self.calc_mod_pair_transform()}
         metrics = calc_sims_metrics(reg_sims, transforms, metric_methods=self.metrics_methods)
         self.populate_metrics_table(metrics)
@@ -455,7 +455,7 @@ class Interface:
         overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
         overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
-            self.reg.create_registration_method(self.reg.sims[0], params=self.params['registration']))
+            self.reg.create_registration_method(self.reg.register_sims[0], params=self.params['registration']))
         results = pairwise_reg_func(overlap1, overlap2)
 
         affine_phys = affine_from_intrinsic_affine(results['affine_matrix'], sims_pixel_space, self.reg.source_transform_key)
@@ -649,6 +649,9 @@ class Interface:
                 pair_transform = np.array(pair_transforms[indices].sel(t=0))
                 eye = np.eye(max(pair_transform.shape))
                 pair_transforms = pair_transform, eye
+
+                if not self.reg.register_sims:
+                    self.run_pre_processing()
                 self._clear_napari_view(self.viewer)
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
                     self._add_napari_image(self.viewer, self.preview_sims[sim_index], labels[sim_index],
