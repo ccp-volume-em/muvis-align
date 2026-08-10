@@ -9,6 +9,27 @@ def load_tiff(filename):
     return tifffile.imread(filename)
 
 
+def extract_ome_translation(filename):
+    with tifffile.TiffFile(filename) as tif:
+        ome_metadata = tif.ome_metadata
+        if tif.is_ome and ome_metadata is not None:
+            metadata = tifffile.xml2dict(ome_metadata)
+            if 'OME' in metadata:
+                metadata = metadata['OME']
+            if 'Image' in metadata and 'Pixels' in metadata['Image'] and 'Plane' in metadata['Image']['Pixels']:
+                plane_metadata = metadata['Image']['Pixels']['Plane']
+                if isinstance(plane_metadata, list):
+                    plane_metadata = plane_metadata[0]
+                position = {}
+                for dim in ['X', 'Y', 'Z']:
+                    key = f'Position{dim}'
+                    if key in plane_metadata:
+                        position[dim.lower()] = convert_to_um(float(plane_metadata[key]),
+                                                              plane_metadata.get(f'{key}Unit', 'um'))
+                return position
+
+    return {}
+
 def save_tiff(filename, data, dimension_order=None, pixel_size=None, tile_size=(default_chunk_size, default_chunk_size),
               compression='LZW'):
     _, resolution, resolution_unit = create_tiff_metadata(pixel_size, dimension_order)

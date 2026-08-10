@@ -21,6 +21,7 @@ class DaskSource:
         self.position = {}
         self.rotation = 0
         self.channels = []
+        self.data = []
         self.init_metadata()
         self.fix_metadata(source_metadata)
 
@@ -75,13 +76,9 @@ class DaskSource:
                 if check_contains_value(source_metadata['rotation'], 'invert'):
                     self.rotation = -self.rotation
 
-        if len(self.scales) == 0:
-            for shape in self.shapes:
-                scale1 = []
-                for dim in 'xy':
-                    index = self.dimension_order.index(dim)
-                    scale1.append(self.shape[index] / shape[index])
-                self.scales.append(float(np.mean(scale1)))
+        self.scale_factors = [{dim: value0 / value for dim, value, value0
+                               in zip(self.dimension_order, shape, self.shape) if dim in 'xyz'}
+                               for shape in self.shapes]
 
     def get_shape(self, level=0):
         # shape in pixels
@@ -97,12 +94,7 @@ class DaskSource:
 
     def get_pixel_size(self, level=0, asarray=False, axes='zyx'):
         # pixel size in micrometers
-        if self.pixel_sizes:
-            pixel_size = get_value_units_micrometer(self.pixel_sizes[level])
-        else:
-            scale = self.scales[level]
-            pixel_size0 = get_value_units_micrometer(self.pixel_size)
-            pixel_size = {dim: size * scale for dim, size in pixel_size0.items()}
+        pixel_size = self.pixel_sizes[level]
         if asarray:
             return np.array([pixel_size[dim] for dim in axes if dim in pixel_size])
         else:
@@ -119,11 +111,10 @@ class DaskSource:
 
     def get_position(self, asarray=False, axes='zyx'):
         # position in micrometers
-        position = get_value_units_micrometer(self.position)
         if asarray:
-            return np.array([position[dim] for dim in axes if dim in position])
+            return np.array([self.position[dim] for dim in axes if dim in self.position])
         else:
-            return position
+            return self.position
 
     def get_rotation(self):
         # rotation in degrees
@@ -141,4 +132,7 @@ class DaskSource:
         return self.channels
 
     def get_data(self, level=0):
-        raise NotImplementedError()
+        if level < 0:
+            return self.data
+        else:
+            return self.data[level]
