@@ -454,7 +454,7 @@ class MVSRegistration:
 
             dask_data = source.get_data(level=level)
             if any(value != 1 for value in rescale.values()):
-                new_shape = [int(size / rescale.get(dim, 1))
+                new_shape = [max(int(size / rescale.get(dim, 1)), 1)
                              for dim, size in zip(source.dimension_order, dask_data.shape)]
                 dask_data = resize(dask_data, new_shape, preserve_range=True).astype(dask_data.dtype)
             image = redimension_data(dask_data, source.dimension_order, output_order)
@@ -560,7 +560,7 @@ class MVSRegistration:
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
         self.check_progress(output_filename, output_format)
 
-        if self.is_pairs_registered():
+        if self.is_pairs_registered() and os.path.exists(pair_mappings_filename):
             # load pair mapping and initialise pair_graph
             pairs = import_json(pair_mappings_filename)
             indexed_pair_transforms = {}
@@ -1132,7 +1132,7 @@ class MVSRegistration:
         groupwise_resolution_kwargs = {}
         if groupwise_resolution_method == 'global_optimization':
            groupwise_resolution_kwargs['transform'] = params.get('transform_type',
-                                                                 params.get('registration', {}).get('transform_type'))
+                                                                 params.get('registration', {}).get('transform_type', 'affine'))
            # transform_type options include 'translation', 'rigid', 'affine', 'similarity'
 
         post_registration_quality_threshold = params.get('post_registration_quality_threshold',
