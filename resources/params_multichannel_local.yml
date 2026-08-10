@@ -16,33 +16,39 @@ general:
 
 operations:
   - operation: register
-    input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection/*.ome.tiff
     #input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
-    #flatfield_quantiles: [0.95]
+    input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection3/*.ome.tiff
     source_metadata: source invert
-    #filter_foreground: True
-    normalisation: global
-    use_orthogonal_pairs: True
-    registration: phase_correlation
+    preprocessing:
+      #flatfield_quantiles: [0.95]
+      #filter_foreground: True
+      normalisation: global
+    registration:
+      pairing: orthogonal
+      name: phase_correlation
     output: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched/
 
   - operation: register
-    input: D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/subselection/*.ome.tiff
     #input: D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/EM04768_01_sub_04_fluorescence_10x/converted/*.ome.tiff
-    #flatfield_quantiles: [0.95]
+    input: D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/subselection/*.ome.tiff
     source_metadata: source invert
-    #filter_foreground: True
-    normalisation: global
-    use_orthogonal_pairs: True
-    registration: phase_correlation
+    preprocessing:
+      #flatfield_quantiles: [0.95]
+      #filter_foreground: True
+      normalisation: global
+    registration:
+      pairing: orthogonal
+      name: phase_correlation
     output: D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched/
 
   - operation: register
     input:
       - D:/slides/EM04768_01_substrate_04/registered/reflection_stitched/registered.ome.zarr
       - D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched/registered.ome.zarr
-    normalisation: individual
-    registration: ANTsPy
-    channel: 0
     extra_metadata: {'channels': [{'label':reflection, 'color':[1, 1, 1, 1]}, {'label':fluorescence, 'color':[0, 1, 0, 1]}]}
+    preprocessing:
+      normalisation: True
+    registration:
+      name: ANTsPy
+      channel: 0
     output: D:/slides/EM04768_01_substrate_04/registered/

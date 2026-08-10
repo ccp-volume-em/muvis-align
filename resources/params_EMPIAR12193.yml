@@ -30,7 +30,7 @@ operations:
     preprocessing:
       #normalisation: global  # normalise in custom registration function instead
       scale: 4
-    flatfield_quantiles: [0.5]
+      flatfield_quantiles: [0.5]
     registration:
       pairing: orthogonal
       transform_type: translation
