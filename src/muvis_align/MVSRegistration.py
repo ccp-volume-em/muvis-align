@@ -127,6 +127,9 @@ class MVSRegistration:
         if isinstance(input_path, list):
             self.filenames = input_path
             self.input_dir = os.path.dirname(input_path[0])
+        elif os.path.isdir(input_path):
+            self.filenames = dir_regex(os.path.join(input_path, '*'))
+            self.input_dir = input_path
         else:
             self.filenames = dir_regex(input_path)
             self.input_dir = os.path.dirname(input_path)
