@@ -54,7 +54,7 @@ def save_ome_tiff(filename, data, dimension_order, pixel_size, channels=[], posi
         npyramid_add = 0
     bigtiff = (max_size > 2 ** 32)
 
-    if tile_size is not None:
+    if tile_size:
         tile_size = tile_size[-2:]  # assume order zyx (inversed xyz)
         shape_yx = [data.shape[dimension_order.index(dim)] for dim in 'yx']
         if np.any(np.array(tile_size) > np.array(shape_yx)):

@@ -1306,7 +1306,7 @@ class MVSRegistration:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
-                    if tile_size is not None:
+                    if tile_size:
                         if not isinstance(tile_size, (list, tuple)):
                             tile_size = [tile_size] * 2
                         output_chunksize = xyz_to_dict(tile_size)
