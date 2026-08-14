@@ -467,7 +467,13 @@ class Interface:
             self.reg.create_registration_method(self.reg.register_sims[0], params=self.params['registration']))
         results = pairwise_reg_func(overlap1, overlap2)
 
-        affine_phys = affine_from_intrinsic_affine(results['affine_matrix'], sims_pixel_space, self.reg.source_transform_key)
+        source_affine = results['affine_matrix']
+        try:
+            # Handle error in resulting matrix - unclear cause but likely occurs when failure to register
+            affine_phys = affine_from_intrinsic_affine(source_affine, sims_pixel_space, self.reg.source_transform_key)
+        except NotImplementedError:
+            affine_phys = source_affine
+
         transforms = {
             (0, 1): affine_phys
         }
