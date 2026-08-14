@@ -1,5 +1,4 @@
 general:
-  show_original: False
   break_on_error: True
   logging:
     filename: log/muvis-align.log
@@ -9,22 +8,25 @@ general:
     verbose: False
   output:
     format: ome.zarr, ome.tiff
-    tile_size: []
+    tile_size: [4096, 4096]
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
 
 operations:
   - operation: register
-    #input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
-    input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection/*.ome.tiff
-    source_metadata: source invert
+    input:
+      #path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
+      path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection/*.ome.tiff
+      source_metadata: source invert
     preprocessing:
       #flatfield_quantiles: [0.95]
       #filter_foreground: True
-      normalisation: global
+      normalisation: True
     registration:
-      transform_type: rigid
+      normalisation: True
+      gaussian_sigma: 1.5
+      transform_type: translation
       pairing: orthogonal
       name: phase_correlation
     output: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched2/

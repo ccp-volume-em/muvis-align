@@ -220,8 +220,7 @@ class MVSRegistration:
 
         data = []
         mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
-        for label, sim, scale in zip(file_labels, sims, self.scales):
-            position, rotation = get_data_mapping(sim, transform_key=self.source_transform_key)
+        for label, position, rotation, scale in zip(file_labels, self.positions, self.rotations, self.scales):
             position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
             row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
             data.append(row)
@@ -288,7 +287,7 @@ class MVSRegistration:
                                         nom_sims=sims,
                                         transform_key=transform_key)
 
-            if 'register' in operation or 'stack' in operation:
+            if 'register' in operation or 'stack' in operation or 'fuse' in operation:
                 with Timer('fuse image', self.logging_time):
                     if isinstance(self.fusion_params, dict):
                         fusion_method = self.fusion_params.get('method', '')
