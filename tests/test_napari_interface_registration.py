@@ -22,10 +22,20 @@ from unittest.mock import MagicMock, patch, call
 import pytest
 import yaml
 import numpy as np
+from qtpy.QtWidgets import QMessageBox
 
 from src.muvis_align._widget import MainWidget
 from src.muvis_align.ui.Interface import Interface, ViewMode
 from src.muvis_align.MVSRegistration import RegState
+
+
+@pytest.fixture(autouse=True)
+def suppress_completion_dialogs():
+    """Keep workflow completion messages from blocking test execution."""
+    with patch(
+        'src.muvis_align.ui.Interface.QMessageBox.information'
+    ) as mock_information:
+        yield mock_information
 
 
 def get_project_configs():
@@ -401,11 +411,6 @@ class TestNapariInterfaceRegistration:
     @patch('src.muvis_align.ui.Interface.QMessageBox.question')
     def test_modify_pair_registration_with_bbox(self, mock_question, make_napari_viewer, project_config):
         """Test modify_pair_registration with bbox handling (no 't' dimension)."""
-        try:
-            from PyQt5.QtWidgets import QMessageBox
-        except ModuleNotFoundError:
-            pytest.skip("PyQt5 not available in test environment")
-        
         viewer = make_napari_viewer()
         mock_question.return_value = QMessageBox.Yes  # Simulate "Yes" click
 
@@ -414,6 +419,8 @@ class TestNapariInterfaceRegistration:
 
         interface.view_mode = ViewMode.PAIRS
         interface.pair_indices = ('key1', 'key2')
+        interface.reg.pairs_graph = object()
+        interface.reg.source_transform_key = 'source_metadata'
         
         # Mock the temp_widget_state that gets called in modify_pair_registration
         interface.temp_widget_state = MagicMock()
@@ -442,7 +449,7 @@ class TestNapariInterfaceRegistration:
                     {interface.pair_indices: mock_bbox}  # bboxes (without 't' dimension)
                 ]
                 
-                mock_calc.return_value = mock_transform_with_t
+                mock_calc.return_value = mock_transform_with_t.sel(t=0)
                 
                 with patch('networkx.set_edge_attributes'):
                     with patch.object(interface.reg, 'save_pair_mappings') as mock_save:
@@ -487,16 +494,14 @@ class TestNapariInterfaceRegistration:
             with patch.object(interface, 'populate_coordinate_systems') as mock_pop_coord:
                 with patch.object(interface, 'populate_metadata_table') as mock_pop_meta:
                     with patch.object(interface, 'populate_metrics_table') as mock_pop_metrics:
-                        with patch.object(interface, 'update_overview') as mock_overview:
-                            with patch.object(interface, 'update_view') as mock_view:
-                                # This should not raise KeyError about dimension mismatch
-                                interface.update_registered()
+                        with patch.object(interface, 'update_views') as mock_views:
+                            # This should not raise KeyError about dimension mismatch
+                            interface.update_registered()
 
-                                assert mock_pop_coord.called
-                                assert mock_pop_meta.called
-                                assert mock_pop_metrics.called
-                                assert mock_overview.called
-                                assert mock_view.called
+                            assert mock_pop_coord.called
+                            assert mock_pop_meta.called
+                            assert mock_pop_metrics.called
+                            mock_views.assert_called_once_with(transform_key=None)
 
 
 class TestProjectConfigurationFiles:
@@ -739,8 +744,12 @@ def test_get_best_transform_key(
     assert bare_interface.get_best_transform_key() == expected
 
 
-def test_update_view_delegates_enabled_preview_layers(bare_interface):
+def test_update_views_adds_enabled_preview_layers(
+    bare_interface, monkeypatch
+):
     bare_interface.viewer = MagicMock()
+    bare_interface.overview = MagicMock()
+    bare_interface.reg.sims = bare_interface.preview_sims
     bare_interface.params = {
         "input_output": {
             "preview_images": True,
@@ -752,26 +761,52 @@ def test_update_view_delegates_enabled_preview_layers(bare_interface):
         return_value="registered"
     )
     bare_interface._clear_napari_view = MagicMock()
-    bare_interface._update_napari_data = MagicMock()
-    bare_interface._update_napari_shapes = MagicMock()
-
-    bare_interface.update_view(overlaps=True, show_preprocessed=True)
-
-    bare_interface._clear_napari_view.assert_called_once_with(
-        bare_interface.viewer
+    shapes = [np.zeros((4, 2))]
+    shape_data = (shapes, ["0"], ["image-0"], [(1, 1, 1)])
+    image_data = object()
+    bare_interface._calculate_napari_shapes = MagicMock(
+        return_value=shape_data
     )
-    bare_interface._update_napari_data.assert_called_once_with(
-        bare_interface.viewer,
-        "sample data",
+    bare_interface._calculate_napari_data = MagicMock(
+        return_value=image_data
+    )
+    bare_interface._napari_view_add_data = MagicMock()
+    bare_interface._update_view_add_shapes = MagicMock()
+    monkeypatch.setattr(
+        interface_module.si_utils,
+        "get_origin_from_sim",
+        lambda _: {"z": 0},
+    )
+
+    bare_interface.update_views(show_preprocessed=True)
+
+    assert bare_interface._clear_napari_view.call_args_list == [
+        call(bare_interface.viewer),
+        call(bare_interface.overview),
+    ]
+    assert bare_interface._calculate_napari_shapes.call_args_list == [
+        call("registered", force_2d=False),
+        call("registered", force_2d=True),
+    ]
+    bare_interface._calculate_napari_data.assert_called_once_with(
         "registered",
         show_preprocessed=True,
     )
-    bare_interface._update_napari_shapes.assert_called_once_with(
-        bare_interface.viewer,
-        "sample shapes",
-        "registered",
-        overlaps=True,
+    bare_interface._napari_view_add_data.assert_called_once_with(
+        bare_interface.viewer, image_data, "sample data"
     )
+    expected_shape_call = (
+        shapes, ["0"], ["image-0"], [(1, 1, 1)], "sample shapes"
+    )
+    bare_interface._update_view_add_shapes.assert_any_call(
+        bare_interface.viewer,
+        *expected_shape_call,
+    )
+    bare_interface._update_view_add_shapes.assert_any_call(
+        bare_interface.overview,
+        *expected_shape_call,
+    )
+    assert bare_interface._update_view_add_shapes.call_count == 2
     assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
 
 
@@ -808,9 +843,8 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
         interface_module, "set_oriented_bounding_box_edges", set_edges
     )
 
-    bare_interface._update_napari_shapes(
-        viewer, "boxes", "registered", overlaps=True
-    )
+    shape_data = bare_interface._calculate_napari_shapes("registered")
+    bare_interface._update_view_add_shapes(viewer, *shape_data, "boxes")
 
     kwargs = bounding_box_layer.call_args.kwargs
     assert kwargs["features"]["refs"] == ["0", "0 0"]
@@ -839,8 +873,9 @@ def test_update_napari_shapes_uses_shapes_layer_for_2d(
         interface_module, "create_sim_shapes", lambda *_, **__: [shape]
     )
 
-    bare_interface._update_napari_shapes(
-        viewer, "boxes", "source_metadata"
+    shapes = [shape]
+    bare_interface._update_view_add_shapes(
+        viewer, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes"
     )
 
     args, kwargs = viewer.add_shapes.call_args

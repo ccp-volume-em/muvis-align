@@ -219,8 +219,7 @@ class Interface:
         if self.reg.is_initialised():
             self.populate_metadata_table(sims)
             self.check_3d_view()
-            self.update_overview()
-            self.update_view()
+            self.update_views()
 
         return True
 
@@ -240,7 +239,7 @@ class Interface:
         self.enable_tabs(True, 3)
         self.enable_modify_pair_registration(False)
         self.select_tab(3)
-        self.update_view(show_preprocessed=True)
+        self.update_views(show_preprocessed=True)
 
     def populate_channels(self):
         channels = list({channel.get('label', '') for source in self.reg.sources for channel in source.get_channels()})
@@ -304,58 +303,59 @@ class Interface:
         self.viewer.dims.ndisplay = ndisplay
         #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
-    def update_overview(self, transform_key=None, overlaps=True):
+    def update_views(self, transform_key=None, show_preprocessed=False):
         if transform_key is None:
             transform_key = self.get_best_transform_key()
-        self._clear_napari_view(self.overview)
-        self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', transform_key,
-                                   overlaps=overlaps)
 
-    def update_view(self, transform_key=None, overlaps=False, show_preprocessed=False):
-        if transform_key is None:
-            transform_key = self.get_best_transform_key()
+        sims = self.reg.sims
+        is_3d = (sims[0].sizes.get('z', 0) > 1)
+        is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+        force_2d = is_multi_z_shapes and not is_3d
+        shapes, refs, labels, face_colors = self._calculate_napari_shapes(transform_key, force_2d=force_2d)
+
         self._clear_napari_view(self.viewer)
         if self.params['input_output']['preview_images']:
-            self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
-                                     show_preprocessed=show_preprocessed)
+            data = self._calculate_napari_data(transform_key, show_preprocessed=show_preprocessed)
+            if data is not None:
+                self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
         if self.params['input_output']['preview_shapes']:
-            self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', transform_key,
-                                       overlaps=overlaps)
+            self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
+
+        if not force_2d:
+            # Previous shapes need to be recalculated with force_2d=True
+            shapes, refs, labels, face_colors = self._calculate_napari_shapes(transform_key, force_2d=True)
+        self._clear_napari_view(self.overview)
+        self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
         self.view_mode = ViewMode.OVERVIEW
 
     def _clear_napari_view(self, viewer):
         viewer.layers.clear()
 
-    def _update_napari_data(self, viewer, layer_name, transform_key, fusion_method='additive',
-                            show_preprocessed=False):
+    def _calculate_napari_shapes(self, transform_key, force_2d=False):
+        sims = self.preview_sims
+
+        shapes = create_sim_shapes(sims, transform_key=transform_key, force_2d=force_2d)
+        refs = [str(index) for index in range(len(sims))]
+        labels = list(self.reg.file_labels)
+        face_colors = [(1, 1, 1) for _ in range(len(sims))]
+
+        shapes2, pairs = create_overlap_shapes(sims, transform_key=transform_key, force_2d=force_2d)
+        shapes.extend(shapes2)
+        refs += [f'{index1} {index2}' for index1, index2 in pairs]
+        labels += ['' for _ in pairs]
+        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
+        return shapes, refs, labels, face_colors
+
+    def _calculate_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
         if show_preprocessed:
             sims = self.reg.register_sims
         else:
             sims = self.preview_sims
             copy_transforms(self.reg.sims, sims, transform_key)
         fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method=fusion_method)
-        fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
-        fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
-        if fused is not None:
-            source = self.reg.sources[0]
-            channels = source.get_channels()
-            name = [channel.get('label', index) for index, channel in enumerate(channels)]
-            colors = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
-            if len(channels) > 1:
-                channel_axis = fused.dims.index('c') \
-                    if len(colors) > 0 and 'c' in source.dimension_order else None
-                scale = [fused_scale] * len(channels)
-                translate = [fused_position] * len(channels)
-            else:
-                name = name[0] if len(name) > 0 and name[0] else layer_name
-                colors = colors[0] if len(colors) > 0 else None
-                channel_axis = None
-                scale = fused_scale
-                translate = fused_position
-            viewer.add_image(fused, name=name,channel_axis=channel_axis, colormap=colors,
-                             scale=scale, translate=translate)
+        return fused
 
-    def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+    def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
         sims = self.preview_sims
         bb_supported = True
         if isinstance(viewer, ViewerWidget):
@@ -365,17 +365,7 @@ class Interface:
         is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
         force_2d = not bb_supported or (is_multi_z_shapes and not is_3d)
         do_3d = ('z' in sims[0].dims and not force_2d)
-        shapes = create_sim_shapes(sims, transform_key=transform_key, force_2d=force_2d)
-        refs = [str(index) for index in range(len(sims))]
-        labels = list(self.reg.file_labels)
-        face_colors = [(1, 1, 1) for _ in range(len(sims))]
 
-        if overlaps:
-            shapes2, pairs = create_overlap_shapes(sims, transform_key=transform_key, force_2d=force_2d)
-            shapes.extend(shapes2)
-            refs += [f'{index1} {index2}' for index1, index2 in pairs]
-            labels += ['' for _ in pairs]
-            face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
         if len(shapes) > 0:
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
@@ -402,6 +392,25 @@ class Interface:
             #         if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
             #             self.on_selection_change(refs[self.selected_shape_index])
             #     yield
+
+    def _napari_view_add_data(self, viewer, data, layer_name):
+        scale = si_utils.get_spacing_from_sim(data, asarray=True)
+        translate = si_utils.get_origin_from_sim(data, asarray=True)
+        source = self.reg.sources[0]
+        channels = source.get_channels()
+        name = [channel.get('label', index) for index, channel in enumerate(channels)]
+        colors = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
+        if len(channels) > 1:
+            channel_axis = data.dims.index('c') \
+                if len(colors) > 0 and 'c' in source.dimension_order else None
+            scale = [scale] * len(channels)
+            translate = [translate] * len(channels)
+        else:
+            name = name[0] if len(name) > 0 and name[0] else layer_name
+            colors = colors[0] if len(colors) > 0 else None
+            channel_axis = None
+        viewer.add_image(data, name=name,channel_axis=channel_axis, colormap=colors,
+                         scale=scale, translate=translate)
 
     def _update_napari_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
 
@@ -546,8 +555,7 @@ class Interface:
         self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
         self.populate_metrics_table(self.reg.metrics)
-        self.update_overview(transform_key=view_transform_key)
-        self.update_view(transform_key=view_transform_key, overlaps=True)
+        self.update_views(transform_key=view_transform_key)
 
     def enable_modify_pair_registration(self, enabled=True):
         widget = self.param_widgets.get('registration.modify_pair_registration')
@@ -599,6 +607,7 @@ class Interface:
             if reply == QMessageBox.Yes:
                 self.run_pair_registration()
                 self.update_registered(view_transform_key=self.reg.source_transform_key)
+                QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
 
     def modify_pair_registration(self):
         if self.view_mode == ViewMode.PAIRS:
@@ -682,13 +691,12 @@ class Interface:
             self.enable_tabs(True, 4)
             self.enable_modify_pair_registration()
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
+            QMessageBox.information(None, 'muvis-align', 'Global registration completed')
 
     def preview_fusion(self):
-        self.reg.params_general = {'output': {}}
-        self.reg.fusion_params = self.params['fusion']
+        data = self._calculate_napari_data(self.reg.reg_transform_key, fusion_method=self.params['fusion']['method'])
         self._clear_napari_view(self.viewer)
-        self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key,
-                                 fusion_method=self.params['fusion']['method'])
+        self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
         self.view_mode = ViewMode.FUSED
 
     def fusion_process(self):
@@ -715,3 +723,4 @@ class Interface:
             self._add_napari_image(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
+            QMessageBox.information(None, 'muvis-align', 'Fusion completed')

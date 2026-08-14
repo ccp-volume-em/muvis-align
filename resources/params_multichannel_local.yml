@@ -17,7 +17,7 @@ operations:
   - operation: register
     input:
       #path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
-      path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection/*.ome.tiff
+      path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection3/*.ome.tiff
       source_metadata: source invert
     preprocessing:
       #flatfield_quantiles: [0.95]

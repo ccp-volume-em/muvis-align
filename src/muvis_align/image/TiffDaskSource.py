@@ -20,8 +20,11 @@ class TiffDaskSource(DaskSource):
             dims = metadata.dimension_names
             self.dimension_order = ''.join(dims)
             for index, ngff_image in enumerate(multiscales.images):
+                axes_units = ngff_image.axes_units
+                if axes_units is None:
+                    axes_units = {}
                 if index == 0:
-                    #self.position = {dim: convert_to_um(value, ngff_image.axes_units.get(dim, 'um'))
+                    #self.position = {dim: convert_to_um(value, axes_units.get(dim, 'um'))
                     #                 for dim, value in ngff_image.translation.items()}
                     if ngff_image.channel_names:
                         for index, channel_name in enumerate(ngff_image.channel_names):
@@ -29,7 +32,7 @@ class TiffDaskSource(DaskSource):
                             if ngff_image.channel_colors:
                                 channel['color'] = hexrgb_to_rgba(ngff_image.channel_colors[index])
                             self.channels.append(channel)
-                self.pixel_sizes.append({dim: convert_to_um(value, ngff_image.axes_units.get(dim, 'um'))
+                self.pixel_sizes.append({dim: convert_to_um(value, axes_units.get(dim, 'um'))
                                          for dim, value in ngff_image.scale.items() if dim in 'xyz'})
                 self.data.append(ngff_image.data)
 

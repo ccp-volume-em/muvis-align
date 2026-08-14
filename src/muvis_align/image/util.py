@@ -1,6 +1,6 @@
 import cv2 as cv
 import numpy as np
-from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph, metrics
+from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrinsic_coord_system, \
     get_affine_from_intrinsic_affine
@@ -1176,7 +1176,8 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
     if pairs is None:
         pairs = np.transpose(np.triu_indices(len(sims), 1))
     for pair in pairs:
-        sim1, sim2 = squeeze_sim_dims(sims[pair[0]], transform_key), squeeze_sim_dims(sims[pair[1]], transform_key)
+        #sim1, sim2 = squeeze_sim_dims(sims[pair[0]], transform_key), squeeze_sim_dims(sims[pair[1]], transform_key)    # very costly
+        sim1, sim2 = sims[pair[0]], sims[pair[1]]
         # catch in case there is no overlap
         try:
             result = _get_overlap_bboxes(
