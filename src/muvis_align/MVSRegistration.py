@@ -295,8 +295,9 @@ class MVSRegistration:
                     else:
                         fusion_method = self.fusion_params
                         output_spacing = self.params.get('output_spacing', 'mean')
+                    zarr_output_filename = output_filename if 'zar' in output_format else None
                     fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method, output_spacing=output_spacing,
-                                                      transform_key=transform_key, output_filename=output_filename,
+                                                      transform_key=transform_key, output_filename=zarr_output_filename,
                                                       tile_size=output_tile_size, ome_version=output_ome_version)
                     self.state = RegState.FUSED
             else:
@@ -304,11 +305,14 @@ class MVSRegistration:
                 is_saved = False
 
             if not is_saved or 'tif' in output_format:
+                extra_output_format = output_format
+                if is_saved:
+                    extra_output_format = extra_output_format.replace('ome.zarr', '').replace('zar', '')
                 logging.info('Saving fused image...')
                 with Timer('save fused image', self.logging_time):
                     self.save(output_filename, fused_image,
                               transform_key=transform_key, translations0=self.positions,
-                              format = output_format,
+                              format = extra_output_format,
                               tile_size = output_tile_size,
                               compression = output_compression,
                               pyramid_downsample = output_pyramid_downsample,
@@ -1297,6 +1301,10 @@ class MVSRegistration:
             channel_sims = [sim.assign_coords({'c': [channels[simi]['label']]}) for simi, sim in enumerate(channel_sims)]
             fused_image = xr.combine_nested([sim.rename() for sim in channel_sims], concat_dim='c', combine_attrs='override')
         else:
+            if fusion_method:
+                logging.info(f'Fusion method: {fusion_method}')
+            else:
+                logging.info('Fusion method: [default method]')
             fuse_func = self.create_fusion_method(fusion_method, sim0)
             if fuse_func:
                 saving_zarr = output_filename is not None
