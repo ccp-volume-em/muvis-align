@@ -1,3 +1,7 @@
+# https://ngff-zarr.readthedocs.io/en/latest/rfc5.html
+# https://github.com/bogovicj/ngff-rfc5-coordinate-transformation-examples/
+
+
 from ngff_zarr.v06.zarr_metadata import Metadata, Dataset, CoordinateSystem,CoordinateSystemIdentifier, Axis, Affine, Scale
 
 
