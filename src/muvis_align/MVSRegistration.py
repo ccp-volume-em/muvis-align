@@ -1355,7 +1355,7 @@ class MVSRegistration:
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
         output_mappings = {self.filenames[int(key)]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
-        write_transforms(mappings_filename, output_mappings)
+        write_transforms(mappings_filename, output_mappings, self.source_transform_key, self.reg_transform_key)
 
     def save_mappings_csv(self, mappings, normalise_orientation=False):
         data = []
