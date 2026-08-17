@@ -49,6 +49,7 @@ class Interface:
         self.pre_processing_performed = False
         self.metrics_methods = ['ncc', 'ssim', 'onmi']
         self.transform_key = 'source_metadata'
+        self.need_source_reinit = False
 
         self.pair_metrics_timer = QTimer()
         self.pair_metrics_timer.setSingleShot(True)
@@ -119,38 +120,49 @@ class Interface:
         widget = self.param_widgets.get('input_output.output_path')
         widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('output_path', '')))
 
+    def input_path(self):
+        self.need_source_reinit = True
+
     def source_position_z(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'z'], value)
+            self.need_source_reinit = True
 
     def source_position_y(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'y'], value)
+            self.need_source_reinit = True
 
     def source_position_x(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'x'], value)
+            self.need_source_reinit = True
 
     def source_scale_z(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['scale', 'z'], value)
+            self.need_source_reinit = True
 
     def source_scale_y(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['scale', 'y'], value)
+            self.need_source_reinit = True
 
     def source_scale_x(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['scale', 'x'], value)
+            self.need_source_reinit = True
 
     def source_rotation(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['rotation'], value)
+            self.need_source_reinit = True
 
     def input_output_process(self):
         params = self.params['input_output']
         output = str(params['output_path'])
-        if not self.reg.is_initialised():
+        if not self.reg.is_initialised() or self.need_source_reinit:
+            self.need_source_reinit = False
             if not output.endswith(os.sep):
                 output += os.sep
             ok = self.reg.init(input_path=str(params['input_path']),
