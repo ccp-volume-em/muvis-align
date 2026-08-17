@@ -1176,8 +1176,8 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
     if pairs is None:
         pairs = np.transpose(np.triu_indices(len(sims), 1))
     for pair in pairs:
-        #sim1, sim2 = squeeze_sim_dims(sims[pair[0]], transform_key), squeeze_sim_dims(sims[pair[1]], transform_key)    # very costly
-        sim1, sim2 = sims[pair[0]], sims[pair[1]]
+        sim1 = squeeze_sim_transform_time(sims[pair[0]], transform_key)
+        sim2 = squeeze_sim_transform_time(sims[pair[1]], transform_key)
         # catch in case there is no overlap
         try:
             result = _get_overlap_bboxes(
@@ -1196,7 +1196,8 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
                 shape = [[z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
-        except:
+        except TypeError:
+            # ignore NoneType error if there is no overlap
             pass
     return shapes, good_pairs
 
@@ -1275,6 +1276,7 @@ def combine_transforms(transforms):
 
 
 def squeeze_sim_dims(sim, transform_key):
+    # very costly
     sim = sim.copy()
     if 't' in sim.dims:
         sim = sim.isel(t=0)
@@ -1286,6 +1288,14 @@ def squeeze_sim_dims(sim, transform_key):
     if 'c' in affine.dims:
         affine = affine.isel(c=0)
     si_utils.set_sim_affine(sim, affine, transform_key)
+    return sim
+
+
+def squeeze_sim_transform_time(sim, transform_key):
+    affine = si_utils.get_affine_from_sim(sim, transform_key)
+    if 't' in affine.dims:
+        affine = affine.isel(t=0)
+        si_utils.set_sim_affine(sim, affine, transform_key)
     return sim
 
 

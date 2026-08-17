@@ -860,3 +860,13 @@ def get_label_element(elements, label):
         if element.get('label') == label:
             return element
     return None
+
+
+def operation_to_past_participle(operation):
+    verb = operation.split()[0]
+    if verb.endswith('e'):
+        return verb + 'd'
+    elif verb.endswith('y'):
+        return verb[:-1] + 'ied'
+    else:
+        return verb + 'ed'

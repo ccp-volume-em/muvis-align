@@ -21,9 +21,9 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
-from muvis_align.ui.bilayers_util import get_section_dict, to_magicgui_choices
+from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb, \
-    calculate_rigid_difference
+    calculate_rigid_difference, operation_to_past_participle
 
 
 class ViewMode(Enum):
@@ -184,7 +184,7 @@ class Interface:
             self.update_metadata_source()
 
     def init_progress(self):
-        output_filename = self.params['registration']['operation'].split()[0] + 'ed'
+        output_filename = operation_to_past_participle(self.params['registration']['operation'])
         self.reg.init_progress(output_filename, zarr_extension)
         if self.reg.is_fused():
             self.enable_tabs(True, 4)
@@ -333,8 +333,8 @@ class Interface:
         if self.params['input_output']['preview_shapes']:
             self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
 
-        if not force_2d:
-            # Previous shapes need to be recalculated with force_2d=True
+        if is_3d:
+            # Previous 3d shapes need to be recalculated with force_2d=True
             shapes, refs, labels, face_colors = self._calculate_napari_shapes(transform_key, force_2d=True)
         self._clear_napari_view(self.overview)
         self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
@@ -355,7 +355,7 @@ class Interface:
         shapes.extend(shapes2)
         refs += [f'{index1} {index2}' for index1, index2 in pairs]
         labels += ['' for _ in pairs]
-        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
+        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
         return shapes, refs, labels, face_colors
 
     def _calculate_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
@@ -425,11 +425,9 @@ class Interface:
                          scale=scale, translate=translate)
 
     def _update_napari_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
-
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
                                                matches, inliers, points_color='blue')
-
         viewer.layers.clear()
         for data, kwargs, layer_type in layers:
             if layer_type == "image":
@@ -724,7 +722,7 @@ class Interface:
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             operation = self.params['registration']['operation']
-            output_filename = operation.split()[-1] + 'ed'
+            output_filename = operation_to_past_participle(operation)
             tile_size = self.params['fusion']['tile_size']
             if ',' in tile_size:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]

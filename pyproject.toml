@@ -39,7 +39,7 @@ dependencies = [
     "zarr",
     "ome-zarr",
     "ngff-zarr",
-    "ome-zarr-models>=0.6.0",
+    "ome-zarr-models>=1.8.0rc2",
     "rocrate>=0.15.0",
     "matplotlib",
     "tqdm",

@@ -57,6 +57,9 @@ class MVSRegistration:
 
     def reset(self):
         self.state = RegState.UNINIT
+        self.source_transform_key = 'source_metadata'
+        self.reg_transform_key = 'registered'
+        self.transition_transform_key = 'transition'
         self.source_metadata = {}
         self.extra_metadata = {}
         self.sims = []
@@ -197,7 +200,7 @@ class MVSRegistration:
             logging.warning('Skipping (no images)')
             return False
 
-        output_filename = operation.split()[0] + 'ed'
+        output_filename = operation_to_past_participle(operation)
 
         self.check_progress(output_filename, output_format)
 
@@ -578,8 +581,7 @@ class MVSRegistration:
                 indexed_key = self.filenames.index(key1), self.filenames.index(key2)
                 indexed_pair_transforms[indexed_key] = (
                     param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
-                if default_quality_key in value:
-                    indexed_qualities[indexed_key] = np.array(value[default_quality_key])
+                indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
                 if 'bbox' in value:
                     indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             if not is_3d:
@@ -632,7 +634,7 @@ class MVSRegistration:
             metrics = import_json(metrics_filename)
             indexed_metrics = {}
             for key, value in metrics.items():
-                key1, key2 = key.split('-')
+                key1, key2 = json.loads(key)
                 indexed_key = self.filenames.index(key1), self.filenames.index(key2)
                 indexed_metrics[indexed_key] = value
             self.metrics = {
@@ -1462,7 +1464,7 @@ class MVSRegistration:
 
         video.close()
 
-    def get_metrics(self, metric=None, pair=None):
+    def get_metrics(self, metric_key=None, pair=None):
         metrics = self.metrics
         if pair is not None:
             if isinstance(pair, np.ndarray):
@@ -1472,12 +1474,18 @@ class MVSRegistration:
         else:
             if 'summary' in metrics:
                 metrics = metrics['summary']
-        transform_keys = metrics.keys()
-        if len(transform_keys) > 0:
-            transform_key = list(transform_keys)[-1]
-            metrics = metrics.get(transform_key, {})
-        if metric is not None:
-            return metrics.get(metric)
+        reg_transform_key = self.reg_transform_key
+        if reg_transform_key in metrics:
+            transform_key = reg_transform_key
+        elif default_transform_key in metrics:
+            transform_key = default_transform_key
+        elif metrics:
+            transform_key = list(metrics)[-1]
+        else:
+            transform_key = None
+        metrics = metrics.get(transform_key, {})
+        if metric_key is not None:
+            return metrics.get(metric_key)
         else:
             return metrics
 

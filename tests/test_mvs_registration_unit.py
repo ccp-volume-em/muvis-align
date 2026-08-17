@@ -1,7 +1,7 @@
-from unittest.mock import patch
-
 import numpy as np
 import pytest
+from pathlib import Path
+from unittest.mock import patch
 
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 
@@ -61,7 +61,7 @@ def test_init_with_explicit_files_sets_labels_and_output(tmp_path):
 
     assert result is True
     assert registration.state is RegState.INIT
-    assert registration.filenames == inputs
+    assert registration.filenames == [Path(path).as_posix() for path in inputs]
     assert registration.file_labels == ["left", "right"]
     assert registration.output == str(tmp_path / "results") + "/"
 
