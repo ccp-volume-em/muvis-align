@@ -14,12 +14,14 @@ from multiview_stitcher.registration import compute_pairwise_registrations, _plo
 import networkx as nx
 import numpy as np
 import os.path
+from pathlib import Path
 import shutil
 from skimage.transform import resize
 import xarray as xr
 
 from src.muvis_align.constants import *
 from src.muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
+from src.muvis_align.file.transforms import write_transforms, read_transforms
 from src.muvis_align.image.Video import Video
 from src.muvis_align.image.flatfield import flatfield_correction
 from src.muvis_align.image.ome_helper import save_image
@@ -136,6 +138,8 @@ class MVSRegistration:
         if not self.filenames:
             return False
 
+        self.filenames = [Path(path).as_posix() for path in self.filenames]
+
         if input_labels:
             self.file_labels = input_labels
         else:
@@ -219,10 +223,10 @@ class MVSRegistration:
         self.init_progress(output_filename, output_format)
 
         data = []
-        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
-        for label, position, rotation, scale in zip(file_labels, self.positions, self.rotations, self.scales):
+        mappings_header = ['id', 'filename', 'x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
+        for label, filename, position, rotation, scale in zip(file_labels, self.filenames, self.positions, self.rotations, self.scales):
             position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
-            row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
+            row = [label] + [filename] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
             data.append(row)
         export_csv(output + prereg_mappings_name, data, header=mappings_header)
 
@@ -570,8 +574,8 @@ class MVSRegistration:
             indexed_qualities = {}
             indexed_bboxes = {}
             for key, value in pairs.items():
-                key1, key2 = key.split('-')
-                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                key1, key2 = json.loads(key)
+                indexed_key = self.filenames.index(key1), self.filenames.index(key2)
                 indexed_pair_transforms[indexed_key] = (
                     param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
                 if default_quality_key in value:
@@ -609,10 +613,10 @@ class MVSRegistration:
             else:
                 z_scale = None
 
-            mappings = import_json(mappings_filename)
+            mappings = read_transforms(mappings_filename)
             # copy transforms to sims
-            for sim, label in zip(sims, self.file_labels):
-                mapping = param_utils.affine_to_xaffine(np.array(mappings[label]))
+            for sim, filename in zip(sims, self.filenames):
+                mapping = param_utils.affine_to_xaffine(np.array(mappings[filename]))
                 if make_3d:
                     transform = param_utils.identity_transform(ndim=3)
                     transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
@@ -629,7 +633,7 @@ class MVSRegistration:
             indexed_metrics = {}
             for key, value in metrics.items():
                 key1, key2 = key.split('-')
-                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                indexed_key = self.filenames.index(key1), self.filenames.index(key2)
                 indexed_metrics[indexed_key] = value
             self.metrics = {
                 'summary': {default_transform_key:
@@ -1337,10 +1341,9 @@ class MVSRegistration:
 
     def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
-        file_labels = self.file_labels
         output_mappings = {}
         for keys, mapping in mappings.items():
-            label_key = f'{file_labels[keys[0]]}-{file_labels[keys[1]]}'
+            label_key = json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]])
             output_mappings[label_key] = {'mapping': np.array(mapping.sel(t=0)).tolist()}
             if keys in qualities:
                 output_mappings[label_key][default_quality_key] = float(qualities[keys])
@@ -1350,16 +1353,16 @@ class MVSRegistration:
 
     def save_mappings(self, mappings):
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
-        output_mappings = {self.file_labels[key]: np.array(mapping.sel(t=0)).tolist()
+        output_mappings = {self.filenames[int(key)]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
-        export_json(mappings_filename, output_mappings)
+        write_transforms(mappings_filename, output_mappings)
 
     def save_mappings_csv(self, mappings, normalise_orientation=False):
         data = []
-        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
+        mappings_header = ['id',' filename', 'x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_tabular_name)
-        for label, sim, mapping, scale, position, rotation \
-                in zip(self.file_labels, self.sims, mappings.values(), self.scales, self.positions, self.rotations):
+        for label, filename, sim, mapping, scale, position, rotation \
+                in zip(self.file_labels, self.filenames, self.sims, mappings.values(), self.scales, self.positions, self.rotations):
             if not normalise_orientation:
                 # rotation already in msim affine transform
                 rotation = None
@@ -1369,14 +1372,14 @@ class MVSRegistration:
                                                   translation0=position,
                                                   rotation=rotation)
             position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
-            row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [
-                rotation]
+            row = ([label] + [filename] + dict_to_xyz(position_pixels, add_zeros=True)
+                   + dict_to_xyz(position, add_zeros=True) + [rotation])
             data.append(row)
         export_csv(mappings_filename, data, header=mappings_header)
 
     def save_metrics(self, metrics):
         metrics_filename = self.output + metrics_name
-        output_metrics = {f'{self.file_labels[keys[0]]}-{self.file_labels[keys[1]]}':
+        output_metrics = {json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]]):
                               {metric: float(value) for metric, value in metric_dict[self.reg_transform_key].items()}
                           for keys, metric_dict in metrics['pairs'].items() if metric_dict[self.reg_transform_key]}
         export_json(metrics_filename, output_metrics)

@@ -11,17 +11,62 @@ def metadata_models():
         Axis,
         CoordinateSystem,
         CoordinateSystemIdentifier,
-        Identity,
+        Affine,
         Scale,
         Transform,
     )
     from ome_zarr_models.v06.multiscales import Dataset
 
-    ct = Identity(
-        input=CoordinateSystemIdentifier(name="a"),
-        output=CoordinateSystemIdentifier(name="b"),
+    ct = Affine(
+        affine=(
+            (1.0, 0.0, 0.0, 5.0),
+            (0.0, 1.0, 0.0, 10.0),
+            (0.0, 0.0, 1.0, 15.0),
+            (0.0, 0.0, 0.0, 1.0),
+        ),
+        path='a-b',
+        input=CoordinateSystemIdentifier(name="source_metadata"),
+        output=CoordinateSystemIdentifier(name="registered"),
     )
-    return ct
+    #return ct.model_dump_json(exclude_none=True, exclude_defaults=True, exclude_unset=True)
+    return ct.model_dump(exclude_none=True, exclude_defaults=True, exclude_unset=True)
+
+
+def metadata_models_list():
+    from ome_zarr_models.v06.coordinate_transforms import (
+        Axis,
+        CoordinateSystem,
+        CoordinateSystemIdentifier,
+        Affine,
+        Scale,
+        Transform,
+    )
+    from ngff_zarr.v06.zarr_metadata import TransformSequence
+
+    input_cs = CoordinateSystemIdentifier(name="source_metadata")
+    output_cs = CoordinateSystemIdentifier(name="registered")
+
+    ct = Affine(
+        affine=(
+            (1.0, 0.0, 0.0, 5.0),
+            (0.0, 1.0, 0.0, 10.0),
+            (0.0, 0.0, 1.0, 15.0),
+            (0.0, 0.0, 0.0, 1.0),
+        ),
+        path='a-b',
+        input=input_cs,
+        output=output_cs,
+    )
+    transforms = TransformSequence(transformations=[ct], input=input_cs, output=output_cs)
+    dct = transforms.to_dict()
+    transforms1 = TransformSequence.from_dict(dct)
+    assert transforms1 == transforms
+    return dct
+
+
+def metadata_models_dict():
+    dct = {'a-b': metadata_models()}
+    return dct
 
 
 def metadata_nz():
@@ -69,7 +114,7 @@ def metadata_nz():
 
 
 def metadata_serialisation():
-    return metadata_nz()
+    print(metadata_models_dict())
 
 
 if __name__ == "__main__":
