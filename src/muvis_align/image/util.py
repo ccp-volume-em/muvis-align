@@ -1196,7 +1196,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
                 shape = [[z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
-        except TypeError:
+        except AttributeError:
             # ignore NoneType error if there is no overlap
             pass
     return shapes, good_pairs
