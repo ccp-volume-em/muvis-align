@@ -749,7 +749,7 @@ def import_metadata(content, fields=None, input_path=None):
     # return dict[id] = {values}
     if isinstance(content, str):
         ext = os.path.splitext(content)[1].lower()
-        if input_path:
+        if input_path and not isinstance(content, dict):
             if isinstance(input_path, list):
                 input_path = input_path[0]
             content = os.path.normpath(os.path.join(os.path.dirname(input_path), content))

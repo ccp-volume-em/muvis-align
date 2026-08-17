@@ -61,6 +61,7 @@ class Interface:
 
     def reset(self):
         self.source_metadata = {}
+        self.extra_metadata_value = {}
         self.view_mode = None
         self.selected_shape_index = None
         self.reg.reset()
@@ -158,6 +159,15 @@ class Interface:
             set_dict_value(self.source_metadata, ['rotation'], value)
             self.need_source_reinit = True
 
+    def extra_metadata(self, value):
+        if value.startswith('{'):
+            try:
+                self.extra_metadata_value = eval(value)
+                return
+            except:
+                pass
+        self.extra_metadata_value = value
+
     def input_output_process(self):
         params = self.params['input_output']
         output = str(params['output_path'])
@@ -207,14 +217,20 @@ class Interface:
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
             try:
-                self.reg.init_sims(source_metadata=self.source_metadata)
+                self.reg.init_sims(
+                    source_metadata=self.source_metadata,
+                    extra_metadata=self.extra_metadata_value,
+                )
             except ValueError as e:
                 show_warning('Unable to read source data\n' + str(e))
                 return False
 
             preview_scale = self.params['input_output']['preview_scale']
-            self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
-                                                   store=False)
+            self.preview_sims = self.reg.init_sims(
+                source_metadata=self.source_metadata,
+                target_scale=preview_scale,
+                store=False,
+            )
             z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
             is_multi_z_shapes = (len(z_positions) > 1)
             if is_multi_z_shapes:
@@ -358,13 +374,15 @@ class Interface:
         face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
         return shapes, refs, labels, face_colors
 
-    def _calculate_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
+    def _calculate_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
+                               extra_metadata=None):
         if show_preprocessed:
             sims = self.reg.register_sims
         else:
             sims = self.preview_sims
             copy_transforms(self.reg.sims, sims, transform_key)
-        fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method=fusion_method)
+        fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method=fusion_method,
+                                 extra_metadata=extra_metadata)
         return fused
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
@@ -710,7 +728,9 @@ class Interface:
             QMessageBox.information(None, 'muvis-align', 'Global registration completed')
 
     def preview_fusion(self):
-        data = self._calculate_napari_data(self.reg.reg_transform_key, fusion_method=self.params['fusion']['method'])
+        data = self._calculate_napari_data(self.reg.reg_transform_key,
+                                           fusion_method=self.params['fusion']['method'],
+                                           extra_metadata=self.extra_metadata_value)
         self._clear_napari_view(self.viewer)
         self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
         self.view_mode = ViewMode.FUSED
@@ -731,10 +751,21 @@ class Interface:
             with TqdmCallback(tqdm_class=progress, desc='Fusion', bar_format=" "), \
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
-                fused_image, _ = self.reg.fuse(self.reg.sims, fusion_method=self.params['fusion']['method'],
+                fused_image, is_saved = self.reg.fuse(self.reg.sims,
+                                               fusion_method=self.params['fusion']['method'],
                                                output_spacing=self.params['fusion']['spacing'],
                                                output_filename=output_filename,
-                                               tile_size=tile_size, ome_version=self.params['fusion']['ome_version'])
+                                               tile_size=tile_size,
+                                               ome_version=self.params['fusion']['ome_version'],
+                                               extra_metadata=self.extra_metadata_value)
+                if not is_saved:
+                    self.reg.save(output_filename, fused_image,
+                                  transform_key=self.reg.reg_transform_key,
+                                  translations0=self.reg.positions,
+                                  tile_size=tile_size,
+                                  pyramid_downsample=2,
+                                  npyramid_add=4,
+                                  ome_version=self.params['fusion']['ome_version'])
             self._clear_napari_view(self.viewer)
             self._add_napari_image(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED

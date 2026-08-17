@@ -118,6 +118,16 @@ parameters:
     optional: True
     section_id: "input_output"
     mode: "advanced"
+  - name: extra_metadata
+    type: textbox
+    label: "Extra metadata"
+    description: "Extra metadata for output"
+    default: ""
+    cli_tag: "--extra_metadata"
+    cli_order: 8
+    optional: True
+    section_id: "input_output"
+    mode: "advanced"
 
   - name: preview_scale
     type: integer
@@ -471,7 +481,7 @@ parameters:
   - name: ome_version
     type: dropdown
     label: "OME version"
-    description: "OME version (0.4, ...)"
+    description: "OME version (0.4, 0.5, ...)"
     options:
       - label: "0.4"
         value: "0.4"

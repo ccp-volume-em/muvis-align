@@ -1264,20 +1264,25 @@ class MVSRegistration:
                 'metrics': metrics}
 
     def fuse(self, sims, fusion_method=None, output_spacing='mean', transform_key=None,
-             output_filename=None, tile_size=None, ome_version=default_ome_zarr_version):
+             output_filename=None, tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None):
         if output_filename is not None:
             output_filename = self.output + output_filename
 
         sim0 = sims[0]
 
-        channels = self.extra_metadata.get('channels', []) if isinstance(self.extra_metadata, dict) else []
+        if extra_metadata is None:
+            extra_metadata = self.extra_metadata
+
+        channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
         is_channel_overlay = (len(channels) > 1)
 
         if transform_key is None:
             transform_key = self.reg_transform_key
 
-        if isinstance(self.extra_metadata, dict):
-            z_scale = self.extra_metadata.get('scale', {}).get('z')
+        if isinstance(self.source_metadata, dict):
+            z_scale = self.source_metadata.get('scale', {}).get('z')
+        elif isinstance(extra_metadata, dict):
+            z_scale = extra_metadata.get('scale', {}).get('z')
         else:
             z_scale = None
 
