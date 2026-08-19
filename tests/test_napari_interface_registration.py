@@ -1163,7 +1163,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.reg.fuse.return_value = ("fused", None)
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface._clear_napari_view = MagicMock()
-    bare_interface._napari_view_add_image = MagicMock()
+    bare_interface._napari_view_add_data = MagicMock()
     monkeypatch.setattr(
         interface_module.QMessageBox,
         "question",
@@ -1177,7 +1177,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         bare_interface.reg.fuse.call_args.kwargs["output_filename"]
         == "registered"
     )
-    bare_interface._napari_view_add_image.assert_called_once_with(
+    bare_interface._napari_view_add_data.assert_called_once_with(
         bare_interface.viewer, "fused", "Fused"
     )
     assert bare_interface.reg.state is CanonicalRegState.FUSED
