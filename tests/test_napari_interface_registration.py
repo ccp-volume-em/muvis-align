@@ -765,10 +765,10 @@ def test_update_views_adds_enabled_preview_layers(
     shapes = [np.zeros((4, 2))]
     shape_data = (shapes, ["0"], ["image-0"], [(1, 1, 1)])
     image_data = object()
-    bare_interface._calculate_napari_shapes = MagicMock(
+    bare_interface._create_napari_shapes = MagicMock(
         return_value=shape_data
     )
-    bare_interface._calculate_napari_data = MagicMock(
+    bare_interface._create_napari_data = MagicMock(
         return_value=image_data
     )
     bare_interface._napari_view_add_data = MagicMock()
@@ -785,11 +785,11 @@ def test_update_views_adds_enabled_preview_layers(
         call(bare_interface.viewer),
         call(bare_interface.overview),
     ]
-    assert bare_interface._calculate_napari_shapes.call_args_list == [
+    assert bare_interface._create_napari_shapes.call_args_list == [
         call("registered", force_2d=False),
         call("registered", force_2d=True),
     ]
-    bare_interface._calculate_napari_data.assert_called_once_with(
+    bare_interface._create_napari_data.assert_called_once_with(
         "registered",
         show_preprocessed=True,
     )
@@ -844,7 +844,7 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
         interface_module, "set_oriented_bounding_box_edges", set_edges
     )
 
-    shape_data = bare_interface._calculate_napari_shapes("registered")
+    shape_data = bare_interface._create_napari_shapes("registered")
     bare_interface._update_view_add_shapes(viewer, *shape_data, "boxes")
 
     kwargs = bounding_box_layer.call_args.kwargs

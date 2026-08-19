@@ -25,9 +25,25 @@ class ParamWidget:
         self.widget.choices = to_magicgui_choices(choices)
 
     def value_changed(self, value):
-        if self.to_str:
+        if isinstance(value, dict):
+            value0 = self.get_value()
+            if isinstance(value0, dict):
+                value = update_dict_value(value0, value)
+        elif self.to_str:
             value = str(value)
         self.interface.change_param(self.param_name, value)
 
     def set_table_column_resize_mode(self, mode=QHeaderView.Stretch):
         self.widget.native.horizontalHeader().setSectionResizeMode(mode)
+
+
+def update_dict_value(old_value, new_value):
+    columns = old_value.get('columns', [])
+    data = old_value.get('data', [[]])
+    data[new_value['row']][new_value['column']] = new_value['data']
+    dict_of_lists = create_dict_of_lists(data, columns)
+    return dict_of_lists
+
+
+def create_dict_of_lists(data, columns):
+    return {column: [x[columni] for x in data] for columni, column in enumerate(columns)}

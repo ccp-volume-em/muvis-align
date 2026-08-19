@@ -31,4 +31,4 @@ def update_params(params, new_params):
 
 def write_params(path, params):
     with open(path, 'w') as outfile:
-        yaml.dump(params, outfile, default_flow_style=False)
+        yaml.dump(params, outfile, default_flow_style=False, sort_keys=False)

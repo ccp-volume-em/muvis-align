@@ -118,14 +118,12 @@ parameters:
     optional: True
     section_id: "input_output"
     mode: "advanced"
-  - name: extra_metadata
-    type: textbox
-    label: "Extra metadata"
-    description: "Extra metadata for output"
-    default: ""
-    cli_tag: "--extra_metadata"
-    cli_order: 8
-    optional: True
+  - name: channels_table
+    type: table
+    label: " "
+    default: []
+    description: "Channels"
+    cli_order: 11
     section_id: "input_output"
     mode: "advanced"
 
@@ -135,7 +133,7 @@ parameters:
     description: "Downscale factor for preview images"
     default: 16
     cli_tag: "--preview_scale"
-    cli_order: 9
+    cli_order: 8
     optional: True
     section_id: "input_output"
     mode: "advanced"
@@ -510,14 +508,14 @@ display_only:
       - label: Source metadata
         value: "source_metadata"
     default: "source_metadata"
-    cli_order: 10
+    cli_order: 9
     section_id: "input_output"
   - name: metadata_table
     type: table
     label: " "
     default: []
     description: "Metadata"
-    cli_order: 11
+    cli_order: 10
     section_id: "input_output"
 
   - name: metrics_table

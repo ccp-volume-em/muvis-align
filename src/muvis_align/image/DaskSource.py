@@ -75,6 +75,8 @@ class DaskSource:
                     self.rotation = eval_context(source_metadata, 'rotation', 0, context)
                 if check_contains_value(source_metadata['rotation'], 'invert'):
                     self.rotation = -self.rotation
+            if 'channels' in source_metadata and source_metadata['channels']:
+                self.channels = source_metadata['channels']
 
         self.scale_factors = [{dim: value0 / value for dim, value, value0
                                in zip(self.dimension_order, shape, self.shape) if dim in 'xyz'}
@@ -124,11 +126,11 @@ class DaskSource:
         return self.get_size().get('c', 1)
 
     def get_channels(self):
-        if len(self.channels) == 0:
+        if not self.channels:
             if self.is_rgb:
                 return [{'label': ''}]
             else:
-                return [{'label': ''}] * self.get_nchannels()
+                return [{'label': f'channel {index}'} for index in range(self.get_nchannels())]
         return self.channels
 
     def get_data(self, level=0):
