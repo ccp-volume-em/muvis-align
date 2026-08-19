@@ -582,7 +582,7 @@ CanonicalRegState = interface_module.RegState
 def bare_interface():
     interface = CanonicalInterface.__new__(CanonicalInterface)
     interface.reg = MagicMock()
-    interface.extra_metadata_value = {}
+    interface.extra_metadata = {}
     interface.param_widgets = {}
     interface.reg.file_labels = ["image-0"]
     interface.preview_sims = [
@@ -1150,6 +1150,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.viewer = MagicMock()
     bare_interface.params = {
         "registration": {"operation": "register"},
+        "input_output": {"registration_dimension": "all"},
         "fusion": {
             "method": "average",
             "spacing": "mean",
