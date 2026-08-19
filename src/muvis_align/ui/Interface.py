@@ -475,7 +475,7 @@ class Interface:
         viewer.add_image(data, name=name,channel_axis=channel_axis, colormap=colors,
                          scale=scale, translate=translate)
 
-    def _update_napari_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
+    def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
                                                matches, inliers, points_color='blue')
@@ -488,7 +488,7 @@ class Interface:
             elif layer_type == "shapes":
                 viewer.add_shapes(data, **kwargs)
 
-    def _add_napari_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
+    def _napari_view_add_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
         scale = si_utils.get_spacing_from_sim(data, asarray=True)
         position = si_utils.get_origin_from_sim(data, asarray=True)
         layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
@@ -548,7 +548,7 @@ class Interface:
         moving_points = results.get('moving_points', [])
         matches = results.get('matches', [])
         inliers = results.get('inliers', [])
-        self._update_napari_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
+        self._napari_view_show_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
         self.view_mode = ViewMode.FEATURES
 
     def populate_metrics_table(self, metrics_dict):
@@ -729,8 +729,8 @@ class Interface:
                     self.run_pre_processing()
                 self._clear_napari_view(self.viewer)
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._add_napari_image(self.viewer, self.preview_sims[sim_index], labels[sim_index],
-                                           pair_transforms[index], color, affine_event=True)
+                    self._napari_view_add_image(self.viewer, self.preview_sims[sim_index], labels[sim_index],
+                                                pair_transforms[index], color, affine_event=True)
                 self.update_pair_metrics()
 
     def calc_mod_pair_transform(self):
@@ -794,12 +794,13 @@ class Interface:
                     self.reg.save(output_filename, fused_image,
                                   transform_key=self.reg.reg_transform_key,
                                   translations0=self.reg.positions,
+                                  channels=self.reg.extra_metadata.get('channels', []),
                                   tile_size=tile_size,
                                   pyramid_downsample=2,
                                   npyramid_add=4,
                                   ome_version=self.params['fusion']['ome_version'])
             self._clear_napari_view(self.viewer)
-            self._add_napari_image(self.viewer, fused_image, 'Fused')
+            self._napari_view_add_data(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
             QMessageBox.information(None, 'muvis-align', 'Fusion completed')

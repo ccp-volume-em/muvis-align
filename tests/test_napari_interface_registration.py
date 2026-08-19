@@ -356,7 +356,7 @@ class TestNapariInterfaceRegistration:
                         with patch.object(interface, 'get_all_widgets', return_value={}):
                             with patch.object(interface.reg, 'fuse', return_value=(MagicMock(), None)):
                                 with patch.object(interface, '_clear_napari_view'):
-                                    with patch.object(interface, '_add_napari_image'):
+                                    with patch.object(interface, '_napari_view_add_image'):
                                         interface.fusion_process()
 
     def test_registration_state_transitions(self, make_napari_viewer, project_config):
@@ -899,7 +899,7 @@ def test_update_napari_features_dispatches_all_layer_types(
         lambda *_, **__: layers,
     )
 
-    bare_interface._update_napari_features(
+    bare_interface._napari_view_show_features(
         viewer, None, None, None, None, None, None
     )
 
@@ -926,7 +926,7 @@ def test_add_napari_image_applies_color_and_affine_callback(
         lambda *_args, **_kwargs: [4, 5],
     )
 
-    result = bare_interface._add_napari_image(
+    result = bare_interface._napari_view_add_image(
         viewer,
         data,
         "image",
@@ -1163,7 +1163,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.reg.fuse.return_value = ("fused", None)
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface._clear_napari_view = MagicMock()
-    bare_interface._add_napari_image = MagicMock()
+    bare_interface._napari_view_add_image = MagicMock()
     monkeypatch.setattr(
         interface_module.QMessageBox,
         "question",
@@ -1177,7 +1177,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         bare_interface.reg.fuse.call_args.kwargs["output_filename"]
         == "registered"
     )
-    bare_interface._add_napari_image.assert_called_once_with(
+    bare_interface._napari_view_add_image.assert_called_once_with(
         bare_interface.viewer, "fused", "Fused"
     )
     assert bare_interface.reg.state is CanonicalRegState.FUSED
