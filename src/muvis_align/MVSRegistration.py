@@ -1264,7 +1264,8 @@ class MVSRegistration:
                 'metrics': metrics}
 
     def fuse(self, sims, fusion_method=None, output_spacing='mean', transform_key=None,
-             output_filename=None, tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None):
+             dimension=None, output_filename=None,
+             tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None):
         if output_filename is not None:
             output_filename = self.output + output_filename
 
@@ -1274,7 +1275,7 @@ class MVSRegistration:
             extra_metadata = self.extra_metadata
 
         channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
-        is_channel_overlay = (len(channels) > 1)
+        is_channel_overlay = ((dimension and dimension == 'c') or len(channels) > 1)
 
         if transform_key is None:
             transform_key = self.reg_transform_key

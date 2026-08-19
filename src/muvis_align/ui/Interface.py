@@ -161,6 +161,10 @@ class Interface:
             set_dict_value(self.source_metadata, ['rotation'], value)
             self.need_source_reinit = True
 
+    def registration_dimension(self, value):
+        # Force reinitialization of extra metadata / channels when registration dimension changes
+        self.extra_metadata.pop('channels', None)
+
     def channels_table(self, value):
         old_value = self.param_widgets.get('input_output.channels_table').get_value()
         channels_dict = update_dict_value(old_value, value)
@@ -312,6 +316,12 @@ class Interface:
             # get channels from source
             source0 = self.reg.sources[0]
             channels = source0.get_channels()
+
+            dimension = self.params['input_output']['registration_dimension']
+            while dimension.lower() == 'c' and len(channels) < len(self.reg.sources):
+                channel = {'label': f'channel {len(channels)}'}
+                channels.append(channel)
+
             self.extra_metadata['channels'] = channels
 
             # convert to list dict
@@ -402,7 +412,11 @@ class Interface:
         else:
             sims = self.preview_sims
             copy_transforms(self.reg.sims, sims, transform_key)
-        fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method=fusion_method)
+        fused, _ = self.reg.fuse(sims,
+                                 transform_key=transform_key,
+                                 fusion_method=fusion_method,
+                                 dimension=self.params['input_output']['registration_dimension'],
+                                 extra_metadata=self.extra_metadata)
         return fused
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
@@ -769,11 +783,13 @@ class Interface:
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
                 fused_image, is_saved = self.reg.fuse(self.reg.sims,
-                                               fusion_method=self.params['fusion']['method'],
-                                               output_spacing=self.params['fusion']['spacing'],
-                                               output_filename=output_filename,
-                                               tile_size=tile_size,
-                                               ome_version=self.params['fusion']['ome_version'])
+                                                      fusion_method=self.params['fusion']['method'],
+                                                      output_spacing=self.params['fusion']['spacing'],
+                                                      dimension=self.params['input_output']['registration_dimension'],
+                                                      output_filename=output_filename,
+                                                      tile_size=tile_size,
+                                                      ome_version=self.params['fusion']['ome_version'],
+                                                      extra_metadata=self.extra_metadata)
                 if not is_saved:
                     self.reg.save(output_filename, fused_image,
                                   transform_key=self.reg.reg_transform_key,

@@ -33,7 +33,7 @@ outputs:
     label: "Output data"
     description: "Output data"
     cli_tag: "--output_path"
-    cli_order: 12
+    cli_order: 13
     default: "output"
     optional: False
     format:
@@ -118,12 +118,29 @@ parameters:
     optional: True
     section_id: "input_output"
     mode: "advanced"
+  - name: registration_dimension
+    type: dropdown
+    label: "Registration dimension"
+    description: "Dimension of registration"
+    options:
+      - label: Space
+        value: "space"
+      - label: Z
+        value: "z"
+      - label: C
+        value: "c"
+      - label: T
+        value: "t"
+    default: "space"
+    cli_order: 11
+    section_id: "input_output"
+    mode: "advanced"
   - name: channels_table
     type: table
     label: " "
     default: []
     description: "Channels"
-    cli_order: 11
+    cli_order: 12
     section_id: "input_output"
     mode: "advanced"
 
@@ -144,7 +161,7 @@ parameters:
     description: "If enabled, any existing output data will be overwritten"
     default: True
     cli_tag: "--overwrite"
-    cli_order: 13
+    cli_order: 14
     optional: True
     append_value: False
     section_id: "input_output"
@@ -155,7 +172,7 @@ parameters:
     description: "If enabled, tiles will be displayed as shapes"
     default: True
     cli_tag: "--preview_shapes"
-    cli_order: 14
+    cli_order: 15
     optional: True
     append_value: False
     section_id: "input_output"
@@ -166,7 +183,7 @@ parameters:
     description: "If enabled, tiles will be previewed as images"
     default: True
     cli_tag: "--preview_images"
-    cli_order: 15
+    cli_order: 16
     optional: True
     append_value: False
     section_id: "input_output"
@@ -236,12 +253,12 @@ parameters:
   - name: operation
     type: dropdown
     label: "Operation"
-    description: "Operation (e.g. register, or stack only)"
+    description: "Operation (e.g. register, or merge only)"
     options:
       - label: Register
         value: "register"
-      - label: Stack
-        value: "stack"
+      - label: Merge
+        value: "merge"
     default: "register"
     cli_tag: "--operation"
     cli_order: 0
