@@ -1,6 +1,5 @@
 # Based on https://github.com/napari/napari/blob/main/dockerfile
-# Base image with Python 3.11 (unable to build XPRA server with Python 3.12)
-FROM python:3.11-slim-bookworm AS muvis-align
+FROM python:3.12-slim-bookworm AS muvis-align
 
 ARG DEBIAN_FRONTEND=noninteractive
 
