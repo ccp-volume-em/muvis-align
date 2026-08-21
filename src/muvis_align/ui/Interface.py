@@ -24,7 +24,7 @@ from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb, \
-    calculate_rigid_difference, operation_to_past_participle
+    calculate_rigid_difference, operation_to_past_participle, eval_path
 
 
 class ViewMode(Enum):
@@ -113,17 +113,24 @@ class Interface:
         keys = param_name.split('.')
         if keys[0] not in self.params:
             self.params[keys[0]] = {}
+        if isinstance(value, str):
+            value = value.replace('\\', '/')
         self.params[keys[0]][keys[1]] = value
         self.write_params()
 
     def update_input_output_path(self):
         params = self.params['input_output']
         widget = self.param_widgets.get('input_output.input_path')
-        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('input_path', '')))
+        input_path = eval_path(params.get('input_path', ''))
+        print('input_path', input_path)
+        if isinstance(input_path, str):
+            widget.set_value(os.path.join(os.path.dirname(self.params_path), input_path))
         widget = self.param_widgets.get('input_output.output_path')
-        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('output_path', '')))
+        output_path = eval_path(params.get('output_path', ''))
+        if isinstance(output_path, str):
+            widget.set_value(os.path.join(os.path.dirname(self.params_path), output_path))
 
-    def input_path(self):
+    def input_path(self, value):
         self.need_source_reinit = True
 
     def source_position_z(self, value):
@@ -183,7 +190,7 @@ class Interface:
             self.need_source_reinit = False
             if not output.endswith(os.sep):
                 output += os.sep
-            ok = self.reg.init(input_path=str(params['input_path']),
+            ok = self.reg.init(input_path=eval_path(params['input_path']),
                                output_path=output,
                                overwrite=params['overwrite'])
             if ok:
@@ -729,7 +736,7 @@ class Interface:
                     self.run_pre_processing()
                 self._clear_napari_view(self.viewer)
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._napari_view_add_image(self.viewer, self.preview_sims[sim_index], labels[sim_index],
+                    self._napari_view_add_image(self.viewer, self.reg.register_sims[sim_index], labels[sim_index],
                                                 pair_transforms[index], color, affine_event=True)
                 self.update_pair_metrics()
 
@@ -794,7 +801,7 @@ class Interface:
                     self.reg.save(output_filename, fused_image,
                                   transform_key=self.reg.reg_transform_key,
                                   translations0=self.reg.positions,
-                                  channels=self.reg.extra_metadata.get('channels', []),
+                                  channels=self.extra_metadata.get('channels', []),
                                   tile_size=tile_size,
                                   pyramid_downsample=2,
                                   npyramid_add=4,

@@ -665,7 +665,7 @@ def calc_images_quantiles(images, quantiles):
 
 def get_image_quantile(image: np.ndarray, quantile: float, axis=None) -> float:
     value = np.quantile(image, quantile, axis=axis).astype(image.dtype)
-    return value.item()
+    return np.array(value).item()
 
 
 def get_image_window(image, low=0.01, high=0.99):
@@ -1196,7 +1196,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
                 shape = [[z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
-        except AttributeError:
+        except (AttributeError, ValueError):
             # ignore NoneType error if there is no overlap
             pass
     return shapes, good_pairs

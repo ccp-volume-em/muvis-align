@@ -1,3 +1,4 @@
+from ome_zarr.scale import Scaler
 from tifffile import TiffWriter, tifffile
 
 from src.muvis_align.constants import default_chunk_size
@@ -38,20 +39,19 @@ def save_tiff(filename, data, dimension_order=None, pixel_size=None, tile_size=(
 
 
 def save_ome_tiff(filename, data, dimension_order, pixel_size, channels=[], positions=[], rotation=None,
-                  tile_size=None, compression=None, scaler=None):
+                  tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=None):
 
     ome_metadata, resolution0, resolution_unit0 = create_tiff_metadata(pixel_size, dimension_order,
                                                                        channels, positions, rotation, is_ome=True)
     # maximum size (w/o compression)
     max_size = data.size * data.itemsize
     size = max_size
-    if scaler is not None:
+    if pyramid_downsample is not None:
+        scaler = Scaler(downscale=pyramid_downsample, max_layer=npyramid_add)
         npyramid_add = scaler.max_layer
         for i in range(npyramid_add):
             size //= (scaler.downscale ** 2)
             max_size += size
-    else:
-        npyramid_add = 0
     bigtiff = (max_size > 2 ** 32)
 
     if tile_size:

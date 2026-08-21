@@ -589,6 +589,14 @@ def dict_to_xyz(dct, dims='xyz', add_zeros=False):
     return array
 
 
+def create_chunk_dict(chunk_size, dims):
+    if isinstance(chunk_size, dict):
+        chunk_dict = chunk_size
+    else:
+        chunk_dict = {dim: chunk_size if dim in 'xyz' else 1 for dim in dims}
+    return chunk_dict
+
+
 def normalise_rotated_positions(centers0, rotations0, sizes, center, ndims):
     # in [xy(z)]
     centers = []
@@ -743,6 +751,16 @@ def metric_to_rgb(value, min_light=0, max_light=1, output_range=1.0):
     if isinstance(output_range, int):
         r, g, b = int(r), int(g), int(b)
     return r, g, b
+
+
+def eval_path(path):
+    if ',' in path:
+        parts = path.split(',')
+        new_path = ','.join(['"' + part.strip() + '"' for part in parts])
+        new_path = eval('[' + new_path + ']')
+    else:
+        new_path = path
+    return new_path
 
 
 def import_metadata(content, fields=None, input_path=None):

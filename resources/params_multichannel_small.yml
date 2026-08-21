@@ -1,0 +1,35 @@
+general:
+  break_on_error: True
+  logging:
+    filename: log/muvis-align.log
+    format: '%(asctime)s %(levelname)s: %(message)s'
+    dask: True
+    time: True
+    verbose: True
+  output:
+    overwrite: False
+    format: ome.zarr, ome.tiff
+    tile_size: []
+    compression: []
+    npyramid_add: 4
+    pyramid_downsample: 2
+
+operations:
+  - operation: register
+    input:
+      path:
+      - D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/tiles_1_MMStack_New Grid 1-Grid_5_15.ome.tiff
+      - D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/EM04768_01_sub_04_fluorescence_10x/converted/tiles_1_MMStack_New Grid 1-Grid_5_15.ome.tiff
+      source_metadata: {'position': {'z': 0}}
+      extra_metadata: {'channels': [{'label': 'reflection', 'color':[1, 1, 1, 1]}, {'label': 'fluorescence', 'color':[0, 1, 0, 1]}]}
+    preprocessing:
+      #flatfield_quantiles: [0.95]
+      #filter_foreground: True
+      normalisation: True
+    registration:
+      normalisation: True
+      gaussian_sigma: 1.5
+      transform_type: translation
+      pairing: orthogonal
+      name: phase_correlation
+    output: D:/slides/EM04768_01_substrate_04/output_test/
