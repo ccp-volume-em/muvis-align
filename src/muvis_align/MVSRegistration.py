@@ -1054,8 +1054,6 @@ class MVSRegistration:
             ]
         else:
             msims_reg = register_msims
-
-        #print_sim_info(msims_reg[0])
         
         # Normalize transforms to match image dimensions in each scale level
         # (handles mixed 3D/4D transforms in multiscale images)

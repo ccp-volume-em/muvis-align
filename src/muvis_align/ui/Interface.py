@@ -415,7 +415,8 @@ class Interface:
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
         if show_preprocessed:
-            sims = self.reg.register_sims
+            # make copy to avoid transform changes in the original sims inside self.reg.fuse()
+            sims = [sim.copy(deep=True) for sim in self.reg.register_sims]
         else:
             sims = self.preview_sims
             copy_transforms(self.reg.sims, sims, transform_key)
