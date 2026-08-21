@@ -589,6 +589,14 @@ def dict_to_xyz(dct, dims='xyz', add_zeros=False):
     return array
 
 
+def create_chunk_dict(chunk_size, dims):
+    if isinstance(chunk_size, dict):
+        chunk_dict = chunk_size
+    else:
+        chunk_dict = {dim: chunk_size if dim in 'xyz' else 1 for dim in dims}
+    return chunk_dict
+
+
 def normalise_rotated_positions(centers0, rotations0, sizes, center, ndims):
     # in [xy(z)]
     centers = []
@@ -745,11 +753,21 @@ def metric_to_rgb(value, min_light=0, max_light=1, output_range=1.0):
     return r, g, b
 
 
+def eval_path(path):
+    if ',' in path:
+        parts = path.split(',')
+        new_path = ','.join(['"' + part.strip() + '"' for part in parts])
+        new_path = eval('[' + new_path + ']')
+    else:
+        new_path = path
+    return new_path
+
+
 def import_metadata(content, fields=None, input_path=None):
     # return dict[id] = {values}
     if isinstance(content, str):
         ext = os.path.splitext(content)[1].lower()
-        if input_path:
+        if input_path and not isinstance(content, dict):
             if isinstance(input_path, list):
                 input_path = input_path[0]
             content = os.path.normpath(os.path.join(os.path.dirname(input_path), content))
@@ -860,3 +878,13 @@ def get_label_element(elements, label):
         if element.get('label') == label:
             return element
     return None
+
+
+def operation_to_past_participle(operation):
+    verb = operation.split()[0]
+    if verb.endswith('e'):
+        return verb + 'd'
+    elif verb.endswith('y'):
+        return verb[:-1] + 'ied'
+    else:
+        return verb + 'ed'

@@ -1,5 +1,4 @@
 general:
-  show_original: False
   break_on_error: True
   logging:
     filename: log/muvis-align.log
@@ -9,46 +8,50 @@ general:
     verbose: True
   output:
     format: ome.zarr, ome.tiff
-    tile_size: []
+    tile_size: [4096, 4096]
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
 
 operations:
   - operation: register
-    #input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
-    input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection3/*.ome.tiff
-    source_metadata: source invert
-    preprocessing:
-      #flatfield_quantiles: [0.95]
-      #filter_foreground: True
-      normalisation: global
-    registration:
-      pairing: orthogonal
-      name: phase_correlation
-    output: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched/
-
-  - operation: register
-    #input: D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/EM04768_01_sub_04_fluorescence_10x/converted/*.ome.tiff
-    input: D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/subselection/*.ome.tiff
-    source_metadata: source invert
-    preprocessing:
-      #flatfield_quantiles: [0.95]
-      #filter_foreground: True
-      normalisation: global
-    registration:
-      pairing: orthogonal
-      name: phase_correlation
-    output: D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched/
-
-  - operation: register
     input:
-      - D:/slides/EM04768_01_substrate_04/registered/reflection_stitched/registered.ome.zarr
-      - D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched/registered.ome.zarr
-    extra_metadata: {'channels': [{'label':reflection, 'color':[1, 1, 1, 1]}, {'label':fluorescence, 'color':[0, 1, 0, 1]}]}
+      #path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
+      path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection3/*.ome.tiff
+      source_metadata: source invert
     preprocessing:
+      #flatfield_quantiles: [0.95]
+      #filter_foreground: True
       normalisation: True
     registration:
-      name: ANTsPy
-      channel: 0
-    output: D:/slides/EM04768_01_substrate_04/registered/
+      normalisation: True
+      gaussian_sigma: 1.5
+      transform_type: translation
+      pairing: orthogonal
+      name: phase_correlation
+    output: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched2/
+
+#  - operation: register
+#    #input: D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/EM04768_01_sub_04_fluorescence_10x/converted/*.ome.tiff
+#    input: D:/slides/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/subselection/*.ome.tiff
+#    source_metadata: source invert
+#    preprocessing:
+#      #flatfield_quantiles: [0.95]
+#      #filter_foreground: True
+#      normalisation: global
+#    registration:
+#      pairing: orthogonal
+#      name: phase_correlation
+#    output: D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched2/
+#
+#  - operation: register
+#    input:
+#      - D:/slides/EM04768_01_substrate_04/registered/reflection_stitched2/registered.ome.zarr
+#      - D:/slides/EM04768_01_substrate_04/registered/fluorescence_stitched2/registered.ome.zarr
+#    extra_metadata: {'channels': [{'label':reflection, 'color':[1, 1, 1, 1]}, {'label':fluorescence, 'color':[0, 1, 0, 1]}]}
+#    preprocessing:
+#      normalisation: True
+#    registration:
+#      name: ANTsPy
+#      channel: 0
+#    output: D:/slides/EM04768_01_substrate_04/registered2/

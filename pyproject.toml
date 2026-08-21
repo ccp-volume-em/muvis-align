@@ -38,6 +38,8 @@ dependencies = [
     "tifffile>=2023.9.26",
     "zarr",
     "ome-zarr",
+    "ngff-zarr",
+    "ome-zarr-models>=1.8.0rc2",
     "rocrate>=0.15.0",
     "matplotlib",
     "tqdm",

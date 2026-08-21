@@ -101,6 +101,9 @@ def create_section_container(section_id, section_template, interface,
             interface.param_widgets[full_name] = param_widget
             if connect_changed and spec.section_key != 'display_only':
                 widget.changed.connect(param_widget.value_changed)
+            else:
+                # https://github.com/pyapp-kit/magicgui/issues/348
+                widget.read_only = True
             widgets.append(widget)
         except Exception as e:
             logging.error(f'Error creating widget from {template}\n{e}')

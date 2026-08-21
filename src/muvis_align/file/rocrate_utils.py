@@ -15,8 +15,12 @@ from src.muvis_align.util import get_filetitle
 def create_ro_crate(source, dest_path, image_paths=[]):
     crate = ZarrCrate()
 
+    # ensure file is not copied from source, making sure dest_path exists
     for image_path in image_paths:
-        crate.add_dataset(dest_path=image_path)
+        if os.path.isdir(os.path.join(dest_path, image_path)):
+            crate.add_dataset(source=os.path.join(dest_path, image_path), dest_path=image_path)
+        else:
+            crate.add_file(source=os.path.join(dest_path, image_path), dest_path=image_path)
 
     properties = {"fbbi_id": {"@id": 'obo:FBbi_00000257'}}
     crate.add(ImageAcquistion(crate, properties=properties))

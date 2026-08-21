@@ -3,7 +3,7 @@ general:
   metadata_summary: False
   chunk_size: [4096, 4096]
   break_on_error: True
-  overwrite: True
+  overwrite: False
   logging:
     filename: log/muvis-align-empiar12193.log
     format: '%(asctime)s %(levelname)s: %(message)s'
@@ -30,11 +30,12 @@ operations:
     preprocessing:
       #normalisation: global  # normalise in custom registration function instead
       scale: 4
-      flatfield_quantiles: [0.5]
+      #flatfield_quantiles: [0.5]
     registration:
       pairing: orthogonal
+      normalisation: True
       transform_type: translation
-      name: orb
+      name: sift
       gaussian_sigma: 1
       max_keypoints: 5000
       inlier_threshold_factor: 0.05
@@ -44,17 +45,18 @@ operations:
 
   - operation: register stack
     input:
-      path: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S*/registered.ome.zarr
-      #path: D:/slides/12193/stitched/S*/registered.ome.zarr
+      #path: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S*/registered.ome.zarr
+      path: D:/slides/12193/stitched/S*/registered.ome.zarr
       source_metadata: source
     extra_metadata: {'scale': {'z': 0.1}}
     preprocessing:
       #normalisation: individual  # normalise in custom registration function instead
-      scale: 4
+      scale: 8
     registration:
+      normalisation: True
       transform_type: rigid
-      name: orb
-      gaussian_sigma: 5
+      name: sift
+      gaussian_sigma: 3
       max_keypoints: 5000
       inlier_threshold_factor: 0.05
       max_trials: 1000

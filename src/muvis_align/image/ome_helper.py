@@ -1,7 +1,4 @@
-from ome_zarr.scale import Scaler
-
 from src.muvis_align.constants import zarr_extension, tiff_extension, default_ome_zarr_version
-from src.muvis_align.image.ome_ngff_helper import save_ome_ngff
 from src.muvis_align.image.ome_tiff_helper import save_ome_tiff
 from src.muvis_align.image.ome_zarr_helper import save_ome_zarr
 from src.muvis_align.image.util import *
@@ -45,22 +42,15 @@ def save_image(filename, data, output_format=zarr_extension,
         else:
             data = data.chunk(chunks=chunking)
 
-    scaler = Scaler(downscale=pyramid_downsample, max_layer=npyramid_add)
-
     dimension_order = ''.join(data0.dims)
     pixel_size = si_utils.get_spacing_from_sim(data0)
 
     if output_format:
         if 'zar' in output_format:
-            if isinstance(data, list):
-                # experimental
-                # TODO: don't use scaler here as it doesn't allow 3D pyramid sizes
-                save_ome_zarr(str(filename) + zarr_extension, data, dimension_order, pixel_size,
-                              channels, positions, rotations, compression=compression, scaler=scaler,
-                              ome_version=ome_version)
-            else:
-                save_ome_ngff(str(filename) + zarr_extension, data, pyramid_downsample=pyramid_downsample,
-                              ome_version=ome_version, verbose=verbose)
+            save_ome_zarr(str(filename) + zarr_extension, data, dimension_order, pixel_size,
+                          channels, positions, rotations, compression=compression, ome_version=ome_version,
+                          pyramid_downsample=pyramid_downsample)
         if 'tif' in output_format:
             save_ome_tiff(str(filename) + tiff_extension, data.data, dimension_order, pixel_size,
-                          channels, positions, rotation, tile_size=tile_size, compression=compression, scaler=scaler)
+                          channels, positions, rotation, tile_size=tile_size, compression=compression,
+                          pyramid_downsample=pyramid_downsample, npyramid_add=npyramid_add)

@@ -1,3 +1,5 @@
+import json
+
 from src.muvis_align.util import import_json, export_json
 
 
@@ -8,7 +10,7 @@ if __name__ == '__main__':
     data = import_json(filename)
     data2 = {}
     for key, value in data.items():
-        keys = key.split('-')
+        keys = json.loads(key)
         key2 = f'slice{int(keys[1]):05}'
         data2[key2] = value
     export_json(out_filename, data2)

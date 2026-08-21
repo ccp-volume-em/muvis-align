@@ -14,12 +14,14 @@ from multiview_stitcher.registration import compute_pairwise_registrations, _plo
 import networkx as nx
 import numpy as np
 import os.path
+from pathlib import Path
 import shutil
 from skimage.transform import resize
 import xarray as xr
 
 from src.muvis_align.constants import *
 from src.muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
+from src.muvis_align.file.transforms import write_transforms, read_transforms
 from src.muvis_align.image.Video import Video
 from src.muvis_align.image.flatfield import flatfield_correction
 from src.muvis_align.image.ome_helper import save_image
@@ -55,6 +57,9 @@ class MVSRegistration:
 
     def reset(self):
         self.state = RegState.UNINIT
+        self.source_transform_key = 'source_metadata'
+        self.reg_transform_key = 'registered'
+        self.transition_transform_key = 'transition'
         self.source_metadata = {}
         self.extra_metadata = {}
         self.sims = []
@@ -136,6 +141,8 @@ class MVSRegistration:
         if not self.filenames:
             return False
 
+        self.filenames = [Path(path).as_posix() for path in self.filenames]
+
         if input_labels:
             self.file_labels = input_labels
         else:
@@ -193,7 +200,7 @@ class MVSRegistration:
             logging.warning('Skipping (no images)')
             return False
 
-        output_filename = operation.split()[0] + 'ed'
+        output_filename = operation_to_past_participle(operation)
 
         self.check_progress(output_filename, output_format)
 
@@ -219,11 +226,10 @@ class MVSRegistration:
         self.init_progress(output_filename, output_format)
 
         data = []
-        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
-        for label, sim, scale in zip(file_labels, sims, self.scales):
-            position, rotation = get_data_mapping(sim, transform_key=self.source_transform_key)
+        mappings_header = ['id', 'filename', 'x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
+        for label, filename, position, rotation, scale in zip(file_labels, self.filenames, self.positions, self.rotations, self.scales):
             position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
-            row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
+            row = [label] + [filename] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [rotation]
             data.append(row)
         export_csv(output + prereg_mappings_name, data, header=mappings_header)
 
@@ -288,7 +294,7 @@ class MVSRegistration:
                                         nom_sims=sims,
                                         transform_key=transform_key)
 
-            if 'register' in operation or 'stack' in operation:
+            if 'register' in operation or 'stack' in operation or 'fuse' in operation:
                 with Timer('fuse image', self.logging_time):
                     if isinstance(self.fusion_params, dict):
                         fusion_method = self.fusion_params.get('method', '')
@@ -296,8 +302,9 @@ class MVSRegistration:
                     else:
                         fusion_method = self.fusion_params
                         output_spacing = self.params.get('output_spacing', 'mean')
+                    zarr_output_filename = output_filename if 'zar' in output_format else None
                     fused_image, is_saved = self.fuse(sims, fusion_method=fusion_method, output_spacing=output_spacing,
-                                                      transform_key=transform_key, output_filename=output_filename,
+                                                      transform_key=transform_key, output_filename=zarr_output_filename,
                                                       tile_size=output_tile_size, ome_version=output_ome_version)
                     self.state = RegState.FUSED
             else:
@@ -305,11 +312,14 @@ class MVSRegistration:
                 is_saved = False
 
             if not is_saved or 'tif' in output_format:
+                extra_output_format = output_format
+                if is_saved:
+                    extra_output_format = extra_output_format.replace('ome.zarr', '').replace('zar', '')
                 logging.info('Saving fused image...')
                 with Timer('save fused image', self.logging_time):
                     self.save(output_filename, fused_image,
                               transform_key=transform_key, translations0=self.positions,
-                              format = output_format,
+                              format = extra_output_format,
                               tile_size = output_tile_size,
                               compression = output_compression,
                               pyramid_downsample = output_pyramid_downsample,
@@ -567,12 +577,11 @@ class MVSRegistration:
             indexed_qualities = {}
             indexed_bboxes = {}
             for key, value in pairs.items():
-                key1, key2 = key.split('-')
-                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                key1, key2 = json.loads(key)
+                indexed_key = self.filenames.index(key1), self.filenames.index(key2)
                 indexed_pair_transforms[indexed_key] = (
                     param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
-                if default_quality_key in value:
-                    indexed_qualities[indexed_key] = np.array(value[default_quality_key])
+                indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
                 if 'bbox' in value:
                     indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             if not is_3d:
@@ -606,10 +615,10 @@ class MVSRegistration:
             else:
                 z_scale = None
 
-            mappings = import_json(mappings_filename)
+            mappings = read_transforms(mappings_filename)
             # copy transforms to sims
-            for sim, label in zip(sims, self.file_labels):
-                mapping = param_utils.affine_to_xaffine(np.array(mappings[label]))
+            for sim, filename in zip(sims, self.filenames):
+                mapping = param_utils.affine_to_xaffine(np.array(mappings[filename]))
                 if make_3d:
                     transform = param_utils.identity_transform(ndim=3)
                     transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
@@ -625,8 +634,8 @@ class MVSRegistration:
             metrics = import_json(metrics_filename)
             indexed_metrics = {}
             for key, value in metrics.items():
-                key1, key2 = key.split('-')
-                indexed_key = self.file_labels.index(key1), self.file_labels.index(key2)
+                key1, key2 = json.loads(key)
+                indexed_key = self.filenames.index(key1), self.filenames.index(key2)
                 indexed_metrics[indexed_key] = value
             self.metrics = {
                 'summary': {default_transform_key:
@@ -1045,8 +1054,6 @@ class MVSRegistration:
             ]
         else:
             msims_reg = register_msims
-
-        #print_sim_info(msims_reg[0])
         
         # Normalize transforms to match image dimensions in each scale level
         # (handles mixed 3D/4D transforms in multiscale images)
@@ -1255,20 +1262,26 @@ class MVSRegistration:
                 'metrics': metrics}
 
     def fuse(self, sims, fusion_method=None, output_spacing='mean', transform_key=None,
-             output_filename=None, tile_size=None, ome_version=default_ome_zarr_version):
+             dimension=None, output_filename=None,
+             tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None):
         if output_filename is not None:
             output_filename = self.output + output_filename
 
         sim0 = sims[0]
 
-        channels = self.extra_metadata.get('channels', []) if isinstance(self.extra_metadata, dict) else []
-        is_channel_overlay = (len(channels) > 1)
+        if extra_metadata is None:
+            extra_metadata = self.extra_metadata
+
+        channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
+        is_channel_overlay = ((dimension and dimension == 'c') or len(channels) > 1)
 
         if transform_key is None:
             transform_key = self.reg_transform_key
 
-        if isinstance(self.extra_metadata, dict):
-            z_scale = self.extra_metadata.get('scale', {}).get('z')
+        if isinstance(self.source_metadata, dict):
+            z_scale = self.source_metadata.get('scale', {}).get('z')
+        elif isinstance(extra_metadata, dict):
+            z_scale = extra_metadata.get('scale', {}).get('z')
         else:
             z_scale = None
 
@@ -1298,6 +1311,10 @@ class MVSRegistration:
             channel_sims = [sim.assign_coords({'c': [channels[simi]['label']]}) for simi, sim in enumerate(channel_sims)]
             fused_image = xr.combine_nested([sim.rename() for sim in channel_sims], concat_dim='c', combine_attrs='override')
         else:
+            if fusion_method:
+                logging.info(f'Fusion method: {fusion_method}')
+            else:
+                logging.info('Fusion method: [default method]')
             fuse_func = self.create_fusion_method(fusion_method, sim0)
             if fuse_func:
                 saving_zarr = output_filename is not None
@@ -1306,7 +1323,7 @@ class MVSRegistration:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
-                    if tile_size is not None:
+                    if tile_size:
                         if not isinstance(tile_size, (list, tuple)):
                             tile_size = [tile_size] * 2
                         output_chunksize = xyz_to_dict(tile_size)
@@ -1330,10 +1347,9 @@ class MVSRegistration:
 
     def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
-        file_labels = self.file_labels
         output_mappings = {}
         for keys, mapping in mappings.items():
-            label_key = f'{file_labels[keys[0]]}-{file_labels[keys[1]]}'
+            label_key = json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]])
             output_mappings[label_key] = {'mapping': np.array(mapping.sel(t=0)).tolist()}
             if keys in qualities:
                 output_mappings[label_key][default_quality_key] = float(qualities[keys])
@@ -1343,16 +1359,16 @@ class MVSRegistration:
 
     def save_mappings(self, mappings):
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
-        output_mappings = {self.file_labels[key]: np.array(mapping.sel(t=0)).tolist()
+        output_mappings = {self.filenames[int(key)]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
-        export_json(mappings_filename, output_mappings)
+        write_transforms(mappings_filename, output_mappings, self.source_transform_key, self.reg_transform_key)
 
     def save_mappings_csv(self, mappings, normalise_orientation=False):
         data = []
-        mappings_header = ['id','x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
+        mappings_header = ['id',' filename', 'x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_tabular_name)
-        for label, sim, mapping, scale, position, rotation \
-                in zip(self.file_labels, self.sims, mappings.values(), self.scales, self.positions, self.rotations):
+        for label, filename, sim, mapping, scale, position, rotation \
+                in zip(self.file_labels, self.filenames, self.sims, mappings.values(), self.scales, self.positions, self.rotations):
             if not normalise_orientation:
                 # rotation already in msim affine transform
                 rotation = None
@@ -1362,14 +1378,14 @@ class MVSRegistration:
                                                   translation0=position,
                                                   rotation=rotation)
             position_pixels = {dim: position[dim] / float(scale.get(dim, 1)) for dim in position.keys()}
-            row = [label] + dict_to_xyz(position_pixels, add_zeros=True) + dict_to_xyz(position, add_zeros=True) + [
-                rotation]
+            row = ([label] + [filename] + dict_to_xyz(position_pixels, add_zeros=True)
+                   + dict_to_xyz(position, add_zeros=True) + [rotation])
             data.append(row)
         export_csv(mappings_filename, data, header=mappings_header)
 
     def save_metrics(self, metrics):
         metrics_filename = self.output + metrics_name
-        output_metrics = {f'{self.file_labels[keys[0]]}-{self.file_labels[keys[1]]}':
+        output_metrics = {json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]]):
                               {metric: float(value) for metric, value in metric_dict[self.reg_transform_key].items()}
                           for keys, metric_dict in metrics['pairs'].items() if metric_dict[self.reg_transform_key]}
         export_json(metrics_filename, output_metrics)
@@ -1402,14 +1418,12 @@ class MVSRegistration:
                       format=output_params.get('preview'), ome_version=output_params.get('ome_version'))
         return fused_image
 
-    def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None,
-             tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=0, ome_version=default_ome_zarr_version):
+    def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None, channels=[],
+             tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=4, ome_version=default_ome_zarr_version):
         if output_filename is not None:
             output_filename = self.output + output_filename
-        if isinstance(self.extra_metadata, dict):
+        if isinstance(self.extra_metadata, dict) and self.extra_metadata:
             channels = self.extra_metadata.get('channels', [])
-        else:
-            channels = []
         save_image(output_filename, data, format,
                    transform_key=transform_key, channels=channels, translations0=translations0,
                    tile_size=tile_size, compression=compression,
@@ -1452,7 +1466,7 @@ class MVSRegistration:
 
         video.close()
 
-    def get_metrics(self, metric=None, pair=None):
+    def get_metrics(self, metric_key=None, pair=None):
         metrics = self.metrics
         if pair is not None:
             if isinstance(pair, np.ndarray):
@@ -1462,12 +1476,18 @@ class MVSRegistration:
         else:
             if 'summary' in metrics:
                 metrics = metrics['summary']
-        transform_keys = metrics.keys()
-        if len(transform_keys) > 0:
-            transform_key = list(transform_keys)[-1]
-            metrics = metrics.get(transform_key, {})
-        if metric is not None:
-            return metrics.get(metric)
+        reg_transform_key = self.reg_transform_key
+        if reg_transform_key in metrics:
+            transform_key = reg_transform_key
+        elif default_transform_key in metrics:
+            transform_key = default_transform_key
+        elif metrics:
+            transform_key = list(metrics)[-1]
+        else:
+            transform_key = None
+        metrics = metrics.get(transform_key, {})
+        if metric_key is not None:
+            return metrics.get(metric_key)
         else:
             return metrics
 

@@ -1,3 +1,4 @@
+from ome_zarr.scale import Scaler
 from tifffile import TiffWriter, tifffile
 
 from src.muvis_align.constants import default_chunk_size
@@ -9,6 +10,27 @@ def load_tiff(filename):
     return tifffile.imread(filename)
 
 
+def extract_ome_translation(filename):
+    with tifffile.TiffFile(filename) as tif:
+        ome_metadata = tif.ome_metadata
+        if tif.is_ome and ome_metadata is not None:
+            metadata = tifffile.xml2dict(ome_metadata)
+            if 'OME' in metadata:
+                metadata = metadata['OME']
+            if 'Image' in metadata and 'Pixels' in metadata['Image'] and 'Plane' in metadata['Image']['Pixels']:
+                plane_metadata = metadata['Image']['Pixels']['Plane']
+                if isinstance(plane_metadata, list):
+                    plane_metadata = plane_metadata[0]
+                position = {}
+                for dim in ['X', 'Y', 'Z']:
+                    key = f'Position{dim}'
+                    if key in plane_metadata:
+                        position[dim.lower()] = convert_to_um(float(plane_metadata[key]),
+                                                              plane_metadata.get(f'{key}Unit', 'um'))
+                return position
+
+    return {}
+
 def save_tiff(filename, data, dimension_order=None, pixel_size=None, tile_size=(default_chunk_size, default_chunk_size),
               compression='LZW'):
     _, resolution, resolution_unit = create_tiff_metadata(pixel_size, dimension_order)
@@ -17,23 +39,22 @@ def save_tiff(filename, data, dimension_order=None, pixel_size=None, tile_size=(
 
 
 def save_ome_tiff(filename, data, dimension_order, pixel_size, channels=[], positions=[], rotation=None,
-                  tile_size=None, compression=None, scaler=None):
+                  tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=None):
 
     ome_metadata, resolution0, resolution_unit0 = create_tiff_metadata(pixel_size, dimension_order,
                                                                        channels, positions, rotation, is_ome=True)
     # maximum size (w/o compression)
     max_size = data.size * data.itemsize
     size = max_size
-    if scaler is not None:
+    if pyramid_downsample is not None:
+        scaler = Scaler(downscale=pyramid_downsample, max_layer=npyramid_add)
         npyramid_add = scaler.max_layer
         for i in range(npyramid_add):
             size //= (scaler.downscale ** 2)
             max_size += size
-    else:
-        npyramid_add = 0
     bigtiff = (max_size > 2 ** 32)
 
-    if tile_size is not None:
+    if tile_size:
         tile_size = tile_size[-2:]  # assume order zyx (inversed xyz)
         shape_yx = [data.shape[dimension_order.index(dim)] for dim in 'yx']
         if np.any(np.array(tile_size) > np.array(shape_yx)):

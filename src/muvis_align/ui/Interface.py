@@ -20,10 +20,11 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
     draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, set_oriented_bounding_box_edges
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
+from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
-from muvis_align.ui.bilayers_util import get_section_dict, to_magicgui_choices
+from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb, \
-    calculate_rigid_difference
+    calculate_rigid_difference, operation_to_past_participle, eval_path
 
 
 class ViewMode(Enum):
@@ -49,6 +50,7 @@ class Interface:
         self.pre_processing_performed = False
         self.metrics_methods = ['ncc', 'ssim', 'onmi']
         self.transform_key = 'source_metadata'
+        self.need_source_reinit = False
 
         self.pair_metrics_timer = QTimer()
         self.pair_metrics_timer.setSingleShot(True)
@@ -60,6 +62,8 @@ class Interface:
 
     def reset(self):
         self.source_metadata = {}
+        self.extra_metadata = {}
+        self.output_channels = []
         self.view_mode = None
         self.selected_shape_index = None
         self.reg.reset()
@@ -109,51 +113,84 @@ class Interface:
         keys = param_name.split('.')
         if keys[0] not in self.params:
             self.params[keys[0]] = {}
+        if isinstance(value, str):
+            value = value.replace('\\', '/')
         self.params[keys[0]][keys[1]] = value
         self.write_params()
 
     def update_input_output_path(self):
         params = self.params['input_output']
         widget = self.param_widgets.get('input_output.input_path')
-        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('input_path', '')))
+        input_path = eval_path(params.get('input_path', ''))
+        print('input_path', input_path)
+        if isinstance(input_path, str):
+            widget.set_value(os.path.join(os.path.dirname(self.params_path), input_path))
         widget = self.param_widgets.get('input_output.output_path')
-        widget.set_value(os.path.join(os.path.dirname(self.params_path), params.get('output_path', '')))
+        output_path = eval_path(params.get('output_path', ''))
+        if isinstance(output_path, str):
+            widget.set_value(os.path.join(os.path.dirname(self.params_path), output_path))
+
+    def input_path(self, value):
+        self.need_source_reinit = True
 
     def source_position_z(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'z'], value)
+            self.need_source_reinit = True
 
     def source_position_y(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'y'], value)
+            self.need_source_reinit = True
 
     def source_position_x(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['position', 'x'], value)
+            self.need_source_reinit = True
 
     def source_scale_z(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['scale', 'z'], value)
+            self.need_source_reinit = True
 
     def source_scale_y(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['scale', 'y'], value)
+            self.need_source_reinit = True
 
     def source_scale_x(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['scale', 'x'], value)
+            self.need_source_reinit = True
 
     def source_rotation(self, value):
         if is_valid_value(value):
             set_dict_value(self.source_metadata, ['rotation'], value)
+            self.need_source_reinit = True
+
+    def registration_dimension(self, value):
+        # Force reinitialization of extra metadata / channels when registration dimension changes
+        self.extra_metadata.pop('channels', None)
+
+    def channels_table(self, value):
+        old_value = self.param_widgets.get('input_output.channels_table').get_value()
+        channels_dict = update_dict_value(old_value, value)
+        channels = [{'label': label} for label in channels_dict['label']]
+        for channeli, channel in enumerate(channels):
+            if channeli < len(channels_dict['color']):
+                color = channels_dict['color'][channeli]
+                if color and isinstance(color, str):
+                    channel['color'] = tuple(map(float, color.lstrip('(').rstrip(')').split(',')))
+        self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
         params = self.params['input_output']
         output = str(params['output_path'])
-        if not self.reg.is_initialised():
+        if not self.reg.is_initialised() or self.need_source_reinit:
+            self.need_source_reinit = False
             if not output.endswith(os.sep):
                 output += os.sep
-            ok = self.reg.init(input_path=str(params['input_path']),
+            ok = self.reg.init(input_path=eval_path(params['input_path']),
                                output_path=output,
                                overwrite=params['overwrite'])
             if ok:
@@ -172,7 +209,7 @@ class Interface:
             self.update_metadata_source()
 
     def init_progress(self):
-        output_filename = self.params['registration']['operation'].split()[0] + 'ed'
+        output_filename = operation_to_past_participle(self.params['registration']['operation'])
         self.reg.init_progress(output_filename, zarr_extension)
         if self.reg.is_fused():
             self.enable_tabs(True, 4)
@@ -190,19 +227,23 @@ class Interface:
             self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
             self.enable_tabs(True, 2)
-            self.select_tab(2)
 
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
             try:
-                self.reg.init_sims(source_metadata=self.source_metadata)
+                self.reg.init_sims(
+                    source_metadata=self.source_metadata,
+                )
             except ValueError as e:
                 show_warning('Unable to read source data\n' + str(e))
                 return False
 
             preview_scale = self.params['input_output']['preview_scale']
-            self.preview_sims = self.reg.init_sims(source_metadata=self.source_metadata, target_scale=preview_scale,
-                                                   store=False)
+            self.preview_sims = self.reg.init_sims(
+                source_metadata=self.source_metadata,
+                target_scale=preview_scale,
+                store=False,
+            )
             z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
             is_multi_z_shapes = (len(z_positions) > 1)
             if is_multi_z_shapes:
@@ -216,11 +257,12 @@ class Interface:
         coord_systems = get_transforms(sims)
         self.populate_channels()
         self.populate_coordinate_systems(coord_systems)
+        if self.update_output_channels():
+            self.populate_channels_table()
         if self.reg.is_initialised():
             self.populate_metadata_table(sims)
             self.check_3d_view()
-            self.update_overview()
-            self.update_view()
+            self.update_views()
 
         return True
 
@@ -240,11 +282,11 @@ class Interface:
         self.enable_tabs(True, 3)
         self.enable_modify_pair_registration(False)
         self.select_tab(3)
-        self.update_view(show_preprocessed=True)
+        self.update_views(show_preprocessed=True)
 
     def populate_channels(self):
-        channels = list({channel.get('label', '') for source in self.reg.sources for channel in source.get_channels()})
-        choices = {channel: channel for channel in channels}
+        channel_labels = list({channel.get('label', '') for source in self.reg.sources for channel in source.get_channels()})
+        choices = {channel: channel for channel in channel_labels}
         param_widget = self.param_widgets.get('registration.channel')
         param_widget.set_choices(choices)
 
@@ -275,7 +317,31 @@ class Interface:
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((data, self.reg.file_labels, properties))
         table_widget.set_table_column_resize_mode()
-        table_widget.read_only = True   # https://github.com/pyapp-kit/magicgui/issues/348
+
+    def update_output_channels(self):
+        if not self.extra_metadata.get('channels'):
+            # get channels from source
+            source0 = self.reg.sources[0]
+            channels = source0.get_channels()
+
+            dimension = self.params['input_output']['registration_dimension']
+            while dimension.lower() == 'c' and len(channels) < len(self.reg.sources):
+                channel = {'label': f'channel {len(channels)}'}
+                channels.append(channel)
+
+            self.extra_metadata['channels'] = channels
+
+            # convert to list dict
+            data = [[channel.get('label', f'channel {index}'), channel.get('color', (1, 1, 1))]
+                     for index, channel in enumerate(channels)]
+            self.output_channels = create_dict_of_lists(data, ['label', 'color'])
+            return True
+
+        return False
+
+    def populate_channels_table(self):
+        param_widget = self.param_widgets.get('input_output.channels_table')
+        param_widget.set_value(self.output_channels)
 
     def populate_image_selection(self):
         labels = self.reg.file_labels
@@ -304,58 +370,64 @@ class Interface:
         self.viewer.dims.ndisplay = ndisplay
         #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
-    def update_overview(self, transform_key=None, overlaps=True):
+    def update_views(self, transform_key=None, show_preprocessed=False):
         if transform_key is None:
             transform_key = self.get_best_transform_key()
-        self._clear_napari_view(self.overview)
-        self._update_napari_shapes(self.overview, f'{self.reg.fileset_label} shapes', transform_key,
-                                   overlaps=overlaps)
 
-    def update_view(self, transform_key=None, overlaps=False, show_preprocessed=False):
-        if transform_key is None:
-            transform_key = self.get_best_transform_key()
+        sims = self.reg.sims
+        is_3d = (sims[0].sizes.get('z', 0) > 1)
+        is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+        force_2d = is_multi_z_shapes and not is_3d
+        shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=force_2d)
+
         self._clear_napari_view(self.viewer)
         if self.params['input_output']['preview_images']:
-            self._update_napari_data(self.viewer, f'{self.reg.fileset_label} data', transform_key,
-                                     show_preprocessed=show_preprocessed)
+            data = self._create_napari_data(transform_key, show_preprocessed=show_preprocessed)
+            if data is not None:
+                self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
         if self.params['input_output']['preview_shapes']:
-            self._update_napari_shapes(self.viewer, f'{self.reg.fileset_label} shapes', transform_key,
-                                       overlaps=overlaps)
+            self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
+
+        if is_3d:
+            # Previous 3d shapes need to be recalculated with force_2d=True
+            shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=True)
+        self._clear_napari_view(self.overview)
+        self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
         self.view_mode = ViewMode.OVERVIEW
 
     def _clear_napari_view(self, viewer):
         viewer.layers.clear()
 
-    def _update_napari_data(self, viewer, layer_name, transform_key, fusion_method='additive',
-                            show_preprocessed=False):
+    def _create_napari_shapes(self, transform_key, force_2d=False):
+        sims = self.preview_sims
+
+        shapes = create_sim_shapes(sims, transform_key=transform_key, force_2d=force_2d)
+        refs = [str(index) for index in range(len(sims))]
+        labels = list(self.reg.file_labels)
+        face_colors = [(1, 1, 1) for _ in range(len(sims))]
+
+        shapes2, pairs = create_overlap_shapes(sims, transform_key=transform_key, force_2d=force_2d)
+        shapes.extend(shapes2)
+        refs += [f'{index1} {index2}' for index1, index2 in pairs]
+        labels += ['' for _ in pairs]
+        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
+        return shapes, refs, labels, face_colors
+
+    def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
         if show_preprocessed:
-            sims = self.reg.register_sims
+            # make copy to avoid transform changes in the original sims inside self.reg.fuse()
+            sims = [sim.copy(deep=True) for sim in self.reg.register_sims]
         else:
             sims = self.preview_sims
             copy_transforms(self.reg.sims, sims, transform_key)
-        fused, _ = self.reg.fuse(sims, transform_key=transform_key, fusion_method=fusion_method)
-        fused_scale = si_utils.get_spacing_from_sim(fused, asarray=True)
-        fused_position = si_utils.get_origin_from_sim(fused, asarray=True)
-        if fused is not None:
-            source = self.reg.sources[0]
-            channels = source.get_channels()
-            name = [channel.get('label', index) for index, channel in enumerate(channels)]
-            colors = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
-            if len(channels) > 1:
-                channel_axis = fused.dims.index('c') \
-                    if len(colors) > 0 and 'c' in source.dimension_order else None
-                scale = [fused_scale] * len(channels)
-                translate = [fused_position] * len(channels)
-            else:
-                name = name[0] if len(name) > 0 and name[0] else layer_name
-                colors = colors[0] if len(colors) > 0 else None
-                channel_axis = None
-                scale = fused_scale
-                translate = fused_position
-            viewer.add_image(fused, name=name,channel_axis=channel_axis, colormap=colors,
-                             scale=scale, translate=translate)
+        fused, _ = self.reg.fuse(sims,
+                                 transform_key=transform_key,
+                                 fusion_method=fusion_method,
+                                 dimension=self.params['input_output']['registration_dimension'],
+                                 extra_metadata=self.extra_metadata)
+        return fused
 
-    def _update_napari_shapes(self, viewer, layer_name, transform_key, overlaps=False):
+    def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
         sims = self.preview_sims
         bb_supported = True
         if isinstance(viewer, ViewerWidget):
@@ -365,17 +437,7 @@ class Interface:
         is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
         force_2d = not bb_supported or (is_multi_z_shapes and not is_3d)
         do_3d = ('z' in sims[0].dims and not force_2d)
-        shapes = create_sim_shapes(sims, transform_key=transform_key, force_2d=force_2d)
-        refs = [str(index) for index in range(len(sims))]
-        labels = list(self.reg.file_labels)
-        face_colors = [(1, 1, 1) for _ in range(len(sims))]
 
-        if overlaps:
-            shapes2, pairs = create_overlap_shapes(sims, transform_key=transform_key, force_2d=force_2d)
-            shapes.extend(shapes2)
-            refs += [f'{index1} {index2}' for index1, index2 in pairs]
-            labels += ['' for _ in pairs]
-            face_colors += [np.array(metric_to_rgb(self.reg.get_metrics('quality', pair))) for pair in pairs]
         if len(shapes) > 0:
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
@@ -403,12 +465,28 @@ class Interface:
             #             self.on_selection_change(refs[self.selected_shape_index])
             #     yield
 
-    def _update_napari_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
+    def _napari_view_add_data(self, viewer, data, layer_name):
+        scale = si_utils.get_spacing_from_sim(data, asarray=True)
+        translate = si_utils.get_origin_from_sim(data, asarray=True)
+        channels = self.extra_metadata.get('channels', [])
+        name = [channel.get('label', index) for index, channel in enumerate(channels)]
+        colors = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
+        if len(channels) > 1:
+            channel_axis = data.dims.index('c') \
+                if len(colors) > 0 and 'c' in data.dims else None
+            scale = [scale] * len(channels)
+            translate = [translate] * len(channels)
+        else:
+            name = name[0] if len(name) > 0 and name[0] else layer_name
+            colors = colors[0] if len(colors) > 0 else None
+            channel_axis = None
+        viewer.add_image(data, name=name,channel_axis=channel_axis, colormap=colors,
+                         scale=scale, translate=translate)
 
+    def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
                                                matches, inliers, points_color='blue')
-
         viewer.layers.clear()
         for data, kwargs, layer_type in layers:
             if layer_type == "image":
@@ -418,7 +496,7 @@ class Interface:
             elif layer_type == "shapes":
                 viewer.add_shapes(data, **kwargs)
 
-    def _add_napari_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
+    def _napari_view_add_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
         scale = si_utils.get_spacing_from_sim(data, asarray=True)
         position = si_utils.get_origin_from_sim(data, asarray=True)
         layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
@@ -458,7 +536,13 @@ class Interface:
             self.reg.create_registration_method(self.reg.register_sims[0], params=self.params['registration']))
         results = pairwise_reg_func(overlap1, overlap2)
 
-        affine_phys = affine_from_intrinsic_affine(results['affine_matrix'], sims_pixel_space, self.reg.source_transform_key)
+        source_affine = results['affine_matrix']
+        try:
+            # Handle error in resulting matrix - unclear cause but likely occurs when failure to register
+            affine_phys = affine_from_intrinsic_affine(source_affine, sims_pixel_space, self.reg.source_transform_key)
+        except NotImplementedError:
+            affine_phys = source_affine
+
         transforms = {
             (0, 1): affine_phys
         }
@@ -472,7 +556,7 @@ class Interface:
         moving_points = results.get('moving_points', [])
         matches = results.get('matches', [])
         inliers = results.get('inliers', [])
-        self._update_napari_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
+        self._napari_view_show_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
         self.view_mode = ViewMode.FEATURES
 
     def populate_metrics_table(self, metrics_dict):
@@ -538,7 +622,6 @@ class Interface:
                 if table_cell is not None:
                     table_cell.setBackground(
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
-        table_widget.read_only = True
 
     def update_registered(self, view_transform_key=None):
         sims = self.reg.sims
@@ -546,8 +629,7 @@ class Interface:
         self.populate_coordinate_systems(coord_systems)
         self.populate_metadata_table(sims)
         self.populate_metrics_table(self.reg.metrics)
-        self.update_overview(transform_key=view_transform_key)
-        self.update_view(transform_key=view_transform_key, overlaps=True)
+        self.update_views(transform_key=view_transform_key)
 
     def enable_modify_pair_registration(self, enabled=True):
         widget = self.param_widgets.get('registration.modify_pair_registration')
@@ -599,6 +681,7 @@ class Interface:
             if reply == QMessageBox.Yes:
                 self.run_pair_registration()
                 self.update_registered(view_transform_key=self.reg.source_transform_key)
+                QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
 
     def modify_pair_registration(self):
         if self.view_mode == ViewMode.PAIRS:
@@ -654,8 +737,8 @@ class Interface:
                     self.run_pre_processing()
                 self._clear_napari_view(self.viewer)
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._add_napari_image(self.viewer, self.preview_sims[sim_index], labels[sim_index],
-                                           pair_transforms[index], color, affine_event=True)
+                    self._napari_view_add_image(self.viewer, self.reg.register_sims[sim_index], labels[sim_index],
+                                                pair_transforms[index], color, affine_event=True)
                 self.update_pair_metrics()
 
     def calc_mod_pair_transform(self):
@@ -682,13 +765,13 @@ class Interface:
             self.enable_tabs(True, 4)
             self.enable_modify_pair_registration()
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
+            QMessageBox.information(None, 'muvis-align', 'Global registration completed')
 
     def preview_fusion(self):
-        self.reg.params_general = {'output': {}}
-        self.reg.fusion_params = self.params['fusion']
+        data = self._create_napari_data(self.reg.reg_transform_key,
+                                        fusion_method=self.params['fusion']['method'])
         self._clear_napari_view(self.viewer)
-        self._update_napari_data(self.viewer, 'Fused', transform_key=self.reg.reg_transform_key,
-                                 fusion_method=self.params['fusion']['method'])
+        self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
         self.view_mode = ViewMode.FUSED
 
     def fusion_process(self):
@@ -698,7 +781,7 @@ class Interface:
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             operation = self.params['registration']['operation']
-            output_filename = operation.split()[-1] + 'ed'
+            output_filename = operation_to_past_participle(operation)
             tile_size = self.params['fusion']['tile_size']
             if ',' in tile_size:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]
@@ -707,11 +790,23 @@ class Interface:
             with TqdmCallback(tqdm_class=progress, desc='Fusion', bar_format=" "), \
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
-                fused_image, _ = self.reg.fuse(self.reg.sims, fusion_method=self.params['fusion']['method'],
-                                               output_spacing=self.params['fusion']['spacing'],
-                                               output_filename=output_filename,
-                                               tile_size=tile_size, ome_version=self.params['fusion']['ome_version'])
+                fused_image, is_saved = self.reg.fuse(self.reg.sims,
+                                                      fusion_method=self.params['fusion']['method'],
+                                                      output_spacing=self.params['fusion']['spacing'],
+                                                      dimension=self.params['input_output']['registration_dimension'],
+                                                      output_filename=output_filename,
+                                                      tile_size=tile_size,
+                                                      ome_version=self.params['fusion']['ome_version'],
+                                                      extra_metadata=self.extra_metadata)
+                if not is_saved:
+                    self.reg.save(output_filename, fused_image,
+                                  transform_key=self.reg.reg_transform_key,
+                                  translations0=self.reg.positions,
+                                  channels=self.extra_metadata.get('channels', []),
+                                  tile_size=tile_size,
+                                  ome_version=self.params['fusion']['ome_version'])
             self._clear_napari_view(self.viewer)
-            self._add_napari_image(self.viewer, fused_image, 'Fused')
+            self._napari_view_add_data(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
+            QMessageBox.information(None, 'muvis-align', 'Fusion completed')
