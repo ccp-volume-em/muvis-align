@@ -11,6 +11,7 @@ class TiffDaskSource(DaskSource):
     def init_metadata(self):
         # work-around to get translation from OME-TIFF metadata
         # since ngff-zarr does not support it yet
+        # TODO: remove this when ngff-zarr supports it (in next release)
         self.position = extract_ome_translation(self.filename)
 
         ngff_image_datas = tiff_file_to_ngff_images(self.filename, reuse_existing_pyramids=True)
