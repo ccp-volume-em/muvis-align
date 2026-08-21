@@ -1421,7 +1421,7 @@ class MVSRegistration:
         return fused_image
 
     def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None, channels=[],
-             tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=0, ome_version=default_ome_zarr_version):
+             tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=4, ome_version=default_ome_zarr_version):
         if output_filename is not None:
             output_filename = self.output + output_filename
         if isinstance(self.extra_metadata, dict) and self.extra_metadata:

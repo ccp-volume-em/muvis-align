@@ -803,8 +803,6 @@ class Interface:
                                   translations0=self.reg.positions,
                                   channels=self.extra_metadata.get('channels', []),
                                   tile_size=tile_size,
-                                  pyramid_downsample=2,
-                                  npyramid_add=4,
                                   ome_version=self.params['fusion']['ome_version'])
             self._clear_napari_view(self.viewer)
             self._napari_view_add_data(self.viewer, fused_image, 'Fused')
