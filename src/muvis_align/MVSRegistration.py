@@ -578,7 +578,7 @@ class MVSRegistration:
             indexed_bboxes = {}
             for key, value in pairs.items():
                 key1, key2 = json.loads(key)
-                indexed_key = self.filenames.index(key1), self.filenames.index(key2)
+                indexed_key = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
                 indexed_pair_transforms[indexed_key] = (
                     param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
                 indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
@@ -608,8 +608,9 @@ class MVSRegistration:
             sims = self.sims
 
             is_stack = ('stack' in self.operation)
-            z_positions = set([source.get_position().get('z', 0) for source in self.sources])
-            make_3d = len(z_positions) > 1 or is_stack
+            #z_positions = set([source.get_position().get('z', 0) for source in self.sources])
+            #make_3d = len(z_positions) > 1 or is_stack
+            make_3d = is_stack
             if isinstance(self.extra_metadata, dict):
                 z_scale = self.extra_metadata.get('scale', {}).get('z')
             else:
@@ -618,7 +619,7 @@ class MVSRegistration:
             mappings = read_transforms(mappings_filename)
             # copy transforms to sims
             for sim, filename in zip(sims, self.filenames):
-                mapping = param_utils.affine_to_xaffine(np.array(mappings[filename]))
+                mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
                 if make_3d:
                     transform = param_utils.identity_transform(ndim=3)
                     transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
@@ -627,15 +628,15 @@ class MVSRegistration:
                 si_utils.set_sim_affine(sim, transform, transform_key=self.reg_transform_key)
             if make_3d:
                 sims = make_sims_3d(sims, z_scale, self.positions)
-            if not is_3d:
-                self.sims = make_sims_2d(self.sims)
+            elif not is_3d:
+                sims = make_sims_2d(sims)
             self.sims = sims
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
             metrics = import_json(metrics_filename)
             indexed_metrics = {}
             for key, value in metrics.items():
                 key1, key2 = json.loads(key)
-                indexed_key = self.filenames.index(key1), self.filenames.index(key2)
+                indexed_key = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
                 indexed_metrics[indexed_key] = value
             self.metrics = {
                 'summary': {default_transform_key:
@@ -693,76 +694,120 @@ class MVSRegistration:
 
     def preprocess(self, sims, scale=None,
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False,
+                   progress_factory=None,
                    **kwargs):
-        modified = False
-        # normalise pixel size: take max pixel size
-        max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
-        scales0 = self.scales
+        def normalisation_enabled(value):
+            if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
+                return False
+            if isinstance(value, bool) and value == False:
+                return False
+            return bool(value)
 
-        if scale and scale != 1:
-            sims = self.init_sims(target_scale=scale, store=False)
-            modified = True
+        def count_progress_steps():
+            n_steps = 0
+            if scale and scale != 1:
+                n_steps += 1
+            if filter_foreground:
+                # foreground map + final foreground filtering
+                n_steps += 2
+            if flatfield_quantiles:
+                n_steps += 1
+            if gaussian_sigma:
+                n_steps += 1
+            if normalisation_enabled(normalisation):
+                n_steps += 1
+            return max(n_steps, 1)
 
-        if filter_foreground:
-            foreground_map = calc_foreground_map(sims)
-            modified = True
-        else:
-            foreground_map = None
-        if flatfield_quantiles:
-            logging.info('Flat-field correction...')
-            if isinstance(flatfield_quantiles, str):
-                flatfield_quantiles = [float(quantile.strip()) for quantile in flatfield_quantiles.split(',')]
-            new_sims = [None] * len(sims)
-            for sim_indices in group_sims_by_z(sims, self.positions):
-                sims_z_set = [sims[i] for i in sim_indices]
-                foreground_map_z_set = [foreground_map[i] for i in sim_indices] if foreground_map is not None else None
-                new_sims_z_set = flatfield_correction(sims_z_set, self.source_transform_key, flatfield_quantiles,
-                                                      foreground_map=foreground_map_z_set)
-                for sim_index, sim in zip(sim_indices, new_sims_z_set):
-                    new_sims[sim_index] = sim
-            sims = new_sims
-            modified = True
+        def update_progress():
+            if pbar is not None:
+                pbar.update(1)
 
-        if gaussian_sigma:
-            logging.info('Applying Gaussian filtering...')
-            new_sims = []
-            for sim, scale0 in zip(sims, scales0):
-                # factor in original pixel size for gaussian sigma value
-                scale = np.mean(list(scale0.values())) / np.mean(list(max_scale.values()))
-                sigma = gaussian_sigma * (scale ** (1 / 3))
-                new_sims.append(gaussian_filter_sim(sim, self.source_transform_key, sigma))
-            sims = new_sims
-            modified = True
+        progress_context = (
+            progress_factory(total=count_progress_steps(), desc='Pre-processing')
+            if progress_factory is not None
+            else nullcontext(None)
+        )
 
-        if normalisation:
-            if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
-                normalisation = None
-            elif isinstance(normalisation, bool) and normalisation == False:
-                normalisation = None
-        if normalisation:
-            use_global = ('global' in str(normalisation).lower())
-            if use_global:
-                logging.info('Normalising (global)...')
+        with progress_context as pbar:
+            modified = False
+            # normalise pixel size: take max pixel size
+            max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
+            scales0 = self.scales
+
+            if scale and scale != 1:
+                sims = self.init_sims(target_scale=scale, store=False)
+                modified = True
+                update_progress()
+
+            if filter_foreground:
+                foreground_map = calc_foreground_map(sims)
+                modified = True
+                update_progress()
             else:
-                logging.info('Normalising (individual)...')
-            sims = normalise_sims(sims, self.source_transform_key, use_global=use_global)
-            modified = True
+                foreground_map = None
 
-        if filter_foreground:
-            logging.info('Filtering foreground images...')
-            #tile_vars = np.array([np.asarray(np.std(sim)).item() for sim in sims])
-            #threshold1 = np.mean(tile_vars)
-            #threshold2 = np.median(tile_vars)
-            #threshold3, _ = cv.threshold(np.array(tile_vars).astype(np.uint16), 0, 1, cv.THRESH_OTSU)
-            #threshold = min(threshold1, threshold2, threshold3)
-            #foregrounds = (tile_vars >= threshold)
-            new_sims = [sim for sim, is_foreground in zip(sims, foreground_map) if is_foreground]
-            logging.info(f'Foreground images: {len(new_sims)} / {len(sims)}')
-            indices = np.where(foreground_map)[0]
-            sims = new_sims
-            modified = True
-        else:
-            indices = range(len(sims))
+            if flatfield_quantiles:
+                logging.info('Flat-field correction...')
+                if isinstance(flatfield_quantiles, str):
+                    flatfield_quantiles = [float(quantile.strip()) for quantile in flatfield_quantiles.split(',')]
+                new_sims = [None] * len(sims)
+                for sim_indices in group_sims_by_z(sims, self.positions):
+                    sims_z_set = [sims[i] for i in sim_indices]
+                    foreground_map_z_set = [foreground_map[i] for i in
+                                            sim_indices] if foreground_map is not None else None
+                    new_sims_z_set = flatfield_correction(sims_z_set, self.source_transform_key,
+                                                          flatfield_quantiles,
+                                                          foreground_map=foreground_map_z_set)
+                    for sim_index, sim in zip(sim_indices, new_sims_z_set):
+                        new_sims[sim_index] = sim
+                sims = new_sims
+                modified = True
+                update_progress()
+
+            if gaussian_sigma:
+                logging.info('Applying Gaussian filtering...')
+                new_sims = []
+                for sim, scale0 in zip(sims, scales0):
+                    # factor in original pixel size for gaussian sigma value
+                    scale = np.mean(list(scale0.values())) / np.mean(list(max_scale.values()))
+                    sigma = gaussian_sigma * (scale ** (1 / 3))
+                    new_sims.append(gaussian_filter_sim(sim, self.source_transform_key, sigma))
+                sims = new_sims
+                modified = True
+                update_progress()
+
+            if normalisation:
+                if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
+                    normalisation = None
+                elif isinstance(normalisation, bool) and normalisation == False:
+                    normalisation = None
+            if normalisation:
+                use_global = ('global' in str(normalisation).lower())
+                if use_global:
+                    logging.info('Normalising (global)...')
+                else:
+                    logging.info('Normalising (individual)...')
+                sims = normalise_sims(sims, self.source_transform_key, use_global=use_global)
+                modified = True
+                update_progress()
+
+            if filter_foreground:
+                logging.info('Filtering foreground images...')
+                # tile_vars = np.array([np.asarray(np.std(sim)).item() for sim in sims])
+                # threshold1 = np.mean(tile_vars)
+                # threshold2 = np.median(tile_vars)
+                # threshold3, _ = cv.threshold(np.array(tile_vars).astype(np.uint16), 0, 1, cv.THRESH_OTSU)
+                # threshold = min(threshold1, threshold2, threshold3)
+                # foregrounds = (tile_vars >= threshold)
+                new_sims = [sim for sim, is_foreground in zip(sims, foreground_map) if is_foreground]
+                logging.info(f'Foreground images: {len(new_sims)} / {len(sims)}')
+                indices = np.where(foreground_map)[0]
+                sims = new_sims
+                modified = True
+                update_progress()
+            else:
+                indices = range(len(sims))
+
         self.register_sims = sims
         self.register_indices = indices
         return sims, indices, modified

@@ -1,7 +1,6 @@
 from multiview_stitcher import spatial_image_utils as si_utils
 import napari
 import numpy as np
-from napari_bbox.boundingbox import BoundingBoxLayer
 from qtpy.QtCore import QObject, QThread, Signal, Slot
 from threading import Thread
 
@@ -102,9 +101,19 @@ class NapariTest3d(QThread):
         text = {'string': '{labels}'}
         features = {'labels': labels}
 
-        bbox_layer = BoundingBoxLayer(shapes, edge_color='green', face_color='transparent',
-                                      text=text, features=features)
-        self.viewer.add_layer(bbox_layer)
+        # napari-bbox 0.1.1 only supports napari through 0.5.x. Represent each
+        # box as one built-in 3D path so this also works with current napari.
+        edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
+        paths = [np.asarray(shape)[edge_path] for shape in shapes]
+        self.viewer.add_shapes(
+            paths,
+            name=layer_name,
+            shape_type='path',
+            edge_color='green',
+            edge_width=1,
+            text=text,
+            features=features,
+        )
 
     @Slot(str, list)
     def _update_data(self, layer_name, data):
@@ -129,7 +138,7 @@ def create_sim(shape, scale={'z': 1, 'x': 1, 'y': 1}, position={'x': 0, 'y': 0, 
 
 
 if __name__ == '__main__':
-    #napari_test = NapariTest3d(ndisplay=3)
-    napari_test = NapariTest2d()
+    napari_test = NapariTest3d(ndisplay=3)
+    #napari_test = NapariTest2d()
     napari_test.start()
     napari.run()

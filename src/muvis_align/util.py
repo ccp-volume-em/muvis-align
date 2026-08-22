@@ -39,6 +39,26 @@ def reorder(items: list, old_order: str, new_order: str, default_value: int = 0)
     return new_items
 
 
+def find_file_list_index(filenames, match):
+    if match in filenames:
+        return filenames.index(match)
+    else:
+        for index, filename in enumerate(filenames):
+            if match.lstrip('.') in filename:
+                return index
+    return None
+
+
+def find_file_dict_item(dct, match):
+    if match in dct:
+        return dct[match]
+    else:
+        for key, value in dct.items():
+            if key.lstrip('.') in match:
+                return value
+    return None
+
+
 def numpy_to_native(value):
     if isinstance(value, np.ndarray):
         return value.tolist()

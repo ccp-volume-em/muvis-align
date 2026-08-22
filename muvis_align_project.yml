@@ -1,0 +1,50 @@
+input_output:
+  source_position_z: source
+  source_position_y: source
+  source_position_x: source
+  source_scale_z: source
+  source_scale_y: source
+  source_scale_x: source
+  source_rotation: source
+  preview_scale: 4
+  coordinate_system: source_metadata
+  metadata_table: []
+  registration_dimension: space
+  channels_table:
+    label:
+    - channel 0
+    color:
+    - (1, 1, 1)
+  output_path: C:/Users/Y/PycharmProjects/muvis-align/output
+  overwrite: true
+  preview_shapes: true
+  preview_images: true
+  input_path: C:/Users/Y/PycharmProjects/muvis-align/data/S000/*.zarr
+pre_processing:
+  scale: 1
+  flatfield_quantiles: ''
+  filter_foreground: false
+registration:
+  operation: register
+  pairing: default
+  transform_type: rigid
+  method: orb
+  normalisation: true
+  max_keypoints: 5000
+  inlier_threshold_factor: 0.05
+  max_trials: 1000
+  ransac_iterations: 3
+  metrics_table: []
+  gaussian_sigma: 2.0
+  modify_pair_registration: false
+  pair_registration: false
+  preview_registration: false
+  reg_preview_image1: '000_000'
+  reg_preview_image2: '000_001'
+  channel: channel 0
+fusion:
+  method: average
+  spacing: mean
+  tile_size: 1024,1024
+  ome_version: '0.5'
+  preview_fusion: false

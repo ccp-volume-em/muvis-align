@@ -3,23 +3,25 @@ from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.utils import progress
 from napari.utils.notifications import show_warning
-from napari_bbox.boundingbox import BoundingBoxLayer
 import networkx as nx
 import numpy as np
 import os.path
 from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
-from tqdm.dask import TqdmCallback
 
 from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, set_oriented_bounding_box_edges
+    draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, \
+    print_sim_info
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
+from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
+from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
+from muvis_align.ui.NapariPreprocessProgress import NapariPreprocessProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
 from muvis_align.ui.bilayers_util import get_section_dict
@@ -269,7 +271,7 @@ class Interface:
     def run_pre_processing(self):
         params_features = self.params['pre_processing']
         if self.reg.check_preprocess(**params_features) or self.pre_processing_performed:
-            with TqdmCallback(tqdm_class=progress, desc='Pre-processing', bar_format=" "), \
+            with NapariPreprocessProgress(progress_class=progress, desc='Pre-processing', bar_format=" "), \
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
                 _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
@@ -419,7 +421,7 @@ class Interface:
             sims = [sim.copy(deep=True) for sim in self.reg.register_sims]
         else:
             sims = self.preview_sims
-            copy_transforms(self.reg.sims, sims, transform_key)
+        copy_transforms(self.reg.sims, sims, transform_key)
         fused, _ = self.reg.fuse(sims,
                                  transform_key=transform_key,
                                  fusion_method=fusion_method,
@@ -441,16 +443,24 @@ class Interface:
         if len(shapes) > 0:
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
+            shape_data = np.asarray(shapes)
+            shape_type = 'polygon'
+            edge_width = 0.1
             if do_3d:
-                bbox_layer = BoundingBoxLayer(np.array(shapes), name=layer_name, text=text, features=features,
-                                              face_color=face_colors, opacity=0.25, edge_width=100, edge_color='cyan',
-                                              blending='translucent_no_depth')
-                viewer.add_layer(bbox_layer)
-                set_oriented_bounding_box_edges(bbox_layer, shapes)
-            else:
-                viewer.add_shapes(np.array(shapes), name=layer_name, text=text, features=features,
-                                  face_color=face_colors, opacity=0.25, edge_width=0.1, edge_color='cyan',
-                                  blending='translucent_no_depth')
+                # napari-bbox 0.1.1 is incompatible with current napari.
+                # Draw every box edge as one built-in 3D path instead.
+                edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
+                shape_data = [np.asarray(shape)[edge_path] for shape in shapes]
+                shape_type = 'path'
+                # Napari renders 3D paths as tubes whose width is measured in
+                # world coordinates, not screen pixels. Scale the tube radius
+                # to the scene so it remains visible for large physical units.
+                vertices = np.concatenate([np.asarray(shape) for shape in shapes])
+                edge_width = np.ptp(vertices, axis=0).max() * 0.005
+
+            viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text, features=features,
+                              face_color=face_colors, opacity=0.25, edge_width=edge_width, edge_color='cyan',
+                              blending='translucent_no_depth')
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
             #                           face_color=face_colors)
@@ -640,7 +650,8 @@ class Interface:
         if not self.reg.register_sims:
             self.run_pre_processing()
 
-        with TqdmCallback(tqdm_class=progress, desc='Pair registration', bar_format=" "), \
+        with NapariMVSProgress(tqdm_class=progress, patch_registration=True), \
+                NapariDaskProgress(progress_class=progress, desc='Pair registration'), \
                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
                 VisibleActivityDock(self.viewer):
             results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
@@ -658,7 +669,7 @@ class Interface:
         return results
 
     def run_global_registration(self):
-        with TqdmCallback(tqdm_class=progress, desc='Global registration', bar_format=" "), \
+        with NapariDaskProgress(progress_class=progress, desc='Global registration', bar_format=" "), \
                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
                 VisibleActivityDock(self.viewer):
             results = self.reg.register_global(self.reg.sims, self.reg.msims,
@@ -787,7 +798,7 @@ class Interface:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]
             elif isinstance(tile_size, str):
                 tile_size = int(tile_size.strip())
-            with TqdmCallback(tqdm_class=progress, desc='Fusion', bar_format=" "), \
+            with NapariMVSProgress(tqdm_class=progress, desc='Fusion', patch_fusion=True), \
                  TemporarilyDisabledWidgets(self.get_all_widgets()), \
                  VisibleActivityDock(self.viewer):
                 fused_image, is_saved = self.reg.fuse(self.reg.sims,

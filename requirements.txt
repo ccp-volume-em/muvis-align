@@ -1,9 +1,10 @@
-multiview-stitcher>=v0.1.53
+multiview-stitcher>=0.1.56
+dask>=2024.8.0,<2025.11.0
+ngff-zarr>=0.38.0,<0.43.0
+multiscale-spatial-image>=2.0.0,<2.1.0
 pydantic>=2
 opencv-python
 spatial-image
-multiscale-spatial-image
-napari_bbox
 magic-class
 rocrate>=0.15.0
 probreg

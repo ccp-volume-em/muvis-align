@@ -275,31 +275,32 @@ class TestNapariInterfaceRegistration:
         
         with patch.object(interface.reg, 'is_global_registered', return_value=False):
             with patch.object(interface.reg, 'is_pairs_registered', return_value=False):
-                with patch('src.muvis_align.ui.Interface.TqdmCallback'):
-                    with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
-                        with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
-                            with patch.object(interface, 'get_all_widgets', return_value={}):
-                                # Create mock bbox DataArray WITHOUT 't' dimension (this is the key test)
-                                import xarray as xr
-                                import networkx as nx
-                                mock_bbox = xr.DataArray(
-                                    [[1, 2], [3, 4]],
-                                    dims=['x_in', 'x_out'],
-                                    coords={'x_in': [0, 1], 'x_out': [0, 1]}
-                                )
-                                
-                                with patch.object(interface.reg, 'register_pairs', return_value={
-                                    'pair_mappings': {},
-                                    'metrics': {'pairs': {}}
-                                }):
-                                    # Mock nx.get_edge_attributes to return bbox without 't' dimension
-                                    with patch('networkx.get_edge_attributes') as mock_get_attrs:
-                                        mock_get_attrs.return_value = {('key1', 'key2'): mock_bbox}
-                                        
-                                        with patch.object(interface.reg, 'save_pair_mappings'):
-                                            with patch.object(interface, 'update_registered'):
-                                                # This should not raise KeyError
-                                                interface.pair_registration()
+                with patch('src.muvis_align.ui.Interface.NapariMVSProgress'):
+                    with patch('src.muvis_align.ui.Interface.NapariDaskProgress'):
+                        with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
+                            with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
+                                with patch.object(interface, 'get_all_widgets', return_value={}):
+                                    # Create mock bbox DataArray WITHOUT 't' dimension (this is the key test)
+                                    import xarray as xr
+                                    import networkx as nx
+                                    mock_bbox = xr.DataArray(
+                                        [[1, 2], [3, 4]],
+                                        dims=['x_in', 'x_out'],
+                                        coords={'x_in': [0, 1], 'x_out': [0, 1]}
+                                    )
+                                    
+                                    with patch.object(interface.reg, 'register_pairs', return_value={
+                                        'pair_mappings': {},
+                                        'metrics': {'pairs': {}}
+                                    }):
+                                        # Mock nx.get_edge_attributes to return bbox without 't' dimension
+                                        with patch('networkx.get_edge_attributes') as mock_get_attrs:
+                                            mock_get_attrs.return_value = {('key1', 'key2'): mock_bbox}
+                                            
+                                            with patch.object(interface.reg, 'save_pair_mappings'):
+                                                with patch.object(interface, 'update_registered'):
+                                                    # This should not raise KeyError
+                                                    interface.pair_registration()
 
     @patch('src.muvis_align.ui.Interface.QMessageBox.question')
     def test_interface_registration_process_mock(
@@ -319,7 +320,7 @@ class TestNapariInterfaceRegistration:
                     'mappings': {},
                     'metrics': {}
                 }):
-                    with patch('src.muvis_align.ui.Interface.TqdmCallback'):
+                    with patch('src.muvis_align.ui.Interface.NapariDaskProgress'):
                         with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
                             with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
                                 with patch.object(interface, 'get_all_widgets', return_value={}):
@@ -350,7 +351,7 @@ class TestNapariInterfaceRegistration:
             }
         
         with patch.object(interface.reg, 'is_fused', return_value=False):
-            with patch('src.muvis_align.ui.Interface.TqdmCallback'):
+            with patch('src.muvis_align.ui.Interface.NapariMVSProgress'):
                 with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
                     with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
                         with patch.object(interface, 'get_all_widgets', return_value={}):
@@ -817,14 +818,11 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     viewer = MagicMock()
     image_shape = np.zeros((8, 3))
     overlap_shape = np.ones((8, 3))
-    bbox_layer = MagicMock()
     bare_interface.reg.get_metrics.return_value = 0.75
     create_shapes = MagicMock(return_value=[image_shape])
     create_overlaps = MagicMock(
         return_value=([overlap_shape], [np.array([0, 0])])
     )
-    bounding_box_layer = MagicMock(return_value=bbox_layer)
-    set_edges = MagicMock()
     monkeypatch.setattr(
         interface_module.si_utils,
         "get_origin_from_sim",
@@ -837,26 +835,19 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     monkeypatch.setattr(
         interface_module, "metric_to_rgb", lambda _: (0.1, 0.2, 0.3)
     )
-    monkeypatch.setattr(
-        interface_module, "BoundingBoxLayer", bounding_box_layer
-    )
-    monkeypatch.setattr(
-        interface_module, "set_oriented_bounding_box_edges", set_edges
-    )
 
     shape_data = bare_interface._create_napari_shapes("registered")
     bare_interface._update_view_add_shapes(viewer, *shape_data, "boxes")
 
-    kwargs = bounding_box_layer.call_args.kwargs
+    args, kwargs = viewer.add_shapes.call_args
+    paths = args[0]
+    edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
+    np.testing.assert_allclose(paths[0], image_shape[edge_path])
+    np.testing.assert_allclose(paths[1], overlap_shape[edge_path])
+    assert kwargs["shape_type"] == "path"
+    assert kwargs["edge_width"] == 0.005
     assert kwargs["features"]["refs"] == ["0", "0 0"]
     assert kwargs["features"]["labels"] == ["image-0", ""]
-    np.testing.assert_allclose(
-        kwargs["face_color"][1], [0.1, 0.2, 0.3]
-    )
-    viewer.add_layer.assert_called_once_with(bbox_layer)
-    set_edges.assert_called_once_with(
-        bbox_layer, [image_shape, overlap_shape]
-    )
 
 
 def test_update_napari_shapes_uses_shapes_layer_for_2d(
@@ -881,6 +872,8 @@ def test_update_napari_shapes_uses_shapes_layer_for_2d(
 
     args, kwargs = viewer.add_shapes.call_args
     np.testing.assert_allclose(args[0], [shape])
+    assert kwargs["shape_type"] == "polygon"
+    assert kwargs["edge_width"] == 0.1
     assert kwargs["features"]["refs"] == ["0"]
 
 
