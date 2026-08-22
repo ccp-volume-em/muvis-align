@@ -947,7 +947,10 @@ def test_on_image_data_changed_restarts_metrics_timer(bare_interface):
 @pytest.fixture
 def mocked_activity_contexts(monkeypatch):
     monkeypatch.setattr(
-        interface_module, "TqdmCallback", lambda **_: nullcontext()
+        interface_module, "NapariMVSProgress", lambda **_: nullcontext()
+    )
+    monkeypatch.setattr(
+        interface_module, "NapariDaskProgress", lambda **_: nullcontext()
     )
     monkeypatch.setattr(
         interface_module,
