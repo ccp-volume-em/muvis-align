@@ -123,5 +123,10 @@ ENTRYPOINT []
 # docker run -v "D:\slides:/data" -p 9876:9876 muvis-align-xpra
 
 # Push:
-# docker tag muvis-align-xpra quay.io/ccp-volume-em/muvis-align-xpra:v0.0.1
-# docker push quay.io/ccp-volume-em/muvis-align-xpra:v0.0.1
+# docker tag muvis-align-xpra quay.io/ccp-volume-em/muvis-align-xpra:v0.0.2
+# docker login quay.io
+# docker push quay.io/ccp-volume-em/muvis-align-xpra:v0.0.2
+
+# apptainer remote login --username [username] docker://quay.io
+# apptainer pull docker://quay.io/ccp-volume-em/muvis-align-xpra:v0.0.2
+# apptainer run --mount type=bind,src=/camp/project/proj-ccp-vem/datasets,dst=/data --net --network-args "portmap=9876:9876" muvis-align-xpra_v0.0.2.sif
