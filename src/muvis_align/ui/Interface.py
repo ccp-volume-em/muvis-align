@@ -270,13 +270,15 @@ class Interface:
 
     def run_pre_processing(self):
         params_features = self.params['pre_processing']
-        if self.reg.check_preprocess(**params_features) or self.pre_processing_performed:
-            with NapariPreprocessProgress(progress_class=progress, desc='Pre-processing', bar_format=" "), \
-                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
-                 VisibleActivityDock(self.viewer):
-                _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
-        else:
-            _, _, modified = self.reg.preprocess(self.reg.sims, **params_features)
+        with NapariPreprocessProgress(progress_class=progress,
+                                      desc='Pre-processing',
+                                      bar_format=" ",
+                                      min_duration=0.1) as progress_factory, \
+             TemporarilyDisabledWidgets(self.get_all_widgets()), \
+             VisibleActivityDock(self.viewer):
+            _, _, modified = self.reg.preprocess(self.reg.sims,
+                                                 progress_factory=progress_factory,
+                                                 **params_features)
         self.pre_processing_performed = modified
 
     def pre_processing_process(self):
@@ -669,7 +671,7 @@ class Interface:
         return results
 
     def run_global_registration(self):
-        with NapariDaskProgress(progress_class=progress, desc='Global registration', bar_format=" "), \
+        with NapariDaskProgress(progress_class=progress, desc='Global registration'), \
                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
                 VisibleActivityDock(self.viewer):
             results = self.reg.register_global(self.reg.sims, self.reg.msims,

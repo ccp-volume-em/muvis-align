@@ -680,18 +680,6 @@ class MVSRegistration:
                     has_overlaps.append(True)
         return min_dists, has_overlaps
 
-    def check_preprocess(self, scale=None,
-                         flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False):
-        if normalisation:
-            if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
-                normalisation = None
-            elif isinstance(normalisation, bool) and normalisation == False:
-                normalisation = None
-        if (scale and scale != 1) or flatfield_quantiles or normalisation or gaussian_sigma or filter_foreground:
-            return True
-        else:
-            return False
-
     def preprocess(self, sims, scale=None,
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False,
                    progress_factory=None,
@@ -702,6 +690,8 @@ class MVSRegistration:
             if isinstance(value, bool) and value == False:
                 return False
             return bool(value)
+
+        do_normalisation = normalisation_enabled(normalisation)
 
         def count_progress_steps():
             n_steps = 0
@@ -714,7 +704,7 @@ class MVSRegistration:
                 n_steps += 1
             if gaussian_sigma:
                 n_steps += 1
-            if normalisation_enabled(normalisation):
+            if do_normalisation:
                 n_steps += 1
             return max(n_steps, 1)
 
@@ -776,12 +766,7 @@ class MVSRegistration:
                 modified = True
                 update_progress()
 
-            if normalisation:
-                if isinstance(normalisation, str) and normalisation.lower() in ['false', 'no', 'none', '']:
-                    normalisation = None
-                elif isinstance(normalisation, bool) and normalisation == False:
-                    normalisation = None
-            if normalisation:
+            if do_normalisation:
                 use_global = ('global' in str(normalisation).lower())
                 if use_global:
                     logging.info('Normalising (global)...')

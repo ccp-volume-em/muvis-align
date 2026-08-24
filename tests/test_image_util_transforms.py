@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from src.muvis_align.image.util import (
     _adapt_transform_to_image_dims,
+    gaussian_filter_sim,
     get_overlap_images,
 )
 
@@ -186,3 +187,15 @@ def test_adapted_transform_values_are_identity_submatrix():
     ])
     
     assert np.allclose(adapted.values, expected)
+
+
+def test_gaussian_filter_sim_preserves_uint_range_for_multichannel_sim():
+    sim = create_mock_sim_2d(shape=(32, 32))
+    sim = xr.concat([sim, sim * 2], dim="c")
+    sim = sim.assign_coords(c=["ch0", "ch1"])
+    sim.attrs["transforms"] = {"source_metadata": create_2d_transform()}
+
+    filtered = gaussian_filter_sim(sim, "source_metadata", sigma=2.0)
+
+    assert filtered.dtype == sim.dtype
+    assert np.max(np.asarray(filtered)) > 1

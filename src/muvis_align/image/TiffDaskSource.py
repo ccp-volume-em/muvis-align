@@ -1,5 +1,5 @@
 import tifffile
-from ngff_zarr import tiff_file_to_ngff_images
+from ngff_zarr import tiff_file_to_ngff_images, NgffMultiscales
 
 from muvis_align.image.ome_tiff_helper import extract_ome_translation
 from muvis_align.util import convert_to_um
@@ -15,12 +15,19 @@ class TiffDaskSource(DaskSource):
         self.position = extract_ome_translation(self.filename)
 
         ngff_image_datas = tiff_file_to_ngff_images(self.filename, reuse_existing_pyramids=True)
-        for ngff_image_data in ngff_image_datas:
-            multiscales = ngff_image_data[1]
-            metadata = multiscales.metadata
-            dims = metadata.dimension_names
-            self.dimension_order = ''.join(dims)
-            for index, ngff_image in enumerate(multiscales.images):
+        for ngff_index, ngff_image_data in enumerate(ngff_image_datas):
+            ngff_image_data1 = ngff_image_data[1]
+            if isinstance(ngff_image_data1, NgffMultiscales):
+                ngff_multiscales = ngff_image_data1
+                ngff_images = ngff_multiscales.images
+                metadata = ngff_multiscales.metadata
+                dims = metadata.dimension_names
+            else:
+                ngff_images = [ngff_image_data1]
+                dims = ngff_images[0].dims
+            if ngff_index == 0:
+                self.dimension_order = ''.join(dims)
+            for index, ngff_image in enumerate(ngff_images):
                 axes_units = ngff_image.axes_units
                 if axes_units is None:
                     axes_units = {}

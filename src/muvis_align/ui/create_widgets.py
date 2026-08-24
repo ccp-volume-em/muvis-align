@@ -26,6 +26,37 @@ map_bilayers_to_widget_type = {
 }
 
 
+def _show_optional_file_dialog_without_overwrite_confirm(
+        mode='w',
+        caption=None,
+        start_path=None,
+        filter=None,
+):
+    from qtpy.QtWidgets import QFileDialog
+
+    dialog = QFileDialog()
+    dialog.setAcceptMode(QFileDialog.AcceptSave)
+    dialog.setFileMode(QFileDialog.AnyFile)
+    dialog.setOption(QFileDialog.DontConfirmOverwrite, True)
+    if caption:
+        dialog.setWindowTitle(caption)
+    if filter:
+        dialog.setNameFilter(filter)
+    if start_path:
+        path = os.path.expanduser(start_path)
+        if os.path.isdir(path):
+            dialog.setDirectory(path)
+        else:
+            dialog.setDirectory(os.path.dirname(path) or '.')
+            dialog.selectFile(os.path.basename(path))
+
+    if dialog.exec():
+        selected_files = dialog.selectedFiles()
+        if selected_files:
+            return selected_files[0]
+    return None
+
+
 def create_project_widget(interface, function):
     project_template = [
         {'name': 'project_path',
@@ -88,7 +119,9 @@ def create_section_container(section_id, section_template, interface,
                     widget_type=spec.widget_type,
                     options=options,
                 )
-                # explicitly setting value=None triggers type deduction, and results in an error
+            if spec.is_file_type and options.get('mode') == 'w' and hasattr(widget, '_show_file_dialog'):
+                widget._show_file_dialog = _show_optional_file_dialog_without_overwrite_confirm
+            # explicitly setting value=None triggers type deduction, and results in an error
             param_widget.widget = widget
             if spec.description:
                 widget.tooltip = spec.description

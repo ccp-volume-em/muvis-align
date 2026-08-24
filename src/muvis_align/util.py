@@ -474,6 +474,8 @@ def create_transform0(center=(0, 0), angle=0, scale=1, translate=(0, 0)):
 
 
 def create_transform(center, angle, translation=None, matrix_size=3):
+    if not center:
+        center = np.array([0] * (matrix_size - 1))
     if isinstance(center, dict):
         center = dict_to_xyz(center)
     if len(center) == 2:

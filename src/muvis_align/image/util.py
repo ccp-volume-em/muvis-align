@@ -926,7 +926,9 @@ def normalise_sims(sims, transform_key, use_global=True):
 
 def gaussian_filter_sim(sim, transform_key, sigma):
     image = np.asarray(sim)
-    blurred_image = gaussian_filter_image(image, sigma)
+    spatial_dims = set(si_utils.get_spatial_dims_from_sim(sim))
+    sigma_by_axis = [sigma if dim in spatial_dims else 0 for dim in sim.dims]
+    blurred_image = gaussian(image, sigma=sigma_by_axis, preserve_range=True)
     new_sim = si_utils.get_sim_from_array(
         blurred_image.astype(sim.dtype),
         dims=sim.dims,

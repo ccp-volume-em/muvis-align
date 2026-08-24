@@ -108,21 +108,41 @@ def test_init_params_normalises_sections_and_forwards_options():
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "expected"),
+    ("kwargs", "expected_modified"),
     [
         ({}, False),
         ({"scale": 1}, False),
         ({"normalisation": "none"}, False),
         ({"normalisation": False}, False),
-        ({"scale": 2}, True),
         ({"gaussian_sigma": 1}, True),
-        ({"filter_foreground": True}, True),
     ],
 )
-def test_check_preprocess(kwargs, expected):
+def test_preprocess_sets_modified_flag_for_enabled_steps(kwargs, expected_modified):
     registration = MVSRegistration()
+    registration.scales = [{"x": 1.0, "y": 1.0}]
+    registration.source_transform_key = "source_metadata"
+    sims = [np.ones((4, 4), dtype=np.uint16)]
 
-    assert registration.check_preprocess(**kwargs) is expected
+    with patch(
+        "muvis_align.MVSRegistration.gaussian_filter_sim",
+        side_effect=lambda sim, *_: sim,
+    ):
+        _, _, modified = registration.preprocess(sims, **kwargs)
+
+    assert modified is expected_modified
+
+
+def test_preprocess_applies_scale_via_init_sims():
+    registration = MVSRegistration()
+    registration.scales = [{"x": 1.0, "y": 1.0}]
+    registration.source_transform_key = "source_metadata"
+    sims = [np.ones((4, 4), dtype=np.uint16)]
+
+    with patch.object(registration, "init_sims", return_value=sims) as init_sims:
+        _, _, modified = registration.preprocess(sims, scale=2)
+
+    assert modified is True
+    init_sims.assert_called_once_with(target_scale=2, store=False)
 
 
 def test_validate_overlap_reports_near_images():

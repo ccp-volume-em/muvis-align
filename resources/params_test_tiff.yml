@@ -1,0 +1,26 @@
+general:
+  overwrite: True
+  logging:
+    verbose: True
+  output:
+    format: ome.zarr
+
+operations:
+  - operation: register
+    input:
+      path: data/S000/*.tiff
+      source_metadata: source
+    registration:
+      pairing: orthogonal
+      transform_type: rigid
+      method: orb
+      gaussian_sigma: 2
+      normalisation: True
+      max_keypoints: 5000
+      inlier_threshold_factor: 0.05
+      max_trials: 1000
+      ransac_iterations: 3
+      metrics: [ncc, ssim, onmi]
+      n_parallel_pairwise_regs: 1
+    output:
+      path: ../../output/stitched/
