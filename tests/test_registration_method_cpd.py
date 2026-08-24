@@ -4,7 +4,7 @@ pytest.importorskip("probreg")
 
 import numpy as np
 
-from src.muvis_align.registration_methods.RegistrationMethodCPD import (
+from muvis_align.registration_methods.RegistrationMethodCPD import (
     RegistrationMethodCPD,
 )
 from tests.data_builders import make_dummy_blob_spatial_image
@@ -14,7 +14,7 @@ def test_detect_points_flips_2d_contour_centers_to_yx_order(monkeypatch):
     method = RegistrationMethodCPD(data, params={})
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
+        'muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
         lambda data: [
             (np.array([11.0, 7.0], dtype=np.float32), 10.0),
             (np.array([5.5, 2.0], dtype=np.float32), 4.0),
@@ -33,7 +33,7 @@ def test_detect_points_keeps_3d_blob_coordinates_unchanged(monkeypatch):
     method = RegistrationMethodCPD(data, params={})
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCPD.detect_volume_points',
+        'muvis_align.registration_methods.RegistrationMethodCPD.detect_volume_points',
         lambda data: np.array([
             [1.0, 6.0, 11.0],
             [3.0, 8.0, 5.0],
@@ -50,7 +50,7 @@ def test_detect_points_returns_empty_list_when_no_2d_areas_are_found(monkeypatch
     method = RegistrationMethodCPD(data, params={})
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
+        'muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
         lambda data: [],
     )
 
@@ -80,7 +80,7 @@ def test_registration_reports_consistent_matches_and_inliers_for_translated_poin
 
     monkeypatch.setattr(RegistrationMethodCPD, 'detect_points', _fake_detect_points)
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCPD.get_mean_nn_distance',
+        'muvis_align.registration_methods.RegistrationMethodCPD.get_mean_nn_distance',
         lambda points1, points2: 5.0,
     )
 
@@ -101,7 +101,7 @@ def test_registration_reports_consistent_matches_and_inliers_for_translated_poin
         return _Result()
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCPD.cpd.registration_cpd',
+        'muvis_align.registration_methods.RegistrationMethodCPD.cpd.registration_cpd',
         _fake_registration_cpd,
     )
 
@@ -124,7 +124,7 @@ def test_registration_returns_none_matches_when_too_few_points(monkeypatch):
 
     monkeypatch.setattr(RegistrationMethodCPD, 'detect_points', _fake_detect_points)
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCPD.get_mean_nn_distance',
+        'muvis_align.registration_methods.RegistrationMethodCPD.get_mean_nn_distance',
         lambda points1, points2: 5.0,
     )
 

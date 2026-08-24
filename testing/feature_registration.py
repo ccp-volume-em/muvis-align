@@ -2,11 +2,11 @@ import logging
 import numpy as np
 import yaml
 
-from src.muvis_align.MVSRegistration import MVSRegistration
-from src.muvis_align.Timer import Timer
-from src.muvis_align.image.source_helper import create_dask_source
-from src.muvis_align.image.util import *
-from src.muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures as RegMethod
+from muvis_align.MVSRegistration import MVSRegistration
+from muvis_align.Timer import Timer
+from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.util import *
+from muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures as RegMethod
 
 
 def test_feature_registration():

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.muvis_align.util import calculate_rigid_difference, create_transform
+from muvis_align.util import calculate_rigid_difference, create_transform
 
 
 @pytest.mark.parametrize(

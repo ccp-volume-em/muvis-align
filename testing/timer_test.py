@@ -1,4 +1,4 @@
-from src.muvis_align.Timer import Timer
+from muvis_align.Timer import Timer
 
 if __name__ == "__main__":
     with Timer('test'):

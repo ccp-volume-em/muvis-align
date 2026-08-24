@@ -20,7 +20,7 @@ try:
 except Exception as e:
     print(f'matplotlib import error:\n{e}')
 
-from src.muvis_align.util import *
+from muvis_align.util import *
 
 
 def show_image(image, title='', cmap=None):

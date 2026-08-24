@@ -1,7 +1,7 @@
 import numpy as np
 from skimage.transform import EuclideanTransform
 
-from src.muvis_align.registration_methods.RegistrationMethodSkFeatures import (
+from muvis_align.registration_methods.RegistrationMethodSkFeatures import (
     RegistrationMethodSkFeatures,
 )
 from tests.data_builders import make_dummy_blob_spatial_image_2d
@@ -19,7 +19,7 @@ def test_detect_features_returns_skimage_keypoints_in_yx_order(monkeypatch):
             assert image.shape == (32, 48)
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodSkFeatures.ORB',
+        'muvis_align.registration_methods.RegistrationMethodSkFeatures.ORB',
         lambda **kwargs: DummyFeatureModel(),
     )
 
@@ -43,11 +43,11 @@ def test_detect_features_limits_keypoints_to_configured_maximum(monkeypatch):
             return None
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodSkFeatures.ORB',
+        'muvis_align.registration_methods.RegistrationMethodSkFeatures.ORB',
         lambda **kwargs: DummyFeatureModel(),
     )
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodSkFeatures.np.random.choice',
+        'muvis_align.registration_methods.RegistrationMethodSkFeatures.np.random.choice',
         lambda n, size, replace: np.array([0, 2]),
     )
 
@@ -84,11 +84,11 @@ def test_match_returns_best_ransac_transform_and_inliers(monkeypatch):
     ])
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodSkFeatures.match_descriptors',
+        'muvis_align.registration_methods.RegistrationMethodSkFeatures.match_descriptors',
         lambda fixed_desc_arg, moving_desc_arg, cross_check, max_ratio: np.array([[0, 0], [1, 1], [2, 2]]),
     )
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodSkFeatures.ransac',
+        'muvis_align.registration_methods.RegistrationMethodSkFeatures.ransac',
         lambda data, transform_type, min_samples, residual_threshold, max_trials: next(ransac_results),
     )
 

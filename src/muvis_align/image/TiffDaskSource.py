@@ -3,8 +3,8 @@ from ngff_zarr import tiff_file_to_ngff_images, NgffMultiscales
 
 from muvis_align.image.ome_tiff_helper import extract_ome_translation
 from muvis_align.util import convert_to_um
-from src.muvis_align.image.DaskSource import DaskSource
-from src.muvis_align.image.color_conversion import hexrgb_to_rgba
+from muvis_align.image.DaskSource import DaskSource
+from muvis_align.image.color_conversion import hexrgb_to_rgba
 
 
 class TiffDaskSource(DaskSource):

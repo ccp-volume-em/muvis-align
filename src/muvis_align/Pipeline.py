@@ -5,10 +5,10 @@ import pandas as pd
 from threading import Thread
 from tqdm import tqdm
 
-from src.muvis_align.image.source_helper import get_images_metadata
-from src.muvis_align.MVSRegistration import MVSRegistration
-from src.muvis_align.logging import init_logging
-from src.muvis_align.util import dir_regex, get_filetitle, find_all_numbers, find_target_numeric
+from muvis_align.image.source_helper import get_images_metadata
+from muvis_align.MVSRegistration import MVSRegistration
+from muvis_align.logging import init_logging
+from muvis_align.util import dir_regex, get_filetitle, find_all_numbers, find_target_numeric
 
 
 class Pipeline(Thread):

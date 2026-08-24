@@ -1,4 +1,4 @@
-from src.muvis_align.util import metric_to_rgb
+from muvis_align.util import metric_to_rgb
 
 
 def colors_test():

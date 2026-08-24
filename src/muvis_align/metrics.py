@@ -10,8 +10,8 @@ from sklearn.metrics import euclidean_distances
 from xarray import DataArray
 
 from muvis_align.constants import default_transform_key, default_quality_key
-from src.muvis_align.image.util import image_reshape
-from src.muvis_align.util import apply_transform
+from muvis_align.image.util import image_reshape
+from muvis_align.util import apply_transform
 
 
 def create_metric_methods(metric_methods, msim, reg_channel=None):

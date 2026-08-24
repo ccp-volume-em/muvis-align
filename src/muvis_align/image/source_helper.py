@@ -1,9 +1,9 @@
 import numpy as np
 import os
 
-from src.muvis_align.image.TiffDaskSource import TiffDaskSource
-from src.muvis_align.image.ZarrDaskSource import ZarrDaskSource
-from src.muvis_align.util import get_pairs, get_unique_file_labels, print_dict_xyz
+from muvis_align.image.TiffDaskSource import TiffDaskSource
+from muvis_align.image.ZarrDaskSource import ZarrDaskSource
+from muvis_align.util import get_pairs, get_unique_file_labels, print_dict_xyz
 
 
 def create_dask_source(filename, source_metadata=None):

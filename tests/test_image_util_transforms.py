@@ -8,7 +8,7 @@ import numpy as np
 import xarray as xr
 from unittest.mock import MagicMock, patch
 
-from src.muvis_align.image.util import (
+from muvis_align.image.util import (
     _adapt_transform_to_image_dims,
     draw_keypoints_matches_napari,
     gaussian_filter_sim,
@@ -130,9 +130,9 @@ def test_get_overlap_images_adapts_transform_for_2d():
     sim2.attrs['transforms'] = {'source_metadata': transform_3d}
     
     # Mock the multiview_stitcher functions
-    with patch('src.muvis_align.image.util._get_overlap_bboxes') as mock_overlap:
-        with patch('src.muvis_align.image.util.si_utils.get_spatial_dims_from_sim') as mock_dims:
-            with patch('src.muvis_align.image.util.si_utils.get_spacing_from_sim') as mock_spacing:
+    with patch('muvis_align.image.util._get_overlap_bboxes') as mock_overlap:
+        with patch('muvis_align.image.util.si_utils.get_spatial_dims_from_sim') as mock_dims:
+            with patch('muvis_align.image.util.si_utils.get_spacing_from_sim') as mock_spacing:
                 mock_dims.return_value = ['y', 'x']
                 mock_spacing.return_value = {'y': 0.064, 'x': 0.064}
                 mock_overlap.return_value = {

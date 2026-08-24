@@ -130,7 +130,7 @@ def test_register_pairs_with_3d_transforms_on_2d_images():
     pairs = [(0, 1)]
     
     # Extract and normalize transforms (this is what the fix does)
-    from src.muvis_align.image.util import _adapt_transform_to_image_dims
+    from muvis_align.image.util import _adapt_transform_to_image_dims
         
     for msim in msims_reg:
         for scale_node in msim.ds.values():

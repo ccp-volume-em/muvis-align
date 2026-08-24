@@ -8,8 +8,8 @@ from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher import registration, param_utils, msi_utils, fusion
 import numpy as np
 
-from src.muvis_align.image.util import get_sim_position_final, show_image
-from src.muvis_align.util import get_pairs
+from muvis_align.image.util import get_sim_position_final, show_image
+from muvis_align.util import get_pairs
 
 dask.config.set(scheduler='threads')
 

@@ -1,4 +1,4 @@
-from src.muvis_align.ui.create_widgets import create_section_container
+from muvis_align.ui.create_widgets import create_section_container
 from qtpy.QtWidgets import QApplication
 
 

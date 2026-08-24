@@ -1,7 +1,7 @@
-from src.muvis_align.constants import zarr_extension, tiff_extension, default_ome_zarr_version
-from src.muvis_align.image.ome_tiff_helper import save_ome_tiff
-from src.muvis_align.image.ome_zarr_helper import save_ome_zarr
-from src.muvis_align.image.util import *
+from muvis_align.constants import zarr_extension, tiff_extension, default_ome_zarr_version
+from muvis_align.image.ome_tiff_helper import save_ome_tiff
+from muvis_align.image.ome_zarr_helper import save_ome_zarr
+from muvis_align.image.util import *
 
 
 def save_image(filename, data, output_format=zarr_extension,

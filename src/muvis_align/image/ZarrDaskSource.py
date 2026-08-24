@@ -1,7 +1,7 @@
 import ngff_zarr as nz
 
-from src.muvis_align.image.DaskSource import DaskSource
-from src.muvis_align.util import convert_to_um
+from muvis_align.image.DaskSource import DaskSource
+from muvis_align.util import convert_to_um
 
 
 class ZarrDaskSource(DaskSource):

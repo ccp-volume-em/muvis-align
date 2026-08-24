@@ -6,10 +6,10 @@
 import os.path
 from rocrate.model import ContextEntity
 
-from src.muvis_align.constants import NAPARI_PROJECT_TEMPLATE
-from src.muvis_align.file.rembi_extension import ImageAcquistion
-from src.muvis_align.file.zarr_extension import ZarrCrate
-from src.muvis_align.util import get_filetitle
+from muvis_align.constants import NAPARI_PROJECT_TEMPLATE
+from muvis_align.file.rembi_extension import ImageAcquistion
+from muvis_align.file.zarr_extension import ZarrCrate
+from muvis_align.util import get_filetitle
 
 
 def create_ro_crate(source, dest_path, image_paths=[]):

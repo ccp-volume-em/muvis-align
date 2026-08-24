@@ -1,7 +1,7 @@
 import numpy as np
 
-from src.muvis_align.image.util import combine_transforms
-from src.muvis_align.util import dir_regex, find_all_numbers, split_numeric_dict, import_json, export_json
+from muvis_align.image.util import combine_transforms
+from muvis_align.util import dir_regex, find_all_numbers, split_numeric_dict, import_json, export_json
 
 
 def get_composite_transforms(transforms, global_transforms):

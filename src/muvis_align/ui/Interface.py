@@ -1,3 +1,4 @@
+import logging
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
@@ -239,6 +240,7 @@ class Interface:
                 )
             except ValueError as e:
                 show_warning('Unable to read source data\n' + str(e))
+                logging.exception('Unable to read source data')
                 return False
 
             preview_scale = self.params['input_output']['preview_scale']

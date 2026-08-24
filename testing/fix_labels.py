@@ -1,6 +1,6 @@
 import json
 
-from src.muvis_align.util import import_json, export_json
+from muvis_align.util import import_json, export_json
 
 
 if __name__ == '__main__':

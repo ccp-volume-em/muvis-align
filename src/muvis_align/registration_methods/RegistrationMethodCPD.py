@@ -3,10 +3,10 @@ import numpy as np
 from probreg import cpd
 from spatial_image import SpatialImage
 
-from src.muvis_align.metrics import calc_match_metrics
-from src.muvis_align.registration_methods.RegistrationMethod import RegistrationMethod
-from src.muvis_align.image.util import *
-from src.muvis_align.util import points_to_3d
+from muvis_align.metrics import calc_match_metrics
+from muvis_align.registration_methods.RegistrationMethod import RegistrationMethod
+from muvis_align.image.util import *
+from muvis_align.util import points_to_3d
 
 
 class RegistrationMethodCPD(RegistrationMethod):

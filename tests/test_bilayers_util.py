@@ -1,8 +1,8 @@
-from src.muvis_align.ui.bilayers_util import (
+from muvis_align.ui.bilayers_util import (
     bilayers_to_magicgui_field,
     get_section_dict,
 )
-from src.muvis_align.ui.create_widgets import map_bilayers_to_widget_type
+from muvis_align.ui.create_widgets import map_bilayers_to_widget_type
 
 
 def test_get_section_dict_normalizes_and_sorts():

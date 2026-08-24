@@ -11,9 +11,9 @@ from skimage.measure import ransac
 from skimage.transform import AffineTransform, EuclideanTransform
 from spatial_image import SpatialImage
 
-from src.muvis_align.image.ome_tiff_helper import save_tiff
-from src.muvis_align.image.util import *
-from src.muvis_align.registration_methods.RegistrationMethod import RegistrationMethod
+from muvis_align.image.ome_tiff_helper import save_tiff
+from muvis_align.image.util import *
+from muvis_align.registration_methods.RegistrationMethod import RegistrationMethod
 
 
 class RegistrationMethodSkFeatures(RegistrationMethod):

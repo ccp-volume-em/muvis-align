@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.muvis_align.registration_methods.RegistrationMethodCvFeatures import (
+from muvis_align.registration_methods.RegistrationMethodCvFeatures import (
     RegistrationMethodCvFeatures,
 )
 from tests.data_builders import make_dummy_blob_spatial_image_2d
@@ -26,7 +26,7 @@ def test_detect_features_flips_opencv_keypoints_to_yx_order(monkeypatch):
             return [DummyKeyPoint(11.0, 7.0), DummyKeyPoint(2.0, 5.5)], np.array([[1], [2]], dtype=np.uint8)
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCvFeatures.cv.ORB_create',
+        'muvis_align.registration_methods.RegistrationMethodCvFeatures.cv.ORB_create',
         lambda **kwargs: DummyORB(),
     )
 
@@ -62,11 +62,11 @@ def test_match_returns_translation_and_inliers_for_consistent_descriptor_pairs(m
             ]
 
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCvFeatures.cv.BFMatcher',
+        'muvis_align.registration_methods.RegistrationMethodCvFeatures.cv.BFMatcher',
         lambda: DummyMatcher(),
     )
     monkeypatch.setattr(
-        'src.muvis_align.registration_methods.RegistrationMethodCvFeatures.cv.findHomography',
+        'muvis_align.registration_methods.RegistrationMethodCvFeatures.cv.findHomography',
         lambda src, dst, method, ransacReprojThreshold: (
             np.array([
                 [1.0, 0.0, 2.0],

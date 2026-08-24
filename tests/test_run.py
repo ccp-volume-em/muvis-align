@@ -3,8 +3,8 @@ import pytest
 import yaml
 from multiview_stitcher import msi_utils
 
-from src.muvis_align.MVSRegistration import MVSRegistration
-from src.muvis_align.Pipeline import Pipeline
+from muvis_align.MVSRegistration import MVSRegistration
+from muvis_align.Pipeline import Pipeline
 
 
 test_filenames = [

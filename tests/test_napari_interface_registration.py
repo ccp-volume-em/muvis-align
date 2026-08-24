@@ -24,16 +24,16 @@ import yaml
 import numpy as np
 from qtpy.QtWidgets import QMessageBox
 
-from src.muvis_align._widget import MainWidget
-from src.muvis_align.ui.Interface import Interface, ViewMode
-from src.muvis_align.MVSRegistration import RegState
+from muvis_align._widget import MainWidget
+from muvis_align.ui.Interface import Interface, ViewMode
+from muvis_align.MVSRegistration import RegState
 
 
 @pytest.fixture(autouse=True)
 def suppress_completion_dialogs():
     """Keep workflow completion messages from blocking test execution."""
     with patch(
-        'src.muvis_align.ui.Interface.QMessageBox.information'
+        'muvis_align.ui.Interface.QMessageBox.information'
     ) as mock_information:
         yield mock_information
 
@@ -73,7 +73,7 @@ class TestNapariInterfaceRegistration:
         """Test that MainWidget and Interface can be instantiated with project config."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget') as mock_viewer_widget:
+        with patch('muvis_align._widget.ViewerWidget') as mock_viewer_widget:
             with patch.object(viewer.window, 'add_dock_widget'):
                 # Mock the overview with necessary attributes
                 mock_overview = MagicMock()
@@ -83,8 +83,8 @@ class TestNapariInterfaceRegistration:
                 viewer.layers.clear = MagicMock()
                 
                 # Mock widget creation functions to avoid magicgui complexity
-                with patch('src.muvis_align.ui.create_widgets.create_project_widget') as mock_proj:
-                    with patch('src.muvis_align.ui.create_widgets.create_template_widgets') as mock_tmpl:
+                with patch('muvis_align.ui.create_widgets.create_project_widget') as mock_proj:
+                    with patch('muvis_align.ui.create_widgets.create_template_widgets') as mock_tmpl:
                         mock_proj.return_value = MagicMock()
                         mock_tmpl.return_value = {}
                         
@@ -100,7 +100,7 @@ class TestNapariInterfaceRegistration:
         """Test that project configuration can be loaded into Interface."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             with patch.object(viewer.window, 'add_dock_widget'):
                 main_widget = MainWidget(viewer)
                 interface = main_widget.interface
@@ -146,7 +146,7 @@ class TestNapariInterfaceRegistration:
         """Test that Interface reset clears state properly."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             with patch.object(viewer.window, 'add_dock_widget'):
                 main_widget = MainWidget(viewer)
                 interface = main_widget.interface
@@ -165,7 +165,7 @@ class TestNapariInterfaceRegistration:
         enable_tabs_mock = MagicMock()
         select_tab_mock = MagicMock()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(
                 viewer,
                 MagicMock(),
@@ -190,7 +190,7 @@ class TestNapariInterfaceRegistration:
         """Test napari viewer layer management (clear, add)."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
         
         # Add some test layers
@@ -206,7 +206,7 @@ class TestNapariInterfaceRegistration:
         """Test view mode transitions."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
         
         assert interface.view_mode is None
@@ -262,7 +262,7 @@ class TestNapariInterfaceRegistration:
         assert isinstance(preprocessing['scale'], (int, float))
         assert preprocessing['scale'] > 0
 
-    @patch('src.muvis_align.ui.Interface.QMessageBox.question')
+    @patch('muvis_align.ui.Interface.QMessageBox.question')
     def test_interface_pair_registration_mock(
         self, mock_question, make_napari_viewer, project_config
     ):
@@ -270,15 +270,15 @@ class TestNapariInterfaceRegistration:
         viewer = make_napari_viewer()
         mock_question.return_value = True  # Simulate "Yes" click
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
         
         with patch.object(interface.reg, 'is_global_registered', return_value=False):
             with patch.object(interface.reg, 'is_pairs_registered', return_value=False):
-                with patch('src.muvis_align.ui.Interface.NapariMVSProgress'):
-                    with patch('src.muvis_align.ui.Interface.NapariDaskProgress'):
-                        with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
-                            with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
+                with patch('muvis_align.ui.Interface.NapariMVSProgress'):
+                    with patch('muvis_align.ui.Interface.NapariDaskProgress'):
+                        with patch('muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
+                            with patch('muvis_align.ui.Interface.VisibleActivityDock'):
                                 with patch.object(interface, 'get_all_widgets', return_value={}):
                                     # Create mock bbox DataArray WITHOUT 't' dimension (this is the key test)
                                     import xarray as xr
@@ -302,7 +302,7 @@ class TestNapariInterfaceRegistration:
                                                     # This should not raise KeyError
                                                     interface.pair_registration()
 
-    @patch('src.muvis_align.ui.Interface.QMessageBox.question')
+    @patch('muvis_align.ui.Interface.QMessageBox.question')
     def test_interface_registration_process_mock(
         self, mock_question, make_napari_viewer, project_config
     ):
@@ -310,7 +310,7 @@ class TestNapariInterfaceRegistration:
         viewer = make_napari_viewer()
         mock_question.return_value = True  # Simulate "Yes" click
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
             interface.params = {'registration': {}}
         
@@ -320,9 +320,9 @@ class TestNapariInterfaceRegistration:
                     'mappings': {},
                     'metrics': {}
                 }):
-                    with patch('src.muvis_align.ui.Interface.NapariDaskProgress'):
-                        with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
-                            with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
+                    with patch('muvis_align.ui.Interface.NapariDaskProgress'):
+                        with patch('muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
+                            with patch('muvis_align.ui.Interface.VisibleActivityDock'):
                                 with patch.object(interface, 'get_all_widgets', return_value={}):
                                     with patch.object(interface.reg, 'save_mappings'):
                                         with patch.object(interface.reg, 'save_metrics'):
@@ -330,7 +330,7 @@ class TestNapariInterfaceRegistration:
                                                 with patch.object(interface, 'update_registered'):
                                                     interface.registration_process()
 
-    @patch('src.muvis_align.ui.Interface.QMessageBox.question')
+    @patch('muvis_align.ui.Interface.QMessageBox.question')
     def test_interface_fusion_process_mock(
         self, mock_question, make_napari_viewer, project_config
     ):
@@ -338,7 +338,7 @@ class TestNapariInterfaceRegistration:
         viewer = make_napari_viewer()
         mock_question.return_value = True  # Simulate "Yes" click
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
             interface.params = {
                 'registration': {'operation': 'register'},
@@ -351,9 +351,9 @@ class TestNapariInterfaceRegistration:
             }
         
         with patch.object(interface.reg, 'is_fused', return_value=False):
-            with patch('src.muvis_align.ui.Interface.NapariMVSProgress'):
-                with patch('src.muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
-                    with patch('src.muvis_align.ui.Interface.VisibleActivityDock'):
+            with patch('muvis_align.ui.Interface.NapariMVSProgress'):
+                with patch('muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
+                    with patch('muvis_align.ui.Interface.VisibleActivityDock'):
                         with patch.object(interface, 'get_all_widgets', return_value={}):
                             with patch.object(interface.reg, 'fuse', return_value=(MagicMock(), None)):
                                 with patch.object(interface, '_clear_napari_view'):
@@ -364,7 +364,7 @@ class TestNapariInterfaceRegistration:
         """Test valid registration state transitions."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
         
         # Verify state progression methods
@@ -390,7 +390,7 @@ class TestNapariInterfaceRegistration:
         """Test that expected metrics methods are available."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
         
         assert interface.metrics_methods == ['ncc', 'ssim', 'onmi']
@@ -402,20 +402,20 @@ class TestNapariInterfaceRegistration:
         """Test that Interface properly initializes with project template."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
         
         assert interface.raw_template is not None
         assert interface.template is not None
         assert isinstance(interface.template, dict)
 
-    @patch('src.muvis_align.ui.Interface.QMessageBox.question')
+    @patch('muvis_align.ui.Interface.QMessageBox.question')
     def test_modify_pair_registration_with_bbox(self, mock_question, make_napari_viewer, project_config):
         """Test modify_pair_registration with bbox handling (no 't' dimension)."""
         viewer = make_napari_viewer()
         mock_question.return_value = QMessageBox.Yes  # Simulate "Yes" click
 
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
 
         interface.view_mode = ViewMode.PAIRS
@@ -465,7 +465,7 @@ class TestNapariInterfaceRegistration:
         """Test update_registered handles sims with transforms that include a t dimension."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
         
         # Create mock sims with different transform dimensions
@@ -491,7 +491,7 @@ class TestNapariInterfaceRegistration:
         # Mock the missing reg_transform_key attribute on MVSRegistration
         interface.reg.reg_transform_key = 'registered'
         
-        with patch('src.muvis_align.ui.Interface.si_utils.get_tranform_keys_from_sim', return_value=['registered']):
+        with patch('muvis_align.ui.Interface.si_utils.get_tranform_keys_from_sim', return_value=['registered']):
             with patch.object(interface, 'populate_coordinate_systems') as mock_pop_coord:
                 with patch.object(interface, 'populate_metadata_table') as mock_pop_meta:
                     with patch.object(interface, 'populate_metrics_table') as mock_pop_metrics:
@@ -534,7 +534,7 @@ class TestMainWidgetIntegration:
         """Test MainWidget creation with napari viewer."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             with patch.object(viewer.window, 'add_dock_widget'):
                 widget = MainWidget(viewer)
         
@@ -547,7 +547,7 @@ class TestMainWidgetIntegration:
         """Test that MainWidget creates tabs correctly."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             with patch.object(viewer.window, 'add_dock_widget'):
                 widget = MainWidget(viewer)
         
@@ -559,7 +559,7 @@ class TestMainWidgetIntegration:
         """Test that non-project tabs are disabled initially."""
         viewer = make_napari_viewer()
         
-        with patch('src.muvis_align._widget.ViewerWidget'):
+        with patch('muvis_align._widget.ViewerWidget'):
             with patch.object(viewer.window, 'add_dock_widget'):
                 widget = MainWidget(viewer)
         
@@ -572,7 +572,7 @@ class TestMainWidgetIntegration:
 
 
 # Use the canonical package name for unit-level coverage.  The older integration
-# tests above intentionally retain their historical ``src.muvis_align`` imports.
+# tests above intentionally retain their historical ``muvis_align`` imports.
 interface_module = importlib.import_module("muvis_align.ui.Interface")
 CanonicalInterface = interface_module.Interface
 CanonicalViewMode = interface_module.ViewMode

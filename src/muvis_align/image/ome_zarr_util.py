@@ -1,7 +1,7 @@
 import numpy as np
 
-from src.muvis_align.image.color_conversion import *
-from src.muvis_align.image.util import get_image_quantile
+from muvis_align.image.color_conversion import *
+from muvis_align.image.util import get_image_quantile
 
 
 def create_axes_metadata(dimension_order):

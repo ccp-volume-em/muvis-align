@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.muvis_align.util import import_json
+from muvis_align.util import import_json
 
 
 def calc_offsets(mappings):

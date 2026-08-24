@@ -3,8 +3,8 @@ from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 import os
 
-from src.muvis_align.image.ome_tiff_helper import load_tiff, save_tiff
-from src.muvis_align.image.util import *
+from muvis_align.image.ome_tiff_helper import load_tiff, save_tiff
+from muvis_align.image.util import *
 
 
 def flatfield_correction(sims, transform_key, quantiles, foreground_map=None, cache_location=None):

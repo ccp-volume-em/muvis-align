@@ -4,9 +4,9 @@ from tempfile import TemporaryDirectory
 from tqdm import tqdm
 import xarray as xr
 
-from src.muvis_align.image.ome_helper import save_image
-from src.muvis_align.image.source_helper import create_dask_source
-from src.muvis_align.image.util import *
+from muvis_align.image.ome_helper import save_image
+from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.util import *
 
 
 def convert_xyz_to_dict(xyz, axes='xyz'):
@@ -295,7 +295,7 @@ def test_reg_3d_stack(sims, tmp_path):
     transform_key = 'stage_metadata'
     new_transform_key = 'registered'
 
-    #from src.muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
+    #from muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
     #registration_method = RegistrationMethodCPD(sims[0].dtype)
     #pairwise_reg_func = registration_method.registration
     pairwise_reg_func = registration.phase_correlation_registration

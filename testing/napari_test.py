@@ -4,7 +4,7 @@ import numpy as np
 from qtpy.QtCore import QObject, QThread, Signal, Slot
 from threading import Thread
 
-from src.muvis_align.image.util import create_sim_shapes
+from muvis_align.image.util import create_sim_shapes
 
 
 class NapariTest2d:

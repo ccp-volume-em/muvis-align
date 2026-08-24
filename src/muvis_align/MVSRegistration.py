@@ -19,18 +19,18 @@ import shutil
 from skimage.transform import resize
 import xarray as xr
 
-from src.muvis_align.constants import *
-from src.muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
-from src.muvis_align.file.transforms import write_transforms, read_transforms
-from src.muvis_align.image.Video import Video
-from src.muvis_align.image.flatfield import flatfield_correction
-from src.muvis_align.image.ome_helper import save_image
-from src.muvis_align.image.ome_tiff_helper import save_tiff
-from src.muvis_align.image.source_helper import create_dask_source
-from src.muvis_align.image.util import *
-from src.muvis_align.metrics import calc_pair_metrics, calc_global_metrics
-from src.muvis_align.Timer import Timer
-from src.muvis_align.util import *
+from muvis_align.constants import *
+from muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
+from muvis_align.file.transforms import write_transforms, read_transforms
+from muvis_align.image.Video import Video
+from muvis_align.image.flatfield import flatfield_correction
+from muvis_align.image.ome_helper import save_image
+from muvis_align.image.ome_tiff_helper import save_tiff
+from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.util import *
+from muvis_align.metrics import calc_pair_metrics, calc_global_metrics
+from muvis_align.Timer import Timer
+from muvis_align.util import *
 
 
 class RegState(Enum):
@@ -812,15 +812,15 @@ class MVSRegistration:
         method = method.lower()
 
         if 'cpd' in method:
-            from src.muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
+            from muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
             registration_method = RegistrationMethodCPD(sim0, params, self.debug)
             pairwise_reg_func = registration_method.registration
         elif 'feature' in method or 'orb' in method or 'sift' in method:
             if 'cv' in method:
-                from src.muvis_align.registration_methods.RegistrationMethodCvFeatures import RegistrationMethodCvFeatures
+                from muvis_align.registration_methods.RegistrationMethodCvFeatures import RegistrationMethodCvFeatures
                 registration_method = RegistrationMethodCvFeatures(sim0, params, self.debug)
             else:
-                from src.muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures
+                from muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures
                 registration_method = RegistrationMethodSkFeatures(sim0, params, self.debug)
             pairwise_reg_func = registration_method.registration
         elif 'ant' in method:
@@ -847,11 +847,11 @@ class MVSRegistration:
             fusion_method = None
             fuse_func = None
         elif 'exclus' in fusion_method:
-            from src.muvis_align.fusion_methods.FusionMethodExclusive import FusionMethodExclusive
+            from muvis_align.fusion_methods.FusionMethodExclusive import FusionMethodExclusive
             fusion_method = FusionMethodExclusive(sim0, self.debug)
             fuse_func = fusion_method.fusion
         elif 'add' in fusion_method:
-            from src.muvis_align.fusion_methods.FusionMethodAdditive import FusionMethodAdditive
+            from muvis_align.fusion_methods.FusionMethodAdditive import FusionMethodAdditive
             fusion_method = FusionMethodAdditive(sim0, self.debug)
             fuse_func = fusion_method.fusion
         else:

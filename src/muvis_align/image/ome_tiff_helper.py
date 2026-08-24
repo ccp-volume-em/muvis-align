@@ -1,9 +1,9 @@
 from ome_zarr.scale import Scaler
 from tifffile import TiffWriter, tifffile
 
-from src.muvis_align.constants import default_chunk_size
-from src.muvis_align.image.color_conversion import rgba_to_int
-from src.muvis_align.util import *
+from muvis_align.constants import default_chunk_size
+from muvis_align.image.color_conversion import rgba_to_int
+from muvis_align.util import *
 
 
 def load_tiff(filename):

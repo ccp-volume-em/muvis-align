@@ -4,12 +4,12 @@ from multiview_stitcher import spatial_image_utils as si_utils
 import os.path
 
 from muvis_align.logging import init_logging
-from src.muvis_align.constants import zarr_extension
-from src.muvis_align.image.ome_helper import save_image
-from src.muvis_align.image.util import redimension_data
-from src.muvis_align.image.source_helper import create_dask_source
-from src.muvis_align.Timer import Timer
-from src.muvis_align.util import get_unique_file_labels
+from muvis_align.constants import zarr_extension
+from muvis_align.image.ome_helper import save_image
+from muvis_align.image.util import redimension_data
+from muvis_align.image.source_helper import create_dask_source
+from muvis_align.Timer import Timer
+from muvis_align.util import get_unique_file_labels
 
 
 def convert_to_zarr(filename, output_filename, source_metadata, output_order='tczyx'):

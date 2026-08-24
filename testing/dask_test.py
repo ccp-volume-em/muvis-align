@@ -18,10 +18,10 @@ import tifffile
 from tifffile import TiffFile, TiffWriter, imread
 import zarr
 
-from src.muvis_align.Timer import Timer
-from src.muvis_align.image.source_helper import create_dask_source
-from src.muvis_align.image.util import normalise_sims
-from src.muvis_align.util import xyz_to_dict
+from muvis_align.Timer import Timer
+from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.util import normalise_sims
+from muvis_align.util import xyz_to_dict
 
 
 def save_ome_tiff(filename, data, npyramid_add=0):

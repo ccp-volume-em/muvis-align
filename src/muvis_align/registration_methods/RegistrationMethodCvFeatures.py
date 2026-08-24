@@ -4,10 +4,10 @@ import numpy as np
 from multiview_stitcher import param_utils
 from spatial_image import SpatialImage
 
-from src.muvis_align.image.util import *
-from src.muvis_align.metrics import calc_match_metrics
-from src.muvis_align.registration_methods.RegistrationMethod import RegistrationMethod
-from src.muvis_align.util import get_mean_nn_distance
+from muvis_align.image.util import *
+from muvis_align.metrics import calc_match_metrics
+from muvis_align.registration_methods.RegistrationMethod import RegistrationMethod
+from muvis_align.util import get_mean_nn_distance
 
 
 class RegistrationMethodCvFeatures(RegistrationMethod):

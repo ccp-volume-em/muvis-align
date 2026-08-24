@@ -1,9 +1,9 @@
 import glob
 import numpy as np
 
-from src.muvis_align.image.ome_tiff_helper import load_tiff
-from src.muvis_align.image.util import *
-from src.muvis_align.metrics import *
+from muvis_align.image.ome_tiff_helper import load_tiff
+from muvis_align.image.util import *
+from muvis_align.metrics import *
 
 
 def calc_metrics(images, offsets):
