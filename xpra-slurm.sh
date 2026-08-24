@@ -77,6 +77,7 @@ cleanup() {
 trap cleanup EXIT
 
 COMPUTE_NODE="$(hostname -s)"
+COMPUTE_NODE_TCP="$(hostname -i)"
 # Suggest a local port for the user's tunnel; derived from job id so two
 # concurrent sessions don't collide on the laptop side.
 LOCAL_PORT=9876
@@ -86,7 +87,7 @@ cat <<EOF
 ======================================================================
   muvis-align / XPRA SESSION READY
   Job ID  : ${SLURM_JOB_ID}
-  Node    : ${COMPUTE_NODE}
+  Node    : ${COMPUTE_NODE} ${COMPUTE_NODE_TCP}
   Started : $(date)
 ----------------------------------------------------------------------
 
