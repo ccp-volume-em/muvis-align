@@ -142,6 +142,7 @@ apptainer exec \
         --encoding="${ENCODING}" \
         --min-quality="${MIN_QUALITY}" \
         --min-speed="${MIN_SPEED}" \
+        --resize-display=no \
         --dpi=96 \
         --sharing=no \
         --file-transfer=off \
