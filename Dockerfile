@@ -102,7 +102,8 @@ CMD echo "Launching napari on Xpra. Connect via http://localhost:$XPRA_PORT or $
     --webcam=no \
     --speaker=disabled \
     --microphone=disabled \
-    --resize-display=no \
+    --desktop-scaling=auto \
+    --resize-display=yes \
     --dpi=96 \
     --start-child="$XPRA_START" \
     --exit-with-children="$XPRA_EXIT_WITH_CHILDREN" \
