@@ -118,7 +118,7 @@ cat <<EOF
 EOF
 
 
-ENV XPRA_START="python3 -m napari --with muvis-align"
+XPRA_START="python3 -m napari --with muvis-align"
 
 apptainer exec \
     --cleanenv \
