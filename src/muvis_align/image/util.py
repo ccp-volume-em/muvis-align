@@ -545,24 +545,22 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
     p2 = points2[:, :spatial_dims] + offset2 if (len(points2) > 0 and points2.shape[1] >= spatial_dims) else np.empty((0, spatial_dims))
     points_data = np.vstack([p1, p2]) if (len(p1) or len(p2)) else np.empty((0, spatial_dims))
 
-    # Build match lines as a shapes layer (each line is [[y1, x1], [y2, x2]])
-    line_data = []
-    edge_colors = []
-
-    # Sort non-inliers and inliers so they show on top
-    for do_inliers in [False, True]:
-        for i, match in enumerate(matches):
-            is_inlier = inliers[i] if i < len(inliers) else False
-            if is_inlier == do_inliers:
-                i1, i2 = int(match[0]), int(match[1])
-                if i1 >= len(points1) or i2 >= len(points2):
-                    continue
-                if points1.shape[1] < spatial_dims or points2.shape[1] < spatial_dims:
-                    continue
-                start = points1[i1, :spatial_dims]
-                end = points2[i2, :spatial_dims] + offset2
-                line_data.append(np.array([start, end], dtype=float))
-                edge_colors.append(inlier_color if is_inlier else match_color)
+    # Build match lines as shapes layers (each line is [[p1], [p2]]).
+    non_inlier_line_data = []
+    inlier_line_data = []
+    for i, match in enumerate(matches):
+        is_inlier = inliers[i] if i < len(inliers) else False
+        i1, i2 = int(match[0]), int(match[1])
+        valid_indices = i1 < len(points1) and i2 < len(points2)
+        valid_dims = points1.shape[1] >= spatial_dims and points2.shape[1] >= spatial_dims
+        if valid_indices and valid_dims:
+            start = points1[i1, :spatial_dims]
+            end = points2[i2, :spatial_dims] + offset2
+            line = np.array([start, end], dtype=float)
+            if is_inlier:
+                inlier_line_data.append(line)
+            else:
+                non_inlier_line_data.append(line)
 
     layers = [
         (
@@ -593,14 +591,29 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
             )
         )
 
-    if len(line_data) > 0:
+    if len(non_inlier_line_data) > 0:
         layers.append(
             (
-                line_data,
+                non_inlier_line_data,
                 {
                     "name": "matches",
                     "shape_type": "line",
-                    "edge_color": edge_colors,
+                    "edge_color": match_color,
+                    "edge_width": 1,
+                    "opacity": 0.25,
+                },
+                "shapes",
+            )
+        )
+
+    if len(inlier_line_data) > 0:
+        layers.append(
+            (
+                inlier_line_data,
+                {
+                    "name": "matches_inliers",
+                    "shape_type": "line",
+                    "edge_color": inlier_color,
                     "edge_width": 1,
                     "opacity": 0.25,
                 },

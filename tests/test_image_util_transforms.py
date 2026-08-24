@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 from src.muvis_align.image.util import (
     _adapt_transform_to_image_dims,
+    draw_keypoints_matches_napari,
     gaussian_filter_sim,
     get_overlap_images,
 )
@@ -199,3 +200,27 @@ def test_gaussian_filter_sim_preserves_uint_range_for_multichannel_sim():
 
     assert filtered.dtype == sim.dtype
     assert np.max(np.asarray(filtered)) > 1
+
+
+def test_draw_keypoints_matches_napari_splits_match_layers_by_inlier_state():
+    image = np.zeros((16, 16), dtype=np.uint16)
+    points1 = np.array([[2, 2], [4, 4]], dtype=float)
+    points2 = np.array([[2, 2], [4, 4]], dtype=float)
+    matches = np.array([[0, 0], [1, 1]], dtype=int)
+    inliers = np.array([False, True], dtype=bool)
+
+    layers = draw_keypoints_matches_napari(
+        image, points1, image, points2, matches=matches, inliers=inliers
+    )
+    layer_map = {kwargs["name"]: (data, kwargs, layer_type) for data, kwargs, layer_type in layers}
+
+    points_data, points_kwargs, points_type = layer_map["keypoints"]
+    non_inliers_data, non_inliers_kwargs, non_inliers_type = layer_map["matches"]
+    inliers_data, inliers_kwargs, inliers_type = layer_map["matches_inliers"]
+
+    assert points_type == "points"
+    assert non_inliers_type == "shapes"
+    assert inliers_type == "shapes"
+
+    assert len(non_inliers_data) == 1
+    assert len(inliers_data) == 1

@@ -9,6 +9,7 @@ import os.path
 from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
+import sys
 
 from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
@@ -499,6 +500,16 @@ class Interface:
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
                                                matches, inliers, points_color='blue')
+
+        if sys.platform.startswith("linux") and len(layers) >= 3:
+            # On Linux, napari renders overlay layers in reverse order.
+            # Keep image layers first; reverse only the last 3 overlay (shapes/points) layers.
+            # This handles cases from 3 layers (no image) to 5+ layers (with images).
+            num_image_layers = sum(1 for _, _, layer_type in layers if layer_type == "image")
+            num_overlay_layers = len(layers) - num_image_layers
+            if num_overlay_layers >= 3:
+                layers = layers[:-num_overlay_layers] + list(reversed(layers[-num_overlay_layers:]))
+
         viewer.layers.clear()
         for data, kwargs, layer_type in layers:
             if layer_type == "image":
