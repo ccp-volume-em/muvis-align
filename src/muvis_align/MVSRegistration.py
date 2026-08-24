@@ -524,6 +524,11 @@ class MVSRegistration:
 
             # fix empty dictionaries args
             scale_arg = scale if scale else None
+            if translation:
+                if 'x' not in translation:
+                    translation['x'] = 0
+                if 'y' not in translation:
+                    translation['y'] = 0
             translation_arg = translation if translation else None
 
             sim = si_utils.get_sim_from_array(

@@ -477,7 +477,8 @@ def create_transform(center, angle, translation=None, matrix_size=3):
     if not center:
         center = np.array([0] * (matrix_size - 1))
     if isinstance(center, dict):
-        center = dict_to_xyz(center)
+        dims = 'xyz' if matrix_size >= 4 else 'xy'
+        center = dict_to_xyz(center, dims=dims, add_zeros=True)
     if len(center) == 2:
         center = np.array(list(center) + [0])
     if angle is None:
@@ -605,9 +606,10 @@ def xyz_to_dict(xyz, dims='xyz'):
 
 
 def dict_to_xyz(dct, dims='xyz', add_zeros=False):
-    array = [dct[dim] for dim in dims if dim in dct]
-    if len(array) < len(dims) and add_zeros:
-        array = array + [0] * (len(dims) - len(array))
+    if add_zeros:
+        array = [dct.get(dim, 0) for dim in dims]
+    else:
+        array = [dct[dim] for dim in dims if dim in dct]
     return array
 
 
