@@ -687,8 +687,6 @@ class MVSRegistration:
         def normalisation_enabled(value):
             if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
                 return False
-            if isinstance(value, bool) and value == False:
-                return False
             return bool(value)
 
         do_normalisation = normalisation_enabled(normalisation)

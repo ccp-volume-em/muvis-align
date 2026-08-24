@@ -541,27 +541,31 @@ class Interface:
 
         if not self.reg.register_sims:
             self.run_pre_processing()
-        reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
-        overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
-        overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
-        reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
-            self.reg.create_registration_method(self.reg.register_sims[0], params=self.params['registration']))
-        results = pairwise_reg_func(overlap1, overlap2)
+        with NapariDaskProgress(progress_class=progress, desc='Preview registration'), \
+                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                VisibleActivityDock(self.viewer):
+            reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
+            overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
+            overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
+            reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
+                self.reg.create_registration_method(self.reg.register_sims[0], params=self.params['registration']))
+            results = pairwise_reg_func(overlap1, overlap2)
 
-        source_affine = results['affine_matrix']
-        try:
-            # Handle error in resulting matrix - unclear cause but likely occurs when failure to register
-            affine_phys = affine_from_intrinsic_affine(source_affine, sims_pixel_space, self.reg.source_transform_key)
-        except NotImplementedError:
-            affine_phys = source_affine
+            source_affine = results['affine_matrix']
+            try:
+                # Handle error in resulting matrix - unclear cause but likely occurs when failure to register
+                affine_phys = affine_from_intrinsic_affine(source_affine, sims_pixel_space, self.reg.source_transform_key)
+            except NotImplementedError:
+                affine_phys = source_affine
 
-        transforms = {
-            (0, 1): affine_phys
-        }
-        qualities = {
-            (0, 1): np.array(results['quality'])
-        }
-        metrics = calc_sims_metrics(reg_sims, transforms, qualities, metric_methods=self.metrics_methods)
+            transforms = {
+                (0, 1): affine_phys
+            }
+            qualities = {
+                (0, 1): np.array(results['quality'])
+            }
+            metrics = calc_sims_metrics(reg_sims, transforms, qualities, metric_methods=self.metrics_methods)
+
         self.populate_metrics_table(metrics)
 
         fixed_points = results.get('fixed_points', [])

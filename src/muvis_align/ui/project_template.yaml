@@ -220,8 +220,8 @@ parameters:
       - label: Global
         value: "global"
       - label: None
-        value:
-    default:
+        value: "none"
+    default: "none"
     cli_tag: "--global_normalisation"
     cli_order: 3
     optional: True
