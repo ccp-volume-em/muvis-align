@@ -1,4 +1,4 @@
-from magicclass.ext.napari.viewer import ViewerWidget
+#from magicclass.ext.napari.viewer import ViewerWidget
 from qtpy.QtWidgets import QTabWidget
 
 from muvis_align.ui.create_widgets import create_project_widget, create_template_widgets
