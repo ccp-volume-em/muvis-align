@@ -44,7 +44,7 @@ dependencies = [
     "matplotlib",
     "tqdm",
     "multiview-stitcher>=0.1.56",
-    "opencv-python",
+    "opencv-python-headless",
     "spatial-image",
     "multiscale-spatial-image>=2.0.0,<2.1.0",
     "magic-class",
