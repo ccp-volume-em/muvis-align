@@ -1221,6 +1221,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
     for pair in pairs:
         sim1 = squeeze_sim_transform_time(sims[pair[0]], transform_key)
         sim2 = squeeze_sim_transform_time(sims[pair[1]], transform_key)
+        shape_z_position = si_utils.get_origin_from_sim(sim1).get('z', 0)
 
         # Multi-section 2D data is promoted to singleton-z images for napari.
         # Calculate same-section overlaps in 2D because zero-thickness 3D
@@ -1264,8 +1265,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
                 points = points[:, 1:]
             shape = _minimal_bb_vertices(points)
             if is_multi_z_shapes:
-                z_position = si_utils.get_origin_from_sim(sim1).get('z', 0)
-                shape = [[z_position] + list(element) for element in shape]
+                shape = [[shape_z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
         except AttributeError:

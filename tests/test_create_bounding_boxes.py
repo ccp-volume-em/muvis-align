@@ -1,12 +1,44 @@
 import numpy as np
 import pytest
 from unittest.mock import MagicMock, patch
+from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.image.util import (
     _minimal_bb_vertices,
+    create_overlap_shapes,
     create_sim_shapes,
     set_oriented_bounding_box_edges,
 )
+
+
+def test_create_overlap_shapes_projects_singleton_z_planes_to_2d():
+    def make_sim(z, x):
+        return si_utils.get_sim_from_array(
+            np.zeros((1, 8, 8), dtype=np.uint8),
+            dims=list('zyx'),
+            scale={'z': 1, 'y': 1, 'x': 1},
+            translation={'z': z, 'y': 0, 'x': x},
+            transform_key='source_metadata',
+        )
+
+    z_levels = [-3.5, 7.25, 42]
+    sims = [
+        make_sim(z, x)
+        for z in z_levels
+        for x in (0, 4)
+    ]
+
+    shapes, pairs = create_overlap_shapes(
+        sims,
+        transform_key='source_metadata',
+        force_2d=True,
+    )
+
+    assert np.asarray(pairs).tolist() == [[0, 1], [2, 3], [4, 5]]
+    assert len(shapes) == len(z_levels)
+    assert all(np.asarray(shape).shape[1] == 3 for shape in shapes)
+    for shape, expected_z in zip(shapes, z_levels):
+        np.testing.assert_allclose(np.asarray(shape)[:, 0], expected_z)
 
 DATASETS = {
 '0': np.array([[-1.51072116e+03, 2.53402693e+00, 2.53957371e+02],

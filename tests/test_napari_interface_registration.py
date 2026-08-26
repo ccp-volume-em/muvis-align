@@ -813,6 +813,40 @@ def test_update_views_adds_enabled_preview_layers(
     assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
 
 
+def test_update_views_detects_multi_z_from_preview_sims(
+    bare_interface, monkeypatch
+):
+    bare_interface.viewer = MagicMock()
+    bare_interface.overview = MagicMock()
+    bare_interface.reg.sims = [
+        SimpleNamespace(dims=("y", "x"), sizes={"y": 10, "x": 10})
+    ]
+    bare_interface.preview_sims = [object(), object()]
+    bare_interface.params = {
+        "input_output": {"preview_images": False, "preview_shapes": False}
+    }
+    bare_interface._create_napari_shapes = MagicMock(
+        return_value=([], [], [], [])
+    )
+    bare_interface._clear_napari_view = MagicMock()
+    bare_interface._update_view_add_shapes = MagicMock()
+    preview_z = {
+        id(bare_interface.preview_sims[0]): 0,
+        id(bare_interface.preview_sims[1]): 1,
+    }
+    monkeypatch.setattr(
+        interface_module.si_utils,
+        "get_origin_from_sim",
+        lambda sim: {"z": preview_z[id(sim)]},
+    )
+
+    bare_interface.update_views(transform_key="source_metadata")
+
+    bare_interface._create_napari_shapes.assert_called_once_with(
+        "source_metadata", force_2d=True
+    )
+
+
 def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     bare_interface, monkeypatch
 ):
