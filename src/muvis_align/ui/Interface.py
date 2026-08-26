@@ -10,7 +10,6 @@ import os.path
 from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
-import sys
 
 from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
@@ -39,7 +38,8 @@ class ViewMode(Enum):
 
 
 class Interface:
-    def __init__(self, viewer, overview, enable_tabs, select_tab, verbose=False):
+    def __init__(self, viewer, overview, enable_tabs, select_tab, verbose=False,
+                 initialize=True):
         self.viewer = viewer
         self.overview = overview
         self.enable_tabs = enable_tabs
@@ -62,7 +62,8 @@ class Interface:
         self.pair_metrics_timer.timeout.connect(self.update_pair_metrics)
 
         self.reg = MVSRegistration()
-        self.reset()
+        if initialize:
+            self.reset()
 
     def reset(self):
         self.source_metadata = {}
@@ -71,7 +72,7 @@ class Interface:
         self.view_mode = None
         self.selected_shape_index = None
         self.reg.reset()
-        #self._clear_napari_view(self.overview)
+        self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
         self.enable_tabs(False, 2)
         self.select_tab(1)
@@ -398,12 +399,16 @@ class Interface:
         if is_3d:
             # Previous 3d shapes need to be recalculated with force_2d=True
             shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=True)
-        #self._clear_napari_view(self.overview)
-        #self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
+        self._clear_napari_view(self.overview)
+        self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
         self.view_mode = ViewMode.OVERVIEW
 
     def _clear_napari_view(self, viewer):
-        viewer.layers.clear()
+        # Avoid emitting an empty LayerList.clear() event.  Under xpra/Xvfb,
+        # that event can leave napari's VisPy canvas with broken blending for
+        # subsequently created Shapes and Points layers.
+        if viewer is not None and len(viewer.layers) > 0:
+            viewer.layers.clear()
 
     def _create_napari_shapes(self, transform_key, force_2d=False):
         sims = self.preview_sims
@@ -502,16 +507,6 @@ class Interface:
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
                                                matches, inliers, points_color='blue')
-
-        if sys.platform.startswith("linux") and len(layers) >= 3:
-            # On Linux, napari renders overlay layers in reverse order.
-            # Keep image layers first; reverse only the last 3 overlay (shapes/points) layers.
-            # This handles cases from 3 layers (no image) to 5+ layers (with images).
-            num_image_layers = sum(1 for _, _, layer_type in layers if layer_type == "image")
-            num_overlay_layers = len(layers) - num_image_layers
-            if num_overlay_layers >= 3:
-                layers = layers[:-num_overlay_layers] + list(reversed(layers[-num_overlay_layers:]))
-
         viewer.layers.clear()
         for data, kwargs, layer_type in layers:
             if layer_type == "image":
