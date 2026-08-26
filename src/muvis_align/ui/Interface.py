@@ -18,7 +18,7 @@ from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
     draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, \
-    print_sim_info
+    metric_to_rgb
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
@@ -27,7 +27,7 @@ from muvis_align.ui.NapariPreprocessProgress import NapariPreprocessProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, metric_to_rgb, \
+from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path
 
 
@@ -71,7 +71,7 @@ class Interface:
         self.view_mode = None
         self.selected_shape_index = None
         self.reg.reset()
-        self._clear_napari_view(self.overview)
+        #self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
         self.enable_tabs(False, 2)
         self.select_tab(1)
@@ -398,8 +398,8 @@ class Interface:
         if is_3d:
             # Previous 3d shapes need to be recalculated with force_2d=True
             shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=True)
-        self._clear_napari_view(self.overview)
-        self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
+        #self._clear_napari_view(self.overview)
+        #self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
         self.view_mode = ViewMode.OVERVIEW
 
     def _clear_napari_view(self, viewer):

@@ -13,7 +13,7 @@ from xarray import DataTree
 
 try:
     import matplotlib as mpl
-    #mpl.use('TkAgg')
+    mpl.use('Agg')
     #mpl.rcParams['backend'] = 'svg'
     mpl.rcParams['figure.dpi'] = 300
     import matplotlib.pyplot as plt
@@ -622,6 +622,32 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
         )
 
     return layers
+
+
+def metric_to_rgb(value, min_light=0, max_light=1, output_range=1.0):
+    # metric range 0...1 to red-yellow-green ranged rgb
+    if value is None or np.isnan(value):
+        return 0, 0, 0
+    colormap = plt.colormaps.get('RdYlGn')
+    index = int(value * colormap.N)
+    r, g, b, a = [float(value) for value in colormap(index)]
+    light = 0.2125 * r + 0.7154 * g + 0.0721 * b
+    if light < min_light:
+        factor = light / min_light
+        r = 1 - (1 - r) * factor
+        g = 1 - (1 - g) * factor
+        b = 1 - (1 - b) * factor
+    elif light > max_light:
+        factor = max_light / light
+        r *= factor
+        g *= factor
+        b *= factor
+    r *= output_range
+    g *= output_range
+    b *= output_range
+    if isinstance(output_range, int):
+        r, g, b = int(r), int(g), int(b)
+    return r, g, b
 
 
 def create_compression_filter(compression: list) -> tuple:

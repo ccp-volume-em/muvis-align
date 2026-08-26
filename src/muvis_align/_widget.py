@@ -15,9 +15,9 @@ class MainWidget(QTabWidget):
         init_logging()
         self.viewer = viewer
 
-        self.overview = ViewerWidget()
-        self.overview.min_height = 200
-        viewer.window.add_dock_widget(self.overview, name='muvis-align', area='left', add_vertical_stretch=False)
+        self.overview = None#ViewerWidget()
+        #self.overview.min_height = 200
+        #viewer.window.add_dock_widget(self.overview, name='muvis-align', area='left', add_vertical_stretch=False)
 
         self.interface = Interface(viewer, self.overview, self.enable_tabs, self.select_tab, self.verbose)
 
