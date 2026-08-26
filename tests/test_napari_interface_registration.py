@@ -583,6 +583,7 @@ CanonicalRegState = interface_module.RegState
 def bare_interface():
     interface = CanonicalInterface.__new__(CanonicalInterface)
     interface.reg = MagicMock()
+    interface.enable_plugin_widget = None
     interface.extra_metadata = {}
     interface.param_widgets = {}
     interface.reg.file_labels = ["image-0"]

@@ -1,3 +1,5 @@
+import logging
+
 import cv2 as cv
 import numpy as np
 from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph
@@ -1219,6 +1221,35 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
     for pair in pairs:
         sim1 = squeeze_sim_transform_time(sims[pair[0]], transform_key)
         sim2 = squeeze_sim_transform_time(sims[pair[1]], transform_key)
+
+        # Multi-section 2D data is promoted to singleton-z images for napari.
+        # Calculate same-section overlaps in 2D because zero-thickness 3D
+        # boxes produce invalid face normals in _get_overlap_bboxes.  The z
+        # coordinate is restored to the resulting shape below.
+        if (
+            force_2d
+            and sim1.sizes.get('z') == 1
+            and sim2.sizes.get('z') == 1
+        ):
+            z1 = si_utils.get_origin_from_sim(sim1).get('z', 0)
+            z2 = si_utils.get_origin_from_sim(sim2).get('z', 0)
+            if not np.isclose(z1, z2):
+                continue
+
+            projected_sims = []
+            for sim in (sim1, sim2):
+                sim_2d = sim.squeeze('z', drop=True)
+                sim_2d.attrs = dict(sim.attrs)
+                sim_2d.attrs['transforms'] = dict(sim.attrs['transforms'])
+                affine_2d = _adapt_transform_to_image_dims(
+                    sim_2d,
+                    sim_2d.attrs['transforms'][transform_key],
+                    transform_key,
+                )
+                si_utils.set_sim_affine(sim_2d, affine_2d, transform_key)
+                projected_sims.append(sim_2d)
+            sim1, sim2 = projected_sims
+
         # catch in case there is no overlap
         try:
             result = _get_overlap_bboxes(
@@ -1237,9 +1268,11 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
                 shape = [[z_position] + list(element) for element in shape]
             shapes.append(shape)
             good_pairs.append(pair)
-        except (AttributeError, ValueError):
+        except AttributeError:
             # ignore NoneType error if there is no overlap
             pass
+        except ValueError as e:
+            logging.exception(f'Error processing pair {pair}: {e}')
     return shapes, good_pairs
 
 

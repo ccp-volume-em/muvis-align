@@ -32,6 +32,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Setup python
         uses: astral-sh/setup-uv@v7
@@ -64,6 +66,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: hynek/build-and-inspect-python-package@v2
 
   deploy:

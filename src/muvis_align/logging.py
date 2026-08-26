@@ -2,7 +2,7 @@ import logging
 import os
 from  multiview_stitcher import __version__ as mvs_version
 
-from muvis_align.constants import version
+from muvis_align._version import version
 
 
 def init_logging(log_filename='log/muvis-align.log', log_format='%(asctime)s %(levelname)s: %(message)s', verbose=False):

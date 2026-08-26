@@ -49,7 +49,8 @@ COPY run.py .
 COPY pyproject.toml .
 COPY src/ src/
 
-RUN pip install .
+RUN --mount=type=bind,source=.git,target=/app/.git \
+    pip install .
 
 ENTRYPOINT ["python3", "-m", "napari", "--plugin", "muvis-align"]
 

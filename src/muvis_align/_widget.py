@@ -29,6 +29,7 @@ class MainWidget(QTabWidget):
         self.interface = Interface(
             viewer,
             overview=self.overview,
+            enable_plugin_widget=self.enable_plugin_widget,
             enable_tabs=self.enable_tabs,
             select_tab=self.select_tab,
             verbose=self.verbose,
@@ -54,6 +55,9 @@ class MainWidget(QTabWidget):
 
     def tab_changed(self, index):
         self.interface.tab_changed(self.tab_labels[index])
+
+    def enable_plugin_widget(self, enabled=True):
+        self.setEnabled(enabled)
 
     def enable_tabs(self, enabled=True, tab_index=-1):
         for index in range(self.count()):

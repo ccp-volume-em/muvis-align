@@ -38,12 +38,13 @@ class ViewMode(Enum):
 
 
 class Interface:
-    def __init__(self, viewer, overview, enable_tabs, select_tab, verbose=False,
+    def __init__(self, viewer, overview, enable_tabs=None, select_tab=None, enable_plugin_widget=None, verbose=False,
                  initialize=True):
         self.viewer = viewer
         self.overview = overview
         self.enable_tabs = enable_tabs
         self.select_tab = select_tab
+        self.enable_plugin_widget = enable_plugin_widget
         self.verbose = verbose
         self.raw_template = get_project_template()
         if not self.raw_template:
@@ -74,8 +75,10 @@ class Interface:
         self.reg.reset()
         self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
-        self.enable_tabs(False, 2)
-        self.select_tab(1)
+        if self.enable_tabs:
+            self.enable_tabs(False, 2)
+        if self.select_tab:
+            self.select_tab(1)
 
     def get_all_widgets(self):
         all_widgets = {name: param_widget.widget for name, param_widget in self.param_widgets.items()}
@@ -278,7 +281,7 @@ class Interface:
                                       desc='Pre-processing',
                                       bar_format=" ",
                                       min_duration=0.1) as progress_factory, \
-             TemporarilyDisabledWidgets(self.get_all_widgets()), \
+             TemporarilyDisabledWidgets(self.enable_plugin_widget), \
              VisibleActivityDock(self.viewer):
             _, _, modified = self.reg.preprocess(self.reg.sims,
                                                  progress_factory=progress_factory,
@@ -384,7 +387,12 @@ class Interface:
 
         sims = self.reg.sims
         is_3d = (sims[0].sizes.get('z', 0) > 1)
-        is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+        is_multi_z_shapes = (
+            len(set([
+                si_utils.get_origin_from_sim(sim).get('z', 0)
+                for sim in self.preview_sims
+            ])) > 1
+        )
         force_2d = is_multi_z_shapes and not is_3d
         shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=force_2d)
 
@@ -550,7 +558,7 @@ class Interface:
         if not self.reg.register_sims:
             self.run_pre_processing()
         with NapariDaskProgress(progress_class=progress, desc='Preview registration'), \
-                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
             reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
             overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
@@ -666,7 +674,7 @@ class Interface:
 
         with NapariMVSProgress(tqdm_class=progress, patch_registration=True), \
                 NapariDaskProgress(progress_class=progress, desc='Pair registration'), \
-                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
             results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
                                               params=self.params['registration'] | {'metrics': self.metrics_methods})
@@ -684,7 +692,7 @@ class Interface:
 
     def run_global_registration(self):
         with NapariDaskProgress(progress_class=progress, desc='Global registration'), \
-                TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
             results = self.reg.register_global(self.reg.sims, self.reg.msims,
                                                register_indices=self.reg.register_indices,
@@ -706,6 +714,7 @@ class Interface:
             if reply == QMessageBox.Yes:
                 self.run_pair_registration()
                 self.update_registered(view_transform_key=self.reg.source_transform_key)
+                self.enable_modify_pair_registration()
                 QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
 
     def modify_pair_registration(self):
@@ -749,10 +758,10 @@ class Interface:
             if indices not in pair_transforms:
                 show_warning('No pair registration found for selected images')
             else:
-                widgets = self.get_all_widgets()
-                widgets.pop('registration.modify_pair_registration')
-                self.temp_widget_state = TemporarilyDisabledWidgets(widgets)
-                self.temp_widget_state.init()
+                self.temp_widget_state = TemporarilyDisabledWidgets()
+                all_widgets = self.get_all_widgets()
+                all_widgets.pop('registration.modify_pair_registration', None)
+                self.temp_widget_state.disable(all_widgets)
                 self.pair_indices = indices
                 pair_transform = np.array(pair_transforms[indices].sel(t=0))
                 eye = np.eye(max(pair_transform.shape))
@@ -788,7 +797,6 @@ class Interface:
             self.run_global_registration()
             copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
             self.enable_tabs(True, 4)
-            self.enable_modify_pair_registration()
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
             QMessageBox.information(None, 'muvis-align', 'Global registration completed')
 
@@ -813,7 +821,7 @@ class Interface:
             elif isinstance(tile_size, str):
                 tile_size = int(tile_size.strip())
             with NapariMVSProgress(tqdm_class=progress, desc='Fusion', patch_fusion=True), \
-                 TemporarilyDisabledWidgets(self.get_all_widgets()), \
+                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                  VisibleActivityDock(self.viewer):
                 fused_image, is_saved = self.reg.fuse(self.reg.sims,
                                                       fusion_method=self.params['fusion']['method'],
