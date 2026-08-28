@@ -12,7 +12,7 @@ export PYTHONUNBUFFERED=TRUE
 # ===========================================================================
 #  EDIT THESE FOUR LINES
 # ===========================================================================
-SIF_PATH="/nemo/stp/ddt/working/defoltj/muvis-align/muvis-align-xpra_v0.0.2.sif"          # container on shared storage
+SIF_PATH="/nemo/stp/ddt/working/defoltj/muvis-align/muvis-align-xpra_v0.3.0.sif"          # container on shared storage
 DATA_DIR="/nemo/project/proj-ccp-vem/datasets"              # directory to expose
 LOGIN_NODE="login.nemo.thecrick.org"         # what you ssh into
 XPRA_PORT=9876                            # port on the compute node
