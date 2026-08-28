@@ -477,7 +477,7 @@ class Interface:
                 edge_width = np.ptp(vertices, axis=0).max() * 0.005
 
             viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text, features=features,
-                              face_color=face_colors, opacity=0.25, edge_width=edge_width, edge_color='cyan',
+                              face_color=face_colors, opacity=0.5, edge_width=edge_width, edge_color='cyan',
                               blending='translucent_no_depth')
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,

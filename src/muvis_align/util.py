@@ -523,7 +523,7 @@ def calculate_rigid_difference(m1, m2):
 
 
 def validate_transform(transform, max_scale = 1.25, max_rotation=None):
-    if transform is None:
+    if transform is None or isinstance(transform, str):
         return False
     transform = np.array(transform)
     if np.any(np.isnan(transform)):
