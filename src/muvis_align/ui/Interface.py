@@ -688,6 +688,7 @@ class Interface:
                 value = value.sel(t=0)
             bboxes[key] = np.array(value).tolist()
         self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
+        self.enable_modify_pair_registration()
         return results
 
     def run_global_registration(self):
@@ -714,7 +715,6 @@ class Interface:
             if reply == QMessageBox.Yes:
                 self.run_pair_registration()
                 self.update_registered(view_transform_key=self.reg.source_transform_key)
-                self.enable_modify_pair_registration()
                 QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
 
     def modify_pair_registration(self):
@@ -783,10 +783,12 @@ class Interface:
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
+        completion_message = 'Global registration completed'
         if self.reg.is_global_registered():
             message = 'Global registration was already performed. Run global registration?'
         elif not self.reg.is_pairs_registered():
             message = 'Pair registration not performed yet. Run both pair and global registration?'
+            completion_message = 'Registration completed'
         else:
             message = 'Run global registration?'
         reply = QMessageBox.question(None, 'muvis-align', message,
@@ -798,7 +800,7 @@ class Interface:
             copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
             self.enable_tabs(True, 4)
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
-            QMessageBox.information(None, 'muvis-align', 'Global registration completed')
+            QMessageBox.information(None, 'muvis-align', completion_message)
 
     def preview_fusion(self):
         data = self._create_napari_data(self.reg.reg_transform_key,

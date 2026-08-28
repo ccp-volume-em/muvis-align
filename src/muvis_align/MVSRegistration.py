@@ -1385,7 +1385,11 @@ class MVSRegistration:
             label_key = json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]])
             output_mappings[label_key] = {'mapping': np.array(mapping.sel(t=0)).tolist()}
             if keys in qualities:
-                output_mappings[label_key][default_quality_key] = float(qualities[keys])
+                quality = qualities[keys]
+                if hasattr(quality, 'dims'):
+                    if 't' in quality.dims:
+                        quality = quality.sel(t=0)
+                output_mappings[label_key][default_quality_key] = float(quality)
             if keys in bboxes:
                 output_mappings[label_key]['bbox'] = bboxes[keys]
         export_json(pair_mappings_filename, output_mappings)

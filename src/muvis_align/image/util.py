@@ -1124,11 +1124,10 @@ def _minimal_bb_vertices(points, return_edge_path=False):
                     x_axis = face[end] - face[start]
                     x_axis -= np.dot(x_axis, z_axis) * z_axis
                     length = np.linalg.norm(x_axis)
-                    if length == 0:
-                        continue
-                    x_axis /= length
-                    y_axis = np.cross(z_axis, x_axis)
-                    candidates.append(np.stack((x_axis, y_axis, z_axis)))
+                    if length != 0:
+                        x_axis /= length
+                        y_axis = np.cross(z_axis, x_axis)
+                        candidates.append(np.stack((x_axis, y_axis, z_axis)))
 
         if candidates:
             volumes = []
@@ -1222,6 +1221,7 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
         sim1 = squeeze_sim_transform_time(sims[pair[0]], transform_key)
         sim2 = squeeze_sim_transform_time(sims[pair[1]], transform_key)
         shape_z_position = si_utils.get_origin_from_sim(sim1).get('z', 0)
+        process_pair = True
 
         # Multi-section 2D data is promoted to singleton-z images for napari.
         # Calculate same-section overlaps in 2D because zero-thickness 3D
@@ -1234,45 +1234,46 @@ def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
         ):
             z1 = si_utils.get_origin_from_sim(sim1).get('z', 0)
             z2 = si_utils.get_origin_from_sim(sim2).get('z', 0)
-            if not np.isclose(z1, z2):
-                continue
+            process_pair = (z1 == z2)
 
-            projected_sims = []
-            for sim in (sim1, sim2):
-                sim_2d = sim.squeeze('z', drop=True)
-                sim_2d.attrs = dict(sim.attrs)
-                sim_2d.attrs['transforms'] = dict(sim.attrs['transforms'])
-                affine_2d = _adapt_transform_to_image_dims(
-                    sim_2d,
-                    sim_2d.attrs['transforms'][transform_key],
-                    transform_key,
+            if process_pair:
+                projected_sims = []
+                for sim in (sim1, sim2):
+                    sim_2d = sim.squeeze('z', drop=True)
+                    sim_2d.attrs = dict(sim.attrs)
+                    sim_2d.attrs['transforms'] = dict(sim.attrs['transforms'])
+                    affine_2d = _adapt_transform_to_image_dims(
+                        sim_2d,
+                        sim_2d.attrs['transforms'][transform_key],
+                        transform_key,
+                    )
+                    si_utils.set_sim_affine(sim_2d, affine_2d, transform_key)
+                    projected_sims.append(sim_2d)
+                sim1, sim2 = projected_sims
+
+        if process_pair:
+            try:
+                # catch in case there is no overlap
+                result = _get_overlap_bboxes(
+                    sim1,
+                    sim2,
+                    input_transform_key=transform_key,
+                    output_transform_key=transform_key,
                 )
-                si_utils.set_sim_affine(sim_2d, affine_2d, transform_key)
-                projected_sims.append(sim_2d)
-            sim1, sim2 = projected_sims
-
-        # catch in case there is no overlap
-        try:
-            result = _get_overlap_bboxes(
-                sim1,
-                sim2,
-                input_transform_key=transform_key,
-                output_transform_key=transform_key,
-            )
-            points = result['intersection'].intersections
-            if points.shape[1] == 3 and force_2d:
-                # remove constant z coordinate
-                points = points[:, 1:]
-            shape = _minimal_bb_vertices(points)
-            if is_multi_z_shapes:
-                shape = [[shape_z_position] + list(element) for element in shape]
-            shapes.append(shape)
-            good_pairs.append(pair)
-        except AttributeError:
-            # ignore NoneType error if there is no overlap
-            pass
-        except ValueError as e:
-            logging.exception(f'Error processing pair {pair}: {e}')
+                points = result['intersection'].intersections
+                if points.shape[1] == 3 and force_2d:
+                    # remove constant z coordinate
+                    points = points[:, 1:]
+                shape = _minimal_bb_vertices(points)
+                if is_multi_z_shapes:
+                    shape = [[shape_z_position] + list(element) for element in shape]
+                shapes.append(shape)
+                good_pairs.append(pair)
+            except AttributeError:
+                # ignore NoneType error if there is no overlap
+                pass
+            except ValueError as e:
+                logging.exception(f'Error processing pair {pair}: {e}')
     return shapes, good_pairs
 
 
