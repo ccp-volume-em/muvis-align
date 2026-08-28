@@ -18,4 +18,4 @@ XPRA_PORT=9876                            # port on the compute node
 
 ml Apptainer
 
-apptainer exec "${SIF_PATH}" --bind "${DATA_DIR}:${DATA_DIR}" --bind-tcp="0.0.0.0:${XPRA_PORT}"
+apptainer exec "${SIF_PATH}" --bind "${DATA_DIR}:/data" --bind-tcp="0.0.0.0:${XPRA_PORT}"
