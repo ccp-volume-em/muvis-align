@@ -433,18 +433,28 @@ class Interface:
         face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
         return shapes, refs, labels, face_colors
 
-    def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
-        if show_preprocessed:
+    def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False, lazy_fusion=False):
+        if lazy_fusion:
+            # create multi-scale msims from source images
+            data = [sim.copy(deep=True) for sim in self.reg.register_sims]
+        elif show_preprocessed:
             # make copy to avoid transform changes in the original sims inside self.reg.fuse()
-            sims = [sim.copy(deep=True) for sim in self.reg.register_sims]
+            data = [sim.copy(deep=True) for sim in self.reg.register_sims]
         else:
-            sims = self.preview_sims
-        copy_transforms(self.reg.sims, sims, transform_key)
-        fused, _ = self.reg.fuse(sims,
-                                 transform_key=transform_key,
-                                 fusion_method=fusion_method,
-                                 dimension=self.params['input_output']['registration_dimension'],
-                                 extra_metadata=self.extra_metadata)
+            data = self.preview_sims
+        copy_transforms(self.reg.sims, data, transform_key)
+        if lazy_fusion:
+            fused, _ = self.reg.lazy_fusion(data,
+                                            transform_key=transform_key,
+                                            fusion_method=fusion_method,
+                                            dimension=self.params['input_output']['registration_dimension'],
+                                            extra_metadata=self.extra_metadata)
+        else:
+            fused, _ = self.reg.fuse(data,
+                                     transform_key=transform_key,
+                                     fusion_method=fusion_method,
+                                     dimension=self.params['input_output']['registration_dimension'],
+                                     extra_metadata=self.extra_metadata)
         return fused
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
@@ -803,6 +813,13 @@ class Interface:
             QMessageBox.information(None, 'muvis-align', completion_message)
 
     def preview_fusion(self):
+        data = self._create_napari_data(self.reg.reg_transform_key,
+                                        fusion_method=self.params['fusion']['method'])
+        self._clear_napari_view(self.viewer)
+        self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
+        self.view_mode = ViewMode.FUSED
+
+    def lazy_fusion(self):
         data = self._create_napari_data(self.reg.reg_transform_key,
                                         fusion_method=self.params['fusion']['method'])
         self._clear_napari_view(self.viewer)

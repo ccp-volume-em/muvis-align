@@ -515,6 +515,13 @@ parameters:
     cli_order: 4
     section_id: "fusion"
     mode: "beginner"
+  - name: lazy_fusion
+    type: pushbutton
+    label: "Lazy fusion"
+    description: "Lazy load fused result"
+    cli_order: 5
+    section_id: "fusion"
+    mode: "beginner"
 
 display_only:
   - name: coordinate_system

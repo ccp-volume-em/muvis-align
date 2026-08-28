@@ -1378,6 +1378,67 @@ class MVSRegistration:
                 fused_image = sims
         return fused_image, saving_zarr
 
+    def lazy_fusion(self, data, fusion_method=None, output_spacing='mean', transform_key=None,
+                    dimension=None, tile_size=None, extra_metadata=None):
+        if isinstance(data, xr.DataArray):
+            sims = data
+            msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
+        else:
+            msims = data
+
+        if extra_metadata is None:
+            extra_metadata = self.extra_metadata
+
+        channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
+        is_channel_overlay = ((dimension and dimension == 'c') or len(channels) > 1)
+
+        if transform_key is None:
+            transform_key = self.reg_transform_key
+
+        if isinstance(self.source_metadata, dict):
+            z_scale = self.source_metadata.get('scale', {}).get('z')
+        elif isinstance(extra_metadata, dict):
+            z_scale = extra_metadata.get('scale', {}).get('z')
+        else:
+            z_scale = None
+
+        if z_scale is None:
+            z_scale = extract_z_scale(self.positions, self.scales)
+
+        z_positions = [position.get('z') for position in self.positions if 'z' in position]
+        if len(set(z_positions)) > 1:
+            data = make_sims_3d(data, z_scale=z_scale, positions=self.positions)
+
+        output_stack_properties = calc_output_properties(data, transform_key,
+                                                         output_spacing_method=output_spacing, z_scale=z_scale)
+
+        if is_channel_overlay:
+            # convert to multichannel images
+            channel_sims = [fusion.fuse(
+                [msim],
+                transform_key=transform_key,
+                output_stack_properties=output_stack_properties
+            ) for msim in msims]
+            channel_sims = [sim.assign_coords({'c': [channels[simi]['label']]}) for simi, sim in enumerate(channel_sims)]
+            fused_image = xr.combine_nested([sim.rename() for sim in channel_sims], concat_dim='c', combine_attrs='override')
+        else:
+            if fusion_method:
+                logging.info(f'Fusion method: {fusion_method}')
+            else:
+                logging.info('Fusion method: [default method]')
+            fuse_func = self.create_fusion_method(fusion_method, data)
+            if fuse_func:
+                with dask.config.set(scheduler='threads'):
+                    fused_image = fusion.fuse(
+                        msims,
+                        fusion_func=fuse_func,
+                        transform_key=transform_key,
+                        output_stack_properties=output_stack_properties,
+                    )
+            else:
+                fused_image = sims
+        return fused_image
+
     def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         output_mappings = {}
