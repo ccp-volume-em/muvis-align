@@ -23,7 +23,9 @@ XPRA_PORT=9876                            # port on the compute node
 #  Latency over a tunnel is dominated by video encoding, not by OpenGL.
 #  If the GUI feels sluggish, lower RESOLUTION first, then QUALITY.
 #
-#  RESOLUTION  Smaller = fewer pixels to encode = snappier.
+#  RESOLUTION  Maximum virtual screen size available to application windows.
+#              In seamless mode the browser controls each window's actual size.
+#              Smaller = fewer pixels to encode = snappier.
 #              1920x1080 (default) | 1600x900 | 1280x1024 | 1280x720
 #
 #  ENCODING    h264  - best latency/bandwidth for GUI work (recommended)
@@ -121,6 +123,9 @@ EOF
 
 XPRA_START="python3 -m napari --with muvis-align"
 
+# Seamless mode exposes napari as an individual window.  In desktop mode
+# napari maximizes against the fixed-size Xvfb desktop, which can be larger
+# than the browser canvas and leaves controls outside the visible area.
 apptainer exec \
     --cleanenv \
     --containall \
@@ -130,7 +135,7 @@ apptainer exec \
     --env "USER=${USER}" \
     --env "XDG_RUNTIME_DIR=${RUN_DIR}" \
     "${SIF_PATH}" \
-    xpra start-desktop \
+    xpra start \
         --bind-tcp="0.0.0.0:${XPRA_PORT},auth=file:filename=${PASSWORD_FILE}" \
         --html=on \
         --daemon=no \
@@ -142,8 +147,6 @@ apptainer exec \
         --encoding="${ENCODING}" \
         --min-quality="${MIN_QUALITY}" \
         --min-speed="${MIN_SPEED}" \
-        --desktop-scaling=auto \
-        --resize-display=yes \
         --dpi=96 \
         --sharing=no \
         --file-transfer=off \
