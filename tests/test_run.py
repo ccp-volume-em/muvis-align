@@ -81,6 +81,20 @@ def test2(resource_file):
     reg.register_pairs(reg.sims, reg_sims, params=reg_params)
     msims = [msi_utils.get_msim_from_sim(sim) for sim in reg.sims]
     reg.register_global(reg.sims, msims, params=reg_params)
+
+    # register_global must also propagate the registered transform onto source_msims,
+    # msim -> msim (every scale), not just onto reg.sims - check this before fuse(), which (via
+    # make_sims_3d, for datasets with multiple z positions) mutates reg.sims' transforms in place
+    # to promote them to 3D for the output stack, a pre-existing side effect unrelated to this
+    from multiview_stitcher import spatial_image_utils as si_utils
+    assert len(reg.source_msims) == len(reg.sims)
+    for sim, msim in zip(reg.sims, reg.source_msims):
+        affine_sim = si_utils.get_affine_from_sim(sim, reg.reg_transform_key)
+        for scale_key in msi_utils.get_sorted_scale_keys(msim):
+            level_sim = msi_utils.get_sim_from_msim(msim, scale=scale_key)
+            affine_msim = si_utils.get_affine_from_sim(level_sim, reg.reg_transform_key)
+            assert (affine_sim.values == affine_msim.values).all()
+
     reg.fuse(reg.sims, output_filename='output')
 
 

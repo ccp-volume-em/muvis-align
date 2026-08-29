@@ -1421,7 +1421,7 @@ def make_sims_2d(sims):
 def print_sim_info(data):
     if isinstance(data, xr.DataArray):
         sim = data
-        msim = msi_utils.get_msim_from_sim(sim)
+        msim = msi_utils.get_msim_from_sim(sim, scale_factors=[])
     else:
         msim = data
         sim = msi_utils.get_sim_from_msim(msim)

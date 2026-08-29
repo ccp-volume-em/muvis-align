@@ -601,7 +601,9 @@ class MVSRegistration:
                         indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             if not is_3d:
                 self.sims = make_sims_2d(self.sims)
-            self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
+            # scale_factors=[] avoids computing a synthetic downsample pyramid that
+            # build_view_adjacency_graph_from_msims below never uses (graph topology only)
+            self.msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in self.sims]
             self.pairs = list(indexed_pair_transforms.keys())
             self.metrics = {
                 'summary': {default_transform_key: {default_quality_key: np.mean(list(indexed_qualities.values()))}},
@@ -647,7 +649,7 @@ class MVSRegistration:
             elif not is_3d:
                 sims = make_sims_2d(sims)
             self.sims = sims
-            self.msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
+            self.msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in sims]
             metrics = import_json(metrics_filename)
             indexed_metrics = {}
             for key, value in metrics.items():
@@ -945,7 +947,9 @@ class MVSRegistration:
 
         try:
             logging.info('Registering...')
-            register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
+            # scale_factors=[] avoids computing a synthetic downsample pyramid that registration
+            # never uses here (no reg_res_level/registration_binning is passed below)
+            register_msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in register_sims]
             reg_result = registration.register(
                 register_msims,
                 reg_channel=reg_channel,
@@ -976,10 +980,12 @@ class MVSRegistration:
 
             # copy transforms from register sims to unmodified sims
             for reg_msim, index in zip(register_msims, register_indices):
-                si_utils.set_sim_affine(
-                    sims[index],
-                    msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key),
-                    transform_key=self.reg_transform_key)
+                reg_transform = msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key)
+                si_utils.set_sim_affine(sims[index], reg_transform, transform_key=self.reg_transform_key)
+                if len(self.source_msims) == len(sims):
+                    # msim -> msim: writes the same affine onto every scale, no sim round-trip
+                    msi_utils.set_affine_transform(
+                        self.source_msims[index], reg_transform, transform_key=self.reg_transform_key)
 
             # set missing transforms
             for sim in sims:
@@ -1075,7 +1081,9 @@ class MVSRegistration:
                                                                                                   params=params)
         logging.info(f'Registration method: {reg_method}')
         logging.info('Registering...')
-        register_msims = [msi_utils.get_msim_from_sim(sim) for sim in register_sims]
+        # scale_factors=[] avoids computing a synthetic downsample pyramid that registration
+        # never uses here (no reg_res_level/registration_binning is passed below)
+        register_msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in register_sims]
 
         overlap_tolerance = 0
 
@@ -1269,10 +1277,12 @@ class MVSRegistration:
 
         # copy transforms from register sims to unmodified sims
         for reg_msim, index in zip(msims, register_indices):
-            si_utils.set_sim_affine(
-                sims[index],
-                msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key),
-                transform_key=self.reg_transform_key)
+            reg_transform = msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key)
+            si_utils.set_sim_affine(sims[index], reg_transform, transform_key=self.reg_transform_key)
+            if len(self.source_msims) == len(sims):
+                # msim -> msim: writes the same affine onto every scale, no sim round-trip
+                msi_utils.set_affine_transform(
+                    self.source_msims[index], reg_transform, transform_key=self.reg_transform_key)
 
         # set missing transforms
         for sim in sims:

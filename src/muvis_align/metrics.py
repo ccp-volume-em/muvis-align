@@ -98,7 +98,7 @@ def calc_sims_metrics(sims, pair_transforms, qualities=None, base_transform_key=
     if base_transform_key is None:
         reg_keys = si_utils.get_tranform_keys_from_sim(sims[0])
         base_transform_key = reg_keys[0]
-    msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
+    msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in sims]
     with dask.config.set(scheduler='single-threaded'):
         pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
             msims,
