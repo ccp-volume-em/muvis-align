@@ -1,7 +1,7 @@
 import logging
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
-from multiview_stitcher import spatial_image_utils as si_utils, param_utils
+from multiview_stitcher import msi_utils, spatial_image_utils as si_utils, param_utils
 from napari.utils import progress
 from napari.utils.notifications import show_warning
 import networkx as nx
@@ -17,7 +17,7 @@ from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
     draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, \
-    metric_to_rgb
+    metric_to_rgb, get_level_from_scale
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
@@ -247,12 +247,7 @@ class Interface:
                 logging.exception('Unable to read source data')
                 return False
 
-            preview_scale = self.params['input_output']['preview_scale']
-            self.preview_sims = self.reg.init_data(
-                source_metadata=self.source_metadata,
-                target_scale=preview_scale,
-                store=False,
-            )
+            self.preview_sims = self._build_preview_sims()
             z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
             is_multi_z_shapes = (len(z_positions) > 1)
             if is_multi_z_shapes:
@@ -274,6 +269,17 @@ class Interface:
             self.update_views()
 
         return True
+
+    def _build_preview_sims(self):
+        # a cheap preview resolution extracted directly from each source's real multiscale
+        # pyramid (self.reg.source_msims, already built by init_data()) instead of a whole
+        # separate init_data(target_scale=...) pass that re-reads/rescales the source data
+        preview_scale = self.params['input_output']['preview_scale']
+        sims = []
+        for source, msim in zip(self.reg.sources, self.reg.source_msims):
+            level, _, _ = get_level_from_scale(source, preview_scale)
+            sims.append(msi_utils.get_sim_from_msim(msim, scale=f'scale{level}'))
+        return sims
 
     def run_pre_processing(self):
         params_features = self.params['pre_processing']
@@ -777,7 +783,8 @@ class Interface:
 
     def calc_mod_pair_transform(self):
         transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
-        matsize = len(si_utils.get_spatial_dims_from_sim(self.reg.sims[0])) + 1
+        sim0 = msi_utils.get_sim_from_msim(self.reg.source_msims[0], scale='scale0')
+        matsize = len(si_utils.get_spatial_dims_from_sim(sim0)) + 1
         transform = calculate_rigid_difference(transforms[1][-matsize:, -matsize:],
                                                transforms[0][-matsize:, -matsize:])
         return param_utils.affine_to_xaffine(transform)

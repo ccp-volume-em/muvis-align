@@ -1213,3 +1213,37 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     )
     assert bare_interface.reg.state is CanonicalRegState.FUSED
     assert bare_interface.view_mode is CanonicalViewMode.FUSED
+
+
+def test_build_preview_sims_extracts_downsampled_level_from_source_msims():
+    """_build_preview_sims() must pick a real pyramid level from reg.source_msims
+    (populated by init_data()) matching the requested preview_scale, without
+    re-reading/rescaling the source data via a second init_data() call."""
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[
+            'data/S000/S000_000_000.ome.zarr',
+            'data/S000/S000_000_001.ome.zarr',
+        ],
+        output_path='../../output/test_preview/',
+    )
+    reg.init_data()
+
+    interface = Interface.__new__(Interface)
+    interface.reg = reg
+    interface.params = {'input_output': {'preview_scale': 4}}
+
+    preview_sims = interface._build_preview_sims()
+
+    assert len(preview_sims) == len(reg.sims)
+    for full_sim, preview_sim in zip(reg.sims, preview_sims):
+        full_size = si_utils.get_shape_from_sim(full_sim, asarray=False)
+        preview_size = si_utils.get_shape_from_sim(preview_sim, asarray=False)
+        for dim in full_size:
+            assert preview_size[dim] <= full_size[dim]
+        # position must be preserved regardless of resolution
+        assert si_utils.get_origin_from_sim(preview_sim) == si_utils.get_origin_from_sim(full_sim)
