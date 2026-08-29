@@ -26,7 +26,7 @@ from muvis_align.image.Video import Video
 from muvis_align.image.flatfield import flatfield_correction
 from muvis_align.image.ome_helper import save_image
 from muvis_align.image.ome_tiff_helper import save_tiff
-from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics
 from muvis_align.Timer import Timer
@@ -345,6 +345,7 @@ class MVSRegistration:
         source_metadata0 = self.source_metadata
         source_metadata = {}
         self.sources = []
+        matrix_size = None
         for index, (filename, label) in enumerate(zip(self.filenames, self.file_labels)):
             if isinstance(source_metadata0, dict) and label in source_metadata0:
                 source_metadata = source_metadata0[label]
@@ -363,7 +364,18 @@ class MVSRegistration:
                     source_metadata['scale'] = scale
                 if 'rotation' in source_metadata0:
                     source_metadata['rotation'] = source_metadata0['rotation']
-            self.sources.append(create_dask_source(filename, source_metadata))
+            if isinstance(source_metadata0, dict):
+                # blanket per-run flags that apply identically to every source
+                for flag in ('sbem', 'invert', 'is_center'):
+                    if flag in source_metadata0:
+                        source_metadata[flag] = source_metadata0[flag]
+            source = create_image_source(filename, source_metadata, extra_metadata=self.extra_metadata,
+                                         file_label=label, transform_key=self.source_transform_key,
+                                         matrix_size=matrix_size)
+            if matrix_size is None:
+                # decided once from the first source, matching the previous is_3d-from-source0 behaviour
+                matrix_size = 4 if source.get_size().get('z', 0) > 1 else 3
+            self.sources.append(source)
 
     def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, chunk_size=default_chunk_size,
                   target_scale=None, store=True):
@@ -410,47 +422,17 @@ class MVSRegistration:
         different_z_positions = False
         delta_zs = []
         for filename, source in zip(self.filenames, sources):
+            # position/scale/rotation, and per-source corrections (SBEM, is_center, invert),
+            # are now resolved by ImageSource itself (see ImageSource.fix_metadata)
             scale = source.get_pixel_size()
             translation = source.get_position()
             rotation = source.get_rotation()
-
-            if 'is_center' in source_metadata:
-                translation = {dim: translation[dim] - source.get_physical_size().get(dim, 0) / 2 for dim in translation}
-
-            if 'sbem' in source_metadata:
-                source_version = source.metadata.get('Creator', source.metadata.get('creator', ''))
-                if '2025' in source_version:
-                    path = os.path.dirname(self.filenames[0])
-                    metapath = None
-                    attempts = 0
-                    while attempts < 3:
-                        metapath = os.path.join(path, 'meta')
-                        if os.path.exists(metapath):
-                            break
-                        path = os.path.join(path, '..')
-                        attempts += 1
-                    if metapath:
-                        sbemimage_config = load_sbemimage_best_config(metapath, filename)
-                        if sbemimage_config:
-                            size = source.get_size()
-                            translation, scale0 = adjust_sbemimage_properties(translation, scale, size,
-                                                                              filename, sbemimage_config)
-                            if scale0:
-                                scale = scale0
-                            elif scale.get('x') != scale.get('y'):
-                                logging.warning('SBEMimage pixel size requires correction, please provide in source metadata.')
-                            logging.debug(f'Adjusted SBEMimage properties for {filename}')
-                        else:
-                            logging.warning(f'Could not find SBEMimage config for {filename}.')
 
             level = 0
             rescale = {}
             if target_scale:
                 # Only downscaling
                 level, rescale, scale = get_level_from_scale(source, target_scale)
-            if 'invert' in source_metadata:
-                translation['x'] = -translation['x']
-                translation['y'] = -translation['y']
             if 'z' in translation:
                 z_position = translation['z']
             else:
@@ -462,7 +444,7 @@ class MVSRegistration:
             if self.global_rotation is not None:
                 rotation = self.global_rotation
 
-            dask_data = source.get_data(level=level)
+            dask_data = source.get_sim(level=level).data
             if any(value != 1 for value in rescale.values()):
                 new_shape = [max(int(size / rescale.get(dim, 1)), 1)
                              for dim, size in zip(source.dimension_order, dask_data.shape)]

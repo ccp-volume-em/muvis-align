@@ -4,7 +4,7 @@ import yaml
 
 from muvis_align.MVSRegistration import MVSRegistration
 from muvis_align.Timer import Timer
-from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures as RegMethod
 
@@ -47,7 +47,7 @@ def test_feature_registration_simple():
         'ransac_iterations': 10,
     }
 
-    images = [create_dask_source(filename).get_data() for filename in filenames]
+    images = [create_image_source(filename).get_sim().data for filename in filenames]
     image0 = images[0]
 
     reg_method = RegMethod(image0, reg_params, debug=True)

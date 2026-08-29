@@ -5,7 +5,7 @@ import numpy as np
 import os.path
 import shutil
 
-from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import calc_output_properties, make_sims_3d
 from muvis_align.Timer import Timer
 from muvis_align.util import print_hbytes
@@ -63,6 +63,6 @@ if __name__ == '__main__':
         with Timer('test'):
             fused = fuse(sims, filename, z_scale=z_scale)
 
-        fused2 = create_dask_source(filename).get_data()
+        fused2 = create_image_source(filename).get_sim().data
         for index in range(nz):
             assert np.all(fused2[0, 0, index] == fused[0, 0, index].data)
