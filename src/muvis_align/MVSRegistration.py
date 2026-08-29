@@ -577,18 +577,21 @@ class MVSRegistration:
 
         if self.is_pairs_registered() and os.path.exists(pair_mappings_filename):
             # load pair mapping and initialise pair_graph
+            logging.info(f'Loading pair mapping from {pair_mappings_filename}')
             pairs = import_json(pair_mappings_filename)
             indexed_pair_transforms = {}
             indexed_qualities = {}
             indexed_bboxes = {}
             for key, value in pairs.items():
                 key1, key2 = json.loads(key)
-                indexed_key = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
-                indexed_pair_transforms[indexed_key] = (
-                    param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
-                indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
-                if 'bbox' in value:
-                    indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+                index1, index2 = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
+                if index1 is not None and index2 is not None:
+                    indexed_key = index1, index2
+                    indexed_pair_transforms[indexed_key] = (
+                        param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
+                    indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
+                    if 'bbox' in value:
+                        indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             if not is_3d:
                 self.sims = make_sims_2d(self.sims)
             self.msims = [msi_utils.get_msim_from_sim(sim) for sim in self.sims]
@@ -609,6 +612,7 @@ class MVSRegistration:
             nx.set_edge_attributes(self.pairs_graph, indexed_bboxes, 'bbox')
 
         if self.is_global_registered():
+            logging.info(f'Loading global mapping from {mappings_filename}')
             # load mapping
             sims = self.sims
 
@@ -641,8 +645,10 @@ class MVSRegistration:
             indexed_metrics = {}
             for key, value in metrics.items():
                 key1, key2 = json.loads(key)
-                indexed_key = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
-                indexed_metrics[indexed_key] = value
+                index1, index2 = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
+                if index1 is not None and index2 is not None:
+                    indexed_key = index1, index2
+                    indexed_metrics[indexed_key] = value
             self.metrics = {
                 'summary': {default_transform_key:
                                 {self.reg_transform_key: np.mean([value[default_quality_key]
