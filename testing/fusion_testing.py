@@ -63,6 +63,6 @@ if __name__ == '__main__':
         with Timer('test'):
             fused = fuse(sims, filename, z_scale=z_scale)
 
-        fused2 = create_image_source(filename).get_sim().data
+        fused2 = create_image_source(filename).get_level_data()
         for index in range(nz):
             assert np.all(fused2[0, 0, index] == fused[0, 0, index].data)

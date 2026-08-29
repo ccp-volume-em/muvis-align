@@ -773,7 +773,7 @@ def test_update_views_adds_enabled_preview_layers(
     bare_interface._create_napari_data = MagicMock(
         return_value=image_data
     )
-    bare_interface._napari_view_add_data = MagicMock()
+    bare_interface._napari_view_add_fused_data = MagicMock()
     bare_interface._update_view_add_shapes = MagicMock()
     monkeypatch.setattr(
         interface_module.si_utils,
@@ -795,7 +795,7 @@ def test_update_views_adds_enabled_preview_layers(
         "registered",
         show_preprocessed=True,
     )
-    bare_interface._napari_view_add_data.assert_called_once_with(
+    bare_interface._napari_view_add_fused_data.assert_called_once_with(
         bare_interface.viewer, image_data, "sample data"
     )
     expected_shape_call = (
@@ -1055,7 +1055,7 @@ def test_run_global_registration_persists_all_results(
     bare_interface.params = {"registration": {"method": "phase"}}
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface.reg.sims = ["sim"]
-    bare_interface.reg.msims = ["msim"]
+    bare_interface.reg.pair_msims = ["msim"]
     bare_interface.reg.register_indices = [0]
     results = {
         "mappings": {"image-0": "mapping"},
@@ -1194,12 +1194,15 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.reg.fuse.return_value = ("fused", None)
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface._clear_napari_view = MagicMock()
-    bare_interface._napari_view_add_data = MagicMock()
+    bare_interface._napari_view_add_fused_data = MagicMock()
     monkeypatch.setattr(
         interface_module.QMessageBox,
         "question",
         lambda *_: interface_module.QMessageBox.Yes,
     )
+    # fuse() always returns real msims in production - this test only cares about tile_size
+    # parsing and state transitions, so stand in a passthrough for the msim->sim extraction step
+    monkeypatch.setattr(interface_module, "extract_sims_from_fused", lambda result: result)
 
     bare_interface.fusion_process()
 
@@ -1208,15 +1211,15 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         bare_interface.reg.fuse.call_args.kwargs["output_filename"]
         == "registered"
     )
-    bare_interface._napari_view_add_data.assert_called_once_with(
+    bare_interface._napari_view_add_fused_data.assert_called_once_with(
         bare_interface.viewer, "fused", "Fused"
     )
     assert bare_interface.reg.state is CanonicalRegState.FUSED
     assert bare_interface.view_mode is CanonicalViewMode.FUSED
 
 
-def test_build_preview_sims_extracts_downsampled_level_from_source_msims():
-    """_build_preview_sims() must pick a real pyramid level from reg.source_msims
+def test_build_preview_sims_extracts_downsampled_level_from_msims():
+    """_build_preview_sims() must pick a real pyramid level from reg.msims
     (populated by init_data()) matching the requested preview_scale, without
     re-reading/rescaling the source data via a second init_data() call."""
     from multiview_stitcher import spatial_image_utils as si_utils
@@ -1247,3 +1250,84 @@ def test_build_preview_sims_extracts_downsampled_level_from_source_msims():
             assert preview_size[dim] <= full_size[dim]
         # position must be preserved regardless of resolution
         assert si_utils.get_origin_from_sim(preview_sim) == si_utils.get_origin_from_sim(full_sim)
+
+
+def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer):
+    """update_views()'s 'data' preview layer (_create_napari_data -> _napari_view_add_fused_data)
+    must show a genuine napari multiscale layer sourced from msims end to end - no sims added to
+    the napari image layer - even for the pre-registration preview, not just the post-fusion
+    'Fused' export view."""
+    from muvis_align.MVSRegistration import MVSRegistration
+    from multiview_stitcher import msi_utils
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[
+            'data/S000/S000_000_000.ome.zarr',
+            'data/S000/S000_000_001.ome.zarr',
+        ],
+        output_path='../../output/test_preview/',
+    )
+    reg.init_data()
+
+    interface = Interface.__new__(Interface)
+    interface.reg = reg
+    interface.params = {'input_output': {'preview_scale': 4, 'registration_dimension': 'all'}}
+    interface.extra_metadata = {}
+    interface.preview_msims = interface._build_preview_msims()
+    interface.preview_sims = [msi_utils.get_sim_from_msim(m, scale='scale0') for m in interface.preview_msims]
+
+    fused_msim = interface._create_napari_data(reg.source_transform_key, fusion_method='')
+    n_levels = len(msi_utils.get_sorted_scale_keys(fused_msim))
+    assert n_levels > 1  # sanity check: fusion produced a real multiscale pyramid, not one level
+
+    viewer = make_napari_viewer()
+    interface._napari_view_add_fused_data(viewer, fused_msim, 'data')
+
+    assert len(viewer.layers) == 1
+    layer = viewer.layers[0]
+    assert layer.multiscale is True
+    assert len(layer.data) == n_levels
+    for level_data, next_level_data in zip(layer.data, layer.data[1:]):
+        assert next_level_data.shape[-1] <= level_data.shape[-1]
+        assert next_level_data.shape[-2] <= level_data.shape[-2]
+
+
+def test_napari_view_add_fused_data_shows_real_multiscale_pyramid(make_napari_viewer):
+    """fusion_process()'s new full-resolution 'Fused' view (_napari_view_add_fused_data) must
+    add a genuine napari multiscale layer - one array per real native pyramid level, not a single
+    downsampled preview - since MVSRegistration.fuse() always returns the fused msim (a real
+    multiscale pyramid) when called with reg.msims."""
+    import yaml
+    from muvis_align.MVSRegistration import MVSRegistration
+    from multiview_stitcher import msi_utils
+
+    with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
+        params = yaml.safe_load(file)
+    operation_params = params['operations'][0]
+
+    reg = MVSRegistration()
+    reg.init_params(params['general'], operation_params)
+    reg.init_data()
+    reg.preprocess(reg.msims, **operation_params.get('preprocess', {}))
+    reg.register(reg.sims, reg.register_sims, reg.register_indices, params=operation_params)
+
+    fused_image, _ = reg.fuse(reg.msims, transform_key=reg.reg_transform_key)
+    n_levels = len(msi_utils.get_sorted_scale_keys(fused_image))
+    assert n_levels > 1  # sanity check: this run actually produced a real multiscale pyramid
+
+    viewer = make_napari_viewer()
+    interface = Interface.__new__(Interface)
+    interface.extra_metadata = {}
+
+    interface._napari_view_add_fused_data(viewer, fused_image, 'Fused')
+
+    assert len(viewer.layers) == 1
+    layer = viewer.layers[0]
+    assert layer.multiscale is True
+    assert len(layer.data) == n_levels
+    # levels must actually shrink
+    for level_data, next_level_data in zip(layer.data, layer.data[1:]):
+        assert next_level_data.shape[-1] <= level_data.shape[-1]
+        assert next_level_data.shape[-2] <= level_data.shape[-2]

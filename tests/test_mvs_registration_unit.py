@@ -107,6 +107,20 @@ def test_init_params_normalises_sections_and_forwards_options():
     assert init.call_args.kwargs["label"] == "sample"
 
 
+def _make_msims(n=1, size=8, pixel_size=1.0):
+    # small, real (not mocked) single-level msims - cheap enough that preprocess()'s actual
+    # per-level operations (gaussian, normalisation) can just run for real instead of being mocked
+    from multiview_stitcher import msi_utils, spatial_image_utils as si_utils
+    msims = []
+    for i in range(n):
+        data = np.full((size, size), i + 1, dtype=np.uint16)
+        sim = si_utils.get_sim_from_array(
+            data, dims=['y', 'x'], scale={'x': pixel_size, 'y': pixel_size},
+            translation={'x': 0, 'y': 0}, transform_key='source_metadata')
+        msims.append(msi_utils.get_msim_from_sim(sim, scale_factors=[]))
+    return msims
+
+
 @pytest.mark.parametrize(
     ("kwargs", "expected_modified"),
     [
@@ -121,28 +135,30 @@ def test_preprocess_sets_modified_flag_for_enabled_steps(kwargs, expected_modifi
     registration = MVSRegistration()
     registration.scales = [{"x": 1.0, "y": 1.0}]
     registration.source_transform_key = "source_metadata"
-    sims = [np.ones((4, 4), dtype=np.uint16)]
+    msims = _make_msims()
 
-    with patch(
-        "muvis_align.MVSRegistration.gaussian_filter_sim",
-        side_effect=lambda sim, *_: sim,
-    ):
-        _, _, modified = registration.preprocess(sims, **kwargs)
+    _, _, modified = registration.preprocess(msims, **kwargs)
 
     assert modified is expected_modified
 
 
-def test_preprocess_applies_scale_via_init_data():
+def test_preprocess_applies_scale_via_select_msim_subpyramid():
+    # preprocess()'s `scale` override selects a real (smaller) sub-pyramid directly from the
+    # msims it's given (every native level at or coarser than `scale`), rather than resizing to
+    # an exact match or re-running the whole init_data() pipeline a second time
     registration = MVSRegistration()
     registration.scales = [{"x": 1.0, "y": 1.0}]
     registration.source_transform_key = "source_metadata"
-    sims = [np.ones((4, 4), dtype=np.uint16)]
+    registration.sources = [object()]
+    msims = _make_msims()
 
-    with patch.object(registration, "init_data", return_value=sims) as init_data:
-        _, _, modified = registration.preprocess(sims, scale=2)
+    with patch(
+        "muvis_align.MVSRegistration.select_msim_subpyramid_at_scale", return_value=msims,
+    ) as select_msim_subpyramid_at_scale:
+        _, _, modified = registration.preprocess(msims, scale=2)
 
     assert modified is True
-    init_data.assert_called_once_with(target_scale=2, store=False)
+    select_msim_subpyramid_at_scale.assert_called_once_with(msims, registration.sources, 2)
 
 
 def test_validate_overlap_reports_near_images():

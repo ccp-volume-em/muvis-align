@@ -36,7 +36,13 @@ class ImageSource:
         self.msim = None
         self.init_metadata()
         self.fix_metadata(source_metadata, extra_metadata, matrix_size)
-        self._build_msim()
+        if self.msim is None:
+            self._build_msim()
+        else:
+            # a subclass (e.g. ZarrImageSource) already built self.msim natively - re-stamp
+            # this run's final geometry onto it in place, instead of tearing it down to raw
+            # arrays and rebuilding a whole new msim from scratch via _build_msim()
+            self._restamp_msim()
 
     def init_metadata(self):
         raise NotImplementedError("Image source should implement init_metadata() to initialize metadata,"
@@ -181,11 +187,31 @@ class ImageSource:
                 c_coords=c_coords))
         self.msim = msi_utils.get_msim_from_sims(sims)
 
-    def get_msim(self):
-        return self.msim
+    def _restamp_msim(self):
+        # a subclass (e.g. ZarrImageSource) already built self.msim natively via a trusted
+        # reader (e.g. read_msim_from_ome_zarr) - its own position/pixel_size stay exactly as
+        # read, since nothing in the pipeline ever reads geometry off the msim's own coords
+        # (MVSRegistration always uses get_position()/get_pixel_size() instead). The one thing
+        # that does need replacing is the transform: such readers set an identity transform in
+        # their own convention (e.g. read_msim_from_ome_zarr always uses 4x4, since z counts as
+        # a real spatial dim in NGFF even at size 1), which must become our own self.transform,
+        # in our own convention (matching si_utils.get_sim_from_array: no 't' dim, sized to only
+        # the spatial dims that matter here).
+        if self.transform is not None:
+            xaffine = param_utils.affine_to_xaffine(self.transform)
+        else:
+            spatial_dims = [dim for dim in self.dimension_order if dim in 'xyz']
+            xaffine = param_utils.identity_transform(len(spatial_dims))
+        for scale_key in msi_utils.get_sorted_scale_keys(self.msim):
+            ds = self.msim[scale_key].to_dataset()
+            # drop the old x_in/x_out coordinate index too, not just the transform variable -
+            # otherwise a differently-shaped replacement gets reindexed/padded with NaN against it
+            ds = ds.drop_vars([self.transform_key, 'x_in', 'x_out'], errors='ignore')
+            self.msim[scale_key] = ds.assign({self.transform_key: xaffine})
 
-    def get_sim(self, level=0):
-        return msi_utils.get_sim_from_msim(self.msim, scale=f'scale{level}')
+    def get_level_data(self, level=0):
+        # raw dask array straight off the msim's own DataTree node - no sim wrapping needed
+        return self.msim[f'scale{level}'].ds['image'].data
 
     def get_shape(self, level=0):
         # shape in pixels

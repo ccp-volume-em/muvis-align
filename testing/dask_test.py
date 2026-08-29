@@ -113,7 +113,7 @@ def dask_ome_zarr_py(filename, level=0):
 
 def dask_ome_zarr_source(filename):
     source = create_image_source(filename)
-    return source.get_sim(0).data
+    return source.get_level_data(0)
 
 
 def load_dask0(filename):
@@ -126,7 +126,7 @@ def load_dask0(filename):
 
 def load_dask(filename, level=0):
     source = create_image_source(filename)
-    return source.get_sim(level=level).data
+    return source.get_level_data(level=level)
 
 
 def task(filenames):

@@ -2,12 +2,21 @@ import dask.array as da
 from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 import os
+from skimage.transform import resize
 
 from muvis_align.image.ome_tiff_helper import load_tiff, save_tiff
 from muvis_align.image.util import *
 
 
-def flatfield_correction(sims, transform_key, quantiles, foreground_map=None, cache_location=None):
+def flatfield_correction(msims, transform_key, quantiles, foreground_map=None, cache_location=None):
+    """msims in, msims out - the flatfield correction model (quantile images) is computed once,
+    from each source's own working (scale0) resolution - the cross-source quantile stacking
+    genuinely needs concrete pixel data and can't be generalised per level - then resized to
+    match every other pyramid level before being applied there, so the whole msim ends up
+    consistently corrected instead of only ever its scale0 level.
+    """
+    sims = [get_msim_image0(msim) for msim in msims]
+
     quantile_images = []
     if cache_location is not None:
         for quantile in quantiles:
@@ -22,7 +31,14 @@ def flatfield_correction(sims, transform_key, quantiles, foreground_map=None, ca
                 filename = get_quantile_filename(cache_location, quantile)
                 save_tiff(filename, quantile_image)
 
-    return apply_flatfield_correction(sims, transform_key, quantiles, quantile_images)
+    model = calc_flatfield_model(sims[0].dims, quantiles, quantile_images)
+
+    new_msims = []
+    for msim in msims:
+        def level_func(level_sim, scale_key, model=model):
+            return apply_flatfield_model(level_sim, transform_key, model)
+        new_msims.append(map_msim_levels(msim, level_func))
+    return new_msims
 
 
 def get_quantile_filename(cache_location, quantile):
@@ -42,12 +58,13 @@ def calc_flatfield_images(sims, quantiles, foreground_map=None):
     return flatfield_images
 
 
-def apply_flatfield_correction(sims, transform_key, quantiles, quantile_images):
-    new_sims = []
-    sim0 = sims[0]
-    dims0 = sim0.dims
+def calc_flatfield_model(dims0, quantiles, quantile_images):
+    """The flatfield correction model derived once at a reference resolution - dark/bright
+    quantile images (moved to channel-last order, matching apply_flatfield_model's element-wise
+    formula) plus the scalar per-channel mean_bright_dark - reused (dark/bright resized as needed)
+    at every pyramid level, instead of being recomputed or only ever applied at one resolution.
+    """
     has_c_dim = 'c' in dims0
-    dtype = sim0.dtype
     dark = 0
     bright = 1
     for quantile, quantile_image in zip(quantiles, quantile_images):
@@ -60,30 +77,54 @@ def apply_flatfield_correction(sims, transform_key, quantiles, quantile_images):
 
     bright_dark_range = bright - dark
     if has_c_dim:
-        axes = list(range(len(dims0) - 1))   # all accept final 'c' axis
+        axes = list(range(len(dims0) - 1))   # all except final 'c' axis
     else:
         axes = None
     mean_bright_dark = np.array(np.mean(bright - dark, axis=axes))
+    return {
+        'dims0': dims0,
+        'has_c_dim': has_c_dim,
+        'dark': dark,
+        'bright_dark_range': bright_dark_range,
+        'mean_bright_dark': mean_bright_dark,
+    }
 
-    for sim in sims:
-        if has_c_dim:
-            image0 = sim.transpose(..., 'c')
-        else:
-            image0 = sim
-        image = float2int_image(image_flatfield_correction(int2float_image(image0), dark, bright_dark_range, mean_bright_dark), dtype)
-        if has_c_dim:
-            image = image.transpose(*dims0)     # revert to original order
-        new_sim = si_utils.get_sim_from_array(
-            image,
-            dims=sim.dims,
-            scale=si_utils.get_spacing_from_sim(sim),
-            translation=si_utils.get_origin_from_sim(sim),
-            transform_key=transform_key,
-            affine=si_utils.get_affine_from_sim(sim, transform_key),
-            c_coords=sim.c
-        )
-        new_sims.append(new_sim)
-    return new_sims
+
+def _resize_correction_image(image, target_shape):
+    # dark/bright_dark_range are only ever computed at one reference resolution - resize (rather
+    # than recompute) to match a coarser/finer pyramid level's own shape; a no-op when already at
+    # the reference resolution (e.g. the level the model was itself computed from)
+    if tuple(np.shape(image)) == tuple(target_shape):
+        return image
+    return resize(np.asarray(image), target_shape, preserve_range=True)
+
+
+def apply_flatfield_model(sim, transform_key, model):
+    dims0, has_c_dim = model['dims0'], model['has_c_dim']
+    dtype = sim.dtype
+    if has_c_dim:
+        image0 = sim.transpose(..., 'c')
+    else:
+        image0 = sim
+
+    dark = _resize_correction_image(model['dark'], image0.shape)
+    bright_dark_range = _resize_correction_image(model['bright_dark_range'], image0.shape)
+
+    image = float2int_image(
+        image_flatfield_correction(int2float_image(image0), dark, bright_dark_range, model['mean_bright_dark']),
+        dtype)
+    if has_c_dim:
+        image = image.transpose(*dims0)     # revert to original order
+    return si_utils.get_sim_from_array(
+        image,
+        dims=sim.dims,
+        scale=si_utils.get_spacing_from_sim(sim),
+        translation=si_utils.get_origin_from_sim(sim),
+        transform_key=transform_key,
+        affine=si_utils.get_affine_from_sim(sim, transform_key),
+        c_coords=sim.c
+    )
+
 
 def image_flatfield_correction(image0, dark, bright_dark_range, mean_bright_dark, clip=False):
     # Input/output: float images

@@ -7,6 +7,7 @@ from napari.utils.notifications import show_warning
 import networkx as nx
 import numpy as np
 import os.path
+from xarray import DataTree
 from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
@@ -16,8 +17,9 @@ from muvis_align.file.project_yaml import read_params, get_template_params, writ
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, \
-    metric_to_rgb, get_level_from_scale
+    draw_keypoints_matches_napari, get_transforms, copy_transforms, copy_transforms_to_msims, \
+    make_sims_3d, make_msims_3d, metric_to_rgb, select_msims_at_scale, get_msim_level_data, \
+    get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused
 from muvis_align.file.resources import get_project_template
 from muvis_align.metrics import calc_sims_metrics
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
@@ -247,7 +249,11 @@ class Interface:
                 logging.exception('Unable to read source data')
                 return False
 
-            self.preview_sims = self._build_preview_sims()
+            # preview_msims is used for the actual napari image data layer (a real multiscale
+            # pyramid, not a single extracted resolution); preview_sims is derived from it purely
+            # for shapes, which only ever need cheap position/size metadata
+            self.preview_msims = self._build_preview_msims()
+            self.preview_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in self.preview_msims]
             z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
             is_multi_z_shapes = (len(z_positions) > 1)
             if is_multi_z_shapes:
@@ -256,6 +262,7 @@ class Interface:
                     position['z'] = z_positions.index(position.get('z', 0))
                     positions.append(position)
                 self.preview_sims = make_sims_3d(self.preview_sims, positions=positions)
+                self.preview_msims = make_msims_3d(self.preview_msims, positions=positions)
         sims = self.reg.sims
 
         coord_systems = get_transforms(sims)
@@ -270,16 +277,18 @@ class Interface:
 
         return True
 
-    def _build_preview_sims(self):
-        # a cheap preview resolution extracted directly from each source's real multiscale
-        # pyramid (self.reg.source_msims, already built by init_data()) instead of a whole
-        # separate init_data(target_scale=...) pass that re-reads/rescales the source data
+    def _build_preview_msims(self):
+        # a cheap preview resolution selected directly from each source's real multiscale
+        # pyramid (self.reg.msims, already built by init_data()) instead of a whole separate
+        # init_data(target_scale=...) pass that re-reads/rescales the source data - pure msim
+        # slicing (see select_msims_at_scale), no sim extraction
         preview_scale = self.params['input_output']['preview_scale']
-        sims = []
-        for source, msim in zip(self.reg.sources, self.reg.source_msims):
-            level, _, _ = get_level_from_scale(source, preview_scale)
-            sims.append(msi_utils.get_sim_from_msim(msim, scale=f'scale{level}'))
-        return sims
+        return select_msims_at_scale(self.reg.msims, self.reg.sources, preview_scale)
+
+    def _build_preview_sims(self):
+        # sims only where genuinely needed downstream (shapes: position/size metadata) - the
+        # napari image data layer itself uses self.preview_msims directly, not this
+        return [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in self._build_preview_msims()]
 
     def run_pre_processing(self):
         params_features = self.params['pre_processing']
@@ -289,7 +298,7 @@ class Interface:
                                       min_duration=0.1) as progress_factory, \
              TemporarilyDisabledWidgets(self.enable_plugin_widget), \
              VisibleActivityDock(self.viewer):
-            _, _, modified = self.reg.preprocess(self.reg.sims,
+            _, _, modified = self.reg.preprocess(self.reg.msims,
                                                  progress_factory=progress_factory,
                                                  **params_features)
         self.pre_processing_performed = modified
@@ -406,7 +415,7 @@ class Interface:
         if self.params['input_output']['preview_images']:
             data = self._create_napari_data(transform_key, show_preprocessed=show_preprocessed)
             if data is not None:
-                self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
+                self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
         if self.params['input_output']['preview_shapes']:
             self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
 
@@ -441,17 +450,21 @@ class Interface:
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
         if show_preprocessed:
-            # make copy to avoid transform changes in the original sims inside self.reg.fuse()
-            sims = [sim.copy(deep=True) for sim in self.reg.register_sims]
+            # no real pyramid corresponds to preprocessed sims - wrap into a trivial single-level
+            # msim just to satisfy fuse()'s msims-only input (copy to avoid transform changes in
+            # the original register_sims inside self.reg.fuse())
+            msims = wrap_sims_as_msims([sim.copy(deep=True) for sim in self.reg.register_sims])
         else:
-            sims = self.preview_sims
-        copy_transforms(self.reg.sims, sims, transform_key)
-        fused, _ = self.reg.fuse(sims,
-                                 transform_key=transform_key,
-                                 fusion_method=fusion_method,
-                                 dimension=self.params['input_output']['registration_dimension'],
-                                 extra_metadata=self.extra_metadata)
-        return fused
+            # self.preview_msims is a real multiscale pyramid - fusing it directly lets napari
+            # lazily load whichever level it needs, instead of a single extracted resolution
+            msims = self.preview_msims
+        copy_transforms_to_msims(self.reg.sims, msims, transform_key)
+        fused_msim, _ = self.reg.fuse(msims,
+                                      transform_key=transform_key,
+                                      fusion_method=fusion_method,
+                                      dimension=self.params['input_output']['registration_dimension'],
+                                      extra_metadata=self.extra_metadata)
+        return fused_msim
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
         sims = self.preview_sims
@@ -517,6 +530,31 @@ class Interface:
         viewer.add_image(data, name=name,channel_axis=channel_axis, colormap=colors,
                          scale=scale, translate=translate)
 
+    def _napari_view_add_fused_data(self, viewer, fused, layer_name):
+        # MVSRegistration.fuse() always returns msims - a real multiscale msim (DataTree), or (in
+        # 'compose' mode) a list of per-source msims - show a real DataTree as a genuine napari
+        # multiscale pyramid (native full-resolution levels, not one downsampled preview) instead
+        # of extracting a single resolution. Falls back to the ordinary single-resolution path
+        # for channel-overlay fusion (channel_axis + multiscale together isn't reliable in
+        # napari) or 'compose' mode (a list, not one pyramid to show as a single layer).
+        channels = self.extra_metadata.get('channels', [])
+        if isinstance(fused, DataTree) and len(channels) <= 1:
+            # scale/translate only need one representative level's own 'image' DataArray directly
+            # (si_utils.get_spacing_from_sim/get_origin_from_sim only ever read .dims/.coords) -
+            # get_msim_level_data likewise reads every level's raw dask array straight off its own
+            # Dataset, so no sim is built anywhere here just to hand napari its pixel data
+            image0 = get_msim_image0(fused)
+            scale = si_utils.get_spacing_from_sim(image0, asarray=True)
+            translate = si_utils.get_origin_from_sim(image0, asarray=True)
+            data = get_msim_level_data(fused)
+            name = channels[0].get('label') if channels else None
+            colormap = channels[0].get('color', (1, 1, 1, 1)) if channels else None
+            viewer.add_image(data, name=name or layer_name, multiscale=True, colormap=colormap,
+                             scale=scale, translate=translate)
+            return
+
+        self._napari_view_add_data(viewer, extract_sims_from_fused(fused), layer_name)
+
     def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
@@ -531,10 +569,20 @@ class Interface:
                 viewer.add_shapes(data, **kwargs)
 
     def _napari_view_add_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
-        scale = si_utils.get_spacing_from_sim(data, asarray=True)
-        position = si_utils.get_origin_from_sim(data, asarray=True)
-        layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
-                                 blending='additive')
+        if isinstance(data, DataTree):
+            # a real multiscale msim (e.g. self.reg.register_msims) - napari's affine (used here
+            # for interactive per-pair drag adjustment) and multiscale lazy-loading work together
+            image0 = get_msim_image0(data)
+            scale = si_utils.get_spacing_from_sim(image0, asarray=True)
+            position = si_utils.get_origin_from_sim(image0, asarray=True)
+            layer = viewer.add_image(get_msim_level_data(data), name=label, multiscale=True,
+                                     scale=scale, translate=position, affine=transform,
+                                     blending='additive')
+        else:
+            scale = si_utils.get_spacing_from_sim(data, asarray=True)
+            position = si_utils.get_origin_from_sim(data, asarray=True)
+            layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
+                                     blending='additive')
         if color:
             layer.colormap = color
 
@@ -701,7 +749,7 @@ class Interface:
         with NapariDaskProgress(progress_class=progress, desc='Global registration'), \
                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
-            results = self.reg.register_global(self.reg.sims, self.reg.msims,
+            results = self.reg.register_global(self.reg.sims, self.reg.pair_msims,
                                                register_indices=self.reg.register_indices,
                                                params=self.params['registration'])
 
@@ -776,15 +824,21 @@ class Interface:
                 if not self.reg.register_sims:
                     self.run_pre_processing()
                 self._clear_napari_view(self.viewer)
+                # register_msims (built by preprocess(), Stage 8) is a real multiscale pyramid in
+                # lockstep with register_sims when preprocessing allowed it - preferred here so
+                # napari can lazily load whichever level it needs during interactive adjustment
+                register_images = (self.reg.register_msims
+                                  if self.reg.register_msims is not None
+                                  and len(self.reg.register_msims) == len(self.reg.register_sims)
+                                  else self.reg.register_sims)
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._napari_view_add_image(self.viewer, self.reg.register_sims[sim_index], labels[sim_index],
+                    self._napari_view_add_image(self.viewer, register_images[sim_index], labels[sim_index],
                                                 pair_transforms[index], color, affine_event=True)
                 self.update_pair_metrics()
 
     def calc_mod_pair_transform(self):
         transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
-        sim0 = msi_utils.get_sim_from_msim(self.reg.source_msims[0], scale='scale0')
-        matsize = len(si_utils.get_spatial_dims_from_sim(sim0)) + 1
+        matsize = len(si_utils.get_spatial_dims_from_sim(get_msim_image0(self.reg.msims[0]))) + 1
         transform = calculate_rigid_difference(transforms[1][-matsize:, -matsize:],
                                                transforms[0][-matsize:, -matsize:])
         return param_utils.affine_to_xaffine(transform)
@@ -813,7 +867,7 @@ class Interface:
         data = self._create_napari_data(self.reg.reg_transform_key,
                                         fusion_method=self.params['fusion']['method'])
         self._clear_napari_view(self.viewer)
-        self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
+        self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
         self.view_mode = ViewMode.FUSED
 
     def fusion_process(self):
@@ -832,7 +886,7 @@ class Interface:
             with NapariMVSProgress(tqdm_class=progress, desc='Fusion', patch_fusion=True), \
                  TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                  VisibleActivityDock(self.viewer):
-                fused_image, is_saved = self.reg.fuse(self.reg.sims,
+                fused_image, is_saved = self.reg.fuse(self.reg.msims,
                                                       fusion_method=self.params['fusion']['method'],
                                                       output_spacing=self.params['fusion']['spacing'],
                                                       dimension=self.params['input_output']['registration_dimension'],
@@ -841,14 +895,17 @@ class Interface:
                                                       ome_version=self.params['fusion']['ome_version'],
                                                       extra_metadata=self.extra_metadata)
                 if not is_saved:
-                    self.reg.save(output_filename, fused_image,
+                    # save() only accepts a single-resolution sim - fused_image is always the
+                    # whole multiscale pyramid now, so save its finest scale
+                    save_sim = extract_sims_from_fused(fused_image)
+                    self.reg.save(output_filename, save_sim,
                                   transform_key=self.reg.reg_transform_key,
                                   translations0=self.reg.positions,
                                   channels=self.extra_metadata.get('channels', []),
                                   tile_size=tile_size,
                                   ome_version=self.params['fusion']['ome_version'])
             self._clear_napari_view(self.viewer)
-            self._napari_view_add_data(self.viewer, fused_image, 'Fused')
+            self._napari_view_add_fused_data(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
             QMessageBox.information(None, 'muvis-align', 'Fusion completed')

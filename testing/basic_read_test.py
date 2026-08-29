@@ -38,7 +38,7 @@ def read_dask(url, target_scale=16):
     print('level', level)
     print('rescale', rescale)
     print('scale', scale)
-    data = source.get_sim(level).data
+    data = source.get_level_data(level)
     if any(value != 1 for value in rescale.values()):
         new_shape = [int(size / rescale.get(dim, 1))
                      for dim, size in zip(source.dimension_order, source.shapes[level])]

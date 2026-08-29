@@ -18,8 +18,10 @@ def test_feature_registration():
 
     target_scale = 4
     reg = MVSRegistration(params['general'])
-    sims = reg.init_data(target_scale=target_scale)
-    norm_sims, _, _ = reg.preprocess(sims, operation)
+    reg.init_data(target_scale=target_scale)
+    sims = reg.sims
+    reg.preprocess(reg.msims, operation)
+    norm_sims = reg.register_sims
     sim0 = norm_sims[0]
     reg_method = RegMethod(sim0.dtype, operation['method'])
 
@@ -47,7 +49,7 @@ def test_feature_registration_simple():
         'ransac_iterations': 10,
     }
 
-    images = [create_image_source(filename).get_sim().data for filename in filenames]
+    images = [create_image_source(filename).get_level_data() for filename in filenames]
     image0 = images[0]
 
     reg_method = RegMethod(image0, reg_params, debug=True)

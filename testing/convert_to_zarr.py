@@ -15,7 +15,7 @@ from muvis_align.util import get_unique_file_labels
 def convert_to_zarr(filename, output_filename, source_metadata, output_order='tczyx'):
     print('Converting ' + filename + ' to ' + output_filename + zarr_extension)
     source = create_image_source(filename, source_metadata)
-    data = redimension_data(source.get_sim().data, source.dimension_order, output_order)
+    data = redimension_data(source.get_level_data(), source.dimension_order, output_order)
     print(source.get_position())
     sim = si_utils.get_sim_from_array(
         data,
@@ -30,7 +30,7 @@ def convert_stack_to_zarr(filenames, output_filename, source_metadata, output_or
     sources = [create_image_source(filename, source_metadata) for filename in filenames]
     source0 = sources[0]
     z_axis = output_order.index('z')
-    data = da.concatenate([redimension_data(source.get_sim().data, source.dimension_order, output_order) for source in sources], axis=z_axis)
+    data = da.concatenate([redimension_data(source.get_level_data(), source.dimension_order, output_order) for source in sources], axis=z_axis)
     position = source0.get_position()
     scale = source0.get_pixel_size()
     print(position, scale)
