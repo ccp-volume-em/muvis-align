@@ -63,6 +63,7 @@ class MVSRegistration:
         self.source_metadata = {}
         self.extra_metadata = {}
         self.sims = []
+        self.source_msims = []
         self.register_sims = []
         self.sources = []
         self.metrics = {}
@@ -125,6 +126,7 @@ class MVSRegistration:
         self.reg_transform_key = 'registered'
         self.transition_transform_key = 'transition'
         self.sims = []
+        self.source_msims = []
         self.sources = []
         self.state = RegState.INIT
 
@@ -480,6 +482,7 @@ class MVSRegistration:
         z_position = 0
         final_scales = []
         final_translations = []
+        source_msims = []
         for source, image, scale, translation, rotation, file_label in zip(sources, images, scales, translations, rotations, self.file_labels):
             # transform #dimensions need to match
             if 'z' in output_order:
@@ -530,8 +533,30 @@ class MVSRegistration:
             final_scales.append(scale)
             final_translations.append(translation)
 
+            # build a real multiscale msim for this source: same final geometry (translation/rotation/
+            # extra_metadata transform) as the sim above, but covering every native pyramid level -
+            # instead of only the one level chosen for `sims` (which may additionally be resized to an
+            # arbitrary target_scale; that resize isn't meaningful to apply across a whole pyramid)
+            level_sims = []
+            for source_level in range(len(source.pixel_sizes)):
+                level_data = redimension_data(source.get_sim(source_level).data, source.dimension_order, output_order)
+                level_scale = dict(source.pixel_sizes[source_level])
+                if 'z' in output_order and 'z' not in level_scale:
+                    level_scale['z'] = abs(z_scale)
+                level_sims.append(si_utils.get_sim_from_array(
+                    level_data,
+                    dims=list(output_order),
+                    scale=level_scale if level_scale else None,
+                    translation=translation_arg,
+                    affine=transform,
+                    transform_key=self.source_transform_key,
+                    c_coords=channel_labels
+                ))
+            source_msims.append(msi_utils.get_msim_from_sims(level_sims))
+
         if store:
             self.sims = sims
+            self.source_msims = source_msims
             self.scales = final_scales
             self.positions = final_translations
             self.rotations = rotations
