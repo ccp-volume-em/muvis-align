@@ -1007,7 +1007,7 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
     bare_interface.metrics_methods = ["ncc"]
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface.reg.sims = ["sim"]
-    bare_interface.reg.register_sims = ["register-sim"]
+    bare_interface.reg.register_msims = ["register-msim"]
     bare_interface.reg.pairs_graph = object()
     results = {
         "pair_mappings": {(0, 1): "mapping"},
@@ -1037,8 +1037,7 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
 
     assert actual is results
     bare_interface.reg.register_pairs.assert_called_once_with(
-        ["sim"],
-        ["register-sim"],
+        ["register-msim"],
         params={"method": "phase", "metrics": ["ncc"]},
     )
     bare_interface.reg.save_pair_mappings.assert_called_once_with(
@@ -1067,7 +1066,6 @@ def test_run_global_registration_persists_all_results(
 
     assert actual is results
     bare_interface.reg.register_global.assert_called_once_with(
-        ["sim"],
         ["msim"],
         register_indices=[0],
         params={"method": "phase"},
@@ -1140,7 +1138,7 @@ def test_registration_process_confirmation_and_prerequisites(
 ):
     bare_interface.reg.is_global_registered.return_value = False
     bare_interface.reg.is_pairs_registered.return_value = pairs_registered
-    bare_interface.reg.sims = ["sim"]
+    bare_interface.reg.msims = ["sim"]
     bare_interface.reg.reg_transform_key = "registered"
     bare_interface.preview_sims = ["preview"]
     bare_interface.run_pair_registration = MagicMock()
@@ -1149,6 +1147,11 @@ def test_registration_process_confirmation_and_prerequisites(
     bare_interface.update_registered = MagicMock()
     copy = MagicMock()
     monkeypatch.setattr(interface_module, "copy_transforms", copy)
+    # _registered_sims() extracts scale0 sims from reg.msims - identity here, so the mocked
+    # "sim" msim above passes straight through
+    monkeypatch.setattr(
+        interface_module.msi_utils, "get_sim_from_msim", lambda msim, scale='scale0': msim
+    )
     monkeypatch.setattr(
         interface_module.QMessageBox,
         "question",
@@ -1311,7 +1314,7 @@ def test_napari_view_add_fused_data_shows_real_multiscale_pyramid(make_napari_vi
     reg.init_params(params['general'], operation_params)
     reg.init_data()
     reg.preprocess(reg.msims, **operation_params.get('preprocess', {}))
-    reg.register(reg.sims, reg.register_sims, reg.register_indices, params=operation_params)
+    reg.register(reg.register_msims, reg.register_indices, params=operation_params)
 
     fused_image, _ = reg.fuse(reg.msims, transform_key=reg.reg_transform_key)
     n_levels = len(msi_utils.get_sorted_scale_keys(fused_image))

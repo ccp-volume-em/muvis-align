@@ -298,6 +298,14 @@ def get_msim_dims(msim):
     return get_msim_image0(msim).dims
 
 
+def get_msim_transform_keys(msim):
+    # every transform key is its own data_var (alongside 'image') on each scale node's Dataset -
+    # reading them directly answers "does this msim have transform_key set yet" without building
+    # a sim just to call si_utils.get_tranform_keys_from_sim
+    scale_key = msi_utils.get_sorted_scale_keys(msim)[0]
+    return set(msim[scale_key].ds.data_vars.keys()) - {'image'}
+
+
 def extract_sims_from_fused(result):
     """Extract a concrete sim (or list of sims) from a fuse() result, which is always msims: a
     single fused multiscale msim (DataTree), or, in 'compose' mode (no actual fusion), a list of
@@ -986,7 +994,12 @@ def detect_volume_points(data):
 
 
 def get_transforms(sims):
-    return list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+    # accepts either sims or msims - a msim's transform keys are read directly off its data_vars
+    # (get_msim_transform_keys), no sim needs to be built at all just to enumerate them
+    groups = [get_msim_transform_keys(item) if isinstance(item, DataTree)
+             else si_utils.get_tranform_keys_from_sim(item)
+             for item in sims]
+    return list({a for group in groups for a in group})
 
 
 def check_sim_dims(sim):
@@ -1000,9 +1013,14 @@ def check_sim_dims(sim):
 
 
 def copy_transforms(source_sims, target_sims, transform_key):
+    # source_sims accepts either sims or msims - a msim's transform is read directly
+    # (msi_utils.get_transform_from_msim), no sim round-trip needed (mirrors copy_transforms_to_msims)
     dims = list(si_utils.get_origin_from_sim(target_sims[0]).keys())
     for source_sim, target_sim in zip(source_sims, target_sims):
-        transform = si_utils.get_affine_from_sim(source_sim, transform_key=transform_key)
+        if isinstance(source_sim, DataTree):
+            transform = msi_utils.get_transform_from_msim(source_sim, transform_key)
+        else:
+            transform = si_utils.get_affine_from_sim(source_sim, transform_key=transform_key)
         transform_dims = np.array(transform.coords['x_in'])
         if len(transform_dims) - 1 != len(dims):
             new_transform = param_utils.identity_transform(ndim=len(dims))
@@ -1023,6 +1041,10 @@ def copy_transforms(source_sims, target_sims, transform_key):
 
 
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
+    # accepts either a sim or a msim (its scale0 sim is used) - only position/transform metadata
+    # is ever read here, never pixel data
+    if isinstance(sim, DataTree):
+        sim = msi_utils.get_sim_from_msim(sim, scale='scale0')
     if position is None:
         position = si_utils.get_origin_from_sim(sim)
     if transform_keys is None or len(transform_keys) == 0:
@@ -1150,6 +1172,9 @@ def gaussian_filter_sim(sim, transform_key, sigma):
 
 
 def get_sim_physical_size(sim):
+    # accepts either a sim or a msim (its scale0 sim is used)
+    if isinstance(sim, DataTree):
+        sim = msi_utils.get_sim_from_msim(sim, scale='scale0')
     size = si_utils.get_shape_from_sim(sim)
     spacing = si_utils.get_spacing_from_sim(sim)
     physical_size = {dim: size[dim] * spacing.get(dim, 1) for dim in size}

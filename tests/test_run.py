@@ -78,24 +78,25 @@ def test2(resource_file):
     reg.init_params(params['general'], operation_params)
     reg.init_data()
     reg.preprocess(reg.msims)
-    reg_sims, reg_indices = reg.register_sims, reg.register_indices
-    #reg.register_full(reg.sims, reg_sims, register_indices=reg_indices, register_params=reg_params)
-    reg.register_pairs(reg.sims, reg_sims, params=reg_params)
+    reg_msims, reg_indices = reg.register_msims, reg.register_indices
+    reg.register_pairs(reg_msims, params=reg_params)
     msims = [msi_utils.get_msim_from_sim(sim) for sim in reg.sims]
-    reg.register_global(reg.sims, msims, params=reg_params)
+    reg.register_global(msims, params=reg_params)
 
     # register_global must also propagate the registered transform onto self.msims,
-    # msim -> msim (every scale), not just onto reg.sims - check this before fuse(), which (via
-    # make_sims_3d, for datasets with multiple z positions) mutates reg.sims' transforms in place
-    # to promote them to 3D for the output stack, a pre-existing side effect unrelated to this
+    # msim -> msim (every scale), not just onto the pair_msims (`msims`) it was called with -
+    # check this before fuse(), which (via make_msims_3d, for datasets with multiple z positions)
+    # mutates reg.msims' transforms in place to promote them to 3D for the output stack, a
+    # pre-existing side effect unrelated to this
     from multiview_stitcher import spatial_image_utils as si_utils
-    assert len(reg.msims) == len(reg.sims)
-    for sim, msim in zip(reg.sims, reg.msims):
-        affine_sim = si_utils.get_affine_from_sim(sim, reg.reg_transform_key)
+    assert len(reg.msims) == len(msims)
+    for pair_msim, msim in zip(msims, reg.msims):
+        affine_pair = si_utils.get_affine_from_sim(
+            msi_utils.get_sim_from_msim(pair_msim, scale='scale0'), reg.reg_transform_key)
         for scale_key in msi_utils.get_sorted_scale_keys(msim):
             level_sim = msi_utils.get_sim_from_msim(msim, scale=scale_key)
             affine_msim = si_utils.get_affine_from_sim(level_sim, reg.reg_transform_key)
-            assert (affine_sim.values == affine_msim.values).all()
+            assert (affine_pair.values == affine_msim.values).all()
 
     reg.fuse(reg.msims, output_filename='output')
 
@@ -124,9 +125,13 @@ def test_fuse_with_real_pyramid_matches_trivial_wrap(resource_file):
     reg.init_params(params['general'], operation_params)
     reg.init_data()
     reg.preprocess(reg.msims, **operation_params.get('preprocess', {}))
-    reg.register(reg.sims, reg.register_sims, reg.register_indices, params=operation_params)
+    reg.register(reg.register_msims, reg.register_indices, params=operation_params)
 
-    trivial_msims = wrap_sims_as_msims(reg.sims)
+    # reg.sims is never updated with the registered transform (only reg.msims is, by
+    # register_global) - extract the registered scale0 sims from reg.msims instead
+    from multiview_stitcher import msi_utils
+    registered_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.msims]
+    trivial_msims = wrap_sims_as_msims(registered_sims)
     filename_trivial, _ = 'test_fuse_trivial', reg.fuse(trivial_msims, output_filename='test_fuse_trivial')[1]
     filename_pyramid, _ = 'test_fuse_pyramid', reg.fuse(reg.msims, output_filename='test_fuse_pyramid')[1]
 
@@ -247,6 +252,43 @@ def test_preprocess_scale_selects_real_subpyramid_not_a_resize():
     a2 = np.asarray(reg.register_sims[0].data.compute() if hasattr(reg.register_sims[0].data, 'compute')
                     else reg.register_sims[0].data)
     np.testing.assert_array_equal(a2, a)
+
+
+def test_init_progress_resume_writes_registered_transform_onto_msims():
+    # a fresh MVSRegistration resuming from a previously globally-registered run's saved
+    # mappings.json must end up with reg_transform_key set on self.msims (every scale), not just
+    # self.sims - Interface.py's init_progress() (copy_transforms(self.reg.msims, ...)) depends on
+    # this when reopening a project that was already registered
+    from muvis_align.image.util import get_msim_transform_keys
+    from muvis_align.util import operation_to_past_participle
+    from muvis_align.constants import zarr_extension
+
+    with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
+        params = yaml.safe_load(file)
+    operation_params = params['operations'][0]
+    reg_params = operation_params['registration']
+
+    reg = MVSRegistration()
+    reg.init_params(params['general'], operation_params)
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    reg.register(reg.register_msims, reg.register_indices, params=reg_params)
+    # register() saves pair_mappings.json/mappings.json/metrics.json to disk as a side effect
+
+    resumed = MVSRegistration()
+    resumed.init_params(params['general'], operation_params)
+    resumed.init_data()
+    output_filename = operation_to_past_participle(operation_params['operation'])
+    output_format = params['general'].get('output', {}).get('format', zarr_extension)
+    resumed.init_progress(output_filename, output_format)
+
+    assert resumed.is_global_registered()
+    assert len(resumed.msims) == len(reg.msims)
+    for msim, orig_msim in zip(resumed.msims, reg.msims):
+        assert reg.reg_transform_key in get_msim_transform_keys(msim)
+        resumed_transform = msi_utils.get_transform_from_msim(msim, reg.reg_transform_key)
+        orig_transform = msi_utils.get_transform_from_msim(orig_msim, reg.reg_transform_key)
+        assert (resumed_transform.values == orig_transform.values).all()
 
 
 if __name__ == "__main__":

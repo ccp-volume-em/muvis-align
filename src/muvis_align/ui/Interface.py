@@ -224,12 +224,12 @@ class Interface:
         if self.reg.is_fused():
             self.enable_tabs(True, 4)
             self.select_tab(4)
-            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            copy_transforms(self.reg.msims, self.preview_sims, self.reg.reg_transform_key)
             self.preview_fusion()
         elif self.reg.is_global_registered():
             self.enable_tabs(True, 4)
             self.select_tab(4)
-            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            copy_transforms(self.reg.msims, self.preview_sims, self.reg.reg_transform_key)
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
         elif self.reg.is_pairs_registered():
             self.enable_tabs(True, 3)
@@ -324,7 +324,7 @@ class Interface:
     def coordinate_system(self, transform_key):
         self.transform_key = transform_key
         if self.reg.is_initialised():
-            self.populate_metadata_table(self.reg.sims, [transform_key])
+            self.populate_metadata_table(self.reg.msims, [transform_key])
 
     def populate_metadata_table(self, sims, transform_keys=None):
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
@@ -379,7 +379,7 @@ class Interface:
         widget2.set_value(labels[index], choices=labels)
 
     def get_best_transform_key(self):
-        transforms = get_transforms(self.reg.sims)
+        transforms = get_transforms(self.reg.msims)
         if self.reg.reg_transform_key in transforms:
             transform_key = self.reg.reg_transform_key
         elif default_transform_key in transforms:
@@ -458,7 +458,7 @@ class Interface:
             # self.preview_msims is a real multiscale pyramid - fusing it directly lets napari
             # lazily load whichever level it needs, instead of a single extracted resolution
             msims = self.preview_msims
-        copy_transforms_to_msims(self.reg.sims, msims, transform_key)
+        copy_transforms_to_msims(self.reg.msims, msims, transform_key)
         fused_msim, _ = self.reg.fuse(msims,
                                       transform_key=transform_key,
                                       fusion_method=fusion_method,
@@ -710,10 +710,10 @@ class Interface:
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
 
     def update_registered(self, view_transform_key=None):
-        sims = self.reg.sims
-        coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+        msims = self.reg.msims
+        coord_systems = get_transforms(msims)
         self.populate_coordinate_systems(coord_systems)
-        self.populate_metadata_table(sims)
+        self.populate_metadata_table(msims)
         self.populate_metrics_table(self.reg.metrics)
         self.update_views(transform_key=view_transform_key)
 
@@ -723,14 +723,14 @@ class Interface:
             widget.widget.enabled = enabled
 
     def run_pair_registration(self):
-        if not self.reg.register_sims:
+        if not self.reg.register_msims:
             self.run_pre_processing()
 
         with NapariMVSProgress(tqdm_class=progress, patch_registration=True), \
                 NapariDaskProgress(progress_class=progress, desc='Pair registration'), \
                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
-            results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
+            results = self.reg.register_pairs(self.reg.register_msims,
                                               params=self.params['registration'] | {'metrics': self.metrics_methods})
 
         qualities = {key: metric[default_transform_key][default_quality_key]
@@ -749,7 +749,7 @@ class Interface:
         with NapariDaskProgress(progress_class=progress, desc='Global registration'), \
                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
-            results = self.reg.register_global(self.reg.sims, self.reg.pair_msims,
+            results = self.reg.register_global(self.reg.pair_msims,
                                                register_indices=self.reg.register_indices,
                                                params=self.params['registration'])
 
@@ -858,7 +858,7 @@ class Interface:
             if not self.reg.is_pairs_registered():
                 self.run_pair_registration()
             self.run_global_registration()
-            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            copy_transforms(self.reg.msims, self.preview_sims, self.reg.reg_transform_key)
             self.enable_tabs(True, 4)
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
             QMessageBox.information(None, 'muvis-align', completion_message)
