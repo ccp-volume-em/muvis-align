@@ -207,7 +207,7 @@ class Interface:
                     self.populate_image_selection()
                     self.init_progress()
             if not ok:
-                show_warning('No input images found')
+                show_warning('Invalid input or output')
                 self.reg.state = RegState.UNINIT
         elif self.reg.is_global_registered():
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
@@ -239,7 +239,7 @@ class Interface:
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
             try:
-                self.reg.init_sims(
+                self.reg.init_data(
                     source_metadata=self.source_metadata,
                 )
             except ValueError as e:
@@ -248,7 +248,7 @@ class Interface:
                 return False
 
             preview_scale = self.params['input_output']['preview_scale']
-            self.preview_sims = self.reg.init_sims(
+            self.preview_sims = self.reg.init_data(
                 source_metadata=self.source_metadata,
                 target_scale=preview_scale,
                 store=False,

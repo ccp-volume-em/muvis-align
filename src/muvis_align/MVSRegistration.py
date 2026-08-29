@@ -209,7 +209,7 @@ class MVSRegistration:
             return False
 
         with Timer('init sims', self.logging_time):
-            sims = self.init_sims()
+            sims = self.init_data()
         self.sims = sims
 
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
@@ -365,7 +365,7 @@ class MVSRegistration:
                     source_metadata['rotation'] = source_metadata0['rotation']
             self.sources.append(create_dask_source(filename, source_metadata))
 
-    def init_sims(self, source_metadata={}, extra_metadata={}, z_scale=None, chunk_size=default_chunk_size,
+    def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, chunk_size=default_chunk_size,
                   target_scale=None, store=True):
         if not source_metadata:
             source_metadata = self.source_metadata
@@ -734,7 +734,7 @@ class MVSRegistration:
             scales0 = self.scales
 
             if scale and scale != 1:
-                sims = self.init_sims(target_scale=scale, store=False)
+                sims = self.init_data(target_scale=scale, store=False)
                 modified = True
                 update_progress()
 
@@ -1442,7 +1442,7 @@ class MVSRegistration:
         else:
             z_scale = None
 
-        sims = self.init_sims(target_scale=preview_scale, store=False)
+        sims = self.init_data(target_scale=preview_scale, store=False)
         if is_stack:
             sims = make_sims_3d(sims, z_scale, self.positions)
 

@@ -132,17 +132,17 @@ def test_preprocess_sets_modified_flag_for_enabled_steps(kwargs, expected_modifi
     assert modified is expected_modified
 
 
-def test_preprocess_applies_scale_via_init_sims():
+def test_preprocess_applies_scale_via_init_data():
     registration = MVSRegistration()
     registration.scales = [{"x": 1.0, "y": 1.0}]
     registration.source_transform_key = "source_metadata"
     sims = [np.ones((4, 4), dtype=np.uint16)]
 
-    with patch.object(registration, "init_sims", return_value=sims) as init_sims:
+    with patch.object(registration, "init_data", return_value=sims) as init_data:
         _, _, modified = registration.preprocess(sims, scale=2)
 
     assert modified is True
-    init_sims.assert_called_once_with(target_scale=2, store=False)
+    init_data.assert_called_once_with(target_scale=2, store=False)
 
 
 def test_validate_overlap_reports_near_images():

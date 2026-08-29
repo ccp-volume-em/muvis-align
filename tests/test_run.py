@@ -35,7 +35,7 @@ def test2(resource_file):
     reg_params = operation_params['registration']
     reg = MVSRegistration()
     reg.init_params(params['general'], operation_params)
-    reg.init_sims()
+    reg.init_data()
     reg_sims, reg_indices, _ = reg.preprocess(reg.sims)
     #reg.register_full(reg.sims, reg_sims, register_indices=reg_indices, register_params=reg_params)
     reg.register_pairs(reg.sims, reg_sims, params=reg_params)
