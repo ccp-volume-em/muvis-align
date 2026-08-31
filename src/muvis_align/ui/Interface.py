@@ -21,6 +21,7 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
     make_msims_3d, metric_to_rgb, get_msim_level_data, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims
 from muvis_align.file.resources import get_project_template
+from muvis_align.logging import init_logging
 from muvis_align.metrics import calc_msims_metrics
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
@@ -163,6 +164,7 @@ class Interface:
         output_path = params.get('output_path', '')
         if isinstance(eval_path(output_path), str):
             self._set_path_widget_text(widget, output_path)
+        init_logging(log_filename=os.path.join(eval_path(output_path), 'muvis-align.log'))
 
     def _set_path_widget_text(self, param_widget, value):
         line_edit = getattr(param_widget.widget, 'line_edit', None)

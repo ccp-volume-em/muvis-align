@@ -523,21 +523,24 @@ def calculate_rigid_difference(m1, m2):
 
 
 def validate_transform(transform, max_scale = 1.25, max_rotation=None):
-    if transform is None or isinstance(transform, str):
+    try:
+        if transform is None or isinstance(transform, str):
+            return False
+        transform = np.array(transform)
+        if np.any(np.isnan(transform)):
+            return False
+        if np.any(np.isinf(transform)):
+            return False
+        if np.linalg.det(transform) == 0:
+            return False
+        scale = get_scale_from_transform(transform)
+        if scale < 1 / max_scale or scale > max_scale:
+            return False
+        if  max_rotation is not None and abs(normalise_rotation(get_rotation_from_transform(transform))) > max_rotation:
+            return False
+        return True
+    except:
         return False
-    transform = np.array(transform)
-    if np.any(np.isnan(transform)):
-        return False
-    if np.any(np.isinf(transform)):
-        return False
-    if np.linalg.det(transform) == 0:
-        return False
-    scale = get_scale_from_transform(transform)
-    if scale < 1 / max_scale or scale > max_scale:
-        return False
-    if  max_rotation is not None and abs(normalise_rotation(get_rotation_from_transform(transform))) > max_rotation:
-        return False
-    return True
 
 
 def get_scale_from_transform(transform):
