@@ -5,7 +5,7 @@ from tqdm import tqdm
 import xarray as xr
 
 from muvis_align.image.ome_helper import save_image
-from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 
 
@@ -410,7 +410,7 @@ def test_create_stack(path, n):
     sims = []
     for index in tqdm(range(n), desc='Init tiles'):
         filename = str(path / f'image{index:04}')
-        source = create_dask_source(filename + '.ome.zarr')
+        source = create_image_source(filename + '.ome.zarr')
         dimension_order = source.dimension_order
         sim = si_utils.get_sim_from_array(
             source.get_source_dask()[0],

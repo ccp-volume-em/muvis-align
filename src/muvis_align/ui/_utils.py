@@ -1,5 +1,27 @@
 # Based on https://github.com/multiview-stitcher/napari-stitcher/blob/main/src/napari_stitcher/_stitcher_widget.py
 
+import functools
+import logging
+
+from napari.utils.notifications import show_error
+
+
+def catch_run_errors(func):
+    """Wrap a run_*() method so a failure shows a napari popup and logs the full traceback to
+    the main log file, instead of surfacing as an opaque signal-emission error - and returns
+    None instead of propagating, so callers can bail out (e.g. skip a 'completed' dialog) by
+    checking the return value.
+    """
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:
+            logging.exception(f'{func.__name__} failed')
+            show_error(f'{func.__name__} failed: {e}')
+            return None
+    return wrapper
+
 
 class TemporarilyDisabledWidgets(object):
     """

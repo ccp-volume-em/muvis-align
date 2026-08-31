@@ -19,7 +19,7 @@ from tifffile import TiffFile, TiffWriter, imread
 import zarr
 
 from muvis_align.Timer import Timer
-from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import normalise_sims
 from muvis_align.util import xyz_to_dict
 
@@ -112,8 +112,8 @@ def dask_ome_zarr_py(filename, level=0):
 
 
 def dask_ome_zarr_source(filename):
-    source = create_dask_source(filename)
-    return source.get_data(0)
+    source = create_image_source(filename)
+    return source.get_level_data(0)
 
 
 def load_dask0(filename):
@@ -125,8 +125,8 @@ def load_dask0(filename):
 
 
 def load_dask(filename, level=0):
-    dask_source = create_dask_source(filename)
-    return dask_source.get_data(level=level)
+    source = create_image_source(filename)
+    return source.get_level_data(level=level)
 
 
 def task(filenames):

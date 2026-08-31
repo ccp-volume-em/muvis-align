@@ -41,7 +41,7 @@ reg = MVSRegistration(operation='register',
                       ui='mpl')
 
 # Load and preprocess
-sims = reg.init_sims()
+sims = reg.init_data()
 reg_sims, reg_indices, _ = reg.preprocess(sims, normalisation='global')
 
 # Configure and run registration
@@ -85,7 +85,7 @@ reg = MVSRegistration(operation='register',
                       input_path='../data/S000/*.zarr', 
                       output_path='../../output/', 
                       ui='mpl')
-sims = reg.init_sims()
+sims = reg.init_data()
 reg_sims, reg_indices, _ = reg.preprocess(sims)
 
 register_params = {
@@ -134,7 +134,7 @@ reg = MVSRegistration(operation='register',
                       output_path='../../output/', 
                       ui='mpl', 
                       debug=True)
-sims = reg.init_sims()
+sims = reg.init_data()
 norm_sims, _, _ = reg.preprocess(sims)
 
 # Get and visualize overlap
@@ -191,7 +191,7 @@ reg = MVSRegistration(operation='register',
                       output_path='../../output/', 
                       ui='mpl', 
                       debug=True)
-sims = reg.init_sims()
+sims = reg.init_data()
 norm_sims, _, _ = reg.preprocess(sims)
 
 # Get overlap with metrics
@@ -240,7 +240,7 @@ reg = MVSRegistration(input_path=input_path,
                       ui='mpl', 
                       debug=True)
 reg.file_labels = ['S000_000_000', 'S001_000_001']
-sims = reg.init_sims()
+sims = reg.init_data()
 norm_sims, _, _ = reg.preprocess(sims)
 
 # Visualize overlap
@@ -367,7 +367,7 @@ reg = MVSRegistration(operation='register',
                       output_path='../../output/', 
                       ui='mpl', 
                       debug=True)
-sims = reg.init_sims()
+sims = reg.init_data()
 
 # Calculate tile shapes
 shapes = [get_sim_shape_2d(sim, transform_key=reg.source_transform_key) 

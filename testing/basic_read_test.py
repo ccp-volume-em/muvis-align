@@ -4,7 +4,7 @@ from ome_zarr.writer import write_image
 from skimage.transform import resize
 import zarr
 
-from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import get_level_from_scale
 
 
@@ -33,12 +33,12 @@ def zarr_test(url):
 
 
 def read_dask(url, target_scale=16):
-    source = create_dask_source(url)
+    source = create_image_source(url)
     level, rescale, scale = get_level_from_scale(source, target_scale=target_scale)
     print('level', level)
     print('rescale', rescale)
     print('scale', scale)
-    data = source.get_data()
+    data = source.get_level_data(level)
     if any(value != 1 for value in rescale.values()):
         new_shape = [int(size / rescale.get(dim, 1))
                      for dim, size in zip(source.dimension_order, source.shapes[level])]

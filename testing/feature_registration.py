@@ -1,10 +1,11 @@
 import logging
 import numpy as np
 import yaml
+from multiview_stitcher import msi_utils
 
 from muvis_align.MVSRegistration import MVSRegistration
 from muvis_align.Timer import Timer
-from muvis_align.image.source_helper import create_dask_source
+from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures as RegMethod
 
@@ -18,8 +19,10 @@ def test_feature_registration():
 
     target_scale = 4
     reg = MVSRegistration(params['general'])
-    sims = reg.init_sims(target_scale=target_scale)
-    norm_sims, _, _ = reg.preprocess(sims, operation)
+    reg.init_data(target_scale=target_scale)
+    sims = extract_sims_from_msims(reg.msims, reg.sources, reg.source_transform_key, target_scale=target_scale)
+    reg.preprocess(reg.msims, operation)
+    norm_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.register_msims]
     sim0 = norm_sims[0]
     reg_method = RegMethod(sim0.dtype, operation['method'])
 
@@ -47,7 +50,7 @@ def test_feature_registration_simple():
         'ransac_iterations': 10,
     }
 
-    images = [create_dask_source(filename).get_data() for filename in filenames]
+    images = [create_image_source(filename).get_level_data() for filename in filenames]
     image0 = images[0]
 
     reg_method = RegMethod(image0, reg_params, debug=True)

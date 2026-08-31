@@ -2,7 +2,7 @@ import dask
 #import frc
 import multiview_stitcher.metrics
 import networkx as nx
-from multiview_stitcher import msi_utils, mv_graph
+from multiview_stitcher import mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
@@ -10,7 +10,7 @@ from sklearn.metrics import euclidean_distances
 from xarray import DataArray
 
 from muvis_align.constants import default_transform_key, default_quality_key
-from muvis_align.image.util import image_reshape
+from muvis_align.image.util import image_reshape, get_msim_transform_keys
 from muvis_align.util import apply_transform
 
 
@@ -30,6 +30,16 @@ def create_metric_methods(metric_methods, msim, reg_channel=None):
     return metric_funcs
 
 
+def quality_to_scalar(value):
+    # edge/mapping quality values are often an xr.DataArray with a 't' dim (e.g. from
+    # register_pair_of_msims_over_time) - reduce to the plain scalar these callers display
+    if isinstance(value, DataArray):
+        if 't' in value.dims:
+            value = value.sel(t=0)
+        value = value.item()
+    return value
+
+
 def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
                       n_parallel_pairs=None):
     metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
@@ -46,10 +56,7 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
 
     quality_values = []
     for pair_key, value in qualities.items():
-        if isinstance(value, DataArray):
-            if 't' in value.dims:
-                value = value.sel(t=0)
-            value = value.item()
+        value = quality_to_scalar(value)
         if value:
             metric_results['pairs'][pair_key][default_transform_key][default_quality_key] = value
             quality_values.append(value)
@@ -80,10 +87,7 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
 
         quality_values = []
         for pair_key, value in qualities.items():
-            if isinstance(value, DataArray):
-                if 't' in value.dims:
-                    value = value.sel(t=0)
-                value = value.item()
+            value = quality_to_scalar(value)
             if value:
                 metric_results['pairs'][pair_key][reg_transform_key][default_quality_key] = value
                 quality_values.append(value)
@@ -93,12 +97,10 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
     return metric_results
 
 
-def calc_sims_metrics(sims, pair_transforms, qualities=None, base_transform_key=None, metric_methods='all',
-                      reg_channel=None, n_parallel_pairs=None):
+def calc_msims_metrics(msims, pair_transforms, qualities=None, base_transform_key=None, metric_methods='all',
+                       reg_channel=None, n_parallel_pairs=None):
     if base_transform_key is None:
-        reg_keys = si_utils.get_tranform_keys_from_sim(sims[0])
-        base_transform_key = reg_keys[0]
-    msims = [msi_utils.get_msim_from_sim(sim) for sim in sims]
+        base_transform_key = next(iter(get_msim_transform_keys(msims[0])))
     with dask.config.set(scheduler='single-threaded'):
         pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
             msims,

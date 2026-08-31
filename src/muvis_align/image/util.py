@@ -9,7 +9,7 @@ from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrins
 from scipy.spatial import ConvexHull
 from skimage.filters import gaussian
 from skimage.feature import blob_log, plot_matched_features
-from skimage.transform import downscale_local_mean
+from skimage.transform import downscale_local_mean, resize
 import xarray as xr
 from xarray import DataTree
 
@@ -22,6 +22,7 @@ try:
 except Exception as e:
     print(f'matplotlib import error:\n{e}')
 
+from muvis_align.constants import default_chunk_size
 from muvis_align.util import *
 
 
@@ -172,6 +173,206 @@ def redimension_data(data, old_order, new_order, **indices):
     new_indices = list(range(len(new_order)))
     new_data = np.moveaxis(new_data, old_indices, new_indices)
     return new_data
+
+
+def redimension_sim_data(image, old_order, new_order, **indices):
+    # xarray-native equivalent of redimension_data: lazy .isel()/.expand_dims()/.transpose() on an
+    # existing (already dask-backed) DataArray, instead of numpy ops on a raw array - keeps whatever
+    # coords the dims already have (e.g. 'c' channel labels, 't' timepoints), only touching dims
+    # old_order/new_order actually mention. Presence/absence is always checked against image.dims
+    # itself (never a separately-tracked old_order/new_order string) - image can already carry
+    # extra dims neither order lists (e.g. a forced 't' when redimensioning a 2D source into a 3D
+    # output_order), and those are left untouched rather than assumed absent, which would otherwise
+    # make the final transpose miss a dim it doesn't know exists.
+    if new_order == old_order and set(new_order) == set(image.dims):
+        return image
+
+    for o in old_order:
+        if o not in new_order and o in image.dims:
+            dim_value = indices.get(o, 0)
+            image = image.isel({o: dim_value})
+    for o in new_order:
+        if o not in image.dims:
+            image = image.expand_dims(o, axis=0)
+    # any dim still on image but not in new_order (e.g. that untouched forced 't') is carried
+    # through as-is, ahead of the requested order
+    extra_dims = [dim for dim in image.dims if dim not in new_order]
+    return image.transpose(*extra_dims, *list(new_order))
+
+
+def ensure_spatial_image_dims(image, c_coords=None, t_coords=None):
+    # si_utils.get_sim_from_array unconditionally forces 'c' and 't' dims to be present (size 1 if
+    # not already there) on every sim it builds - this is a hard multiview_stitcher convention that
+    # downstream code (channel detection, fusion, chunking) relies on. Match it exactly so a sim
+    # extracted from a msim built without going through get_sim_from_array is indistinguishable.
+    if c_coords is None and 'c' in image.coords:
+        c_coords = np.atleast_1d(image.coords['c'].values)
+    if t_coords is None and 't' in image.coords:
+        t_coords = np.atleast_1d(image.coords['t'].values)
+    for dim, coords in (('c', c_coords), ('t', t_coords)):
+        if dim not in image.dims:
+            # a stale scalar (non-dimension) coord of the same name can't survive expand_dims as-is
+            image = image.reset_coords(dim, drop=True) if dim in image.coords else image
+            image = image.expand_dims(dim, axis=0)
+            if coords is not None:
+                image = image.assign_coords({dim: list(coords)})
+    new_dims = [dim for dim in si_utils.SPATIAL_IMAGE_DIMS if dim in image.dims]
+    if list(new_dims) != list(image.dims):
+        image = image.transpose(*new_dims)
+    return image
+
+
+def rechunk_if_monolithic(image, chunk_size):
+    # a badly-chunked source (e.g. a single-chunk TIFF) needs splitting into smaller dask chunks
+    # for reasonable memory/parallelism downstream - a no-op if it's already chunked
+    if chunk_size and len(image.chunksizes.get('x', ())) == 1 and len(image.chunksizes.get('y', ())) == 1:
+        image = image.chunk(xyz_to_dict([chunk_size] * 2 if isinstance(chunk_size, int) else chunk_size))
+    return image
+
+
+def build_source_redimensioned_msim(source, output_order, chunk_size=default_chunk_size):
+    """Redimension `source.msim`'s own per-level 'image' DataArrays into `output_order` (lazy
+    transpose/expand_dims), ensure the 'c'/'t' dims every sim needs, and rechunk any level still
+    monolithic in x/y. Depends only on `source` and `output_order`, never on per-run geometry
+    (translation/transform) - build_source_msim() calls this through source.get_msim(), which
+    caches the result, rather than redoing this work on every call. Does not mutate source.msim -
+    a fresh DataTree is built and returned.
+    """
+    # every sim's 'c' dim is forced to exist (size 1 if the source is single-channel) by
+    # si_utils.get_sim_from_array - label it unconditionally so a channel selected by name
+    # (e.g. registration's 'channel' param) can be found via .sel(c=...) regardless of whether
+    # the source is natively multi-channel
+    c_coords = [channel.get('label', '') for channel in source.get_channels()]
+    datasets = {}
+    for scale_key in msi_utils.get_sorted_scale_keys(source.msim):
+        image = source.msim[scale_key].ds['image']
+        image = redimension_sim_data(image, source.dimension_order, output_order)
+        image = ensure_spatial_image_dims(image, c_coords=c_coords)
+        image = rechunk_if_monolithic(image, chunk_size)
+        datasets[scale_key] = xr.Dataset({'image': image})
+    return DataTree.from_dict(datasets)
+
+
+def build_source_msim(source, output_order, translation, transform, transform_key, z_scale=None):
+    """
+    Build a new msim for `source` covering every real pyramid level, redimensioned to `output_order`
+    and re-geometried with `translation` (intrinsic coords, per level) + `transform` (extrinsic affine,
+    same at every level) - starting from source.get_msim(output_order) (redimensioned once, then
+    cached on `source`) rather than reconstructing from raw arrays via si_utils.get_sim_from_array.
+    Does not mutate the cached msim - a fresh DataTree is built and returned.
+    """
+    if transform is None:
+        spatial_dims = [dim for dim in output_order if dim in 'xyz']
+        xaffine = param_utils.identity_transform(len(spatial_dims))
+    else:
+        xaffine = param_utils.affine_to_xaffine(transform)
+
+    translation_arg = dict(translation)
+    if translation_arg:
+        if 'x' not in translation_arg:
+            translation_arg['x'] = 0
+        if 'y' not in translation_arg:
+            translation_arg['y'] = 0
+
+    redimensioned_msim = source.get_msim(output_order)
+    scale_keys = msi_utils.get_sorted_scale_keys(redimensioned_msim)
+    datasets = {}
+    for level, scale_key in enumerate(scale_keys):
+        image = redimensioned_msim[scale_key].ds['image']
+
+        pixel_size = dict(source.pixel_sizes[level])
+        if 'z' in output_order and 'z' not in pixel_size:
+            pixel_size['z'] = abs(z_scale) if z_scale else 1
+        spatial_dims = si_utils.get_spatial_dims_from_sim(image)
+        new_coords = {dim: translation_arg.get(dim, 0) + np.arange(image.sizes[dim]) * pixel_size.get(dim, 1)
+                      for dim in spatial_dims}
+        image = image.assign_coords(new_coords)
+
+        ds = xr.Dataset({'image': image})
+        ds[transform_key] = xaffine
+        datasets[scale_key] = ds
+
+    return DataTree.from_dict(datasets)
+
+
+def map_msim_levels(msim, level_func):
+    """Apply level_func(sim, scale_key) -> new_sim independently to every scale level of `msim`,
+    reassembling the results into a new multiscale msim covering the same levels. Each level is
+    extracted/rebuilt through the ordinary sim <-> msim helpers (msi_utils.get_sim_from_msim /
+    get_msim_from_sims) - the per-level results are genuinely new sims (e.g. gaussian-filtered,
+    normalised), not a restamp of existing data, so there's no coordinate-reuse trap to avoid here.
+    """
+    scale_keys = msi_utils.get_sorted_scale_keys(msim)
+    level_sims = [level_func(msi_utils.get_sim_from_msim(msim, scale=scale_key), scale_key)
+                  for scale_key in scale_keys]
+    return msi_utils.get_msim_from_sims(level_sims)
+
+
+def get_msim_level_data(msim):
+    """Raw dask array per pyramid level, straight off each scale node's own Dataset (ImageSource.
+    get_level_data's pattern, generalised to every level at once) - no sim wrapping needed, since
+    napari's multiscale add_image only ever wants the arrays themselves.
+    """
+    return [msim[scale_key].ds['image'].data for scale_key in msi_utils.get_sorted_scale_keys(msim)]
+
+
+def get_msim_image0(msim, level=0):
+    """The raw 'image' DataArray at a given pyramid level (default: the finest, scale0) - straight
+    off that scale node's own Dataset, no sim wrapping. si_utils.get_spacing_from_sim/
+    get_origin_from_sim/get_spatial_dims_from_sim, and plain .dims/.sizes/.dtype checks, all work
+    identically on this as they would on a full sim (they only ever read .dims/.coords) - a sim
+    is only needed once something reads .attrs['transforms'] (si_utils.get_affine_from_sim et al).
+    """
+    scale_key = msi_utils.get_sorted_scale_keys(msim)[level]
+    return msim[scale_key].ds['image']
+
+
+def get_msim_dims(msim):
+    # .dims is identical whether read off the full sim (get_sim_from_msim) or the scale node's
+    # own 'image' DataArray directly - no need to build a sim just to compare dims
+    return get_msim_image0(msim).dims
+
+
+def get_msim_transform_keys(msim):
+    # every transform key is its own data_var (alongside 'image') on each scale node's Dataset -
+    # reading them directly answers "does this msim have transform_key set yet" without building
+    # a sim just to call si_utils.get_tranform_keys_from_sim
+    scale_key = msi_utils.get_sorted_scale_keys(msim)[0]
+    return set(msim[scale_key].ds.data_vars.keys()) - {'image'}
+
+
+def extract_sims_from_fused(result):
+    """Extract a concrete sim (or list of sims) from a fuse() result, which is always msims: a
+    single fused multiscale msim (DataTree), or, in 'compose' mode (no actual fusion), a list of
+    per-source msims. Used only at the boundary where a downstream consumer genuinely needs a sim
+    (save_image() has no multiscale support)."""
+    if isinstance(result, list):
+        return [msi_utils.get_sim_from_msim(msim, scale=msi_utils.get_sorted_scale_keys(msim)[0]) for msim in result]
+    return msi_utils.get_sim_from_msim(result, scale=msi_utils.get_sorted_scale_keys(result)[0])
+
+
+def wrap_sims_as_msims(sims):
+    # trivial single-level msim per sim - the escape hatch for callers that only have a concrete
+    # sim (an ad-hoc resolution with no corresponding real pyramid, e.g. a resized preview) but
+    # still need to satisfy a msims-only API (fuse()); scale_factors=[] avoids computing a
+    # synthetic downsample pyramid nothing here would use
+    return [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in sims]
+
+
+def combine_msims_as_channels(msims, channel_labels):
+    """Combine several single-channel msims (one per source) into one multichannel msim, stacking
+    along a new 'c' dim - per pyramid level, so the result stays a genuine multiscale msim rather
+    than collapsing to a single resolution. `msims` here are each expected to already share the
+    same geometry/levels (e.g. the per-source results of fusing each source individually against
+    the same output_stack_properties)."""
+    scale_keys = msi_utils.get_sorted_scale_keys(msims[0])
+    level_sims = []
+    for scale_key in scale_keys:
+        channel_sims = [msi_utils.get_sim_from_msim(msim, scale=scale_key) for msim in msims]
+        channel_sims = [sim.assign_coords({'c': [label]}) for sim, label in zip(channel_sims, channel_labels)]
+        combined = xr.combine_nested([sim.rename() for sim in channel_sims], concat_dim='c', combine_attrs='override')
+        level_sims.append(combined)
+    return msi_utils.get_msim_from_sims(level_sims)
 
 
 def get_numpy_slicing(dimension_order, **slicing):
@@ -828,7 +1029,12 @@ def detect_volume_points(data):
 
 
 def get_transforms(sims):
-    return list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+    # accepts either sims or msims - a msim's transform keys are read directly off its data_vars
+    # (get_msim_transform_keys), no sim needs to be built at all just to enumerate them
+    groups = [get_msim_transform_keys(item) if isinstance(item, DataTree)
+             else si_utils.get_tranform_keys_from_sim(item)
+             for item in sims]
+    return list({a for group in groups for a in group})
 
 
 def check_sim_dims(sim):
@@ -842,9 +1048,14 @@ def check_sim_dims(sim):
 
 
 def copy_transforms(source_sims, target_sims, transform_key):
+    # source_sims accepts either sims or msims - a msim's transform is read directly
+    # (msi_utils.get_transform_from_msim), no sim round-trip needed (mirrors copy_transforms_to_msims)
     dims = list(si_utils.get_origin_from_sim(target_sims[0]).keys())
     for source_sim, target_sim in zip(source_sims, target_sims):
-        transform = si_utils.get_affine_from_sim(source_sim, transform_key=transform_key)
+        if isinstance(source_sim, DataTree):
+            transform = msi_utils.get_transform_from_msim(source_sim, transform_key)
+        else:
+            transform = si_utils.get_affine_from_sim(source_sim, transform_key=transform_key)
         transform_dims = np.array(transform.coords['x_in'])
         if len(transform_dims) - 1 != len(dims):
             new_transform = param_utils.identity_transform(ndim=len(dims))
@@ -865,6 +1076,10 @@ def copy_transforms(source_sims, target_sims, transform_key):
 
 
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
+    # accepts either a sim or a msim (its scale0 sim is used) - only position/transform metadata
+    # is ever read here, never pixel data
+    if isinstance(sim, DataTree):
+        sim = msi_utils.get_sim_from_msim(sim, scale='scale0')
     if position is None:
         position = si_utils.get_origin_from_sim(sim)
     if transform_keys is None or len(transform_keys) == 0:
@@ -909,6 +1124,11 @@ def group_sims_by_z(sims, positions=None):
 
 
 def calc_foreground_map(sims):
+    # accepts either sims or msims (each msim's scale0 sim is used) - this genuinely needs
+    # concrete pixel data (a median-image comparison across all sources), unlike the cheap
+    # metadata-only helpers above, but the caller still shouldn't have to pre-extract a sims list
+    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
+           for item in sims]
     if len(sims) <= 2:
         return [True] * len(sims)
     sims = [sim.squeeze().astype(np.float32) for sim in sims]
@@ -924,45 +1144,48 @@ def calc_foreground_map(sims):
     return map
 
 
-def normalise_sims(sims, transform_key, use_global=True):
-    new_sims = []
+def normalise_sim(sim, transform_key, min, range, dtype):
+    #image = (sim - min) / range
+    image = ((sim - min) / range + 1) / 2   # extended range
+    image = float2int_image(image.clip(0, 1), dtype)    # np.clip(image) is not dask-compatible, use image.clip() instead
+    return si_utils.get_sim_from_array(
+        image,
+        dims=sim.dims,
+        scale=si_utils.get_spacing_from_sim(sim),
+        translation=si_utils.get_origin_from_sim(sim),
+        transform_key=transform_key,
+        affine=si_utils.get_affine_from_sim(sim, transform_key),
+        c_coords=sim.c.data,
+        t_coords=sim.t.data
+    )
+
+
+def calc_normalise_stats(sims, use_global=True):
+    """Per-source (mean, stddev) normalisation stats and dtype - accepts either sims or msims
+    (each msim's scale0 sim is used). Split out from normalise_sims so a caller that only wants
+    the statistics (e.g. to then apply them separately across a whole pyramid via map_msim_levels)
+    doesn't have to build - and immediately discard - a full set of already-normalised sims.
+    """
+    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
+           for item in sims]
     dtype = sims[0].dtype
     # global mean and stddev
     if use_global:
-        mins = []
-        ranges = []
-        for sim in sims:
-            min = np.mean(sim, dtype=np.float32)
-            range = np.std(sim, dtype=np.float32)
-            #min, max = get_image_window(sim, low=0.01, high=0.99)
-            #range = max - min
-            mins.append(min)
-            ranges.append(range)
+        mins = [np.mean(sim, dtype=np.float32) for sim in sims]
+        ranges = [np.std(sim, dtype=np.float32) for sim in sims]
+        #min, max = get_image_window(sim, low=0.01, high=0.99)
+        #range = max - min
         min = np.mean(mins)
         range = np.mean(ranges)
+        stats = [(min, range)] * len(sims)
     else:
-        min = 0
-        range = 1
-    # normalise all images
-    for sim in sims:
-        if not use_global:
-            min = np.mean(sim, dtype=np.float32)
-            range = np.std(sim, dtype=np.float32)
-        #image = (sim - min) / range
-        image = ((sim - min) / range + 1) / 2   # extended range
-        image = float2int_image(image.clip(0, 1), dtype)    # np.clip(image) is not dask-compatible, use image.clip() instead
-        new_sim = si_utils.get_sim_from_array(
-            image,
-            dims=sim.dims,
-            scale=si_utils.get_spacing_from_sim(sim),
-            translation=si_utils.get_origin_from_sim(sim),
-            transform_key=transform_key,
-            affine=si_utils.get_affine_from_sim(sim, transform_key),
-            c_coords=sim.c.data,
-            t_coords=sim.t.data
-        )
-        new_sims.append(new_sim)
-    return new_sims
+        stats = [(np.mean(sim, dtype=np.float32), np.std(sim, dtype=np.float32)) for sim in sims]
+    return stats, dtype
+
+
+def normalise_sims(sims, transform_key, use_global=True):
+    stats, dtype = calc_normalise_stats(sims, use_global=use_global)
+    return [normalise_sim(sim, transform_key, min, range, dtype) for sim, (min, range) in zip(sims, stats)]
 
 
 def gaussian_filter_sim(sim, transform_key, sigma):
@@ -984,6 +1207,9 @@ def gaussian_filter_sim(sim, transform_key, sigma):
 
 
 def get_sim_physical_size(sim):
+    # accepts either a sim or a msim (its scale0 sim is used)
+    if isinstance(sim, DataTree):
+        sim = msi_utils.get_sim_from_msim(sim, scale='scale0')
     size = si_utils.get_shape_from_sim(sim)
     spacing = si_utils.get_spacing_from_sim(sim)
     physical_size = {dim: size[dim] * spacing.get(dim, 1) for dim in size}
@@ -991,6 +1217,12 @@ def get_sim_physical_size(sim):
 
 
 def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None):
+    # accepts either sims or msims - each msim is converted to its scale0 sim right where needed
+    # below (spacing/affine/origin metadata reads only, never pixel data - fusion.calc_fusion_
+    # stack_properties itself only reads this same cheap per-sim metadata) instead of requiring
+    # the caller to have already built a separate sims list just to call this function
+    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
+           for item in sims]
     output_spacing = {}
     spacings = [si_utils.get_spacing_from_sim(sim) for sim in sims]
     dims = list(spacings[0])
@@ -1192,7 +1424,15 @@ def set_oriented_bounding_box_edges(layer, shapes):
         data_view._update_mesh_vertices(index, edge=True)
 
 
-def create_sim_shapes(sims, transform_key=None,  force_2d=False):
+def sims_from_sims_or_msims(items):
+    # normalises a list of sims and/or msims to sims (each msim's scale0 sim is used)
+    return [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
+           for item in items]
+
+
+def create_image_shapes(sims, transform_key=None,  force_2d=False):
+    # accepts sims or msims - only position/size metadata is read, never pixel data
+    sims = sims_from_sims_or_msims(sims)
     shapes = []
     is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
     for sim in sims:
@@ -1212,6 +1452,8 @@ def create_sim_shapes(sims, transform_key=None,  force_2d=False):
 
 
 def create_overlap_shapes(sims, transform_key, pairs=None, force_2d=False):
+    # accepts sims or msims - only position/size metadata is read, never pixel data
+    sims = sims_from_sims_or_msims(sims)
     shapes = []
     good_pairs = []
     is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
@@ -1418,16 +1660,143 @@ def make_sims_2d(sims):
     return new_sims
 
 
+def make_msims_3d(msims, z_scale=None, positions=None):
+    # msim-native equivalent of make_sims_3d: same expand_dims + 3D-transform-widening logic,
+    # applied independently to every pyramid level via map_msim_levels
+    if not z_scale:
+        z_scale = 1
+    new_msims = []
+    for index, msim in enumerate(msims):
+        z_position = positions[index].get('z', index * z_scale) if positions else index * z_scale
+
+        def level_func(sim, scale_key, z_position=z_position):
+            if 'z' not in sim.dims:
+                sim = sim.expand_dims({'z': [z_position]}, axis=-3)
+            for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+                transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+                if 4 not in transform.shape:
+                    transform_3d = param_utils.identity_transform(ndim=3)
+                    if 't' in transform.dims:
+                        transform_3d.loc[{dim: transform.coords[dim] for dim in transform.sel(t=0).dims}] = transform.sel(t=0)
+                    else:
+                        transform_3d.loc[{dim: transform.coords[dim] for dim in transform.dims}] = transform
+                    si_utils.set_sim_affine(sim, transform_3d, transform_key=transform_key)
+            return sim
+
+        new_msims.append(map_msim_levels(msim, level_func))
+    return new_msims
+
+
+def make_msims_2d(msims):
+    # msim-native equivalent of make_sims_2d
+    new_msims = []
+    for msim in msims:
+        def level_func(sim, scale_key):
+            if 'z' in sim.dims:
+                sim = sim.squeeze('z')
+            for transform_key in si_utils.get_tranform_keys_from_sim(sim):
+                transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+                if 3 not in transform.shape:
+                    has_t = 't' in transform.dims
+                    if has_t:
+                        transform = transform.sel(t=0)
+                    transform = transform[:3, :3]
+                    if has_t:
+                        transform.loc[{dim: transform.coords[dim] for dim in transform.sel(t=0).dims}] = transform.sel(t=0)
+                    si_utils.set_sim_affine(sim, transform, transform_key=transform_key)
+            return sim
+
+        new_msims.append(map_msim_levels(msim, level_func))
+    return new_msims
+
+
+def extract_sims_from_msims(msims, sources, transform_key, target_scale):
+    """Extract one working-resolution sim per source msim - the nearest native pyramid level to
+    `target_scale`, resized only when no native level matches exactly. For plain scale0 extraction,
+    use msi_utils.get_sim_from_msim(msim, scale='scale0') directly instead - this is only for the
+    on-demand resize case (preprocess()'s `scale` override, a preview resolution smaller than any
+    native level). msims are already properly chunked at creation (see ImageSource.get_msim) -
+    only a genuinely resized array needs rechunking here.
+    """
+    sims = []
+    for source, msim in zip(sources, msims):
+        level, rescale, scale = get_level_from_scale(source, target_scale)
+        sim = msi_utils.get_sim_from_msim(msim, scale=f'scale{level}')
+        if any(value != 1 for value in rescale.values()):
+            data = sim.data
+            new_shape = [max(int(size / rescale.get(dim, 1)), 1) for dim, size in zip(sim.dims, data.shape)]
+            data = resize(data, new_shape, preserve_range=True).astype(data.dtype)
+            translation = si_utils.get_origin_from_sim(sim)
+            affine = si_utils.get_affine_from_sim(sim, transform_key)
+            channel_labels = list(sim.coords['c'].values) if 'c' in sim.coords else None
+            # `scale` (from get_level_from_scale) only covers dims this source's own pixel size
+            # has - a 2D source stacked into a 3D output_order (output has 'z', source doesn't)
+            # would otherwise lose 'z' spacing entirely here, since get_sim_from_array requires
+            # `scale` to be either None or cover every spatial dim already on the array
+            full_scale = si_utils.get_spacing_from_sim(sim)
+            if scale:
+                full_scale.update(scale)
+            sim = si_utils.get_sim_from_array(
+                data, dims=list(sim.dims), scale=full_scale, translation=translation,
+                affine=affine, transform_key=transform_key, c_coords=channel_labels)
+            # resize() builds a brand new array - unlike a native level (already chunked at
+            # msim-creation time), this one genuinely needs its own rechunk check
+            sim = rechunk_if_monolithic(sim, default_chunk_size)
+        sims.append(sim)
+    return sims
+
+
+def select_msim_subpyramid_at_scale(msims, sources, target_scale):
+    """Select, per source, every native pyramid level from the nearest match to `target_scale`
+    down to the coarsest, as a genuine (smaller) sub-pyramid msim - pure msim slicing, no sim
+    extraction and no resize to an exact match.
+    """
+    result = []
+    for source, msim in zip(sources, msims):
+        level, _, _ = get_level_from_scale(source, target_scale)
+        scale_keys = msi_utils.get_sorted_scale_keys(msim)[level:]
+        result.append(DataTree.from_dict({f'scale{i}': msim[scale_key].ds
+                                          for i, scale_key in enumerate(scale_keys)}))
+    return result
+
+
+def copy_transforms_to_msims(sources, target_msims, transform_key):
+    """Copy `transform_key`'s affine from each `sources[i]` (a sim or msim) onto every scale of
+    the corresponding `target_msims[i]` (msi_utils.set_affine_transform, one call per target - no
+    per-level loop needed, the transform is the same at every scale). A msim source reads its
+    transform directly (msi_utils.get_transform_from_msim) - no sim round-trip either.
+    """
+    dims = list(si_utils.get_origin_from_sim(get_msim_image0(target_msims[0])).keys())
+    for source, target_msim in zip(sources, target_msims):
+        if isinstance(source, DataTree):
+            transform = msi_utils.get_transform_from_msim(source, transform_key)
+        else:
+            transform = si_utils.get_affine_from_sim(source, transform_key=transform_key)
+        transform_dims = np.array(transform.coords['x_in'])
+        if len(transform_dims) - 1 != len(dims):
+            new_transform = param_utils.identity_transform(ndim=len(dims))
+            common_dims = [dim for dim in transform.dims if dim in new_transform.dims and dim != 't']
+            if len(common_dims) > 0:
+                if 't' in transform.dims:
+                    transform_slice = transform.sel(t=0)
+                else:
+                    transform_slice = transform
+                new_transform.loc[{dim: transform_slice.coords[dim] for dim in common_dims}] = transform_slice
+            transform = new_transform
+        msi_utils.set_affine_transform(target_msim, transform, transform_key=transform_key)
+
+
 def print_sim_info(data):
-    if isinstance(data, xr.DataArray):
-        sim = data
-        msim = msi_utils.get_msim_from_sim(sim)
+    # only convert msim -> sim when the input actually is a msim - a transform is readable
+    # directly off a sim via si_utils.get_affine_from_sim, no need to build a msim just to
+    # read one back via get_transform_from_msim
+    if isinstance(data, DataTree):
+        sim = msi_utils.get_sim_from_msim(data)
     else:
-        msim = data
-        sim = msi_utils.get_sim_from_msim(msim)
+        sim = data
 
     print('dims', sim.dims)
     print('position dims', tuple(si_utils.get_origin_from_sim(sim).keys()))
     for transform_key in si_utils.get_tranform_keys_from_sim(sim):
-        print(transform_key, msi_utils.get_transform_from_msim(msim, transform_key).shape, end=' ')
+        print(transform_key, si_utils.get_affine_from_sim(sim, transform_key).shape, end=' ')
     print()

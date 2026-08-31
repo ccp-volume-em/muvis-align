@@ -7,6 +7,7 @@ from napari.utils.notifications import show_warning
 import networkx as nx
 import numpy as np
 import os.path
+from xarray import DataTree
 from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
@@ -15,19 +16,22 @@ from muvis_align.constants import zarr_extension, default_transform_key, default
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
-    affine_from_intrinsic_affine, create_sim_shapes, create_overlap_shapes, get_overlap_images, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms, make_sims_3d, \
-    metric_to_rgb
+    create_image_shapes, create_overlap_shapes, \
+    draw_keypoints_matches_napari, get_transforms, copy_transforms_to_msims, \
+    make_msims_3d, metric_to_rgb, get_msim_level_data, \
+    get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims
 from muvis_align.file.resources import get_project_template
-from muvis_align.metrics import calc_sims_metrics
+from muvis_align.logging import init_logging
+from muvis_align.metrics import calc_msims_metrics
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPreprocessProgress import NapariPreprocessProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
-from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock
+from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
-    calculate_rigid_difference, operation_to_past_participle, eval_path
+    calculate_rigid_difference, operation_to_past_participle, eval_path, \
+    resolve_to_project_dir, relativize_to_project_dir
 
 
 class ViewMode(Enum):
@@ -38,12 +42,14 @@ class ViewMode(Enum):
 
 
 class Interface:
-    def __init__(self, viewer, overview, enable_tabs=None, select_tab=None, enable_plugin_widget=None, verbose=False,
-                 initialize=True):
+    def __init__(self, viewer, overview, enable_tabs=None, select_tab=None, is_tab_enabled=None,
+                 enable_tab=None, enable_plugin_widget=None, verbose=False, initialize=True):
         self.viewer = viewer
         self.overview = overview
         self.enable_tabs = enable_tabs
         self.select_tab = select_tab
+        self.is_tab_enabled = is_tab_enabled
+        self.enable_tab = enable_tab
         self.enable_plugin_widget = enable_plugin_widget
         self.verbose = verbose
         self.raw_template = get_project_template()
@@ -72,6 +78,7 @@ class Interface:
         self.output_channels = []
         self.view_mode = None
         self.selected_shape_index = None
+        self._preview_overlap_cache = None
         self.reg.reset()
         self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
@@ -81,8 +88,12 @@ class Interface:
             self.select_tab(1)
 
     def get_all_widgets(self):
-        all_widgets = {name: param_widget.widget for name, param_widget in self.param_widgets.items()}
-        return all_widgets
+        # excludes widgets on a currently disabled tab - their .enabled always reads False
+        # (inherited from the disabled tab page), so snapshotting and restoring it as an explicit
+        # per-widget state (see modify_pair_registration) would leave them disabled even after
+        # their tab is enabled again
+        return {name: param_widget.widget for name, param_widget in self.param_widgets.items()
+               if self.is_tab_enabled is None or self.is_tab_enabled(name.split('.', 1)[0])}
 
     def get_function(self, function_label):
         if hasattr(self, function_label):
@@ -105,14 +116,23 @@ class Interface:
             self.update_widgets()
         else:
             self.write_params()
-            self.update_input_output_path()
+        self.update_input_output_path()
+
+    def get_project_dir(self):
+        # input/output path params are stored relative to this directory, so a project stays
+        # portable when the project file and its data are moved or shared together
+        params_path = getattr(self, 'params_path', None)
+        return os.path.dirname(os.path.abspath(params_path)) if params_path else None
 
     def update_widgets(self):
         for param_name, param_widget in self.param_widgets.items():
-            keys = param_name.split('.')
-            value = self.params.get(keys[0], {}).get(keys[1])
-            if value is not None:
-                param_widget.set_value(value)
+            # input/output path widgets are handled separately by update_input_output_path(),
+            # which resolves them relative to the project directory before display
+            if param_name not in ('input_output.input_path', 'input_output.output_path'):
+                keys = param_name.split('.')
+                value = self.params.get(keys[0], {}).get(keys[1])
+                if value is not None:
+                    param_widget.set_value(value)
 
     def write_params(self):
         write_params(self.params_path, self.params)
@@ -123,20 +143,35 @@ class Interface:
             self.params[keys[0]] = {}
         if isinstance(value, str):
             value = value.replace('\\', '/')
+            if param_name in ('input_output.input_path', 'input_output.output_path'):
+                # the file dialog (and the FileEdit widget itself) always reports an
+                # absolute path - convert it back to relative-to-project-dir before storing,
+                # so the project file keeps portable relative paths
+                value = relativize_to_project_dir(value, self.get_project_dir())
         self.params[keys[0]][keys[1]] = value
         self.write_params()
 
     def update_input_output_path(self):
+        # display the path exactly as stored (relative-to-project-dir when the project file
+        # keeps it relative) - FileEdit.set_value() would force it absolute, so the inner
+        # line edit's text is set directly instead, bypassing that conversion
         params = self.params['input_output']
         widget = self.param_widgets.get('input_output.input_path')
-        input_path = eval_path(params.get('input_path', ''))
-        print('input_path', input_path)
-        if isinstance(input_path, str):
-            widget.set_value(os.path.join(os.path.dirname(self.params_path), input_path))
+        input_path = params.get('input_path', '')
+        if isinstance(eval_path(input_path), str):
+            self._set_path_widget_text(widget, input_path)
         widget = self.param_widgets.get('input_output.output_path')
-        output_path = eval_path(params.get('output_path', ''))
-        if isinstance(output_path, str):
-            widget.set_value(os.path.join(os.path.dirname(self.params_path), output_path))
+        output_path = params.get('output_path', '')
+        if isinstance(eval_path(output_path), str):
+            self._set_path_widget_text(widget, output_path)
+        init_logging(log_filename=os.path.join(eval_path(output_path), 'muvis-align.log'))
+
+    def _set_path_widget_text(self, param_widget, value):
+        line_edit = getattr(param_widget.widget, 'line_edit', None)
+        if line_edit is not None:
+            line_edit.value = value
+        else:
+            param_widget.set_value(value)
 
     def input_path(self, value):
         self.need_source_reinit = True
@@ -187,18 +222,23 @@ class Interface:
         for channeli, channel in enumerate(channels):
             if channeli < len(channels_dict['color']):
                 color = channels_dict['color'][channeli]
-                if color and isinstance(color, str):
-                    channel['color'] = tuple(map(float, color.lstrip('(').rstrip(')').split(',')))
+                try:
+                    if color and isinstance(color, str):
+                        channel['color'] = tuple(eval(color))
+                except Exception:
+                    pass
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
         params = self.params['input_output']
-        output = str(params['output_path'])
+        project_dir = self.get_project_dir()
+        output = resolve_to_project_dir(str(params['output_path']), project_dir)
         if not self.reg.is_initialised() or self.need_source_reinit:
             self.need_source_reinit = False
-            if not output.endswith(os.sep):
-                output += os.sep
-            ok = self.reg.init(input_path=eval_path(params['input_path']),
+            if not output.endswith('/'):
+                output += '/'
+            input_path = resolve_to_project_dir(params['input_path'], project_dir)
+            ok = self.reg.init(input_path=eval_path(input_path),
                                output_path=output,
                                overwrite=params['overwrite'])
             if ok:
@@ -207,7 +247,7 @@ class Interface:
                     self.populate_image_selection()
                     self.init_progress()
             if not ok:
-                show_warning('No input images found')
+                show_warning('Invalid input or output')
                 self.reg.state = RegState.UNINIT
         elif self.reg.is_global_registered():
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
@@ -222,12 +262,12 @@ class Interface:
         if self.reg.is_fused():
             self.enable_tabs(True, 4)
             self.select_tab(4)
-            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            copy_transforms_to_msims(self.reg.msims, self.view_msims, self.reg.reg_transform_key)
             self.preview_fusion()
         elif self.reg.is_global_registered():
             self.enable_tabs(True, 4)
             self.select_tab(4)
-            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+            copy_transforms_to_msims(self.reg.msims, self.view_msims, self.reg.reg_transform_key)
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
         elif self.reg.is_pairs_registered():
             self.enable_tabs(True, 3)
@@ -239,7 +279,7 @@ class Interface:
     def update_metadata_source(self):
         if not self.reg.is_pairs_registered():
             try:
-                self.reg.init_sims(
+                self.reg.init_data(
                     source_metadata=self.source_metadata,
                 )
             except ValueError as e:
@@ -247,12 +287,9 @@ class Interface:
                 logging.exception('Unable to read source data')
                 return False
 
-            preview_scale = self.params['input_output']['preview_scale']
-            self.preview_sims = self.reg.init_sims(
-                source_metadata=self.source_metadata,
-                target_scale=preview_scale,
-                store=False,
-            )
+            # view_msims backs both the napari image data layer and the shapes, which read
+            # cheap position/size metadata off it via get_msim_image0
+            self.view_msims = self._build_view_msims()
             z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
             is_multi_z_shapes = (len(z_positions) > 1)
             if is_multi_z_shapes:
@@ -260,21 +297,39 @@ class Interface:
                 for position in self.reg.positions:
                     position['z'] = z_positions.index(position.get('z', 0))
                     positions.append(position)
-                self.preview_sims = make_sims_3d(self.preview_sims, positions=positions)
-        sims = self.reg.sims
-
-        coord_systems = get_transforms(sims)
+                self.view_msims = make_msims_3d(self.view_msims, positions=positions)
+        coord_systems = get_transforms(self.reg.msims)
         self.populate_channels()
         self.populate_coordinate_systems(coord_systems)
         if self.update_output_channels():
             self.populate_channels_table()
         if self.reg.is_initialised():
-            self.populate_metadata_table(sims)
+            self.populate_metadata_table(self.reg.msims)
             self.check_3d_view()
             self.update_views()
 
         return True
 
+    def _build_view_msims(self):
+        # per-source msim for the napari image data layer: a source with a native multi-
+        # resolution pyramid is used as-is; a single-resolution source is downscaled by one
+        # constant factor when its largest spatial dimension exceeds 1000px
+        view_msims = []
+        for source, msim in zip(self.reg.sources, self.reg.msims):
+            if len(source.shapes) == 1:
+                image0 = get_msim_image0(msim)
+                spatial_dims = si_utils.get_spatial_dims_from_sim(image0)
+                largest_dim = max(image0.sizes[dim] for dim in spatial_dims)
+                if largest_dim > 1000:
+                    scale_factor = largest_dim / 1000
+                    sim = extract_sims_from_msims(
+                        [msim], [source], self.reg.source_transform_key, target_scale=scale_factor
+                    )[0]
+                    msim = wrap_sims_as_msims([sim])[0]
+            view_msims.append(msim)
+        return view_msims
+
+    @catch_run_errors
     def run_pre_processing(self):
         params_features = self.params['pre_processing']
         with NapariPreprocessProgress(progress_class=progress,
@@ -283,13 +338,15 @@ class Interface:
                                       min_duration=0.1) as progress_factory, \
              TemporarilyDisabledWidgets(self.enable_plugin_widget), \
              VisibleActivityDock(self.viewer):
-            _, _, modified = self.reg.preprocess(self.reg.sims,
+            _, _, modified = self.reg.preprocess(self.reg.msims,
                                                  progress_factory=progress_factory,
                                                  **params_features)
         self.pre_processing_performed = modified
+        return True
 
     def pre_processing_process(self):
-        self.run_pre_processing()
+        if not self.run_pre_processing():
+            return
         self.enable_tabs(True, 3)
         self.enable_modify_pair_registration(False)
         self.select_tab(3)
@@ -309,7 +366,7 @@ class Interface:
     def coordinate_system(self, transform_key):
         self.transform_key = transform_key
         if self.reg.is_initialised():
-            self.populate_metadata_table(self.reg.sims, [transform_key])
+            self.populate_metadata_table(self.reg.msims, [transform_key])
 
     def populate_metadata_table(self, sims, transform_keys=None):
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
@@ -364,7 +421,7 @@ class Interface:
         widget2.set_value(labels[index], choices=labels)
 
     def get_best_transform_key(self):
-        transforms = get_transforms(self.reg.sims)
+        transforms = get_transforms(self.reg.msims)
         if self.reg.reg_transform_key in transforms:
             transform_key = self.reg.reg_transform_key
         elif default_transform_key in transforms:
@@ -385,12 +442,11 @@ class Interface:
         if transform_key is None:
             transform_key = self.get_best_transform_key()
 
-        sims = self.reg.sims
-        is_3d = (sims[0].sizes.get('z', 0) > 1)
+        is_3d = (get_msim_image0(self.reg.msims[0]).sizes.get('z', 0) > 1)
         is_multi_z_shapes = (
             len(set([
-                si_utils.get_origin_from_sim(sim).get('z', 0)
-                for sim in self.preview_sims
+                si_utils.get_origin_from_sim(get_msim_image0(msim)).get('z', 0)
+                for msim in self.view_msims
             ])) > 1
         )
         force_2d = is_multi_z_shapes and not is_3d
@@ -400,7 +456,7 @@ class Interface:
         if self.params['input_output']['preview_images']:
             data = self._create_napari_data(transform_key, show_preprocessed=show_preprocessed)
             if data is not None:
-                self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
+                self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
         if self.params['input_output']['preview_shapes']:
             self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
 
@@ -419,14 +475,14 @@ class Interface:
             viewer.layers.clear()
 
     def _create_napari_shapes(self, transform_key, force_2d=False):
-        sims = self.preview_sims
+        msims = self.view_msims
 
-        shapes = create_sim_shapes(sims, transform_key=transform_key, force_2d=force_2d)
-        refs = [str(index) for index in range(len(sims))]
+        shapes = create_image_shapes(msims, transform_key=transform_key, force_2d=force_2d)
+        refs = [str(index) for index in range(len(msims))]
         labels = list(self.reg.file_labels)
-        face_colors = [(1, 1, 1) for _ in range(len(sims))]
+        face_colors = [(1, 1, 1) for _ in range(len(msims))]
 
-        shapes2, pairs = create_overlap_shapes(sims, transform_key=transform_key, force_2d=force_2d)
+        shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, force_2d=force_2d)
         shapes.extend(shapes2)
         refs += [f'{index1} {index2}' for index1, index2 in pairs]
         labels += ['' for _ in pairs]
@@ -435,28 +491,28 @@ class Interface:
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False):
         if show_preprocessed:
-            # make copy to avoid transform changes in the original sims inside self.reg.fuse()
-            sims = [sim.copy(deep=True) for sim in self.reg.register_sims]
+            # copy to avoid transform changes below leaking into the stored register_msims
+            msims = [msim.copy(deep=True) for msim in self.reg.register_msims]
         else:
-            sims = self.preview_sims
-        copy_transforms(self.reg.sims, sims, transform_key)
-        fused, _ = self.reg.fuse(sims,
-                                 transform_key=transform_key,
-                                 fusion_method=fusion_method,
-                                 dimension=self.params['input_output']['registration_dimension'],
-                                 extra_metadata=self.extra_metadata)
-        return fused
+            msims = self.view_msims
+        copy_transforms_to_msims(self.reg.msims, msims, transform_key)
+        fused_msim, _ = self.reg.fuse(msims,
+                                      transform_key=transform_key,
+                                      fusion_method=fusion_method,
+                                      dimension=self.params['input_output']['registration_dimension'],
+                                      extra_metadata=self.extra_metadata)
+        return fused_msim
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
-        sims = self.preview_sims
+        images0 = [get_msim_image0(msim) for msim in self.view_msims]
         bb_supported = True
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
             bb_supported = False
-        is_3d = (sims[0].sizes.get('z', 0) > 1)
-        is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims])) > 1)
+        is_3d = (images0[0].sizes.get('z', 0) > 1)
+        is_multi_z_shapes = (len(set([si_utils.get_origin_from_sim(image0).get('z', 0) for image0 in images0])) > 1)
         force_2d = not bb_supported or (is_multi_z_shapes and not is_3d)
-        do_3d = ('z' in sims[0].dims and not force_2d)
+        do_3d = ('z' in images0[0].dims and not force_2d)
 
         if len(shapes) > 0:
             text = {'string': '{labels}'}
@@ -511,6 +567,31 @@ class Interface:
         viewer.add_image(data, name=name,channel_axis=channel_axis, colormap=colors,
                          scale=scale, translate=translate)
 
+    def _napari_view_add_fused_data(self, viewer, fused, layer_name):
+        # MVSRegistration.fuse() always returns msims - a real multiscale msim (DataTree), or (in
+        # 'compose' mode) a list of per-source msims - show a real DataTree as a genuine napari
+        # multiscale pyramid (native full-resolution levels, not one downsampled preview) instead
+        # of extracting a single resolution. Falls back to the ordinary single-resolution path
+        # for channel-overlay fusion (channel_axis + multiscale together isn't reliable in
+        # napari) or 'compose' mode (a list, not one pyramid to show as a single layer).
+        channels = self.extra_metadata.get('channels', [])
+        if isinstance(fused, DataTree) and len(channels) <= 1:
+            # scale/translate only need one representative level's own 'image' DataArray directly
+            # (si_utils.get_spacing_from_sim/get_origin_from_sim only ever read .dims/.coords) -
+            # get_msim_level_data likewise reads every level's raw dask array straight off its own
+            # Dataset, so no sim is built anywhere here just to hand napari its pixel data
+            image0 = get_msim_image0(fused)
+            scale = si_utils.get_spacing_from_sim(image0, asarray=True)
+            translate = si_utils.get_origin_from_sim(image0, asarray=True)
+            data = get_msim_level_data(fused)
+            name = channels[0].get('label') if channels else None
+            colormap = channels[0].get('color', (1, 1, 1, 1)) if channels else None
+            viewer.add_image(data, name=name or layer_name, multiscale=True, colormap=colormap,
+                             scale=scale, translate=translate)
+            return
+
+        self._napari_view_add_data(viewer, extract_sims_from_fused(fused), layer_name)
+
     def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
@@ -525,10 +606,20 @@ class Interface:
                 viewer.add_shapes(data, **kwargs)
 
     def _napari_view_add_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
-        scale = si_utils.get_spacing_from_sim(data, asarray=True)
-        position = si_utils.get_origin_from_sim(data, asarray=True)
-        layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
-                                 blending='additive')
+        if isinstance(data, DataTree):
+            # a real multiscale msim (e.g. self.reg.register_msims) - napari's affine (used here
+            # for interactive per-pair drag adjustment) and multiscale lazy-loading work together
+            image0 = get_msim_image0(data)
+            scale = si_utils.get_spacing_from_sim(image0, asarray=True)
+            position = si_utils.get_origin_from_sim(image0, asarray=True)
+            layer = viewer.add_image(get_msim_level_data(data), name=label, multiscale=True,
+                                     scale=scale, translate=position, affine=transform,
+                                     blending='additive')
+        else:
+            scale = si_utils.get_spacing_from_sim(data, asarray=True)
+            position = si_utils.get_origin_from_sim(data, asarray=True)
+            layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
+                                     blending='additive')
         if color:
             layer.colormap = color
 
@@ -543,44 +634,63 @@ class Interface:
 
     def update_pair_metrics(self):
         # filter only selected pair
-        reg_sims = [self.reg.register_sims[index] for index in self.pair_indices]
+        reg_msims = [self.reg.register_msims[index] for index in self.pair_indices]
         transforms = {(0, 1): self.calc_mod_pair_transform()}
-        metrics = calc_sims_metrics(reg_sims, transforms, metric_methods=self.metrics_methods)
+        metrics = calc_msims_metrics(reg_msims, transforms, metric_methods=self.metrics_methods)
         self.populate_metrics_table(metrics)
 
-    def preview_registration(self):
-        self._clear_napari_view(self.viewer)
+    @catch_run_errors
+    def run_preview_registration(self):
         label1 = self.param_widgets.get('registration.reg_preview_image1').get_value()
         label2 = self.param_widgets.get('registration.reg_preview_image2').get_value()
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
 
-        if not self.reg.register_sims:
-            self.run_pre_processing()
+        if not self.reg.register_msims:
+            if not self.run_pre_processing():
+                return None
         with NapariDaskProgress(progress_class=progress, desc='Preview registration'), \
                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
-            reg_sims = self.reg.register_sims[index1], self.reg.register_sims[index2]
-            overlap1, overlap2, sims_pixel_space = get_overlap_images(reg_sims[0], reg_sims[1], self.reg.source_transform_key)
-            overlap1, overlap2 = overlap1.squeeze().compute(), overlap2.squeeze().compute()
-            reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = (
-                self.reg.create_registration_method(self.reg.register_sims[0], params=self.params['registration']))
-            results = pairwise_reg_func(overlap1, overlap2)
+            registration_params = self.params['registration']
+            channel = registration_params.get('channel')
+            cache = self._preview_overlap_cache
+            # the overlap crop only depends on the source data (register_msims - a new list
+            # object every time pre-processing actually re-runs) and which pair/channel is
+            # selected, never on the registration method or its tuning parameters - reuse it
+            # across parameter-only changes instead of re-cropping from the (possibly large)
+            # source data every time
+            if (cache is not None and cache['register_msims'] is self.reg.register_msims
+                    and cache['index1'] == index1 and cache['index2'] == index2
+                    and cache['channel'] == channel):
+                overlap1, overlap2, sims_pixel_space = cache['overlap1'], cache['overlap2'], cache['sims_pixel_space']
+            else:
+                msim1, msim2 = self.reg.register_msims[index1], self.reg.register_msims[index2]
+                overlap1, overlap2, sims_pixel_space = self.reg.select_pair_overlap(
+                    msim1, msim2, params=registration_params)
+                overlap1, overlap2 = overlap1.compute(), overlap2.compute()
+                self._preview_overlap_cache = {
+                    'register_msims': self.reg.register_msims,
+                    'index1': index1, 'index2': index2, 'channel': channel,
+                    'overlap1': overlap1, 'overlap2': overlap2, 'sims_pixel_space': sims_pixel_space,
+                }
 
-            source_affine = results['affine_matrix']
-            try:
-                # Handle error in resulting matrix - unclear cause but likely occurs when failure to register
-                affine_phys = affine_from_intrinsic_affine(source_affine, sims_pixel_space, self.reg.source_transform_key)
-            except NotImplementedError:
-                affine_phys = source_affine
+            transform, quality, results = self.reg.register_overlap(
+                overlap1, overlap2, sims_pixel_space, params=registration_params)
 
-            transforms = {
-                (0, 1): affine_phys
-            }
-            qualities = {
-                (0, 1): np.array(results['quality'])
-            }
-            metrics = calc_sims_metrics(reg_sims, transforms, qualities, metric_methods=self.metrics_methods)
+            msim1, msim2 = self.reg.register_msims[index1], self.reg.register_msims[index2]
+            transforms = {(0, 1): transform}
+            qualities = {(0, 1): quality}
+            metrics = calc_msims_metrics((msim1, msim2), transforms, qualities, metric_methods=self.metrics_methods)
+
+        return metrics, results, overlap1, overlap2
+
+    def preview_registration(self):
+        self._clear_napari_view(self.viewer)
+        result = self.run_preview_registration()
+        if result is None:
+            return
+        metrics, results, overlap1, overlap2 = result
 
         self.populate_metrics_table(metrics)
 
@@ -656,10 +766,10 @@ class Interface:
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
 
     def update_registered(self, view_transform_key=None):
-        sims = self.reg.sims
-        coord_systems = list({a for group in [si_utils.get_tranform_keys_from_sim(sim) for sim in sims] for a in group})
+        msims = self.reg.msims
+        coord_systems = get_transforms(msims)
         self.populate_coordinate_systems(coord_systems)
-        self.populate_metadata_table(sims)
+        self.populate_metadata_table(msims)
         self.populate_metrics_table(self.reg.metrics)
         self.update_views(transform_key=view_transform_key)
 
@@ -668,15 +778,17 @@ class Interface:
         if widget:
             widget.widget.enabled = enabled
 
+    @catch_run_errors
     def run_pair_registration(self):
-        if not self.reg.register_sims:
-            self.run_pre_processing()
+        if not self.reg.register_msims:
+            if not self.run_pre_processing():
+                return None
 
         with NapariMVSProgress(tqdm_class=progress, patch_registration=True), \
                 NapariDaskProgress(progress_class=progress, desc='Pair registration'), \
                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
-            results = self.reg.register_pairs(self.reg.sims, self.reg.register_sims,
+            results = self.reg.register_pairs(self.reg.register_msims,
                                               params=self.params['registration'] | {'metrics': self.metrics_methods})
 
         qualities = {key: metric[default_transform_key][default_quality_key]
@@ -691,11 +803,12 @@ class Interface:
         self.enable_modify_pair_registration()
         return results
 
+    @catch_run_errors
     def run_global_registration(self):
         with NapariDaskProgress(progress_class=progress, desc='Global registration'), \
                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
                 VisibleActivityDock(self.viewer):
-            results = self.reg.register_global(self.reg.sims, self.reg.msims,
+            results = self.reg.register_global(self.reg.pair_msims,
                                                register_indices=self.reg.register_indices,
                                                params=self.params['registration'])
 
@@ -713,7 +826,8 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align', message,
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
-                self.run_pair_registration()
+                if not self.run_pair_registration():
+                    return
                 self.update_registered(view_transform_key=self.reg.source_transform_key)
                 QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
 
@@ -742,6 +856,9 @@ class Interface:
             self.view_mode = ViewMode.OVERVIEW
             self.update_registered(view_transform_key=self.reg.source_transform_key)
             self.temp_widget_state.restore()
+            if self.enable_tab:
+                for section_id, was_enabled in self.temp_tab_states.items():
+                    self.enable_tab(section_id, was_enabled)
         else:
             self.view_mode = ViewMode.PAIRS
             labels = self.reg.file_labels
@@ -762,22 +879,33 @@ class Interface:
                 all_widgets = self.get_all_widgets()
                 all_widgets.pop('registration.modify_pair_registration', None)
                 self.temp_widget_state.disable(all_widgets)
+                if self.enable_tab and self.is_tab_enabled:
+                    other_section_ids = [section_id for section_id in ['project'] + list(self.template.keys())
+                                        if section_id != 'registration']
+                    self.temp_tab_states = {section_id: self.is_tab_enabled(section_id)
+                                            for section_id in other_section_ids}
+                    for section_id in other_section_ids:
+                        self.enable_tab(section_id, False)
                 self.pair_indices = indices
                 pair_transform = np.array(pair_transforms[indices].sel(t=0))
                 eye = np.eye(max(pair_transform.shape))
                 pair_transforms = pair_transform, eye
 
-                if not self.reg.register_sims:
-                    self.run_pre_processing()
+                if not self.reg.register_msims:
+                    if not self.run_pre_processing():
+                        return
                 self._clear_napari_view(self.viewer)
+                # register_msims is a real multiscale pyramid (built by preprocess()) - lets
+                # napari lazily load whichever level it needs during interactive adjustment
+                register_images = self.reg.register_msims
                 for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._napari_view_add_image(self.viewer, self.reg.register_sims[sim_index], labels[sim_index],
+                    self._napari_view_add_image(self.viewer, register_images[sim_index], labels[sim_index],
                                                 pair_transforms[index], color, affine_event=True)
                 self.update_pair_metrics()
 
     def calc_mod_pair_transform(self):
         transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
-        matsize = len(si_utils.get_spatial_dims_from_sim(self.reg.sims[0])) + 1
+        matsize = len(si_utils.get_spatial_dims_from_sim(get_msim_image0(self.reg.msims[0]))) + 1
         transform = calculate_rigid_difference(transforms[1][-matsize:, -matsize:],
                                                transforms[0][-matsize:, -matsize:])
         return param_utils.affine_to_xaffine(transform)
@@ -795,9 +923,11 @@ class Interface:
                                      QMessageBox.Yes|QMessageBox.No)
         if reply == QMessageBox.Yes:
             if not self.reg.is_pairs_registered():
-                self.run_pair_registration()
-            self.run_global_registration()
-            copy_transforms(self.reg.sims, self.preview_sims, self.reg.reg_transform_key)
+                if not self.run_pair_registration():
+                    return
+            if not self.run_global_registration():
+                return
+            copy_transforms_to_msims(self.reg.msims, self.view_msims, self.reg.reg_transform_key)
             self.enable_tabs(True, 4)
             self.update_registered(view_transform_key=self.reg.reg_transform_key)
             QMessageBox.information(None, 'muvis-align', completion_message)
@@ -806,8 +936,40 @@ class Interface:
         data = self._create_napari_data(self.reg.reg_transform_key,
                                         fusion_method=self.params['fusion']['method'])
         self._clear_napari_view(self.viewer)
-        self._napari_view_add_data(self.viewer, data, f'{self.reg.fileset_label} data')
+        self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
         self.view_mode = ViewMode.FUSED
+
+    @catch_run_errors
+    def run_fusion(self):
+        operation = self.params['registration']['operation']
+        output_filename = operation_to_past_participle(operation)
+        tile_size = self.params['fusion']['tile_size']
+        if ',' in tile_size:
+            tile_size = [int(size.strip()) for size in tile_size.split(',')]
+        elif isinstance(tile_size, str):
+            tile_size = int(tile_size.strip())
+        with NapariMVSProgress(tqdm_class=progress, desc='Fusion', patch_fusion=True), \
+             TemporarilyDisabledWidgets(self.enable_plugin_widget), \
+             VisibleActivityDock(self.viewer):
+            fused_image, is_saved = self.reg.fuse(self.reg.msims,
+                                                  fusion_method=self.params['fusion']['method'],
+                                                  output_spacing=self.params['fusion']['spacing'],
+                                                  dimension=self.params['input_output']['registration_dimension'],
+                                                  output_filename=output_filename,
+                                                  tile_size=tile_size,
+                                                  ome_version=self.params['fusion']['ome_version'],
+                                                  extra_metadata=self.extra_metadata)
+            if not is_saved:
+                # save() only accepts a single-resolution sim - fused_image is always the
+                # whole multiscale pyramid now, so save its finest scale
+                save_sim = extract_sims_from_fused(fused_image)
+                self.reg.save(output_filename, save_sim,
+                              transform_key=self.reg.reg_transform_key,
+                              translations0=self.reg.positions,
+                              channels=self.extra_metadata.get('channels', []),
+                              tile_size=tile_size,
+                              ome_version=self.params['fusion']['ome_version'])
+        return fused_image
 
     def fusion_process(self):
         message = 'Fusion was already performed. ' if self.reg.is_fused() else ''
@@ -815,33 +977,11 @@ class Interface:
         reply = QMessageBox.question(None, 'muvis-align', message,
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
-            operation = self.params['registration']['operation']
-            output_filename = operation_to_past_participle(operation)
-            tile_size = self.params['fusion']['tile_size']
-            if ',' in tile_size:
-                tile_size = [int(size.strip()) for size in tile_size.split(',')]
-            elif isinstance(tile_size, str):
-                tile_size = int(tile_size.strip())
-            with NapariMVSProgress(tqdm_class=progress, desc='Fusion', patch_fusion=True), \
-                 TemporarilyDisabledWidgets(self.enable_plugin_widget), \
-                 VisibleActivityDock(self.viewer):
-                fused_image, is_saved = self.reg.fuse(self.reg.sims,
-                                                      fusion_method=self.params['fusion']['method'],
-                                                      output_spacing=self.params['fusion']['spacing'],
-                                                      dimension=self.params['input_output']['registration_dimension'],
-                                                      output_filename=output_filename,
-                                                      tile_size=tile_size,
-                                                      ome_version=self.params['fusion']['ome_version'],
-                                                      extra_metadata=self.extra_metadata)
-                if not is_saved:
-                    self.reg.save(output_filename, fused_image,
-                                  transform_key=self.reg.reg_transform_key,
-                                  translations0=self.reg.positions,
-                                  channels=self.extra_metadata.get('channels', []),
-                                  tile_size=tile_size,
-                                  ome_version=self.params['fusion']['ome_version'])
+            fused_image = self.run_fusion()
+            if fused_image is None:
+                return
             self._clear_napari_view(self.viewer)
-            self._napari_view_add_data(self.viewer, fused_image, 'Fused')
+            self._napari_view_add_fused_data(self.viewer, fused_image, 'Fused')
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
             QMessageBox.information(None, 'muvis-align', 'Fusion completed')
