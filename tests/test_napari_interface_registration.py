@@ -140,7 +140,6 @@ class TestNapariInterfaceRegistration:
         input_output = config_data['input_output']
         assert 'input_path' in input_output
         assert 'output_path' in input_output
-        assert 'preview_scale' in input_output
 
     def test_interface_reset(self, make_napari_viewer, project_config):
         """Test that Interface reset clears state properly."""
@@ -249,7 +248,6 @@ class TestNapariInterfaceRegistration:
         
         assert isinstance(input_output['input_path'], str)
         assert isinstance(input_output['output_path'], str)
-        assert isinstance(input_output['preview_scale'], (int, float))
         assert isinstance(input_output['overwrite'], bool)
         assert isinstance(input_output['preview_images'], bool)
         assert isinstance(input_output['preview_shapes'], bool)
@@ -462,32 +460,12 @@ class TestNapariInterfaceRegistration:
                             assert mock_save.called
 
     def test_global_registration_with_dimension_mismatch(self, make_napari_viewer, project_config):
-        """Test update_registered handles sims with transforms that include a t dimension."""
+        """Test update_registered handles msims with transforms that include a t dimension."""
         viewer = make_napari_viewer()
-        
+
         with patch('muvis_align._widget.ViewerWidget'):
             interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-        
-        # Create mock sims with different transform dimensions
-        import xarray as xr
-        import numpy as np
-        
-        # Source sims with 't' dimension in transform
-        mock_sim_with_t = MagicMock()
-        mock_sim_with_t.dims = ('t', 'c', 'y', 'x')
-        mock_sim_with_t.attrs = {
-            'transforms': {
-                'registered': xr.DataArray(
-                    np.eye(3).reshape(1, 3, 3),
-                    dims=['t', 'x_in', 'x_out'],
-                    coords={'t': [0], 'x_in': ['y', 'x', '1'], 'x_out': ['y', 'x', '1']}
-                )
-            }
-        }
-        
-        interface.reg.sims = [mock_sim_with_t]
-        interface.preview_sims = [MagicMock()]
-        
+
         # Mock the missing reg_transform_key attribute on MVSRegistration
         interface.reg.reg_transform_key = 'registered'
         
@@ -587,7 +565,7 @@ def bare_interface():
     interface.extra_metadata = {}
     interface.param_widgets = {}
     interface.reg.file_labels = ["image-0"]
-    interface.preview_sims = [
+    interface.view_msims = [
         SimpleNamespace(dims=("z", "y", "x"), sizes={"z": 2})
     ]
     return interface
@@ -603,6 +581,184 @@ def test_change_param_updates_nested_value_and_writes(bare_interface):
         "registration": {"method": "phase"}
     }
     bare_interface.write_params.assert_called_once_with()
+
+
+def test_change_param_relativizes_input_output_paths(bare_interface, tmp_path):
+    """A file dialog (or the FileEdit widget itself) always reports an absolute path -
+    change_param() must convert it back to relative-to-project-dir before storing it, so the
+    project file keeps portable relative paths instead of being silently rewritten absolute."""
+    bare_interface.params = {}
+    bare_interface.write_params = MagicMock()
+    bare_interface.params_path = str(tmp_path / "project.yml")
+    absolute_input = str(tmp_path / "data" / "input")
+
+    bare_interface.change_param("input_output.input_path", absolute_input)
+
+    assert bare_interface.params["input_output"]["input_path"] == "data/input"
+
+
+def test_change_param_leaves_other_params_untouched_by_relativizing(bare_interface, tmp_path):
+    bare_interface.params = {}
+    bare_interface.write_params = MagicMock()
+    bare_interface.params_path = str(tmp_path / "project.yml")
+
+    bare_interface.change_param("registration.method", str(tmp_path / "not-a-path-param"))
+
+    assert bare_interface.params["registration"]["method"] == str(tmp_path / "not-a-path-param").replace('\\', '/')
+
+
+def test_get_project_dir_returns_none_before_project_loaded(bare_interface):
+    assert not hasattr(bare_interface, "params_path")
+    assert bare_interface.get_project_dir() is None
+
+
+def test_update_input_output_path_displays_stored_value_as_is(bare_interface, tmp_path):
+    """input/output paths are stored relative to the project directory - the widgets must
+    display that exact relative text, not an absolute path, so a loaded project still looks
+    relative in the UI. FileEdit.set_value() would force it absolute, so the display path must
+    be written straight into the widget's inner line edit instead."""
+    bare_interface.params_path = str(tmp_path / "project.yml")
+    bare_interface.params = {
+        "input_output": {"input_path": "data/input", "output_path": "results"}
+    }
+    input_widget = MagicMock()
+    output_widget = MagicMock()
+    bare_interface.param_widgets = {
+        "input_output.input_path": input_widget,
+        "input_output.output_path": output_widget,
+    }
+
+    bare_interface.update_input_output_path()
+
+    assert input_widget.widget.line_edit.value == "data/input"
+    assert output_widget.widget.line_edit.value == "results"
+    input_widget.set_value.assert_not_called()
+    output_widget.set_value.assert_not_called()
+
+
+def test_update_input_output_path_falls_back_to_set_value_without_line_edit(bare_interface, tmp_path):
+    """A widget without an inner line_edit (e.g. not a FileEdit) falls back to the normal
+    set_value() path instead of erroring."""
+    bare_interface.params_path = str(tmp_path / "project.yml")
+    bare_interface.params = {
+        "input_output": {"input_path": "data/input", "output_path": ""}
+    }
+    input_widget = MagicMock()
+    input_widget.widget = SimpleNamespace()  # no line_edit attribute
+    bare_interface.param_widgets = {
+        "input_output.input_path": input_widget,
+        "input_output.output_path": MagicMock(),
+    }
+
+    bare_interface.update_input_output_path()
+
+    input_widget.set_value.assert_called_once_with("data/input")
+
+
+def test_input_output_process_resolves_relative_paths_before_reg_init(bare_interface, tmp_path):
+    """input_path/output_path are stored relative to the project directory - MVSRegistration
+    resolves a relative path against the process's cwd (not the project dir), so
+    input_output_process() must resolve them to absolute paths before calling reg.init()."""
+    bare_interface.params_path = str(tmp_path / "project.yml")
+    bare_interface.params = {
+        "input_output": {
+            "input_path": "data/input",
+            "output_path": "results",
+            "overwrite": True,
+        }
+    }
+    bare_interface.reg.is_initialised.return_value = False
+    bare_interface.need_source_reinit = False
+    bare_interface.reg.init.return_value = True
+    bare_interface.update_metadata_source = MagicMock(return_value=True)
+    bare_interface.populate_image_selection = MagicMock()
+    bare_interface.init_progress = MagicMock()
+
+    bare_interface.input_output_process()
+
+    expected_input = str(tmp_path / "data" / "input").replace('\\', '/')
+    expected_output = str(tmp_path / "results").replace('\\', '/') + '/'
+    bare_interface.reg.init.assert_called_once_with(
+        input_path=expected_input,
+        output_path=expected_output,
+        overwrite=True,
+    )
+
+
+def test_get_all_widgets_excludes_widgets_on_disabled_tabs(bare_interface):
+    """A widget on a currently disabled tab always reads .enabled == False, so if
+    modify_pair_registration snapshotted and restored it via get_all_widgets, it would stay
+    disabled even after its tab becomes enabled later. get_all_widgets must exclude it instead."""
+    bare_interface.param_widgets = {
+        "registration.method": SimpleNamespace(widget="reg-widget"),
+        "fusion.method": SimpleNamespace(widget="fusion-widget"),
+    }
+    bare_interface.is_tab_enabled = lambda section_id: section_id != "fusion"
+
+    all_widgets = bare_interface.get_all_widgets()
+
+    assert all_widgets == {"registration.method": "reg-widget"}
+
+
+def test_modify_pair_registration_disables_other_tabs_and_restores_them(
+    bare_interface, monkeypatch
+):
+    """Entering pair-modification mode must disable every other tab (not registration - its own
+    widgets are already disabled via get_all_widgets) so the user can't navigate away
+    mid-adjustment, and restore each tab's prior enabled state on exit."""
+    import xarray as xr
+
+    bare_interface.view_mode = None
+    bare_interface.viewer = MagicMock()
+    bare_interface.template = {
+        "input_output": [], "pre_processing": [], "registration": [], "fusion": []
+    }
+    tab_states = {
+        "project": True, "input_output": True, "pre_processing": True,
+        "registration": True, "fusion": False,
+    }
+    bare_interface.is_tab_enabled = lambda section_id: tab_states[section_id]
+    bare_interface.enable_tab = MagicMock(
+        side_effect=lambda section_id, enabled: tab_states.__setitem__(section_id, enabled)
+    )
+    bare_interface.get_all_widgets = MagicMock(return_value={})
+    bare_interface.param_widgets = {
+        "registration.reg_preview_image1": SimpleNamespace(get_value=lambda: "image-0"),
+        "registration.reg_preview_image2": SimpleNamespace(get_value=lambda: "image-0"),
+    }
+    bare_interface.reg.file_labels = ["image-0"]
+    bare_interface.reg.register_msims = ["msim"]
+    transform = xr.DataArray(
+        np.eye(3).reshape(1, 3, 3), dims=["t", "x_in", "x_out"], coords={"t": [0]}
+    )
+    monkeypatch.setattr(
+        interface_module.nx, "get_edge_attributes", lambda *_: {(0, 0): transform}
+    )
+    bare_interface._clear_napari_view = MagicMock()
+    bare_interface._napari_view_add_image = MagicMock()
+    bare_interface.update_pair_metrics = MagicMock()
+
+    bare_interface.modify_pair_registration()
+
+    disabled_ids = [call.args[0] for call in bare_interface.enable_tab.call_args_list]
+    assert set(disabled_ids) == {"project", "input_output", "pre_processing", "fusion"}
+    assert tab_states == {
+        "project": False, "input_output": False, "pre_processing": False,
+        "registration": True, "fusion": False,
+    }
+
+    bare_interface.enable_tab.reset_mock()
+    bare_interface.update_registered = MagicMock()
+    monkeypatch.setattr(
+        interface_module.QMessageBox, "question", lambda *_: interface_module.QMessageBox.No
+    )
+
+    bare_interface.modify_pair_registration()
+
+    assert tab_states == {
+        "project": True, "input_output": True, "pre_processing": True,
+        "registration": True, "fusion": False,
+    }
 
 
 def test_tab_changed_clears_feature_view_and_stops_timer(bare_interface):
@@ -677,12 +833,16 @@ def test_project_path_handles_existing_and_new_projects(
 
     bare_interface.reset.assert_called_once_with()
     assert bare_interface.params_path == "project.yml"
+    # update_input_output_path() must run for both an existing and a brand-new project - it
+    # resolves the stored (relative-to-project-dir) input/output paths for display, which
+    # update_widgets() deliberately skips
+    bare_interface.update_input_output_path.assert_called_once_with()
     if exists:
         bare_interface.update_widgets.assert_called_once_with()
         bare_interface.write_params.assert_not_called()
     else:
         bare_interface.write_params.assert_called_once_with()
-        bare_interface.update_input_output_path.assert_called_once_with()
+        bare_interface.update_widgets.assert_not_called()
 
 
 def test_populate_choices_and_image_selection(bare_interface):
@@ -739,7 +899,6 @@ def test_get_best_transform_key(
 ):
     bare_interface.reg.reg_transform_key = "registered"
     bare_interface.reg.source_transform_key = "source_metadata"
-    bare_interface.reg.sims = [object()]
     monkeypatch.setattr(
         interface_module, "get_transforms", lambda _: transforms
     )
@@ -752,7 +911,7 @@ def test_update_views_adds_enabled_preview_layers(
 ):
     bare_interface.viewer = MagicMock()
     bare_interface.overview = MagicMock()
-    bare_interface.reg.sims = bare_interface.preview_sims
+    bare_interface.reg.msims = bare_interface.view_msims
     bare_interface.params = {
         "input_output": {
             "preview_images": True,
@@ -779,6 +938,9 @@ def test_update_views_adds_enabled_preview_layers(
         interface_module.si_utils,
         "get_origin_from_sim",
         lambda _: {"z": 0},
+    )
+    monkeypatch.setattr(
+        interface_module, "get_msim_image0", lambda msim: msim
     )
 
     bare_interface.update_views(show_preprocessed=True)
@@ -813,15 +975,15 @@ def test_update_views_adds_enabled_preview_layers(
     assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
 
 
-def test_update_views_detects_multi_z_from_preview_sims(
+def test_update_views_detects_multi_z_from_view_msims(
     bare_interface, monkeypatch
 ):
     bare_interface.viewer = MagicMock()
     bare_interface.overview = MagicMock()
-    bare_interface.reg.sims = [
+    bare_interface.reg.msims = [
         SimpleNamespace(dims=("y", "x"), sizes={"y": 10, "x": 10})
     ]
-    bare_interface.preview_sims = [object(), object()]
+    bare_interface.view_msims = [object(), object()]
     bare_interface.params = {
         "input_output": {"preview_images": False, "preview_shapes": False}
     }
@@ -831,9 +993,12 @@ def test_update_views_detects_multi_z_from_preview_sims(
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._update_view_add_shapes = MagicMock()
     preview_z = {
-        id(bare_interface.preview_sims[0]): 0,
-        id(bare_interface.preview_sims[1]): 1,
+        id(bare_interface.view_msims[0]): 0,
+        id(bare_interface.view_msims[1]): 1,
     }
+    monkeypatch.setattr(
+        interface_module, "get_msim_image0", lambda msim: msim
+    )
     monkeypatch.setattr(
         interface_module.si_utils,
         "get_origin_from_sim",
@@ -863,7 +1028,10 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
         "get_origin_from_sim",
         lambda _: {"z": 0},
     )
-    monkeypatch.setattr(interface_module, "create_sim_shapes", create_shapes)
+    monkeypatch.setattr(
+        interface_module, "get_msim_image0", lambda msim: msim
+    )
+    monkeypatch.setattr(interface_module, "create_image_shapes", create_shapes)
     monkeypatch.setattr(
         interface_module, "create_overlap_shapes", create_overlaps
     )
@@ -888,7 +1056,7 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
 def test_update_napari_shapes_uses_shapes_layer_for_2d(
     bare_interface, monkeypatch
 ):
-    bare_interface.preview_sims = [
+    bare_interface.view_msims = [
         SimpleNamespace(dims=("y", "x"), sizes={"y": 10, "x": 10})
     ]
     viewer = MagicMock()
@@ -897,7 +1065,10 @@ def test_update_napari_shapes_uses_shapes_layer_for_2d(
         interface_module.si_utils, "get_origin_from_sim", lambda _: {}
     )
     monkeypatch.setattr(
-        interface_module, "create_sim_shapes", lambda *_, **__: [shape]
+        interface_module, "get_msim_image0", lambda msim: msim
+    )
+    monkeypatch.setattr(
+        interface_module, "create_image_shapes", lambda *_, **__: [shape]
     )
 
     shapes = [shape]
@@ -1006,7 +1177,6 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
     bare_interface.params = {"registration": {"method": "phase"}}
     bare_interface.metrics_methods = ["ncc"]
     bare_interface.get_all_widgets = MagicMock(return_value={})
-    bare_interface.reg.sims = ["sim"]
     bare_interface.reg.register_msims = ["register-msim"]
     bare_interface.reg.pairs_graph = object()
     results = {
@@ -1053,7 +1223,6 @@ def test_run_global_registration_persists_all_results(
     bare_interface.viewer = MagicMock()
     bare_interface.params = {"registration": {"method": "phase"}}
     bare_interface.get_all_widgets = MagicMock(return_value={})
-    bare_interface.reg.sims = ["sim"]
     bare_interface.reg.pair_msims = ["msim"]
     bare_interface.reg.register_indices = [0]
     results = {
@@ -1079,6 +1248,87 @@ def test_run_global_registration_persists_all_results(
     bare_interface.reg.save_metrics.assert_called_once_with(
         results["metrics"]
     )
+
+
+def _stub_preview_registration_deps(bare_interface, monkeypatch, label1="image-0", label2="image-1"):
+    bare_interface.viewer = MagicMock()
+    bare_interface.param_widgets = {
+        "registration.reg_preview_image1": SimpleNamespace(get_value=lambda: label1),
+        "registration.reg_preview_image2": SimpleNamespace(get_value=lambda: label2),
+    }
+    bare_interface.reg.file_labels = ["image-0", "image-1", "image-2"]
+    bare_interface.reg.register_msims = ["msim-0", "msim-1", "msim-2"]
+    bare_interface.metrics_methods = []
+    bare_interface._preview_overlap_cache = None
+    overlap1 = SimpleNamespace(compute=lambda: "overlap1-computed")
+    overlap2 = SimpleNamespace(compute=lambda: "overlap2-computed")
+    bare_interface.reg.select_pair_overlap.return_value = (overlap1, overlap2, "pixel-space")
+    bare_interface.reg.register_overlap.return_value = ("transform", 0.5, {"fixed_points": []})
+    monkeypatch.setattr(interface_module, "calc_msims_metrics", lambda *a, **k: {"metrics": True})
+    bare_interface.params = {"registration": {"method": "orb"}}
+
+
+def test_run_preview_registration_reuses_cached_overlap_across_param_changes(
+    bare_interface, monkeypatch, mocked_activity_contexts
+):
+    """The overlap crop depends only on source data and the selected pair/channel - not on
+    registration method/tuning - so select_pair_overlap() must run once and register_overlap()
+    must reuse the cached crop across parameter-only changes."""
+    _stub_preview_registration_deps(bare_interface, monkeypatch)
+
+    bare_interface.params = {"registration": {"method": "orb"}}
+    result1 = bare_interface.run_preview_registration()
+    bare_interface.params = {"registration": {"method": "sift"}}
+    result2 = bare_interface.run_preview_registration()
+
+    assert result1 is not None and result2 is not None
+    assert bare_interface.reg.select_pair_overlap.call_count == 1
+    assert bare_interface.reg.register_overlap.call_count == 2
+
+
+def test_run_preview_registration_cache_invalidated_on_pair_change(
+    bare_interface, monkeypatch, mocked_activity_contexts
+):
+    """Selecting a different image pair must invalidate the cached overlap crop."""
+    _stub_preview_registration_deps(bare_interface, monkeypatch, label1="image-0", label2="image-1")
+
+    bare_interface.run_preview_registration()
+
+    bare_interface.param_widgets["registration.reg_preview_image2"] = SimpleNamespace(
+        get_value=lambda: "image-2"
+    )
+    bare_interface.run_preview_registration()
+
+    assert bare_interface.reg.select_pair_overlap.call_count == 2
+
+
+def test_run_preview_registration_cache_invalidated_when_register_msims_changes(
+    bare_interface, monkeypatch, mocked_activity_contexts
+):
+    """preprocess() assigns a new register_msims list object whenever pre-processing actually
+    changes something - the cached overlap crop must be invalidated when that identity changes."""
+    _stub_preview_registration_deps(bare_interface, monkeypatch)
+
+    bare_interface.run_preview_registration()
+
+    bare_interface.reg.register_msims = ["msim-0-reprocessed", "msim-1-reprocessed", "msim-2-reprocessed"]
+    bare_interface.run_preview_registration()
+
+    assert bare_interface.reg.select_pair_overlap.call_count == 2
+
+
+def test_run_preview_registration_returns_none_on_failure(
+    bare_interface, monkeypatch, mocked_activity_contexts
+):
+    """@catch_run_errors must turn an internal failure into a None return instead of an
+    unhandled exception, so preview_registration() can bail out cleanly."""
+    _stub_preview_registration_deps(bare_interface, monkeypatch)
+    bare_interface.reg.select_pair_overlap.side_effect = ValueError("boom")
+    monkeypatch.setattr("muvis_align.ui._utils.show_error", MagicMock())
+
+    result = bare_interface.run_preview_registration()
+
+    assert result is None
 
 
 @pytest.mark.parametrize(
@@ -1140,18 +1390,13 @@ def test_registration_process_confirmation_and_prerequisites(
     bare_interface.reg.is_pairs_registered.return_value = pairs_registered
     bare_interface.reg.msims = ["sim"]
     bare_interface.reg.reg_transform_key = "registered"
-    bare_interface.preview_sims = ["preview"]
+    bare_interface.view_msims = ["preview"]
     bare_interface.run_pair_registration = MagicMock()
     bare_interface.run_global_registration = MagicMock()
     bare_interface.enable_tabs = MagicMock()
     bare_interface.update_registered = MagicMock()
     copy = MagicMock()
-    monkeypatch.setattr(interface_module, "copy_transforms", copy)
-    # _registered_sims() extracts scale0 sims from reg.msims - identity here, so the mocked
-    # "sim" msim above passes straight through
-    monkeypatch.setattr(
-        interface_module.msi_utils, "get_sim_from_msim", lambda msim, scale='scale0': msim
-    )
+    monkeypatch.setattr(interface_module, "copy_transforms_to_msims", copy)
     monkeypatch.setattr(
         interface_module.QMessageBox,
         "question",
@@ -1193,7 +1438,6 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         },
     }
     bare_interface.reg.is_fused.return_value = False
-    bare_interface.reg.sims = ["sim"]
     bare_interface.reg.fuse.return_value = ("fused", None)
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface._clear_napari_view = MagicMock()
@@ -1221,11 +1465,10 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     assert bare_interface.view_mode is CanonicalViewMode.FUSED
 
 
-def test_build_preview_sims_extracts_downsampled_level_from_msims():
-    """_build_preview_sims() must pick a real pyramid level from reg.msims
-    (populated by init_data()) matching the requested preview_scale, without
-    re-reading/rescaling the source data via a second init_data() call."""
-    from multiview_stitcher import spatial_image_utils as si_utils
+def test_build_view_msims_uses_native_pyramid_when_available():
+    """_build_view_msims() must use a source's own msim as-is when it already has more than one
+    native pyramid level - napari can lazily pick whichever resolution it needs from that real
+    pyramid, so no downscaling step is needed."""
     from muvis_align.MVSRegistration import MVSRegistration
 
     reg = MVSRegistration()
@@ -1238,21 +1481,58 @@ def test_build_preview_sims_extracts_downsampled_level_from_msims():
         output_path='../../output/test_preview/',
     )
     reg.init_data()
+    assert all(len(source.shapes) > 1 for source in reg.sources)  # sanity check: native pyramid
 
     interface = Interface.__new__(Interface)
     interface.reg = reg
-    interface.params = {'input_output': {'preview_scale': 4}}
 
-    preview_sims = interface._build_preview_sims()
+    view_msims = interface._build_view_msims()
 
-    assert len(preview_sims) == len(reg.sims)
-    for full_sim, preview_sim in zip(reg.sims, preview_sims):
-        full_size = si_utils.get_shape_from_sim(full_sim, asarray=False)
-        preview_size = si_utils.get_shape_from_sim(preview_sim, asarray=False)
-        for dim in full_size:
-            assert preview_size[dim] <= full_size[dim]
-        # position must be preserved regardless of resolution
-        assert si_utils.get_origin_from_sim(preview_sim) == si_utils.get_origin_from_sim(full_sim)
+    assert view_msims == list(reg.msims)
+
+
+def test_build_view_msims_downscales_large_single_resolution_source():
+    """A single-resolution source (no native pyramid to pick a coarser level from) larger than
+    1000px on its largest spatial dimension must be downscaled by one constant factor so that
+    dimension becomes ~1000px; a source already at or under 1000px is left untouched."""
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.image.util import get_msim_image0, wrap_sims_as_msims
+
+    def make_source_and_msim(size):
+        sim = si_utils.get_sim_from_array(
+            np.zeros((size, size), dtype=np.uint8),
+            dims=['y', 'x'],
+            scale={'y': 1, 'x': 1},
+            translation={'y': 0, 'x': 0},
+            transform_key='source_metadata',
+        )
+        msim = wrap_sims_as_msims([sim])[0]
+        source = SimpleNamespace(
+            shapes=[(size, size)],
+            scale_factors=[{'y': 1.0, 'x': 1.0}],
+            get_pixel_size=lambda: {'y': 1.0, 'x': 1.0},
+        )
+        return source, msim
+
+    large_source, large_msim = make_source_and_msim(2000)
+    small_source, small_msim = make_source_and_msim(500)
+
+    interface = Interface.__new__(Interface)
+    interface.reg = SimpleNamespace(
+        sources=[large_source, small_source],
+        msims=[large_msim, small_msim],
+        source_transform_key='source_metadata',
+    )
+
+    view_msims = interface._build_view_msims()
+
+    large_image0 = get_msim_image0(view_msims[0])
+    assert large_image0.sizes['x'] == 1000
+    assert large_image0.sizes['y'] == 1000
+
+    small_image0 = get_msim_image0(view_msims[1])
+    assert small_image0.sizes['x'] == 500
+    assert small_image0.sizes['y'] == 500
 
 
 def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer):
@@ -1276,10 +1556,9 @@ def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer):
 
     interface = Interface.__new__(Interface)
     interface.reg = reg
-    interface.params = {'input_output': {'preview_scale': 4, 'registration_dimension': 'all'}}
+    interface.params = {'input_output': {'registration_dimension': 'all'}}
     interface.extra_metadata = {}
-    interface.preview_msims = interface._build_preview_msims()
-    interface.preview_sims = [msi_utils.get_sim_from_msim(m, scale='scale0') for m in interface.preview_msims]
+    interface.view_msims = interface._build_view_msims()
 
     fused_msim = interface._create_napari_data(reg.source_transform_key, fusion_method='')
     n_levels = len(msi_utils.get_sorted_scale_keys(fused_msim))

@@ -6,7 +6,7 @@ from multiview_stitcher import msi_utils, param_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_transform_key
-from muvis_align.image.util import combine_transforms
+from muvis_align.image.util import combine_transforms, build_source_redimensioned_msim
 from muvis_align.util import (find_all_numbers, split_numeric_dict, eval_context, check_contains_value,
                               create_transform, load_sbemimage_best_config, adjust_sbemimage_properties)
 
@@ -34,6 +34,7 @@ class ImageSource:
         self.metadata = {}
         self.transform = None
         self.msim = None
+        self._redimensioned_msims = {}
         self.init_metadata()
         self.fix_metadata(source_metadata, extra_metadata, matrix_size)
         if self.msim is None:
@@ -43,6 +44,16 @@ class ImageSource:
             # this run's final geometry onto it in place, instead of tearing it down to raw
             # arrays and rebuilding a whole new msim from scratch via _build_msim()
             self._restamp_msim()
+
+    def get_msim(self, output_order):
+        """self.msim redimensioned to `output_order`, built once and cached per output_order -
+        build_source_msim() calls this on every run instead of redimensioning self.msim from
+        scratch each time, since redimensioning only depends on (self, output_order), never on
+        per-run geometry (translation/transform).
+        """
+        if output_order not in self._redimensioned_msims:
+            self._redimensioned_msims[output_order] = build_source_redimensioned_msim(self, output_order)
+        return self._redimensioned_msims[output_order]
 
     def init_metadata(self):
         raise NotImplementedError("Image source should implement init_metadata() to initialize metadata,"
@@ -165,8 +176,10 @@ class ImageSource:
                 self.transform = np.array(combine_transforms([self.transform, transform2]))
 
     def _build_msim(self):
-        c_coords = ([channel.get('label', '') for channel in self.get_channels()]
-                    if 'c' in self.dimension_order else None)
+        # si_utils.get_sim_from_array forces a 'c' dim regardless (size 1 if not already in
+        # dimension_order) - label it unconditionally so a channel selected by name (e.g.
+        # registration's 'channel' param) can be found via .sel(c=...) either way
+        c_coords = [channel.get('label', '') for channel in self.get_channels()]
         # fix empty/incomplete dicts: si_utils.get_sim_from_array requires either a translation
         # covering every spatial dim, or None (letting it default everything to 0)
         translation = dict(self.position)

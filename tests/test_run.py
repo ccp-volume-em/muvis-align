@@ -27,7 +27,7 @@ def test(resource_file):
 @pytest.mark.parametrize(
     'resource_file', test_filenames,
 )
-def test_msims_match_sims(resource_file):
+def test_msims_pyramid_levels_shrink(resource_file):
     from multiview_stitcher import spatial_image_utils as si_utils
 
     with open(os.path.join('resources', resource_file), 'r', encoding='utf8') as file:
@@ -37,27 +37,14 @@ def test_msims_match_sims(resource_file):
     reg = MVSRegistration()
     reg.init_params(params['general'], operation_params)
     msims = reg.init_data()  # msims is init_data()'s primary return value
-    sims = reg.sims
 
-    assert len(msims) == len(sims)
-    for sim, msim in zip(sims, msims):
+    for msim in msims:
         scale_keys = msi_utils.get_sorted_scale_keys(msim)
         assert len(scale_keys) >= 1
-        sim0 = msi_utils.get_sim_from_msim(msim, scale=scale_keys[0])
-
-        # the msim's highest-resolution scale must carry exactly the same geometry as the sim
-        # that init_data() produces for the (possibly rescaled) working resolution
-        assert sim0.dims == sim.dims
-        assert sim0.shape == sim.shape
-        assert si_utils.get_origin_from_sim(sim0) == si_utils.get_origin_from_sim(sim)
-        assert si_utils.get_spacing_from_sim(sim0) == si_utils.get_spacing_from_sim(sim)
-
-        affine_sim = si_utils.get_affine_from_sim(sim, reg.source_transform_key)
-        affine_msim = si_utils.get_affine_from_sim(sim0, reg.source_transform_key)
-        assert (affine_sim.values == affine_msim.values).all()
+        assert scale_keys[0] == 'scale0'
 
         # lower pyramid levels shrink and their spacing grows accordingly
-        prev_sim = sim0
+        prev_sim = msi_utils.get_sim_from_msim(msim, scale='scale0')
         for scale_key in scale_keys[1:]:
             level_sim = msi_utils.get_sim_from_msim(msim, scale=scale_key)
             for dim in si_utils.get_spatial_dims_from_sim(level_sim):
@@ -80,7 +67,12 @@ def test2(resource_file):
     reg.preprocess(reg.msims)
     reg_msims, reg_indices = reg.register_msims, reg.register_indices
     reg.register_pairs(reg_msims, params=reg_params)
-    msims = [msi_utils.get_msim_from_sim(sim) for sim in reg.sims]
+    from muvis_align.image.util import wrap_sims_as_msims
+    # a trivial single-level msim per source, independent from reg.msims itself, so the
+    # assertions below can verify register_global() propagates the registered transform onto
+    # self.msims on its own, not just onto whatever `pair_msims` it was called with
+    sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.msims]
+    msims = wrap_sims_as_msims(sims)
     reg.register_global(msims, params=reg_params)
 
     # register_global must also propagate the registered transform onto self.msims,
@@ -127,8 +119,8 @@ def test_fuse_with_real_pyramid_matches_trivial_wrap(resource_file):
     reg.preprocess(reg.msims, **operation_params.get('preprocess', {}))
     reg.register(reg.register_msims, reg.register_indices, params=operation_params)
 
-    # reg.sims is never updated with the registered transform (only reg.msims is, by
-    # register_global) - extract the registered scale0 sims from reg.msims instead
+    # the registered transform lives on reg.msims (written by register_global) - extract the
+    # registered scale0 sims from there
     from multiview_stitcher import msi_utils
     registered_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.msims]
     trivial_msims = wrap_sims_as_msims(registered_sims)
@@ -167,7 +159,8 @@ def test_fuse_channel_overlay_real_pyramid_matches_trivial_wrap():
     reg.init_params(params['general'], operation_params)
     reg.init_data()
 
-    fused_trivial, _ = reg.fuse(wrap_sims_as_msims(reg.sims), transform_key=reg.source_transform_key)
+    sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.msims]
+    fused_trivial, _ = reg.fuse(wrap_sims_as_msims(sims), transform_key=reg.source_transform_key)
     fused_pyramid, _ = reg.fuse(reg.msims, transform_key=reg.source_transform_key)
 
     sim_trivial = msi_utils.get_sim_from_msim(fused_trivial, scale='scale0')
@@ -190,13 +183,10 @@ def test_fuse_channel_overlay_real_pyramid_matches_trivial_wrap():
     ],
     ids=['none', 'gaussian+global-norm', 'individual-norm'],
 )
-def test_register_msims_multilevel_matches_register_sims(resource_file, preprocess_kwargs):
-    # preprocess() tracks a real multiscale counterpart (self.register_msims) alongside the
-    # single-resolution self.register_sims, for the preprocessing steps that generalise cleanly
-    # per pyramid level (plain passthrough, gaussian, normalisation) - verify its scale0 matches
-    # register_sims exactly, and that every native pyramid level survived
-    import numpy as np
-
+def test_register_msims_is_multilevel(resource_file, preprocess_kwargs):
+    # preprocess() tracks a real multiscale self.register_msims (msims-in/msims-out throughout,
+    # even for the preprocessing steps that generalise cleanly per pyramid level: plain
+    # passthrough, gaussian, normalisation) - verify every native pyramid level survived
     with open(os.path.join('resources', resource_file), 'r', encoding='utf8') as file:
         params = yaml.safe_load(file)
 
@@ -205,17 +195,12 @@ def test_register_msims_multilevel_matches_register_sims(resource_file, preproce
     reg.init_params(params['general'], operation_params)
     reg.init_data()
     reg.preprocess(reg.msims, **preprocess_kwargs)
-    reg_sims = reg.register_sims
 
     assert reg.register_msims is not None
-    assert len(reg.register_msims) == len(reg_sims)
-    for sim, msim in zip(reg_sims, reg.register_msims):
+    assert len(reg.register_msims) == len(reg.msims)
+    for msim in reg.register_msims:
         scale_keys = msi_utils.get_sorted_scale_keys(msim)
         assert len(scale_keys) == len(reg.msims[0].children)
-        sim0 = msi_utils.get_sim_from_msim(msim, scale=scale_keys[0])
-        a = np.asarray(sim.data.compute() if hasattr(sim.data, 'compute') else sim.data)
-        b = np.asarray(sim0.data.compute() if hasattr(sim0.data, 'compute') else sim0.data)
-        np.testing.assert_array_equal(a, b)
 
 
 def test_preprocess_scale_selects_real_subpyramid_not_a_resize():
@@ -248,17 +233,12 @@ def test_preprocess_scale_selects_real_subpyramid_not_a_resize():
     b = np.asarray(native_sim.data.compute() if hasattr(native_sim.data, 'compute') else native_sim.data)
     np.testing.assert_array_equal(a, b)
 
-    # register_sims (the single working-resolution sim) must match the sub-pyramid's own scale0
-    a2 = np.asarray(reg.register_sims[0].data.compute() if hasattr(reg.register_sims[0].data, 'compute')
-                    else reg.register_sims[0].data)
-    np.testing.assert_array_equal(a2, a)
-
 
 def test_init_progress_resume_writes_registered_transform_onto_msims():
     # a fresh MVSRegistration resuming from a previously globally-registered run's saved
-    # mappings.json must end up with reg_transform_key set on self.msims (every scale), not just
-    # self.sims - Interface.py's init_progress() (copy_transforms(self.reg.msims, ...)) depends on
-    # this when reopening a project that was already registered
+    # mappings.json must end up with reg_transform_key set on self.msims (every scale) -
+    # Interface.py's init_progress() (copy_transforms(self.reg.msims, ...)) depends on this when
+    # reopening a project that was already registered
     from muvis_align.image.util import get_msim_transform_keys
     from muvis_align.util import operation_to_past_participle
     from muvis_align.constants import zarr_extension

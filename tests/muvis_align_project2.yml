@@ -10,7 +10,6 @@ input_output:
   output_path: C:\Users\Y\PycharmProjects\muvis-align\output2
   overwrite: true
   preview_images: true
-  preview_scale: 8
   preview_shapes: true
   source_position_x: source
   source_position_y: source

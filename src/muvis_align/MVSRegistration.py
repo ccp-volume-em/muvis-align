@@ -2,6 +2,7 @@
 # https://github.com/pydata/xarray/issues/8828
 
 from contextlib import nullcontext
+import copy
 import dask
 from dask.diagnostics import ProgressBar
 from enum import Enum, auto
@@ -28,7 +29,7 @@ from muvis_align.image.ome_helper import save_image
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
-from muvis_align.metrics import calc_pair_metrics, calc_global_metrics
+from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.Timer import Timer
 from muvis_align.util import *
 
@@ -62,9 +63,7 @@ class MVSRegistration:
         self.transition_transform_key = 'transition'
         self.source_metadata = {}
         self.extra_metadata = {}
-        self.sims = []
         self.msims = []
-        self.register_sims = []
         self.register_msims = None
         self.sources = []
         self.metrics = {}
@@ -126,7 +125,6 @@ class MVSRegistration:
         self.source_transform_key = 'source_metadata'
         self.reg_transform_key = 'registered'
         self.transition_transform_key = 'transition'
-        self.sims = []
         self.msims = []
         self.sources = []
         self.state = RegState.INIT
@@ -213,7 +211,6 @@ class MVSRegistration:
 
         with Timer('init sims', self.logging_time):
             msims = self.init_data()
-        sims = self.sims
 
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
         is_stack = ('stack' in operation)
@@ -240,7 +237,8 @@ class MVSRegistration:
 
         if len(filenames) == 1 and save_images and not 'register' in operation and not 'stack' in operation:
             logging.warning('Skipping operation (single image)')
-            self.save(output_filename, sims[0], translations0=self.positions,
+            sim = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
+            self.save(output_filename, sim, translations0=self.positions,
                       format=output_format,
                       tile_size=output_tile_size,
                       pyramid_downsample=output_pyramid_downsample,
@@ -248,7 +246,7 @@ class MVSRegistration:
                       ome_version=output_ome_version)
             return False
 
-        _, has_overlaps = self.validate_overlap(sims, file_labels, is_stack=is_simple_stack,
+        _, has_overlaps = self.validate_overlap(msims, file_labels, is_stack=is_simple_stack,
                                                 expect_large_overlap=is_simple_stack or is_channel_overlay)
         overall_overlap = np.mean(has_overlaps)
         if overall_overlap < overlap_threshold:
@@ -263,7 +261,6 @@ class MVSRegistration:
                 metrics = results['metrics']
 
             if is_stack:
-                sims = make_sims_3d(sims, z_scale, self.positions)
                 msims = make_msims_3d(msims, z_scale, self.positions)
 
             if 'register' in operation:
@@ -278,7 +275,6 @@ class MVSRegistration:
                             summary_plot_filename = output + f'{reg_label}.pdf'
                             figure.savefig(summary_plot_filename)
 
-        self.sims = sims
         self.msims = msims
         registered_positions_filename = output + registered_positions_name
         if self.reg_transform_key in get_msim_transform_keys(msims[0]):
@@ -393,8 +389,7 @@ class MVSRegistration:
                 matrix_size = 4 if source.get_size().get('z', 0) > 1 else 3
             self.sources.append(source)
 
-    def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, chunk_size=default_chunk_size,
-                  target_scale=None, store=True):
+    def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, target_scale=None, store=True):
         if not source_metadata:
             source_metadata = self.source_metadata
         if not extra_metadata:
@@ -503,7 +498,6 @@ class MVSRegistration:
                     translation['z'] = z_position
                 if increase_z_positions:
                     z_position += z_scale
-            channel_labels = [channel.get('label', '') for channel in source.get_channels()]
             if rotation is None or 'norm' in source_metadata:
                 # if positions are normalised, don't use rotation
                 transform = None
@@ -524,34 +518,24 @@ class MVSRegistration:
                 if 'y' not in translation:
                     translation['y'] = 0
 
-            # build this source's own multiscale msim directly from its already-correct msim
-            # (ImageSource.fix_metadata/_build_msim/_restamp_msim) - only the run-level deltas that
-            # no single source can know about itself (cross-source normalisation, z-stacking,
-            # extra_metadata) are applied here, via build_source_msim's lazy transpose/expand_dims +
-            # assign_coords, never by reconstructing from raw arrays with si_utils.get_sim_from_array
+            # build this source's own multiscale msim directly from its already-correct, cached
+            # msim (ImageSource.get_msim, itself built from fix_metadata/_build_msim/_restamp_msim)
+            # - only the run-level deltas that no single source can know about itself (cross-source
+            # normalisation, z-stacking, extra_metadata) are applied here, via assign_coords, never
+            # by reconstructing from raw arrays with si_utils.get_sim_from_array
             msim = build_source_msim(source, output_order, translation, transform, self.source_transform_key,
-                                     z_scale=z_scale, c_coords=channel_labels)
+                                     z_scale=z_scale)
             msims.append(msim)
             final_scales.append(scale)
             final_translations.append(translation)
 
-        # a single working-resolution sim per source, extracted on demand from the msims just built
-        # (the level nearest target_scale - default: the native, full-resolution level) - kept as
-        # self.sims for the parts of the pipeline that still need a concrete single-resolution sim
-        # (feature-based registration, fuse()'s stack properties, CSV export), not as the primary
-        # result of this method: that's the msims themselves, returned below.
-        sims = extract_sims_from_msims(msims, sources, self.source_transform_key,
-                                       target_scale=target_scale, chunk_size=chunk_size)
-
         if store:
-            self.sims = sims
             self.msims = msims
             self.scales = final_scales
             self.positions = final_translations
             self.rotations = rotations
             self.state = RegState.SIMS_INIT
 
-        #print_sim_info(sims[0])
         return msims
 
     def check_progress(self, output_filename, output_format):
@@ -589,10 +573,8 @@ class MVSRegistration:
                     if 'bbox' in value:
                         indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             if not is_3d:
-                self.sims = make_sims_2d(self.sims)
-            # scale_factors=[] avoids computing a synthetic downsample pyramid that
-            # build_view_adjacency_graph_from_msims below never uses (graph topology only)
-            self.pair_msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in self.sims]
+                self.msims = make_msims_2d(self.msims)
+            self.pair_msims = self.msims
             self.pairs = list(indexed_pair_transforms.keys())
             self.metrics = {
                 'summary': {default_transform_key: {default_quality_key: np.mean(list(indexed_qualities.values()))}},
@@ -638,11 +620,6 @@ class MVSRegistration:
                 self.msims = make_msims_3d(self.msims, z_scale, self.positions)
             elif not is_3d:
                 self.msims = make_msims_2d(self.msims)
-            # self.sims kept in sync, on demand, for the parts of the pipeline that still need a
-            # concrete single-resolution sim (feature-based registration, fuse()'s stack
-            # properties, CSV export) - derived from self.msims rather than duplicating the
-            # transform-writing loop above
-            self.sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in self.msims]
             self.pair_msims = self.msims
             metrics = import_json(metrics_filename)
             indexed_metrics = {}
@@ -733,12 +710,6 @@ class MVSRegistration:
             if progress_factory is not None
             else nullcontext(None)
         )
-
-        # a single representative sim per source, extracted on demand wherever a genuinely
-        # concrete-pixel-data operation needs one (foreground detection, flatfield/normalisation
-        # statistics) - msims stays the only representation actually tracked through this method
-        def sim0_of(msim):
-            return msi_utils.get_sim_from_msim(msim, scale='scale0')
 
         with progress_context as pbar:
             modified = False
@@ -845,7 +816,6 @@ class MVSRegistration:
                 indices = range(len(msims))
 
         self.register_msims = msims
-        self.register_sims = [sim0_of(msim) for msim in msims]
         self.register_indices = indices
         return msims, indices, modified
 
@@ -872,6 +842,8 @@ class MVSRegistration:
                 from muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures
                 registration_method = RegistrationMethodSkFeatures(sim0, params, self.debug)
             pairwise_reg_func = registration_method.registration
+        elif 'elastix' in method:
+            pairwise_reg_func = registration.registration_ITKElastix
         elif 'ant' in method:
             pairwise_reg_func = registration.registration_ANTsPy
             # args for ANTsPy registration: used internally by ANYsPy algorithm
@@ -888,6 +860,67 @@ class MVSRegistration:
         self.registration_method = registration_method
 
         return method, pairwise_reg_func, pairwise_reg_func_kwargs
+
+    def select_pair_overlap(self, msim1, msim2, params=None):
+        """Determine the resolution register_pair_of_msims_over_time would auto-select for this
+        pair (using the same public multiview_stitcher helpers it uses internally:
+        get_optimal_registration_binning + msi_utils.get_res_level_from_binning_factors) and
+        extract the two sims' overlap region at that resolution. This crop depends only on the
+        source data and the registration channel - never on the registration method or its
+        tuning parameters - so a caller (e.g. a UI preview) can cache it across repeated
+        parameter-only changes, instead of re-selecting resolution and re-cropping from the
+        (possibly large) source data every time. See register_overlap() to actually register on
+        the returned crop.
+        """
+        params = params or {}
+        # select a single registration channel first - get_optimal_registration_binning/
+        # get_overlap_images below have no 'c' dim handling of their own, unlike register_pairs()'s
+        # own channel-selection (which only runs as part of its full multi-pair graph, not for a
+        # single ad-hoc pair)
+        if 'c' in get_msim_dims(msim1):
+            reg_channel = params.get('channel', 0)
+            if isinstance(reg_channel, int):
+                reg_channel = get_msim_image0(msim1).coords['c'][reg_channel]
+            msim1 = msi_utils.multiscale_sel_coords(msim1, {'c': reg_channel})
+            msim2 = msi_utils.multiscale_sel_coords(msim2, {'c': reg_channel})
+
+        sim1_0 = msi_utils.get_sim_from_msim(msim1, scale='scale0')
+        sim2_0 = msi_utils.get_sim_from_msim(msim2, scale='scale0')
+        registration_binning = registration.get_optimal_registration_binning(sim1_0, sim2_0)
+        scale_key, remaining_binning = msi_utils.get_res_level_from_binning_factors(msim1, registration_binning)
+        sim1 = msi_utils.get_sim_from_msim(msim1, scale=scale_key)
+        sim2 = msi_utils.get_sim_from_msim(msim2, scale=scale_key)
+        if max(remaining_binning.values()) > 1:
+            binned = []
+            for sim in (sim1, sim2):
+                sim_b = sim.coarsen(remaining_binning, boundary='trim').mean().astype(sim.dtype)
+                sim_b.attrs.update(copy.deepcopy(sim.attrs))
+                binned.append(sim_b)
+            sim1, sim2 = binned
+
+        return get_overlap_images(sim1, sim2, self.source_transform_key)
+
+    def register_overlap(self, overlap1, overlap2, sims_pixel_space, params=None):
+        """Run pairwise_reg_func directly on an already-extracted overlap crop (see
+        select_pair_overlap()) - no msim-level resolution-selection or re-cropping, so a caller
+        can reuse the same crop across repeated registration-parameter-only changes. Returns the
+        physical-space transform, quality, and pairwise_reg_func's own raw result dict (feature
+        points/matches, for a napari preview overlay).
+        """
+        params = params or {}
+        _, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(overlap1, params=params)
+        pairwise_reg_func_kwargs = dict(pairwise_reg_func_kwargs or {})
+
+        fixed_data = overlap1.compute() if hasattr(overlap1, 'compute') else overlap1
+        moving_data = overlap2.compute() if hasattr(overlap2, 'compute') else overlap2
+        result = pairwise_reg_func(fixed_data, moving_data, **pairwise_reg_func_kwargs)
+
+        try:
+            transform = affine_from_intrinsic_affine(result['affine_matrix'], sims_pixel_space, self.source_transform_key)
+        except NotImplementedError:
+            transform = result['affine_matrix']
+
+        return transform, result.get('quality'), result
 
     def create_fusion_method(self, fusion_method, sim0):
         if fusion_method is None:
@@ -949,12 +982,6 @@ class MVSRegistration:
 
         if register_msims is None:
             register_msims = self.register_msims
-        if register_msims is None:
-            # preprocess() was never run with a real msim pyramid to build self.register_msims -
-            # fall back to a trivial single-level wrap of self.register_sims (scale_factors=[]
-            # avoids computing a synthetic downsample pyramid that registration never uses without
-            # reg_res_level/registration_binning)
-            register_msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in self.register_sims]
 
         if is_stack and not is_3d:
             # register in 2d; pairwise consecutive views - max-project every scale that has z
@@ -1320,10 +1347,7 @@ class MVSRegistration:
             label_key = json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]])
             output_mappings[label_key] = {'mapping': np.array(mapping.sel(t=0)).tolist()}
             if keys in qualities:
-                quality = qualities[keys]
-                if hasattr(quality, 'dims'):
-                    if 't' in quality.dims:
-                        quality = quality.sel(t=0)
+                quality = quality_to_scalar(qualities[keys])
                 output_mappings[label_key][default_quality_key] = float(quality)
             if keys in bboxes:
                 output_mappings[label_key]['bbox'] = bboxes[keys]
@@ -1339,12 +1363,12 @@ class MVSRegistration:
         data = []
         mappings_header = ['id',' filename', 'x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_tabular_name)
-        for label, filename, sim, mapping, scale, position, rotation \
-                in zip(self.file_labels, self.filenames, self.sims, mappings.values(), self.scales, self.positions, self.rotations):
+        for label, filename, msim, mapping, scale, position, rotation \
+                in zip(self.file_labels, self.filenames, self.msims, mappings.values(), self.scales, self.positions, self.rotations):
             if not normalise_orientation:
                 # rotation already in msim affine transform
                 rotation = None
-            position, rotation = get_data_mapping(sim,
+            position, rotation = get_data_mapping(msim,
                                                   transform_key=self.reg_transform_key,
                                                   transform=mapping,
                                                   translation0=position,
@@ -1374,7 +1398,7 @@ class MVSRegistration:
         # select this preview resolution directly from self.msims (already built by init_data())
         # via pure msim slicing - no sim extraction, no resize, and (below) no wrapping back into
         # a msim just to satisfy fuse(): this stays msims the whole way through
-        msims = select_msims_at_scale(self.msims, self.sources, preview_scale)
+        msims = select_msim_subpyramid_at_scale(self.msims, self.sources, preview_scale)
         if is_stack:
             msims = make_msims_3d(msims, z_scale, self.positions)
 

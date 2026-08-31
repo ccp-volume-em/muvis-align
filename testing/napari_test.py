@@ -4,7 +4,7 @@ import numpy as np
 from qtpy.QtCore import QObject, QThread, Signal, Slot
 from threading import Thread
 
-from muvis_align.image.util import create_sim_shapes
+from muvis_align.image.util import create_image_shapes
 
 
 class NapariTest2d:
@@ -79,7 +79,7 @@ class NapariTest3d(QThread):
         # self.update_shapes.emit('layer', all_vertices, ['label'])
 
         sims = [create_sim(shape=(10, 30, 60)), create_sim(shape=(5, 20, 40), position={'x':5,'y':0,'z':0})]
-        self.update_bounds.emit('layer', create_sim_shapes(sims), ['label1', 'label2'])
+        self.update_bounds.emit('layer', create_image_shapes(sims), ['label1', 'label2'])
 
     @Slot(str, list, list)
     def _update_shapes(self, layer_name, shapes, labels):

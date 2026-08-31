@@ -34,14 +34,14 @@ def test_registration_state_predicates(state, expected):
 def test_reset_clears_registration_state():
     registration = MVSRegistration()
     registration.state = RegState.FUSED
-    registration.sims = [object()]
+    registration.msims = [object()]
     registration.metrics = {"quality": 1}
 
     registration.reset()
 
     assert registration.state is RegState.UNINIT
-    assert registration.sims == []
-    assert registration.register_sims == []
+    assert registration.msims == []
+    assert registration.register_msims is None
     assert registration.sources == []
     assert registration.metrics == {}
     assert registration.register_indices is None
@@ -244,3 +244,74 @@ def test_check_progress_uses_most_advanced_available_state(
         registration.check_progress("fused", ".zarr")
 
     assert registration.state is expected_state
+
+
+def test_select_pair_overlap_then_register_overlap_matches_register_pairs():
+    """select_pair_overlap()/register_overlap() together replace the old single register_pair()
+    call, split so a caller (e.g. a UI preview) can cache the overlap crop select_pair_overlap()
+    returns and re-run register_overlap() on it for parameter-only changes, without re-selecting
+    resolution or re-cropping from the (possibly large) source data every time."""
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[
+            'data/S000/S000_000_000.ome.zarr',
+            'data/S000/S000_000_001.ome.zarr',
+        ],
+        output_path='../../output/test_select_pair_overlap/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+
+    params = {'method': 'orb', 'pairing': 'orthogonal'}
+    msim1, msim2 = reg.register_msims[0], reg.register_msims[1]
+
+    overlap1, overlap2, sims_pixel_space = reg.select_pair_overlap(msim1, msim2, params=params)
+    assert overlap1.ndim == 2
+    assert overlap2.ndim == 2
+
+    transform, quality, result = reg.register_overlap(overlap1, overlap2, sims_pixel_space, params=params)
+
+    assert transform.shape[-2:] == (3, 3)  # 2D homogeneous affine
+    assert not np.isnan(quality)
+
+    # the raw pairwise_reg_func result must survive - feature-based methods report points/matches
+    # used for a napari preview overlay
+    assert 'affine_matrix' in result
+    assert 'quality' in result
+    assert 'fixed_points' in result
+    assert 'moving_points' in result
+
+
+def test_register_overlap_reuses_cached_overlap_across_param_changes():
+    """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
+    crop can be registered again with different registration parameters, without recomputing the
+    crop - the two calls below reuse the exact same overlap1/overlap2/sims_pixel_space."""
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[
+            'data/S000/S000_000_000.ome.zarr',
+            'data/S000/S000_000_001.ome.zarr',
+        ],
+        output_path='../../output/test_register_overlap_cache/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+
+    msim1, msim2 = reg.register_msims[0], reg.register_msims[1]
+    overlap1, overlap2, sims_pixel_space = reg.select_pair_overlap(
+        msim1, msim2, params={'method': 'orb'}
+    )
+
+    transform1, quality1, result1 = reg.register_overlap(
+        overlap1, overlap2, sims_pixel_space, params={'method': 'orb'}
+    )
+    transform2, quality2, result2 = reg.register_overlap(
+        overlap1, overlap2, sims_pixel_space, params={'method': 'sift'}
+    )
+
+    # different methods, same crop - both must produce a valid result from the identical input
+    assert transform1.shape == transform2.shape
+    assert not np.isnan(quality1)
+    assert not np.isnan(quality2)

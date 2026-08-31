@@ -35,9 +35,28 @@ def _expected_position(filename, formula):
 
 
 def _sim_at(source, level=0):
-    # ImageSource has no get_sim()/get_msim() of its own (removed - unused outside tests);
-    # source.msim is the public attribute, this just extracts one scale's sim from it
+    # source.msim is the public, native-dimension_order attribute; source.get_msim(output_order)
+    # is a separate, cached, redimensioned-on-demand view used by build_source_msim() - this just
+    # extracts one scale's sim straight off source.msim
     return msi_utils.get_sim_from_msim(source.msim, scale=f'scale{level}')
+
+
+@pytest.mark.parametrize('filename', TIFF_FILES)
+def test_tiff_image_source_labels_forced_c_dim_even_when_single_channel(filename):
+    """A single-channel source has no 'c' in its native dimension_order, so
+    si_utils.get_sim_from_array forces one anyway (size 1) - it must still be labeled with
+    source.get_channels()'s channel name (e.g. 'channel 0'), not left as a plain integer index,
+    since registration's 'channel' param selects by that label via .sel(c=...)."""
+    source = TiffImageSource(str(DATA_DIR / filename))
+    assert 'c' not in source.dimension_order
+
+    channel_label = source.get_channels()[0]['label']
+    sim0 = _sim_at(source, 0)
+    assert list(sim0.coords['c'].values) == [channel_label]
+
+    # the exact call registration/preview_registration makes to select a channel by name
+    selected = msi_utils.multiscale_sel_coords(source.get_msim('yx'), {'c': channel_label})
+    assert 'c' not in msi_utils.get_sim_from_msim(selected, scale='scale0').dims
 
 
 @pytest.mark.parametrize('filename', TIFF_FILES)
@@ -159,6 +178,23 @@ def test_zarr_image_source_restamped_affine_matches_native_shape():
         assert affine.shape == (3, 3)
         assert not np.isnan(affine.values).any()
         np.testing.assert_allclose(affine.values, own)
+
+
+def test_get_msim_caches_by_output_order():
+    """get_msim(output_order) redimensions self.msim once per distinct output_order and reuses
+    the cached result on repeat calls, rather than redoing the redimension every time
+    build_source_msim() is called (e.g. on every init_data() re-run)."""
+    source = TiffImageSource(str(DATA_DIR / TIFF_FILES[0]))
+
+    msim_1 = source.get_msim('yx')
+    msim_2 = source.get_msim('yx')
+
+    assert msim_1 is msim_2
+    assert list(source._redimensioned_msims.keys()) == ['yx']
+
+    image0 = msi_utils.get_sim_from_msim(msim_1, scale='scale0')
+    assert image0.dims == ('t', 'c', 'y', 'x')
+    assert (image0.sizes['y'], image0.sizes['x']) == tuple(source.shape)
 
 
 def test_create_image_source_dispatches_on_extension():

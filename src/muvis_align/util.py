@@ -760,6 +760,49 @@ def eval_path(path):
     return new_path
 
 
+def resolve_to_project_dir(path, base_dir):
+    # input/output path params are stored relative to the project file's directory (so
+    # projects stay portable when moved/shared), but consumers like MVSRegistration.init()
+    # resolve a relative path against the process's cwd - so any relative part must be
+    # joined with base_dir before use. Always returned with forward slashes, even on
+    # Windows, so the path is consistent whether it ends up in the UI or on disk.
+    if not path or not base_dir:
+        return path
+    parts = [part.strip() for part in path.split(',')]
+    resolved = []
+    for part in parts:
+        if not part:
+            resolved.append(part)
+        else:
+            joined = part if os.path.isabs(part) else os.path.join(base_dir, part)
+            resolved.append(os.path.normpath(joined).replace('\\', '/'))
+    return ', '.join(resolved)
+
+
+def relativize_to_project_dir(path, base_dir):
+    # counterpart to resolve_to_project_dir(): converts an absolute path (e.g. one just
+    # chosen through a file dialog, which always returns an absolute path) back to relative
+    # form before it is stored, so the project file keeps portable relative paths. Always
+    # returned with forward slashes, even on Windows.
+    if not path or not base_dir:
+        return path
+    parts = [part.strip() for part in path.split(',')]
+    relativized = []
+    for part in parts:
+        if not part:
+            relativized.append(part)
+        elif not os.path.isabs(part):
+            relativized.append(part.replace('\\', '/'))
+        else:
+            try:
+                relativized.append(os.path.relpath(part, base_dir).replace('\\', '/'))
+            except ValueError:
+                # path is on a different drive than the project dir (Windows) - can't be
+                # made relative, keep it absolute
+                relativized.append(part.replace('\\', '/'))
+    return ', '.join(relativized)
+
+
 def import_metadata(content, fields=None, input_path=None):
     # return dict[id] = {values}
     if isinstance(content, str):

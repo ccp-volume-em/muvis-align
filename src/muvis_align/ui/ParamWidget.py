@@ -30,7 +30,14 @@ class ParamWidget:
             if isinstance(value0, dict):
                 value = update_dict_value(value0, value)
         elif self.to_str:
-            value = str(value)
+            # pathlib always stringifies with backslashes on Windows regardless of the input
+            # separators (e.g. after a file dialog selection or FileEdit's own internal
+            # Path(...).absolute() call) - normalise to forward slashes here so both the
+            # widget's displayed text and the stored/persisted param stay consistent
+            value = str(value).replace('\\', '/')
+            line_edit = getattr(self.widget, 'line_edit', None)
+            if line_edit is not None and line_edit.value != value:
+                line_edit.value = value
         self.interface.change_param(self.param_name, value)
 
     def set_table_column_resize_mode(self, mode=QHeaderView.Stretch):

@@ -32,6 +32,8 @@ class MainWidget(QTabWidget):
             enable_plugin_widget=self.enable_plugin_widget,
             enable_tabs=self.enable_tabs,
             select_tab=self.select_tab,
+            is_tab_enabled=self.is_tab_enabled,
+            enable_tab=self.enable_tab,
             verbose=self.verbose,
         )
 
@@ -70,6 +72,12 @@ class MainWidget(QTabWidget):
 
     def select_tab(self, tab_index):
         self.setCurrentIndex(tab_index)
+
+    def is_tab_enabled(self, section_id):
+        return self.isTabEnabled(self.tab_labels.index(section_id))
+
+    def enable_tab(self, section_id, enabled=True):
+        self.setTabEnabled(self.tab_labels.index(section_id), enabled)
 
     def project_path_set(self):
         self.enable_tabs(True, 1)
