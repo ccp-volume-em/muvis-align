@@ -1,5 +1,5 @@
 from magicclass.ext.napari.viewer import ViewerWidget
-from qtpy.QtWidgets import QTabWidget
+from qtpy.QtWidgets import QApplication, QTabWidget
 
 from muvis_align.ui.create_widgets import (
     create_project_widget,
@@ -60,6 +60,7 @@ class MainWidget(QTabWidget):
 
     def enable_plugin_widget(self, enabled=True):
         self.setEnabled(enabled)
+        QApplication.processEvents()
 
     def enable_tabs(self, enabled=True, tab_index=-1):
         for index in range(self.count()):
@@ -69,6 +70,10 @@ class MainWidget(QTabWidget):
                 not enabled and index >= tab_index
             ):
                 self.setTabEnabled(index, enabled)
+        # a tab enabled while hidden (e.g. fusion, right before a blocking QMessageBox) can be
+        # left showing stale disabled styling under a slow/remote display (xpra) until the next
+        # natural event-loop idle - flush immediately so it's interactive as soon as it's enabled
+        QApplication.processEvents()
 
     def select_tab(self, tab_index):
         self.setCurrentIndex(tab_index)
@@ -78,6 +83,7 @@ class MainWidget(QTabWidget):
 
     def enable_tab(self, section_id, enabled=True):
         self.setTabEnabled(self.tab_labels.index(section_id), enabled)
+        QApplication.processEvents()
 
     def project_path_set(self):
         self.enable_tabs(True, 1)
