@@ -460,8 +460,6 @@ class Interface:
         #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
     def update_views(self, transform_key=None, show_preprocessed=False):
-        logging.info(f'update_views: transform_key={transform_key!r} show_preprocessed={show_preprocessed}',
-                    stack_info=True)
         if transform_key is None:
             transform_key = self.get_best_transform_key()
 
