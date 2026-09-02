@@ -550,48 +550,42 @@ class Interface:
             #             self.on_selection_change(refs[self.selected_shape_index])
             #     yield
 
-    def _napari_view_add_data(self, viewer, data, layer_name):
-        scale = si_utils.get_spacing_from_sim(data, asarray=True)
-        translate = si_utils.get_origin_from_sim(data, asarray=True)
+    def _napari_view_add_fused_data(self, viewer, fused, layer_name):
+        # MVSRegistration.fuse() always returns msims, never sims - get_msim_level_data (each
+        # level's raw dask array straight off its own Dataset) is always enough to show the
+        # result in napari as a genuine multiscale pyramid, so nothing here needs a sim built
+        # via extract_sims_from_fused. fused is either one real multiscale msim (a DataTree -
+        # already channel-combined by fuse()'s own combine_msims_as_channels when there's more
+        # than one channel, so a 'c' dim just needs channel_axis) or, in 'compose' mode (no
+        # actual fusion), a plain list of per-source msims shown as separate layers.
         channels = self.extra_metadata.get('channels', [])
-        name = [channel.get('label', index) for index, channel in enumerate(channels)]
-        colors = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
-        if len(channels) > 1:
-            channel_axis = data.dims.index('c') \
-                if len(colors) > 0 and 'c' in data.dims else None
+
+        if isinstance(fused, list):
+            for msim, channel in zip(fused, channels or [{}] * len(fused)):
+                image0 = get_msim_image0(msim)
+                scale = si_utils.get_spacing_from_sim(image0, asarray=True)
+                translate = si_utils.get_origin_from_sim(image0, asarray=True)
+                viewer.add_image(get_msim_level_data(msim), name=channel.get('label', layer_name),
+                                 multiscale=True, colormap=channel.get('color', (1, 1, 1, 1)),
+                                 scale=scale, translate=translate, blending='additive')
+            return
+
+        image0 = get_msim_image0(fused)
+        scale = si_utils.get_spacing_from_sim(image0, asarray=True)
+        translate = si_utils.get_origin_from_sim(image0, asarray=True)
+        data = get_msim_level_data(fused)
+        if len(channels) > 1 and 'c' in image0.dims:
+            channel_axis = image0.dims.index('c')
+            name = [channel.get('label', index) for index, channel in enumerate(channels)]
+            colormap = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
             scale = [scale] * len(channels)
             translate = [translate] * len(channels)
         else:
-            name = name[0] if len(name) > 0 and name[0] else layer_name
-            colors = colors[0] if len(colors) > 0 else None
             channel_axis = None
-        viewer.add_image(data, name=name,channel_axis=channel_axis, colormap=colors,
-                         scale=scale, translate=translate)
-
-    def _napari_view_add_fused_data(self, viewer, fused, layer_name):
-        # MVSRegistration.fuse() always returns msims - a real multiscale msim (DataTree), or (in
-        # 'compose' mode) a list of per-source msims - show a real DataTree as a genuine napari
-        # multiscale pyramid (native full-resolution levels, not one downsampled preview) instead
-        # of extracting a single resolution. Falls back to the ordinary single-resolution path
-        # for channel-overlay fusion (channel_axis + multiscale together isn't reliable in
-        # napari) or 'compose' mode (a list, not one pyramid to show as a single layer).
-        channels = self.extra_metadata.get('channels', [])
-        if isinstance(fused, DataTree) and len(channels) <= 1:
-            # scale/translate only need one representative level's own 'image' DataArray directly
-            # (si_utils.get_spacing_from_sim/get_origin_from_sim only ever read .dims/.coords) -
-            # get_msim_level_data likewise reads every level's raw dask array straight off its own
-            # Dataset, so no sim is built anywhere here just to hand napari its pixel data
-            image0 = get_msim_image0(fused)
-            scale = si_utils.get_spacing_from_sim(image0, asarray=True)
-            translate = si_utils.get_origin_from_sim(image0, asarray=True)
-            data = get_msim_level_data(fused)
             name = channels[0].get('label') if channels else None
             colormap = channels[0].get('color', (1, 1, 1, 1)) if channels else None
-            viewer.add_image(data, name=name or layer_name, multiscale=True, colormap=colormap,
-                             scale=scale, translate=translate)
-            return
-
-        self._napari_view_add_data(viewer, extract_sims_from_fused(fused), layer_name)
+        viewer.add_image(data, name=name or layer_name, multiscale=True, channel_axis=channel_axis,
+                         colormap=colormap, scale=scale, translate=translate)
 
     def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
