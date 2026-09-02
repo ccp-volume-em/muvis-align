@@ -1016,9 +1016,14 @@ def test_update_views_detects_multi_z_from_view_msims(
 def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     bare_interface, monkeypatch
 ):
+    """A 3D box is shown as its own 6 flat quad faces (an opaque, quality-colored box - a
+    single 'polygon' can't represent a whole non-planar box) plus one edge-only 'path'
+    wireframe, since napari-bbox (which drew real 3D boxes) is incompatible with current
+    napari. Distinct per-corner values (rather than all-zeros/all-ones) so a face/wire
+    indexing mistake would actually be caught."""
     viewer = MagicMock()
-    image_shape = np.zeros((8, 3))
-    overlap_shape = np.ones((8, 3))
+    image_shape = np.arange(24, dtype=float).reshape(8, 3)
+    overlap_shape = np.arange(24, 48, dtype=float).reshape(8, 3)
     bare_interface.reg.get_metrics.return_value = 0.75
     create_shapes = MagicMock(return_value=[image_shape])
     create_overlaps = MagicMock(
@@ -1044,14 +1049,37 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     bare_interface._update_view_add_shapes(viewer, *shape_data, "boxes")
 
     args, kwargs = viewer.add_shapes.call_args
-    paths = args[0]
+    shapes_out = args[0]
+    box_faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4],
+                [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
     edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
-    np.testing.assert_allclose(paths[0], image_shape[edge_path])
-    np.testing.assert_allclose(paths[1], overlap_shape[edge_path])
-    assert kwargs["shape_type"] == "path"
-    assert kwargs["edge_width"] == 0.005
-    assert kwargs["features"]["refs"] == ["0", "0 0"]
-    assert kwargs["features"]["labels"] == ["image-0", ""]
+    expected_wire_width = np.ptp(
+        np.concatenate([image_shape, overlap_shape]), axis=0
+    ).max() * 0.005
+
+    assert kwargs["shape_type"] == ["polygon"] * 12 + ["path"] * 2
+    for i, face in enumerate(box_faces):
+        np.testing.assert_allclose(shapes_out[i], image_shape[face])
+        np.testing.assert_allclose(shapes_out[6 + i], overlap_shape[face])
+    np.testing.assert_allclose(shapes_out[12], image_shape[edge_path])
+    np.testing.assert_allclose(shapes_out[13], overlap_shape[edge_path])
+
+    # the quality-based color is carried onto every face of its own box; the wireframe
+    # paths get a transparent placeholder color, since a 'path' has no face to color.
+    # face_color entries may be numpy arrays (metric_to_rgb's output) - compare by
+    # value rather than with == (ambiguous truth value for a list containing arrays).
+    face_color = kwargs["face_color"]
+    for i in range(6):
+        np.testing.assert_allclose(face_color[i], (1, 1, 1))
+        np.testing.assert_allclose(face_color[6 + i], (0.1, 0.2, 0.3))
+    np.testing.assert_allclose(face_color[12], (0, 0, 0, 0))
+    np.testing.assert_allclose(face_color[13], (0, 0, 0, 0))
+    assert kwargs["edge_color"] == [(0, 0, 0, 0)] * 12 + ["cyan", "cyan"]
+    np.testing.assert_allclose(
+        kwargs["edge_width"], [0] * 12 + [expected_wire_width] * 2
+    )
+    assert kwargs["features"]["refs"] == ["0"] * 6 + ["0 0"] * 6 + ["0", "0 0"]
+    assert kwargs["features"]["labels"] == [""] * 12 + ["image-0", ""]
 
 
 def test_update_napari_shapes_uses_shapes_layer_for_2d(

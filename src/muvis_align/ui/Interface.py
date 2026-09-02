@@ -516,25 +516,51 @@ class Interface:
         do_3d = ('z' in images0[0].dims and not force_2d)
 
         if len(shapes) > 0:
+            edge_color = 'cyan'
+            if do_3d:
+                # A 'polygon' shape can only render one flat face, not a whole non-planar box,
+                # and napari-bbox 0.1.1 (which drew real 3D boxes) is incompatible with current
+                # napari - so each box becomes its own 6 flat quad faces (for an opaque,
+                # quality-colored box) plus one edge-only 'path' outlining every edge (for a
+                # crisp wireframe), combined into one Shapes layer via per-shape lists. Corner
+                # order is _minimal_bb_vertices': 0-3 one face, 4-7 the opposite face, in the
+                # same winding, so corner i and i+4 are the vertical edges between them.
+                box_faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4],
+                            [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+                edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
+
+                face_shapes, face_only_colors, face_refs, face_labels = [], [], [], []
+                for shape, ref, color in zip(shapes, refs, face_colors):
+                    corners = np.asarray(shape)
+                    face_shapes += [corners[face] for face in box_faces]
+                    face_only_colors += [color] * len(box_faces)
+                    face_refs += [ref] * len(box_faces)
+                    face_labels += [''] * len(box_faces)
+                wire_shapes = [np.asarray(shape)[edge_path] for shape in shapes]
+
+                # Napari renders 3D paths as tubes whose width is measured in world
+                # coordinates, not screen pixels. Scale the tube radius to the scene so it
+                # remains visible for large physical units.
+                vertices = np.concatenate([np.asarray(shape) for shape in shapes])
+                wire_width = np.ptp(vertices, axis=0).max() * 0.005
+
+                shape_data = face_shapes + wire_shapes
+                shape_type = ['polygon'] * len(face_shapes) + ['path'] * len(wire_shapes)
+                face_color = face_only_colors + [(0, 0, 0, 0)] * len(wire_shapes)
+                edge_color = [(0, 0, 0, 0)] * len(face_shapes) + ['cyan'] * len(wire_shapes)
+                edge_width = [0] * len(face_shapes) + [wire_width] * len(wire_shapes)
+                refs = face_refs + refs
+                labels = face_labels + labels
+            else:
+                shape_data = np.asarray(shapes)
+                shape_type = 'polygon'
+                edge_width = 0.1
+                face_color = face_colors
+
             text = {'string': '{labels}'}
             features = {'refs': refs, 'labels': labels}
-            shape_data = np.asarray(shapes)
-            shape_type = 'polygon'
-            edge_width = 0.1
-            if do_3d:
-                # napari-bbox 0.1.1 is incompatible with current napari.
-                # Draw every box edge as one built-in 3D path instead.
-                edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
-                shape_data = [np.asarray(shape)[edge_path] for shape in shapes]
-                shape_type = 'path'
-                # Napari renders 3D paths as tubes whose width is measured in
-                # world coordinates, not screen pixels. Scale the tube radius
-                # to the scene so it remains visible for large physical units.
-                vertices = np.concatenate([np.asarray(shape) for shape in shapes])
-                edge_width = np.ptp(vertices, axis=0).max() * 0.005
-
             viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text, features=features,
-                              face_color=face_colors, opacity=0.5, edge_width=edge_width, edge_color='cyan',
+                              face_color=face_color, opacity=0.5, edge_width=edge_width, edge_color=edge_color,
                               blending='translucent_no_depth')
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
