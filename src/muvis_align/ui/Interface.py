@@ -18,7 +18,7 @@ from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, \
     draw_keypoints_matches_napari, get_transforms, copy_transforms_to_msims, \
-    make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
+    make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, get_chunk_sizes, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
@@ -243,7 +243,11 @@ class Interface:
                                output_path=output,
                                overwrite=params['overwrite'])
             if ok:
-                ok = self.update_metadata_source()
+                # init_progress(), right below, always ends by drawing the view (with
+                # whatever transform its own registration-state check picks) - drawing here
+                # too would just draw once with the not-yet-registered transform, immediately
+                # thrown away by that second, correct draw.
+                ok = self.update_metadata_source(skip_view_update=True)
                 if ok:
                     self.populate_image_selection()
                     self.init_progress()
@@ -260,6 +264,17 @@ class Interface:
     def init_progress(self):
         output_filename = operation_to_past_participle(self.params['registration']['operation'])
         self.reg.init_progress(output_filename, zarr_extension)
+        if self.reg.is_pairs_registered() and self.reg.register_msims is None:
+            # reg.init_progress() can load a previously-saved pair registration from disk (a
+            # reloaded project) - in that branch it sets pair_msims straight from
+            # self.reg.msims, the raw full pyramid, bypassing the scale-reduction a live
+            # pair-registration run always applies first (preprocess()'s
+            # select_msim_subpyramid_at_scale). Left unprocessed, a later global
+            # registration's metrics computation can auto-select the full-resolution level
+            # and run out of memory. Run the same preprocessing now and re-point pair_msims
+            # at its result, matching what a fresh run would have produced.
+            self.run_pre_processing()
+            self.reg.pair_msims = self.reg.register_msims
         if self.reg.is_fused():
             self.enable_tabs(True, 4)
             self.select_tab(4)
@@ -275,9 +290,13 @@ class Interface:
             self.select_tab(3)
             self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
+            # No prior registration to view with a specific transform - this is the one
+            # draw update_metadata_source()'s own (skipped, see input_output_process())
+            # would otherwise have done for a brand-new project.
             self.enable_tabs(True, 2)
+            self.update_views()
 
-    def update_metadata_source(self):
+    def update_metadata_source(self, skip_view_update=False):
         if not self.reg.is_pairs_registered():
             try:
                 self.reg.init_data(
@@ -307,7 +326,8 @@ class Interface:
         if self.reg.is_initialised():
             self.populate_metadata_table(self.reg.msims)
             self.check_3d_view()
-            self.update_views()
+            if not skip_view_update:
+                self.update_views()
 
         return True
 
@@ -440,6 +460,8 @@ class Interface:
         #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
     def update_views(self, transform_key=None, show_preprocessed=False):
+        logging.info(f'update_views: transform_key={transform_key!r} show_preprocessed={show_preprocessed}',
+                    stack_info=True)
         if transform_key is None:
             transform_key = self.get_best_transform_key()
 
@@ -483,7 +505,15 @@ class Interface:
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(msims))]
 
-        shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, force_2d=force_2d)
+        # Once pairwise registration has run, restrict overlap boxes to pairs that were
+        # actually registered (real edges in pairs_graph) - a geometric intersection that
+        # only appears after alignment, between images that were never paired during
+        # registration in the first place, has no quality score behind it and shouldn't be
+        # drawn. Before registration there's no graph yet, so fall back to every
+        # geometrically-overlapping pair (create_overlap_shapes' own default).
+        overlap_pairs = list(self.reg.pairs_graph.edges()) if self.reg.is_pairs_registered() else None
+        shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, pairs=overlap_pairs,
+                                               force_2d=force_2d)
         shapes.extend(shapes2)
         refs += [f'{index1} {index2}' for index1, index2 in pairs]
         labels += ['' for _ in pairs]
@@ -497,11 +527,23 @@ class Interface:
         else:
             msims = self.view_msims
         copy_transforms_to_msims(self.reg.msims, msims, transform_key)
+        # A source chunked one z-slice at a time on disk would otherwise propagate that
+        # z=1 chunking into every pyramid level of the preview (each level then has as many
+        # dask tasks in z as there are z-slices, even once XY has been downsampled to a
+        # handful of pixels), ballooning dask graph-construction time. But a single chunk
+        # spanning the whole z range is just as bad from the other direction: napari can only
+        # compute a chunk as a whole, so viewing one z-slice forces fusing every slice in its
+        # chunk. get_chunk_sizes keeps x/y generous (shown in full for any view) and derives a
+        # small z chunk from the byte budget instead, since z is what napari slices through.
+        image0 = get_msim_image0(msims[0])
+        spatial_dims = si_utils.get_spatial_dims_from_sim(image0)
+        output_chunksize = get_chunk_sizes(image0.dtype, spatial_dims)
         fused_msim, _ = self.reg.fuse(msims,
                                       transform_key=transform_key,
                                       fusion_method=fusion_method,
                                       dimension=self.params['input_output']['registration_dimension'],
-                                      extra_metadata=self.extra_metadata)
+                                      extra_metadata=self.extra_metadata,
+                                      output_chunksize=output_chunksize)
         return fused_msim
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
@@ -516,6 +558,10 @@ class Interface:
         do_3d = ('z' in images0[0].dims and not force_2d)
 
         if len(shapes) > 0:
+            # Depth-tested 'translucent' made overlap boxes lose to the opaque fused image
+            # volume they sit inside (worse, not better) - translucent_no_depth avoids that
+            # for both 2D and 3D, so shapes always draw regardless of what else is there.
+            blending = 'translucent_no_depth'
             edge_color = 'cyan'
             if do_3d:
                 # A 'polygon' shape can only render one flat face, not a whole non-planar box,
@@ -528,11 +574,38 @@ class Interface:
                 box_faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4],
                             [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
                 edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
+                # Matches _minimal_bb_vertices' own corner_bits convention (bottom face 0-3,
+                # top face 4-7, same x/y winding), applied here to plain axis-aligned min/max
+                # instead of an oriented frame.
+                corner_bits = np.array([
+                    [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+                    [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+                ])
 
                 face_shapes, face_only_colors, face_refs, face_labels = [], [], [], []
                 for shape, ref, color in zip(shapes, refs, face_colors):
                     corners = np.asarray(shape)
-                    face_shapes += [corners[face] for face in box_faces]
+                    # napari doesn't render a 3D polygon's face fill unless that face's own
+                    # plane is axis-orthogonal (napari/napari#6860) - a genuinely oriented/
+                    # rotated box (as global registration can produce) gets no face fill at
+                    # all except for whichever face happens to be axis-aligned. Build the
+                    # fill from this box's axis-aligned bounding box instead (always
+                    # axis-orthogonal by construction); the wireframe below keeps using the
+                    # true oriented corners, which render fine as edges regardless of angle.
+                    mins, maxs = corners.min(axis=0), corners.max(axis=0)
+                    aa_corners = mins + corner_bits * (maxs - mins)
+                    centroid = aa_corners.mean(axis=0)
+                    for face in box_faces:
+                        quad = aa_corners[face]
+                        # box_faces' index order alone doesn't guarantee consistent outward
+                        # winding (e.g. face [0,1,2,3] winds inward, [4,5,6,7] outward, even
+                        # for a plain axis-aligned box) - flip it if the face's own normal
+                        # doesn't point away from the box's center, or napari would
+                        # backface-cull roughly half of every box's faces.
+                        normal = np.cross(quad[1] - quad[0], quad[2] - quad[0])
+                        if np.dot(normal, quad.mean(axis=0) - centroid) < 0:
+                            quad = quad[::-1]
+                        face_shapes.append(quad)
                     face_only_colors += [color] * len(box_faces)
                     face_refs += [ref] * len(box_faces)
                     face_labels += [''] * len(box_faces)
@@ -546,8 +619,13 @@ class Interface:
 
                 shape_data = face_shapes + wire_shapes
                 shape_type = ['polygon'] * len(face_shapes) + ['path'] * len(wire_shapes)
-                face_color = face_only_colors + [(0, 0, 0, 0)] * len(wire_shapes)
-                edge_color = [(0, 0, 0, 0)] * len(face_shapes) + ['cyan'] * len(wire_shapes)
+                # face_color/edge_color entries must all be the same length (napari can't
+                # build one color array from mixed 3- and 4-tuples, and silently falls back
+                # to plain white for the whole layer instead) - a 'path' has no face to color
+                # and its edge is drawn regardless of face_color, so (0, 0, 0) here is just a
+                # length-matched placeholder, not a meaningful value.
+                face_color = face_only_colors + [(0, 0, 0)] * len(wire_shapes)
+                edge_color = [(0, 0, 0)] * len(face_shapes) + [(0, 1, 1)] * len(wire_shapes)
                 edge_width = [0] * len(face_shapes) + [wire_width] * len(wire_shapes)
                 refs = face_refs + refs
                 labels = face_labels + labels
@@ -561,7 +639,7 @@ class Interface:
             features = {'refs': refs, 'labels': labels}
             viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text, features=features,
                               face_color=face_color, opacity=0.5, edge_width=edge_width, edge_color=edge_color,
-                              blending='translucent_no_depth')
+                              blending=blending)
 
             # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
             #                           face_color=face_colors)
@@ -591,9 +669,10 @@ class Interface:
                 image0 = get_msim_image0(msim)
                 scale = si_utils.get_spacing_from_sim(image0, asarray=True)
                 translate = si_utils.get_origin_from_sim(image0, asarray=True)
+                contrast_limits = get_contrast_limits(msim)
                 viewer.add_image(get_msim_level_data(msim), name=channel.get('label', layer_name),
                                  multiscale=True, colormap=channel.get('color', (1, 1, 1, 1)),
-                                 contrast_limits=get_contrast_limits(msim),
+                                 contrast_limits=contrast_limits,
                                  scale=scale, translate=translate, blending='additive')
             return
 

@@ -317,6 +317,23 @@ def get_msim_level_data(msim):
     return [msim[scale_key].ds['image'].data for scale_key in msi_utils.get_sorted_scale_keys(msim)]
 
 
+def get_chunk_sizes(dtype, spatial_dims, xy_chunk_size=1024, target_bytes=64 * 1024 ** 2):
+    """Per-spatial-dim chunk sizes for a fused preview. x/y (the axes napari always shows in
+    full, for any view) get a fixed, generous tile size; z (the axis napari slices through one
+    plane at a time in 2D view) is instead sized so a single x/y-by-z chunk stays near
+    target_bytes - keeping z chunks small enough that viewing one slice doesn't force
+    computing many slices' worth of fusion. An isotropic split (the same size on every axis,
+    independent of which one is actually sliced through) doesn't know that distinction: if z's
+    real extent happens to be smaller than its even share, the extra budget goes to x/y instead
+    of z, which both fragments x/y for no reason and leaves z as one big, slice-defeating chunk.
+    """
+    sizes = {dim: xy_chunk_size for dim in spatial_dims if dim in ('x', 'y')}
+    if 'z' in spatial_dims:
+        voxels_per_chunk = target_bytes / np.dtype(dtype).itemsize
+        sizes['z'] = max(1, round(voxels_per_chunk / xy_chunk_size ** 2))
+    return sizes
+
+
 def get_contrast_limits(msim):
     """Real min/max contrast range computed from just the coarsest pyramid level, so a caller
     can pass it as add_image()'s contrast_limits without napari falling back to its own default:

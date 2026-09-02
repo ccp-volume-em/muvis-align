@@ -1255,13 +1255,22 @@ class MVSRegistration:
 
     def fuse(self, msims, fusion_method=None, output_spacing='mean', transform_key=None,
              dimension=None, output_filename=None,
-             tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None):
+             tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
+             output_chunksize=None):
         """Fuse each source's own multiscale msim into one output msim (a real multiscale
         pyramid, not a single resolution) - msims in, msims out. A caller with only a concrete
         sim per source (an ad-hoc resolution with no corresponding real pyramid) wraps it into a
         trivial single-level msim first, via util.wrap_sims_as_msims - fuse() itself never takes
         or produces sims directly; extract a sim from the result on demand (msi_utils.
         get_sim_from_msim) wherever a downstream consumer (e.g. save_image()) needs one.
+
+        output_chunksize, if given, is used as-is (a dict of chunk size per spatial dim, e.g.
+        {'x':.., 'y':.., 'z':..} - a value larger than that dimension just yields one chunk
+        covering it, dask clips it automatically). Otherwise fusion.fuse() defaults to the
+        input's own on-disk chunk grid, which for a source chunked one z-slice at a time
+        propagates that same z=1 chunking into every pyramid level of the fused output - each
+        level then has as many chunks (and dask graph tasks) in z as there are z-slices, even
+        once a level's XY extent has been downsampled to a handful of pixels.
         """
         if output_filename is not None:
             output_filename = self.output + output_filename
@@ -1309,7 +1318,8 @@ class MVSRegistration:
             channel_results = [fusion.fuse(
                 [msim],
                 transform_key=transform_key,
-                output_stack_properties=output_stack_properties
+                output_stack_properties=output_stack_properties,
+                output_chunksize=output_chunksize
             ) for msim in msims]
             fused_image = combine_msims_as_channels(channel_results, [channel['label'] for channel in channels])
         else:
@@ -1320,17 +1330,17 @@ class MVSRegistration:
             fuse_func = self.create_fusion_method(fusion_method, sim0)
             if fuse_func:
                 saving_zarr = output_filename is not None
-                output_chunksize = None
+                if output_chunksize is None and saving_zarr and tile_size:
+                    if not isinstance(tile_size, (list, tuple)):
+                        tile_size = [tile_size] * 2
+                    output_chunksize = xyz_to_dict(tile_size)
+                    if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
+                        # zarr export streams one z-slice at a time to keep peak memory low
+                        output_chunksize['z'] = 1
                 if saving_zarr:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
-                    if tile_size:
-                        if not isinstance(tile_size, (list, tuple)):
-                            tile_size = [tile_size] * 2
-                        output_chunksize = xyz_to_dict(tile_size)
-                        if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
-                            output_chunksize['z'] = 1
                 else:
                     zarr_options = None
                 with dask.config.set(scheduler='threads'):

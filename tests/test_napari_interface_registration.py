@@ -1048,38 +1048,112 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     shape_data = bare_interface._create_napari_shapes("registered")
     bare_interface._update_view_add_shapes(viewer, *shape_data, "boxes")
 
+    assert viewer.add_shapes.call_count == 1
     args, kwargs = viewer.add_shapes.call_args
-    shapes_out = args[0]
-    box_faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4],
-                [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
+    shape_data_out = args[0]
     edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
     expected_wire_width = np.ptp(
         np.concatenate([image_shape, overlap_shape]), axis=0
     ).max() * 0.005
 
     assert kwargs["shape_type"] == ["polygon"] * 12 + ["path"] * 2
-    for i, face in enumerate(box_faces):
-        np.testing.assert_allclose(shapes_out[i], image_shape[face])
-        np.testing.assert_allclose(shapes_out[6 + i], overlap_shape[face])
-    np.testing.assert_allclose(shapes_out[12], image_shape[edge_path])
-    np.testing.assert_allclose(shapes_out[13], overlap_shape[edge_path])
+    # napari/napari#6860: a 3D 'polygon' face only renders if it's axis-orthogonal, so the
+    # fill is built from each box's own axis-aligned bounding box rather than its (possibly
+    # non-axis-aligned) true corners - check the 6 faces per box collectively bound the same
+    # extent as the box's real corners, rather than an exact per-vertex index match.
+    image_faces = np.concatenate([np.asarray(q) for q in shape_data_out[:6]])
+    overlap_faces = np.concatenate([np.asarray(q) for q in shape_data_out[6:12]])
+    np.testing.assert_allclose(image_faces.min(axis=0), image_shape.min(axis=0))
+    np.testing.assert_allclose(image_faces.max(axis=0), image_shape.max(axis=0))
+    np.testing.assert_allclose(overlap_faces.min(axis=0), overlap_shape.min(axis=0))
+    np.testing.assert_allclose(overlap_faces.max(axis=0), overlap_shape.max(axis=0))
+    # the wireframe keeps the true (possibly non-axis-aligned) corners, since edges already
+    # render fine in 3D regardless of orientation.
+    np.testing.assert_allclose(shape_data_out[12], image_shape[edge_path])
+    np.testing.assert_allclose(shape_data_out[13], overlap_shape[edge_path])
 
     # the quality-based color is carried onto every face of its own box; the wireframe
-    # paths get a transparent placeholder color, since a 'path' has no face to color.
-    # face_color entries may be numpy arrays (metric_to_rgb's output) - compare by
-    # value rather than with == (ambiguous truth value for a list containing arrays).
+    # paths get a placeholder color, since a 'path' has no face to color and its edge is
+    # drawn regardless of face_color. face_color entries may be numpy arrays (metric_to_rgb's
+    # output) - compare by value rather than with == (ambiguous truth value for a list
+    # containing arrays).
     face_color = kwargs["face_color"]
     for i in range(6):
         np.testing.assert_allclose(face_color[i], (1, 1, 1))
         np.testing.assert_allclose(face_color[6 + i], (0.1, 0.2, 0.3))
-    np.testing.assert_allclose(face_color[12], (0, 0, 0, 0))
-    np.testing.assert_allclose(face_color[13], (0, 0, 0, 0))
-    assert kwargs["edge_color"] == [(0, 0, 0, 0)] * 12 + ["cyan", "cyan"]
+    np.testing.assert_allclose(face_color[12], (0, 0, 0))
+    np.testing.assert_allclose(face_color[13], (0, 0, 0))
+    # every entry must be the same length - napari can't build one color array from mixed
+    # 3- and 4-tuples and silently falls back to plain white for the whole layer instead
+    assert len({len(c) for c in face_color}) == 1
+    edge_color = kwargs["edge_color"]
+    assert len({len(c) for c in edge_color}) == 1
+    np.testing.assert_allclose(edge_color[:12], [(0, 0, 0)] * 12)
+    np.testing.assert_allclose(edge_color[12:], [(0, 1, 1)] * 2)
     np.testing.assert_allclose(
         kwargs["edge_width"], [0] * 12 + [expected_wire_width] * 2
     )
     assert kwargs["features"]["refs"] == ["0"] * 6 + ["0 0"] * 6 + ["0", "0 0"]
     assert kwargs["features"]["labels"] == [""] * 12 + ["image-0", ""]
+
+
+def test_update_napari_shapes_3d_faces_are_axis_aligned_and_wind_outward(
+    bare_interface, monkeypatch
+):
+    """napari/napari#6860: napari's 3D Shapes layer only renders a polygon's face fill if
+    that face's own plane is axis-orthogonal - a genuinely oriented/rotated box (as global
+    registration can produce) gets no face fill at all except for whichever face happens to
+    be axis-aligned. The fill must therefore come from the box's axis-aligned bounding box,
+    never its own (here, rotated) corners. Separately, box_faces' index order alone doesn't
+    guarantee consistent outward winding even for an axis-aligned box - the per-face
+    flip-if-inward correction must still catch and fix that."""
+    viewer = MagicMock()
+    unit_cube = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=float)
+    theta = np.pi / 6
+    c, s = np.cos(theta), np.sin(theta)
+    rotation = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+    rotated_box = unit_cube @ rotation.T + np.array([10.0, 20.0, 30.0])
+
+    monkeypatch.setattr(
+        interface_module.si_utils, "get_origin_from_sim", lambda _: {"z": 0}
+    )
+    monkeypatch.setattr(
+        interface_module, "get_msim_image0", lambda msim: msim
+    )
+    monkeypatch.setattr(
+        interface_module, "create_image_shapes", lambda *_, **__: [rotated_box]
+    )
+    monkeypatch.setattr(
+        interface_module, "create_overlap_shapes", lambda *_, **__: ([], [])
+    )
+
+    shape_data = bare_interface._create_napari_shapes("registered")
+    bare_interface._update_view_add_shapes(viewer, *shape_data, "boxes")
+
+    assert viewer.add_shapes.call_count == 1
+    args, kwargs = viewer.add_shapes.call_args
+    shape_data_out = args[0]
+    face_quads = [np.asarray(s) for s, t in zip(shape_data_out, kwargs["shape_type"])
+                 if t == "polygon"]
+    assert len(face_quads) == 6
+
+    box_min, box_max = rotated_box.min(axis=0), rotated_box.max(axis=0)
+    box_center = (box_min + box_max) / 2
+    for quad in face_quads:
+        normal = np.cross(quad[1] - quad[0], quad[2] - quad[0])
+        nonzero_axes = np.sum(~np.isclose(normal, 0))
+        assert nonzero_axes == 1, f"face normal {normal} is not axis-orthogonal"
+        outward = quad.mean(axis=0) - box_center
+        assert np.dot(normal, outward) >= 0, "face wound inward - would be backface-culled"
+
+    # the fill's overall extent must still bound the true (rotated) box, not some
+    # unrelated or degenerate region
+    all_face_points = np.concatenate(face_quads)
+    np.testing.assert_allclose(all_face_points.min(axis=0), box_min)
+    np.testing.assert_allclose(all_face_points.max(axis=0), box_max)
 
 
 def test_update_napari_shapes_uses_shapes_layer_for_2d(
