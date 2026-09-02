@@ -164,7 +164,8 @@ class Interface:
         output_path = params.get('output_path', '')
         if isinstance(eval_path(output_path), str):
             self._set_path_widget_text(widget, output_path)
-        init_logging(log_filename=os.path.join(eval_path(output_path), 'muvis-align.log'), verbose=self.verbose)
+        resolved_output_path = resolve_to_project_dir(output_path, self.get_project_dir())
+        init_logging(log_filename=os.path.join(resolved_output_path, 'muvis-align.log'), verbose=self.verbose)
 
     def _set_path_widget_text(self, param_widget, value):
         line_edit = getattr(param_widget.widget, 'line_edit', None)
