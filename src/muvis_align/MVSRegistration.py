@@ -843,8 +843,16 @@ class MVSRegistration:
                 registration_method = RegistrationMethodSkFeatures(sim0, params, self.debug)
             pairwise_reg_func = registration_method.registration
         elif 'elastix' in method:
+            try:
+                from itk import ElastixRegistrationMethod
+            except ImportError:
+                raise ImportError('ITK-Elastix is required for ITK-Elastix registration.')
             pairwise_reg_func = registration.registration_ITKElastix
         elif 'ant' in method:
+            try:
+                import ants
+            except ImportError:
+                raise ImportError('ANTsPy is required for ANTsPy registration.')
             pairwise_reg_func = registration.registration_ANTsPy
             # args for ANTsPy registration: used internally by ANYsPy algorithm
             pairwise_reg_func_kwargs = {
