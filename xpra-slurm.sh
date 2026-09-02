@@ -167,8 +167,7 @@ apptainer exec \
         --mdns=no \
         --dbus-control=no \
         --title="muvis-align @ ${COMPUTE_NODE}" \
-    >"${RUN_DIR}/xpra.log" 2>&1
+    2>&1 | tee "${RUN_DIR}/xpra.log"
 
-# xpra's own output goes to ${RUN_DIR}/xpra.log rather than the Slurm log, so
-# the connection instructions above stay visible. If the session misbehaves,
-# that file is the place to look.
+# Output also goes to ${RUN_DIR}/xpra.log for convenience, in addition to
+# the Slurm log.
