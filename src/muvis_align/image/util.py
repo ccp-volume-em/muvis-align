@@ -1,6 +1,7 @@
 import logging
 
 import cv2 as cv
+import dask
 import numpy as np
 from multiview_stitcher import msi_utils, param_utils, fusion, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
@@ -314,6 +315,23 @@ def get_msim_level_data(msim):
     napari's multiscale add_image only ever wants the arrays themselves.
     """
     return [msim[scale_key].ds['image'].data for scale_key in msi_utils.get_sorted_scale_keys(msim)]
+
+
+def get_contrast_limits(msim):
+    """Real min/max contrast range computed from just the coarsest pyramid level, so a caller
+    can pass it as add_image()'s contrast_limits without napari falling back to its own default:
+    for multiscale layers that already reads the coarsest level (data[-1]), but for anything
+    other than uint8 still computes a real min/max over it, which for a still-lazy dask array
+    means eagerly running that level's whole fusion graph just to pick initial display bounds
+    (see napari.layers.utils.layer_utils.calc_data_range). Doing it here instead is no cheaper
+    per se, but runs once, up front, on only the coarsest (by far the smallest) level.
+    """
+    coarsest = get_msim_level_data(msim)[-1]
+    min_val, max_val = dask.compute(coarsest.min(), coarsest.max())
+    min_val, max_val = float(min_val), float(max_val)
+    if min_val == max_val:
+        max_val = min_val + 1
+    return [min_val, max_val]
 
 
 def get_msim_image0(msim, level=0):

@@ -18,7 +18,7 @@ from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, \
     draw_keypoints_matches_napari, get_transforms, copy_transforms_to_msims, \
-    make_msims_3d, metric_to_rgb, get_msim_level_data, \
+    make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
@@ -567,6 +567,7 @@ class Interface:
                 translate = si_utils.get_origin_from_sim(image0, asarray=True)
                 viewer.add_image(get_msim_level_data(msim), name=channel.get('label', layer_name),
                                  multiscale=True, colormap=channel.get('color', (1, 1, 1, 1)),
+                                 contrast_limits=get_contrast_limits(msim),
                                  scale=scale, translate=translate, blending='additive')
             return
 
@@ -574,18 +575,21 @@ class Interface:
         scale = si_utils.get_spacing_from_sim(image0, asarray=True)
         translate = si_utils.get_origin_from_sim(image0, asarray=True)
         data = get_msim_level_data(fused)
+        contrast_limits = get_contrast_limits(fused)
         if len(channels) > 1 and 'c' in image0.dims:
             channel_axis = image0.dims.index('c')
             name = [channel.get('label', index) for index, channel in enumerate(channels)]
             colormap = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
             scale = [scale] * len(channels)
             translate = [translate] * len(channels)
+            contrast_limits = [contrast_limits] * len(channels)
         else:
             channel_axis = None
             name = channels[0].get('label') if channels else None
             colormap = channels[0].get('color', (1, 1, 1, 1)) if channels else None
         viewer.add_image(data, name=name or layer_name, multiscale=True, channel_axis=channel_axis,
-                         colormap=colormap, scale=scale, translate=translate)
+                         colormap=colormap, contrast_limits=contrast_limits,
+                         scale=scale, translate=translate)
 
     def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
