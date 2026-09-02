@@ -15,7 +15,7 @@ class MainWidget(QTabWidget):
     def __init__(self, viewer: "napari.viewer.Viewer"):
         super().__init__()
         self.verbose = True
-        init_logging()
+        init_logging(verbose=self.verbose)
         self.viewer = viewer
 
         self.overview = ViewerWidget()
