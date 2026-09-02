@@ -12,7 +12,8 @@ export PYTHONUNBUFFERED=TRUE
 # ===========================================================================
 #  EDIT THESE FOUR LINES
 # ===========================================================================
-SIF_PATH="/nemo/stp/ddt/working/defoltj/muvis-align/muvis-align-xpra_v0.4.1.sif"          # container on shared storage
+# Refresh with: sbatch xpra-pull.sh
+CONTAINER_PATH="/nemo/stp/ddt/working/defoltj/muvis-align/muvis-align-xpra_latest"          # container on shared storage
 DATA_DIR="/nemo/project/proj-ccp-vem/datasets"              # directory to expose
 LOGIN_NODE="login.nemo.thecrick.org"         # what you ssh into
 XPRA_PORT=9876                            # port on the compute node
@@ -58,6 +59,11 @@ if ! command -v apptainer >/dev/null 2>&1; then
     echo "ERROR: apptainer not found. Try: module avail apptainer" >&2
     exit 1
 fi
+if [ ! -e "${CONTAINER_PATH}" ]; then
+    echo "ERROR: container not found at ${CONTAINER_PATH}" >&2
+    echo "       Run: sbatch xpra-pull.sh" >&2
+    exit 1
+fi
 
 XPRA_HOME="${HOME}/.xpra"
 RUN_DIR="${XPRA_HOME}/job-${SLURM_JOB_ID}"
@@ -72,8 +78,10 @@ printf '%s' "${XPRA_PASS}" > "${PASSWORD_FILE}"
 chmod 600 "${PASSWORD_FILE}"
 
 # --- always clean up, however the job ends ---------------------------------
+REVERSE_TUNNEL_PID=""
 cleanup() {
     rm -f "${PASSWORD_FILE}"
+    [ -n "${REVERSE_TUNNEL_PID}" ] && kill "${REVERSE_TUNNEL_PID}" 2>/dev/null
     echo "[$(date)] Session ended; password file removed."
 }
 trap cleanup EXIT
@@ -82,7 +90,25 @@ COMPUTE_NODE="$(hostname -s)"
 COMPUTE_NODE_TCP="$(hostname -i)"
 # Suggest a local port for the user's tunnel; derived from job id so two
 # concurrent sessions don't collide on the laptop side.
-LOCAL_PORT=9876
+LOCAL_PORT=$(( 9876 + (SLURM_JOB_ID % 1000) ))
+
+# Reverse tunnel to the login node, so the local ssh command doesn't need
+# to name the compute node. Requires passwordless SSH; fails fast otherwise.
+LOGIN_TUNNEL_PORT=$(( 20000 + (SLURM_JOB_ID % 10000) ))
+ssh -o BatchMode=yes -o ConnectTimeout=10 -o ExitOnForwardFailure=yes \
+    -o StrictHostKeyChecking=accept-new \
+    -N -R "${LOGIN_TUNNEL_PORT}:localhost:${XPRA_PORT}" "${LOGIN_NODE}" \
+    >"${RUN_DIR}/reverse-tunnel.log" 2>&1 &
+REVERSE_TUNNEL_PID=$!
+sleep 2
+if kill -0 "${REVERSE_TUNNEL_PID}" 2>/dev/null; then
+    REVERSE_TUNNEL_OK=true
+    TUNNEL_CMD="ssh -N -L ${LOCAL_PORT}:localhost:${LOGIN_TUNNEL_PORT} ${USER}@${LOGIN_NODE}"
+else
+    REVERSE_TUNNEL_OK=false
+    REVERSE_TUNNEL_PID=""
+    TUNNEL_CMD="ssh -N -L ${LOCAL_PORT}:${COMPUTE_NODE}:${XPRA_PORT} ${USER}@${LOGIN_NODE}"
+fi
 
 cat <<EOF
 
@@ -95,7 +121,16 @@ cat <<EOF
 
   STEP 1 - On your local machine, open a new terminal and run:
 
-      ssh -N -L ${LOCAL_PORT}:${COMPUTE_NODE}:${XPRA_PORT} ${USER}@${LOGIN_NODE}
+      ${TUNNEL_CMD}
+EOF
+if [ "${REVERSE_TUNNEL_OK}" = false ]; then
+    cat <<EOF
+    (Reverse tunnel via the login node was not available -- connecting
+    directly to the compute node instead. See:
+    ${RUN_DIR}/reverse-tunnel.log)
+EOF
+fi
+cat <<EOF
 
     Leave this terminal open for the whole session.
 
@@ -134,7 +169,7 @@ apptainer exec \
     --bind "${DATA_DIR}:${DATA_DIR}" \
     --env "USER=${USER}" \
     --env "XDG_RUNTIME_DIR=${RUN_DIR}" \
-    "${SIF_PATH}" \
+    "${CONTAINER_PATH}" \
     xpra start \
         --bind-tcp="0.0.0.0:${XPRA_PORT},auth=file:filename=${PASSWORD_FILE}" \
         --html=on \
