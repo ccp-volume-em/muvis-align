@@ -4,6 +4,11 @@ tiff_extension = '.ome.tiff'
 default_ome_zarr_version = '0.5'
 
 default_chunk_size = 1024
+# the interactive napari preview fuses this many sources' full native pyramids into one on-screen
+# overview - matches MVSRegistration.create_preview()'s own default 'preview_scale' (16), so an
+# on-screen preview stays proportionate to an exported one rather than fusing at native/scale0
+# resolution regardless of how large or how many sources there are
+default_interactive_preview_scale = 16
 
 prereg_mappings_name = 'prereg_mappings.csv'
 default_pair_mappings_name = 'pair_mappings.json'

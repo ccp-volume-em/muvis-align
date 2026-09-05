@@ -83,13 +83,38 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
         )
 
     if reg_results is not None:
+        # tile_pair_image_metrics (Mode 1 above, no pairs_graph given) finds every pair whose
+        # x/y footprint overlaps under base_transform_key - for a multi-section stack sharing
+        # the same x/y footprint at every z, that's every same-position pair across every
+        # section at any z distance, not just the ones register_pairs() actually paired and
+        # registered (e.g. 'orthogonal' pairing restricts pairs to adjacent z, and even within
+        # one section excludes diagonal neighbors) - restrict the table back down to the real
+        # registration graph's edges, compared unordered since this mode's own edge direction
+        # need not match the registration graph's.
+        real_pairs = {frozenset(edge) for edge in reg_results['pairwise_registration']['graph'].edges()}
+        metric_results['pairs'] = {pair_key: value for pair_key, value in metric_results['pairs'].items()
+                                   if frozenset(pair_key) in real_pairs}
+        for candidate_key, metric_values in metric_results['summary'].items():
+            for metric_key in list(metric_values):
+                values = [value[candidate_key][metric_key] for value in metric_results['pairs'].values()
+                         if candidate_key in value and value[candidate_key].get(metric_key) is not None
+                         and not np.isnan(value[candidate_key][metric_key])]
+                metric_values[metric_key] = float(np.mean(values)) if values else None
+
         qualities = reg_results['pairwise_registration']['metrics']['qualities']
+        # a pair_key here may use the opposite (fixed, moving) direction from the one Mode 1
+        # happened to pick for the same logical pair, or (rarely, if Mode 1's own overlap
+        # detection missed it) not appear in metric_results['pairs'] at all - look it up (or
+        # create it) by its unordered identity rather than assuming an exact key match
+        pairs_by_unordered_key = {frozenset(key): key for key in metric_results['pairs']}
 
         quality_values = []
         for pair_key, value in qualities.items():
             value = quality_to_scalar(value)
             if value:
-                metric_results['pairs'][pair_key][reg_transform_key][default_quality_key] = value
+                actual_key = pairs_by_unordered_key.get(frozenset(pair_key), pair_key)
+                metric_results['pairs'].setdefault(actual_key, {})
+                metric_results['pairs'][actual_key].setdefault(reg_transform_key, {})[default_quality_key] = value
                 quality_values.append(value)
 
         metric_results['summary'][reg_transform_key][default_quality_key] = float(np.nanmean(quality_values))

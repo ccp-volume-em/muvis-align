@@ -38,23 +38,42 @@ def reorder(items: list, old_order: str, new_order: str, default_value: int = 0)
     return new_items
 
 
+def _paths_match_by_suffix(path1, path2, min_parts=2):
+    # a project resumed on a different machine/mount than the one that saved its mappings (e.g.
+    # registered inside a container where the drive was mounted at /data, then reopened natively
+    # at C:/Project/...) can see the same file under two absolute paths with no shared prefix at
+    # all, so the plain substring check below (aimed at relative-vs-absolute differences) can't
+    # bridge them. Trailing path components (parent folder + filename) are already unique across
+    # a tiled dataset, so comparing those instead matches regardless of what either machine
+    # mounted the data root as.
+    parts1 = path1.replace('\\', '/').rstrip('/').split('/')
+    parts2 = path2.replace('\\', '/').rstrip('/').split('/')
+    if min(len(parts1), len(parts2)) < min_parts:
+        return False
+    return parts1[-min_parts:] == parts2[-min_parts:]
+
+
 def find_file_list_index(filenames, match):
     if match in filenames:
         return filenames.index(match)
-    else:
-        for index, filename in enumerate(filenames):
-            if match.lstrip('.') in filename:
-                return index
+    for index, filename in enumerate(filenames):
+        if match.lstrip('.') in filename:
+            return index
+    for index, filename in enumerate(filenames):
+        if _paths_match_by_suffix(filename, match):
+            return index
     return None
 
 
 def find_file_dict_item(dct, match):
     if match in dct:
         return dct[match]
-    else:
-        for key, value in dct.items():
-            if key.lstrip('.') in match:
-                return value
+    for key, value in dct.items():
+        if key.lstrip('.') in match:
+            return value
+    for key, value in dct.items():
+        if _paths_match_by_suffix(key, match):
+            return value
     return None
 
 

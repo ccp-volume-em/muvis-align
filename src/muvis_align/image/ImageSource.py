@@ -6,7 +6,7 @@ from multiview_stitcher import msi_utils, param_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_transform_key
-from muvis_align.image.util import combine_transforms, build_source_redimensioned_msim
+from muvis_align.image.util import combine_transforms, build_source_redimensioned_msim, build_missing_pyramid_levels
 from muvis_align.util import (find_all_numbers, split_numeric_dict, eval_context, check_contains_value,
                               create_transform, load_sbemimage_best_config, adjust_sbemimage_properties)
 
@@ -38,6 +38,7 @@ class ImageSource:
         self.init_metadata()
         self.fix_metadata(source_metadata, extra_metadata, matrix_size)
         if self.msim is None:
+            self._add_missing_pyramid_levels()
             self._build_msim()
         else:
             # a subclass (e.g. ZarrImageSource) already built self.msim natively - re-stamp
@@ -174,6 +175,26 @@ class ImageSource:
                 self.transform = transform2
             else:
                 self.transform = np.array(combine_transforms([self.transform, transform2]))
+
+    def _add_missing_pyramid_levels(self):
+        # a source read from a non-pyramidal format (e.g. a plain TIFF) only ever has one real
+        # resolution in self.data - synthesize coarser levels up front so napari always has a
+        # small level to draw first, instead of having to realise the whole finest-level dask
+        # graph just for a zoomed-out overview. self.shapes/self.pixel_sizes are extended to
+        # match, since _build_msim() (and get_shape/get_pixel_size etc.) index them by level.
+        if len(self.data) != 1:
+            return
+        datas, pixel_sizes = build_missing_pyramid_levels(
+            self.data[0], self.dimension_order, self.pixel_sizes[0])
+        if len(datas) > 1:
+            self.data = datas
+            self.pixel_sizes = pixel_sizes
+            self.shapes = self.shapes + [data.shape for data in datas[1:]]
+            # keep scale_factors (as set by fix_metadata(), for get_level_from_scale()) in sync
+            # with the levels just added, rather than leaving it stuck at its single-level value
+            self.scale_factors = [{dim: value0 / value for dim, value, value0
+                                   in zip(self.dimension_order, shape, self.shape) if dim in 'xyz'}
+                                   for shape in self.shapes]
 
     def _build_msim(self):
         # si_utils.get_sim_from_array forces a 'c' dim regardless (size 1 if not already in

@@ -144,6 +144,17 @@ parameters:
     section_id: "input_output"
     mode: "advanced"
 
+  - name: preview_scale
+    type: integer
+    label: "Preview downscale factor"
+    description: "Downscale factor for preview images"
+    default: 16
+    cli_tag: "--preview_scale"
+    cli_order: 8
+    optional: True
+    section_id: "input_output"
+    mode: "advanced"
+
   - name: overwrite
     type: checkbox
     label: "Overwrite output data"

@@ -12,14 +12,16 @@ from qtpy.QtCore import QTimer
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QMessageBox
 
-from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key
+from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key, \
+    default_interactive_preview_scale
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, \
     draw_keypoints_matches_napari, get_transforms, copy_transforms_to_msims, \
     make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, get_chunk_sizes, \
-    get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims
+    get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
+    select_msim_subpyramid_at_scale
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
 from muvis_align.metrics import calc_msims_metrics
@@ -481,12 +483,21 @@ class Interface:
         if self.params['input_output']['preview_shapes']:
             self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
 
-        if is_3d:
-            # Previous 3d shapes need to be recalculated with force_2d=True
+        self._refresh_overview_shapes(transform_key, shapes, refs, labels, face_colors, is_3d=is_3d)
+        self.view_mode = ViewMode.OVERVIEW
+
+    def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
+                                 face_colors=None, is_3d=None):
+        # the overview widget always shows a flattened, top-down layout, independent of
+        # whatever the main viewer currently shows (a fused image, per-tile overview, or
+        # nothing loaded yet) - a genuinely 3D shape set (drawn as oriented 3D boxes for the
+        # main viewer) needs recomputing with force_2d=True for it instead of being reused as-is
+        if is_3d is None:
+            is_3d = (get_msim_image0(self.reg.msims[0]).sizes.get('z', 0) > 1)
+        if shapes is None or is_3d:
             shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=True)
         self._clear_napari_view(self.overview)
         self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
-        self.view_mode = ViewMode.OVERVIEW
 
     def _clear_napari_view(self, viewer):
         # Avoid emitting an empty LayerList.clear() event.  Under xpra/Xvfb,
@@ -523,7 +534,15 @@ class Interface:
             # copy to avoid transform changes below leaking into the stored register_msims
             msims = [msim.copy(deep=True) for msim in self.reg.register_msims]
         else:
-            msims = self.view_msims
+            # view_msims (unlike register_msims) is never scale-reduced - every source's full
+            # native pyramid, un-preprocessed. Fusing that at native/scale0 resolution just to
+            # draw an on-screen overview forces building (and, for get_contrast_limits(), running)
+            # the graph for the largest, most expensive levels of the combined output, even though
+            # only its coarsest handful of pixels is ever actually shown until the user zooms in.
+            # Reduce to the same kind of coarse sub-pyramid MVSRegistration.create_preview() already
+            # uses for its own (exported) preview, rather than fusing every level of every source.
+            preview_scale = self.params['input_output'].get('preview_scale', default_interactive_preview_scale)
+            msims = select_msim_subpyramid_at_scale(self.view_msims, self.reg.sources, preview_scale)
         copy_transforms_to_msims(self.reg.msims, msims, transform_key)
         # A source chunked one z-slice at a time on disk would otherwise propagate that
         # z=1 chunking into every pyramid level of the preview (each level then has as many
@@ -633,7 +652,10 @@ class Interface:
                 edge_width = 0.1
                 face_color = face_colors
 
-            text = {'string': '{labels}'}
+            # the overview widget draws the same shapes much smaller on screen than the main
+            # viewer - napari's default text size (12) reads oversized there, so halve it
+            text_size = 6 if not bb_supported else 12
+            text = {'string': '{labels}', 'size': text_size}
             features = {'refs': refs, 'labels': labels}
             viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text, features=features,
                               face_color=face_color, opacity=0.5, edge_width=edge_width, edge_color=edge_color,
@@ -1035,11 +1057,15 @@ class Interface:
             QMessageBox.information(None, 'muvis-align', completion_message)
 
     def preview_fusion(self):
-        data = self._create_napari_data(self.reg.reg_transform_key,
-                                        fusion_method=self.params['fusion']['method'])
+        transform_key = self.reg.reg_transform_key
+        data = self._create_napari_data(transform_key, fusion_method=self.params['fusion']['method'])
         self._clear_napari_view(self.viewer)
         self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
         self.view_mode = ViewMode.FUSED
+        # preview_fusion() is also what a resumed already-fused project draws (init_progress's
+        # is_fused() branch) - unlike every other init_progress branch, it never otherwise goes
+        # through update_views(), so the overview would stay empty without this
+        self._refresh_overview_shapes(transform_key)
 
     @catch_run_errors
     def run_fusion(self):
