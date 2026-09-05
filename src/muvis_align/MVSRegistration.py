@@ -353,43 +353,52 @@ class MVSRegistration:
 
         return True
 
-    def init_sources(self):
+    def init_sources(self, progress_factory=None):
         source_metadata0 = self.source_metadata
         source_metadata = {}
         self.sources = []
         matrix_size = None
-        for index, (filename, label) in enumerate(zip(self.filenames, self.file_labels)):
-            if isinstance(source_metadata0, dict) and label in source_metadata0:
-                source_metadata = source_metadata0[label]
-                position, rotation, scale = get_properties_from_transform(param_utils.affine_to_xaffine(np.array(source_metadata)))
-                source_metadata = {'position': position, 'rotation': rotation, 'scale': xyz_to_dict([scale, scale])}
-            else:
-                if 'position' in source_metadata0:
-                    translation = source_metadata0['position']
-                    if isinstance(translation, list):
-                        translation = translation[index]
-                    source_metadata['position'] = translation
-                if 'scale' in source_metadata0:
-                    scale = source_metadata0['scale']
-                    if isinstance(scale, list):
-                        scale = scale[index]
-                    source_metadata['scale'] = scale
-                if 'rotation' in source_metadata0:
-                    source_metadata['rotation'] = source_metadata0['rotation']
-            if isinstance(source_metadata0, dict):
-                # blanket per-run flags that apply identically to every source
-                for flag in ('sbem', 'invert', 'is_center'):
-                    if flag in source_metadata0:
-                        source_metadata[flag] = source_metadata0[flag]
-            source = create_image_source(filename, source_metadata, extra_metadata=self.extra_metadata,
-                                         file_label=label, transform_key=self.source_transform_key,
-                                         matrix_size=matrix_size)
-            if matrix_size is None:
-                # decided once from the first source, matching the previous is_3d-from-source0 behaviour
-                matrix_size = 4 if source.get_size().get('z', 0) > 1 else 3
-            self.sources.append(source)
+        progress_context = (
+            progress_factory(total=len(self.filenames), desc='Initialising sources')
+            if progress_factory is not None
+            else nullcontext(None)
+        )
+        with progress_context as pbar:
+            for index, (filename, label) in enumerate(zip(self.filenames, self.file_labels)):
+                if isinstance(source_metadata0, dict) and label in source_metadata0:
+                    source_metadata = source_metadata0[label]
+                    position, rotation, scale = get_properties_from_transform(param_utils.affine_to_xaffine(np.array(source_metadata)))
+                    source_metadata = {'position': position, 'rotation': rotation, 'scale': xyz_to_dict([scale, scale])}
+                else:
+                    if 'position' in source_metadata0:
+                        translation = source_metadata0['position']
+                        if isinstance(translation, list):
+                            translation = translation[index]
+                        source_metadata['position'] = translation
+                    if 'scale' in source_metadata0:
+                        scale = source_metadata0['scale']
+                        if isinstance(scale, list):
+                            scale = scale[index]
+                        source_metadata['scale'] = scale
+                    if 'rotation' in source_metadata0:
+                        source_metadata['rotation'] = source_metadata0['rotation']
+                if isinstance(source_metadata0, dict):
+                    # blanket per-run flags that apply identically to every source
+                    for flag in ('sbem', 'invert', 'is_center'):
+                        if flag in source_metadata0:
+                            source_metadata[flag] = source_metadata0[flag]
+                source = create_image_source(filename, source_metadata, extra_metadata=self.extra_metadata,
+                                             file_label=label, transform_key=self.source_transform_key,
+                                             matrix_size=matrix_size)
+                if matrix_size is None:
+                    # decided once from the first source, matching the previous is_3d-from-source0 behaviour
+                    matrix_size = 4 if source.get_size().get('z', 0) > 1 else 3
+                self.sources.append(source)
+                if pbar is not None:
+                    pbar.update(1)
 
-    def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, target_scale=None, store=True):
+    def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, target_scale=None, store=True,
+                  progress_factory=None):
         if not source_metadata:
             source_metadata = self.source_metadata
         if not extra_metadata:
@@ -409,7 +418,7 @@ class MVSRegistration:
 
         logging.info('Initialising sims...')
         if not self.sources or source_metadata_changed:
-            self.init_sources()
+            self.init_sources(progress_factory=progress_factory)
         sources = self.sources
         source0 = sources[0]
         sims = []

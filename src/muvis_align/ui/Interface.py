@@ -301,9 +301,16 @@ class Interface:
     def update_metadata_source(self, skip_view_update=False):
         if not self.reg.is_pairs_registered():
             try:
-                self.reg.init_data(
-                    source_metadata=self.source_metadata,
-                )
+                with NapariPreprocessProgress(progress_class=progress,
+                                              desc='Initialising sources',
+                                              bar_format=" ",
+                                              min_duration=0.1) as progress_factory, \
+                     TemporarilyDisabledWidgets(self.enable_plugin_widget), \
+                     VisibleActivityDock(self.viewer):
+                    self.reg.init_data(
+                        source_metadata=self.source_metadata,
+                        progress_factory=progress_factory,
+                    )
             except ValueError as e:
                 show_warning('Unable to read source data\n' + str(e))
                 logging.exception('Unable to read source data')
