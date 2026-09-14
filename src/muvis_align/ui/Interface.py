@@ -306,8 +306,13 @@ class Interface:
 
         bridge = _ProgressBridge()
         bridge.moved.connect(progress_factory.set_position, Qt.QueuedConnection)
-        worker_factory = NapariPhaseProgress(emit=bridge.moved.emit,
-                                             phases=progress_factory.phases)
+        # started where the bar has actually got to, not at zero - see
+        # NapariPhaseProgress.worker_twin(). An operation runs several of these one after another
+        # (opening a project reads the sources, then loads the saved registration), and a twin
+        # that re-planned the bar from empty each time left every call after the first reporting
+        # positions the bar was already past, which it ignores: the bar froze partway and stayed
+        # there until the operation ended
+        worker_factory = progress_factory.worker_twin(bridge.moved.emit)
 
         def run():
             with worker_factory as factory:
@@ -329,6 +334,9 @@ class Interface:
         )
         worker.start()
         loop.exec_()
+        # whatever the twin accounted for is now the bar's own state, so the next off-thread
+        # call of this operation continues from here instead of dividing it up again
+        progress_factory.continue_from(worker_factory)
         if 'error' in outcome:
             raise outcome['error']
         return outcome.get('value')
@@ -354,6 +362,11 @@ class Interface:
         """
         factory = progress_factory or getattr(self, '_running_operation', None)
         if factory is not None:
+            # the bar is someone else's, but this operation's own phase count still has to reach
+            # it - without that its phases divide up whatever the outer operation happened to
+            # have left, each taking most of the remainder, and the bar creeps toward full
+            # without arriving
+            factory.ensure_phases(phases)
             yield factory
             return
         with NapariPhaseProgress(progress_class=progress, desc=desc, phases=phases,
@@ -673,18 +686,19 @@ class Interface:
         is_multi_z_shapes = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
         force_2d = is_multi_z_shapes and not is_3d
 
-        # The whole refresh is one phase, counted in the steps below - a refresh of a few
-        # hundred images takes tens of seconds on the Qt thread (the fused preview dominating
-        # it, but none of the steps being instant), and without this all of that looked like a
-        # frozen window. The steps are equal-weight, so the bar moves unevenly; it says the view
-        # is being refreshed and roughly how far along that is, which is all there is to follow.
-        steps = 3 if not show_images else 5
+        # Each step of the refresh is its own phase, weighted by what it actually costs rather
+        # than counted equally: building the view data dominates everything else (10 of the 11.6
+        # minutes of a 4733-source refresh), so as one of five equal steps it left the bar at 18%
+        # for ten minutes and then crossed most of it at once. It reports from the inside too
+        # (see _create_napari_data), so the long step moves rather than only bracketing itself.
+        view_data_weight = 12
+        phases = 3 + (view_data_weight + 1 if show_images else 0)
 
-        with self._operation_progress('Refreshing view', progress_factory) as factory, \
-             factory(total=steps) as pbar:
-            with Timer('update_views: create shapes', verbose=self._timing_verbose()):
+        with self._operation_progress('Refreshing view', progress_factory, phases=phases) as factory:
+            with factory(total=1) as pbar, \
+                 Timer('update_views: create shapes', verbose=self._timing_verbose()):
                 shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=force_2d)
-            pbar.update(1)
+                pbar.update(1)
 
             self._clear_napari_view(self.viewer)
             # before pre-processing has run, only shapes are ever shown (show_images=False) - the
@@ -694,28 +708,32 @@ class Interface:
             if show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
-                    # must not (see _run_off_thread())
+                    # must not (see _run_off_thread()). The worker's factory goes all the way in,
+                    # so the step reports its own sub-steps instead of being one silent block
                     data = self._run_off_thread(
                         lambda worker_factory: self._create_napari_data(
-                            transform_key, show_preprocessed=show_preprocessed, composite=True),
+                            transform_key, show_preprocessed=show_preprocessed, composite=True,
+                            progress_factory=worker_factory, weight=view_data_weight),
                         factory)
-                pbar.update(1)
                 if data is not None:
-                    with Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
+                    with factory(total=1) as pbar, \
+                         Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
                         # cheap=True: this is the general overview, not the accurate fusion-tab
                         # preview (preview_fusion()) or the real exported result (fusion_process())
                         # - a naive contrast guess is fine here, see _napari_view_add_fused_data()
                         self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data',
                                                          cheap=True)
+                        pbar.update(1)
+
+            with factory(total=1) as pbar, \
+                 Timer('update_views: add shapes to viewer', verbose=self._timing_verbose()):
+                self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
                 pbar.update(1)
 
-            with Timer('update_views: add shapes to viewer', verbose=self._timing_verbose()):
-                self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
-            pbar.update(1)
-
-            with Timer('update_views: refresh overview shapes', verbose=self._timing_verbose()):
+            with factory(total=1) as pbar, \
+                 Timer('update_views: refresh overview shapes', verbose=self._timing_verbose()):
                 self._refresh_overview_shapes(transform_key, shapes, refs, labels, face_colors, is_3d=is_3d)
-            pbar.update(1)
+                pbar.update(1)
         self.view_mode = ViewMode.OVERVIEW
 
     def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
@@ -790,22 +808,42 @@ class Interface:
         face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
         return shapes, refs, labels, face_colors
 
+    @staticmethod
+    def _progress_phase(progress_factory, total=None, desc=None, weight=1):
+        """One reporting phase of the caller's operation, or nothing to report into."""
+        return (progress_factory(total=total, desc=desc, weight=weight)
+                if progress_factory is not None else nullcontext(None))
+
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
-                            composite=False):
+                            composite=False, progress_factory=None, weight=1):
+        # `weight` is what the caller's bar allows this whole step, divided below between the
+        # sub-steps in rough proportion to what each costs on a large project. This is the step
+        # that dominates a refresh, so reporting from inside it is the difference between a bar
+        # that moves for ten minutes and one that sits at a single number throughout.
+        def phase(share, total=None):
+            return self._progress_phase(progress_factory, total=total,
+                                        weight=max(weight * share, 1))
+
         if show_preprocessed:
             # copy to avoid transform changes below leaking into the stored register_msims
-            with Timer(f'_create_napari_data: copy {len(self.reg.register_msims)} register_msims',
+            with phase(1 / 12, total=1) as pbar, \
+                 Timer(f'_create_napari_data: copy {len(self.reg.register_msims)} register_msims',
                       verbose=self._timing_verbose()):
                 msims = [msim.copy(deep=True) for msim in self.reg.register_msims]
+                if pbar is not None:
+                    pbar.update(1)
             # promoted here, as self.view_msims does for the other branch, so the size estimate
             # below sees the same geometry fuse() will: fuse() promotes internally when sources
             # sit at several z heights, and calc_output_properties cannot combine un-promoted
             # sims that disagree about z. Not extra work - fuse() now recognises an
             # already-promoted msim and leaves it alone (see make_msims_3d).
             if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                with Timer('_create_napari_data: promote register_msims to 3D',
+                with phase(1 / 12, total=1) as pbar, \
+                     Timer('_create_napari_data: promote register_msims to 3D',
                           verbose=self._timing_verbose()):
                     msims = make_msims_3d(msims, positions=self.reg.positions)
+                    if pbar is not None:
+                        pbar.update(1)
         else:
             # view_msims (unlike register_msims) is never scale-reduced - every source's full
             # native pyramid, un-preprocessed. Fusing that at native/scale0 resolution just to
@@ -815,11 +853,17 @@ class Interface:
             # Reduce to the same kind of coarse sub-pyramid MVSRegistration.create_preview() already
             # uses for its own (exported) preview, rather than fusing every level of every source.
             preview_scale = self.params['input_output'].get('preview_scale', default_interactive_preview_scale)
-            with Timer('_create_napari_data: build view_msims', verbose=self._timing_verbose()):
+            with phase(1 / 12, total=1) as pbar, \
+                 Timer('_create_napari_data: build view_msims', verbose=self._timing_verbose()):
                 view_msims = self.view_msims
-            with Timer(f'_create_napari_data: select_msim_subpyramid_at_scale ({len(view_msims)} images)',
+                if pbar is not None:
+                    pbar.update(1)
+            with phase(1 / 12, total=1) as pbar, \
+                 Timer(f'_create_napari_data: select_msim_subpyramid_at_scale ({len(view_msims)} images)',
                       verbose=self._timing_verbose()):
                 msims = select_msim_subpyramid_at_scale(view_msims, self.reg.sources, preview_scale)
+                if pbar is not None:
+                    pbar.update(1)
         # Whichever branch produced them, cap what this preview will actually fuse. The
         # show_preprocessed branch never consults preview_scale - its resolution comes from
         # pre_processing's own scale - so with that set to 1 the "preview" is the whole dataset:
@@ -829,21 +873,31 @@ class Interface:
         # select_msim_subpyramid_at_scale() here: its level index is relative to each *source's*
         # own pyramid, while register_msims have already been scale-reduced (at pre-processing
         # scale 8 they carry a single level), so asking it for level 3 would select nothing.
-        with Timer('_create_napari_data: cap preview fusion size', verbose=self._timing_verbose()):
+        with phase(1 / 12, total=1) as pbar, \
+             Timer('_create_napari_data: cap preview fusion size', verbose=self._timing_verbose()):
             msims = reduce_msims_to_fused_size(
                 msims, transform_key, z_scale=self.reg._msim_z_scale,
                 label=f'Preview fusion ({len(msims)} images)')
-        with Timer('_create_napari_data: copy_transforms_to_msims', verbose=self._timing_verbose()):
+            if pbar is not None:
+                pbar.update(1)
+        with phase(1 / 12, total=1) as pbar, \
+             Timer('_create_napari_data: copy_transforms_to_msims', verbose=self._timing_verbose()):
             copy_transforms_to_msims(self.reg.msims, msims, transform_key)
+            if pbar is not None:
+                pbar.update(1)
         if composite:
             # the main view only needs to show where the sources sit, and fusing for that costs
             # per source however small the preview is made (10.3 minutes for 4733 of them) -
             # paste them instead, and fall back to fusing if that cannot place them faithfully
-            with Timer(f'_create_napari_data: composite overview ({len(msims)} images)',
+            # the one sub-step with real per-source progress to report, and the one that takes
+            # most of the time - so it gets most of what this step was allowed
+            with phase(7 / 12, total=len(msims)) as pbar, \
+                 Timer(f'_create_napari_data: composite overview ({len(msims)} images)',
                        verbose=self._timing_verbose()):
                 overview = composite_msims_overview(
                     msims, transform_key, z_scale=self.reg._msim_z_scale,
-                    label=f'Overview ({len(msims)} images)')
+                    label=f'Overview ({len(msims)} images)',
+                    progress=(pbar.update if pbar is not None else None))
             if overview is not None:
                 return overview
         # output_chunksize is deliberately left to fuse(), which derives it (get_chunk_sizes)
@@ -851,7 +905,13 @@ class Interface:
         # so the 'z' that promotion introduces is already accounted for. Sizing it here instead
         # would mean reproducing that promotion rule from the outside, against msims that may
         # not have a 'z' dim yet.
-        with Timer(f'_create_napari_data: fuse ({len(msims)} images)', verbose=self._timing_verbose()):
+        # no declared step count: fuse() plans the whole graph in one call, so this moves by a
+        # share of what is left of its slice on each of the few boundaries it does have, rather
+        # than standing still (see NapariPhaseProgress._advance_phase)
+        with phase(7 / 12) as pbar, \
+             Timer(f'_create_napari_data: fuse ({len(msims)} images)', verbose=self._timing_verbose()):
+            if pbar is not None:
+                pbar.update(1)
             fused_msim, _ = self.reg.fuse(msims,
                                           transform_key=transform_key,
                                           fusion_method=fusion_method,
@@ -1432,19 +1492,24 @@ class Interface:
     @catch_run_errors
     def preview_fusion(self, progress_factory=None):
         transform_key = self.reg.reg_transform_key
-        with self._operation_progress('Fusion preview', progress_factory, phases=2) as factory, \
-             factory(total=2) as pbar:
+        # as in update_views(): building the data is the long half, so it is weighted as such and
+        # reports from the inside rather than being one block with a tick on either side
+        fusion_weight = 12
+        with self._operation_progress('Fusion preview', progress_factory,
+                                      phases=fusion_weight + 1) as factory:
             def fuse(worker_factory):
                 with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, desc='Fusion',
                                        patch_fusion=True):
                     return self._create_napari_data(
-                        transform_key, fusion_method=self.params['fusion']['method'])
+                        transform_key, fusion_method=self.params['fusion']['method'],
+                        progress_factory=worker_factory, weight=fusion_weight)
 
             data = self._run_off_thread(fuse, factory)
-            pbar.update(1)
-            self._clear_napari_view(self.viewer)
-            self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
-            self.view_mode = ViewMode.FUSED
+            with factory(total=1) as pbar:
+                self._clear_napari_view(self.viewer)
+                self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
+                self.view_mode = ViewMode.FUSED
+                pbar.update(1)
         # preview_fusion() is also what a resumed already-fused project draws (init_progress's
         # is_fused() branch) - unlike every other init_progress branch, it never otherwise goes
         # through update_views(), so the overview would stay empty without this

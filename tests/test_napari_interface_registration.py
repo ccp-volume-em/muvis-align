@@ -962,11 +962,15 @@ def test_update_views_adds_enabled_preview_layers(
         call("registered", force_2d=False),
         call("registered", force_2d=True),
     ]
-    bare_interface._create_napari_data.assert_called_once_with(
-        "registered",
-        show_preprocessed=True,
-        composite=True,
-    )
+    assert bare_interface._create_napari_data.call_count == 1
+    args, kwargs = bare_interface._create_napari_data.call_args
+    assert args == ("registered",)
+    assert kwargs["show_preprocessed"] is True
+    assert kwargs["composite"] is True
+    # the longest step of a refresh reports from the inside rather than being one silent block,
+    # so it is handed the operation's progress factory and the share of the bar it is worth
+    assert kwargs["progress_factory"] is not None
+    assert kwargs["weight"] > 1
     bare_interface._napari_view_add_fused_data.assert_called_once_with(
         bare_interface.viewer, image_data, "sample data", cheap=True
     )

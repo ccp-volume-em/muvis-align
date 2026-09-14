@@ -62,3 +62,26 @@ def test_no_cpu_times_still_reports_without_a_verdict():
 @pytest.mark.parametrize('workers', [1, 8, 64])
 def test_worker_count_is_reported(workers):
     assert f'with {workers} workers' in format_phase_timing(1.0, [1.0], [1.0], workers)
+
+
+def test_process_cpu_is_reported_when_given():
+    # the 4733-source run: the phase itself measured 468.5s of CPU in 598.5s of wall time, while
+    # the process burned 2268s over the same stretch - ~3.8 cores, almost none of it this phase.
+    # time.thread_time cannot see that (it counts only the thread running the item), so without
+    # the process figure the phase looks merely slow rather than surrounded by something costly.
+    line = format_phase_timing(598.5, [38254.3 / 4733] * 4733, [468.5 / 4733] * 4733, 64,
+                               process_cpu_time=2268.0)
+    assert 'process cpu 2268.0s' in line
+    assert '3.8 cores' in line
+    assert 'the rest is elsewhere in the process' in line
+
+
+def test_process_cpu_that_is_all_this_phase_is_not_flagged_as_elsewhere():
+    line = format_phase_timing(20.0, [1.0] * 16, [1.0] * 16, 16, process_cpu_time=17.0)
+    assert 'process cpu 17.0s' in line
+    assert 'the rest is elsewhere in the process' not in line
+
+
+def test_process_cpu_is_optional():
+    line = format_phase_timing(5.0, [1.0, 3.0], [0.1, 0.2], 2)
+    assert 'process cpu' not in line

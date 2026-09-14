@@ -30,9 +30,12 @@ class NapariPhaseProgress:
     to its total each looked like a new bar starting: 2/2 becoming 2/330 reads as a reset, not
     as progress.
 
-    `phases` is how many phases the operation expects, which is what sizes the slices; an
-    operation that turns out to run more gets them out of what is left, and one that runs fewer
-    has the remainder filled in when it ends.
+    `phases` is how much the operation expects to report, in phase-sized units, which is what
+    sizes the slices; an operation that turns out to run more gets them out of what is left, and
+    one that runs fewer has the remainder filled in when it ends. A phase whose work is worth
+    several of its siblings claims that many units at once (`factory(total=..., weight=n)`) -
+    equal slices for steps that are nothing like equal is what made a refresh sit at 18% for ten
+    minutes and then cross most of the bar in a second.
 
     The bar goes up when the operation starts, not when its first phase reports - an operation
     whose first stretch of work reports nothing (global registration spends most of itself
@@ -42,7 +45,11 @@ class NapariPhaseProgress:
     `emit` makes a headless twin of one of these, for work running off the Qt thread (see
     Interface._run_off_thread()): it drives no bar of its own and instead reports the position
     it would have moved one to, for the bar on the Qt thread to follow. Qt widgets may only be
-    touched from the thread that owns them, so a worker never holds the real bar.
+    touched from the thread that owns them, so a worker never holds the real bar. Build one with
+    worker_twin(), which starts it where the bar has actually got to: a twin built fresh at zero
+    re-plans the whole bar from empty, so the second off-thread call of an operation reports
+    positions the bar is already past and - since the bar only ever moves forward - moves it
+    nothing at all.
 
     A bar is no use to a headless run, so a long operation also says where it has got to in
     the log, every `heartbeat_seconds` - which is the only way to tell a slow phase (a preview
@@ -104,8 +111,36 @@ class NapariPhaseProgress:
         self._start_heartbeat()
         return self
 
-    def __call__(self, total=None, desc=None, **_):
-        return _ProgressPhase(self, total, desc)
+    def __call__(self, total=None, desc=None, weight=1, **_):
+        return _ProgressPhase(self, total, desc, weight)
+
+    def worker_twin(self, emit):
+        """A bar-less stand-in for work about to run on another thread, continuing this bar
+        rather than re-planning it from empty (see `emit` above). Hand its final state back with
+        continue_from() so the next twin carries on from there too.
+        """
+        twin = NapariPhaseProgress(emit=emit, phases=self.phases)
+        twin._position = self._position
+        twin._target = self._target
+        twin.phases_left = self.phases_left
+        return twin
+
+    def continue_from(self, twin):
+        """Take over where a twin left off - its position (in case its last report is still in
+        flight on the Qt queue) and, more importantly, how much of the operation it accounted
+        for, so a later phase does not re-divide slices this one has already used.
+        """
+        self.phases_left = twin.phases_left
+        self._move_to(twin._position)
+
+    def ensure_phases(self, phases):
+        """Make room for a nested operation that reports `phases` of its own into this bar.
+
+        Slices are sized against what is left to report; without this an operation nested in one
+        that thought itself nearly done divides the same remainder again and again, each phase
+        taking most of what remains, so the bar crawls toward full without ever arriving.
+        """
+        self.phases_left = max(self.phases_left, float(phases))
 
     def _start_heartbeat(self):
         if self.emit is not None or not self.heartbeat_seconds:
@@ -133,13 +168,20 @@ class NapariPhaseProgress:
         if self._pbar is not None:
             if exc_type is None:
                 self._move_to(self.ticks)
+                # let the full bar actually reach the screen. Filling and closing in the same
+                # pass means an operation is only ever seen part-done and then gone, which reads
+                # as having given up rather than as having finished
+                _paint_now()
             self._pbar.close()
             self._pbar = None
-        # back to how this started: a factory that outlives its operation (handed on to work
-        # that runs after it) then reports on a new bar, rather than silently on a closed one
-        self.phases_left = self.phases
-        self._position = 0.0
-        self._target = 0.0
+        if self.emit is None:
+            # back to how this started: a factory that outlives its operation (handed on to work
+            # that runs after it) then reports on a new bar, rather than silently on a closed
+            # one. A twin is the exception - it is built per off-thread call and never reused,
+            # and its final state is what the bar it reports to continues from (continue_from())
+            self.phases_left = self.phases
+            self._position = 0.0
+            self._target = 0.0
         if self._started_at is not None and self.min_duration > 0:
             # an operation that turned out to be instant would otherwise flash the activity
             # dock open and shut
@@ -200,15 +242,21 @@ class NapariPhaseProgress:
 
         return _PhaseTqdm
 
-    def _begin_phase(self, total, desc=None):
+    # what one update of a phase that never declared a step count crosses of whatever is left of
+    # its slice - so such a phase keeps moving with every update, approaching the end of its
+    # slice without ever claiming to have reached it
+    undeclared_step_share = 0.25
+
+    def _begin_phase(self, total, desc=None, weight=1):
         remaining = self.ticks - self._position
-        if self.phases_left > 1:
-            span = remaining / self.phases_left
+        weight = max(float(weight), 1.0)
+        if self.phases_left > weight:
+            span = remaining * weight / self.phases_left
         else:
             # the last phase the operation expects, or one it never expected at all, takes most
             # of what is left rather than all of it
             span = remaining * self.last_phase_share
-        self.phases_left = max(self.phases_left - 1, 0)
+        self.phases_left = max(self.phases_left - weight, 0)
         return _PhaseSlice(start=self._position, span=span, total=total)
 
     def _advance_phase(self, phase_slice, n=1):
@@ -216,9 +264,10 @@ class NapariPhaseProgress:
         if phase_slice.total:
             fraction = min(phase_slice.done / phase_slice.total, 1.0)
         else:
-            # a phase that never said how many steps it has can still say it is running: show it
-            # half way through its own slice until it ends
-            fraction = 0.5
+            # a phase that never said how many steps it has still moves on every update, by a
+            # share of what is left of its slice. Parking it at a fixed fraction instead (it used
+            # to sit at half way) is indistinguishable from a hung one for as long as it runs.
+            fraction = 1.0 - (1.0 - self.undeclared_step_share) ** phase_slice.done
         self._move_to(phase_slice.start + phase_slice.span * fraction)
 
     def _end_phase(self, phase_slice):
@@ -258,7 +307,7 @@ class NapariPhaseProgress:
 
 class _PhaseSlice:
     """What one phase was given of the operation: where its slice starts, how much of the bar it
-    spans, and how many of the phase's own steps that span is worth."""
+    spans, and how many of the phase's own steps that span is worth (None if it never said)."""
 
     def __init__(self, start, span, total):
         self.start = start
@@ -272,14 +321,15 @@ class _ProgressPhase:
     set_description) interface a napari progress bar offers, so phases need no knowledge of the
     sharing."""
 
-    def __init__(self, owner, total=None, desc=None):
+    def __init__(self, owner, total=None, desc=None, weight=1):
         self.owner = owner
         self.total = total
         self.desc = desc
+        self.weight = weight
         self._slice = None
 
     def __enter__(self):
-        self._slice = self.owner._begin_phase(self.total, self.desc)
+        self._slice = self.owner._begin_phase(self.total, self.desc, self.weight)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):

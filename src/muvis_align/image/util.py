@@ -2324,7 +2324,8 @@ def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scal
 
 
 def composite_msims_overview(msims, transform_key, z_scale=None,
-                             max_bytes=default_overview_max_bytes, label='Overview'):
+                             max_bytes=default_overview_max_bytes, label='Overview',
+                             progress=None):
     """Every source pasted into one array at its registered position - the on-screen overview.
 
     What napari's main view needs is a picture of where the sources sit, and fusing for that is
@@ -2344,6 +2345,11 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     max_bytes. Returns None - leaving the caller to fuse - for anything this cannot place
     faithfully: a source whose transform is not a pure translation (a rotation needs resampling,
     not a paste), or sources that disagree about their non-spatial dims.
+
+    `progress`, if given, is called once per source pasted. This is the longest single step of
+    drawing the view (10 of the 11.6 minutes of a 4733-source refresh), and reading every
+    source's pixels is what it spends that on - so it is also the one step with something real
+    to report, rather than being a block the bar can only sit in front of.
     """
     sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') if isinstance(msim, DataTree) else msim
             for msim in msims]
@@ -2388,6 +2394,8 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     overview = np.zeros(leading + [shape[dim] for dim in sdims], dtype=sims[0].dtype)
 
     for sim, translation in zip(sims, translations):
+        if progress is not None:
+            progress()
         sim_spacing = si_utils.get_spacing_from_sim(sim)
         sim_origin = si_utils.get_origin_from_sim(sim)
         # one output pixel per `stride` source pixels, and where in the output this source starts

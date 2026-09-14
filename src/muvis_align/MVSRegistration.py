@@ -119,7 +119,7 @@ class MVSRegistration:
         # worker count whether or not anything was actually overlapped - see the log below
         source_times = []
         source_cpu_times = []
-        phase_start = time.time()
+        phase_start, phase_cpu_start = time.time(), time.process_time()
         max_workers = 1
 
         def build_msim(index):
@@ -150,7 +150,8 @@ class MVSRegistration:
         self._msims = msims
         if self.logging_time and source_times:
             logging.info(f'Build msims: {len(source_times)} sources'
-                         f' {format_phase_timing(time.time() - phase_start, source_times, source_cpu_times, max_workers)}')
+                         f' {format_phase_timing(time.time() - phase_start, source_times, source_cpu_times,
+                                                 max_workers, time.process_time() - phase_cpu_start)}')
 
     def reset(self):
         self.state = RegState.UNINIT
@@ -507,7 +508,7 @@ class MVSRegistration:
             # matrix_size is decided once from the first source (matching the previous
             # is_3d-from-source0 behaviour) - build it on its own first, so every other source
             # below can be constructed with that already-known matrix_size from the start
-            phase_start = time.time()
+            phase_start, phase_cpu_start = time.time(), time.process_time()
             first_source = build_source(0, matrix_size=None)
             matrix_size = 4 if first_source.get_size().get('z', 0) > 1 else 3
             self.sources[0] = first_source
@@ -528,7 +529,8 @@ class MVSRegistration:
 
         if self.logging_time and file_times:
             logging.info(f'Init sources: {len(file_times)} files'
-                         f' {format_phase_timing(time.time() - phase_start, file_times, file_cpu_times, max_workers)}')
+                         f' {format_phase_timing(time.time() - phase_start, file_times, file_cpu_times,
+                                                 max_workers, time.process_time() - phase_cpu_start)}')
 
     def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, target_scale=None, store=True,
                   progress_factory=None):

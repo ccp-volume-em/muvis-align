@@ -479,7 +479,7 @@ um_conversions = {
 }
 
 
-def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers):
+def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None):
     """One timing line for a threaded per-item phase, reported so it can actually be read.
 
     The obvious summary - wall time against the summed per-item time - cannot distinguish the
@@ -499,6 +499,15 @@ def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers):
                       exactly what more workers can overlap
 
     so the printed ratio says which regime a run is in, rather than always looking like a win.
+
+    `process_cpu_time` (time.process_time across the phase) is reported alongside, because the
+    per-item figure above is time.thread_time and so counts only the thread that ran the item -
+    never a nested pool it submitted to, nor anything else in the process. One 4733-source run
+    measured 468s of per-item CPU inside a phase whose wall clock was 598s, while the process
+    itself burned 2268s over the same stretch: ~3.8 cores, none of it in the work being timed.
+    Without both numbers that CPU is invisible, and the phase looks merely slow rather than
+    surrounded by something expensive (a rendering stack, a library's own thread pool, a BLAS
+    build spinning its idle threads).
     """
     total_time = sum(item_times)
     total_cpu = sum(item_cpu_times) if item_cpu_times else 0.0
@@ -506,6 +515,12 @@ def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers):
                f' per-item total {total_time:.1f}s, cpu {total_cpu:.1f}s'
                f' (mean {1000 * total_time / len(item_times):.0f}ms,'
                f' max {1000 * max(item_times):.0f}ms)')
+    if process_cpu_time is not None and wall_time > 0:
+        summary += (f', process cpu {process_cpu_time:.1f}s'
+                    f' ({process_cpu_time / wall_time:.1f} cores)')
+        if total_cpu > 0 and process_cpu_time > 2 * total_cpu:
+            summary += (f' - only {total_cpu / process_cpu_time:.0%} of the process CPU is this'
+                        f' phase: the rest is elsewhere in the process')
     if total_cpu > 0:
         ratio = wall_time / total_cpu
         regime = ('CPU-bound: at the single-thread floor, more workers will not help'
