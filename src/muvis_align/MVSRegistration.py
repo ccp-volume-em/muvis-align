@@ -25,6 +25,7 @@ import xarray as xr
 from muvis_align.constants import *
 from muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
 from muvis_align.file.transforms import write_transforms, read_transforms
+from muvis_align.GlobalOptProgress import GlobalOptProgress
 from muvis_align.image.Video import Video
 from muvis_align.image.flatfield import flatfield_correction
 from muvis_align.image.ome_helper import save_image
@@ -1342,7 +1343,10 @@ class MVSRegistration:
                 weight_key="quality",
             )
 
-        with self.progress_phase(progress_factory, total=1, desc='Global registration'), \
+        # not a plain progress phase: the call below is the longest single blocking stretch of a
+        # large run and has nothing to report into one, so GlobalOptProgress follows the
+        # optimiser's own log instead - see its module docstring
+        with GlobalOptProgress(progress_factory, desc='Global registration'), \
                 dask.config.set(scheduler='threads'):
             transforms_dict, groupwise_resolution_info_dict = groupwise_resolution(
                 g_reg_computed,
