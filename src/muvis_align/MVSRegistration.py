@@ -1346,7 +1346,8 @@ class MVSRegistration:
         # not a plain progress phase: the call below is the longest single blocking stretch of a
         # large run and has nothing to report into one, so GlobalOptProgress follows the
         # optimiser's own log instead - see its module docstring
-        with GlobalOptProgress(progress_factory, desc='Global registration'), \
+        with GlobalOptProgress(progress_factory, desc='Global registration',
+                               max_passes=g_reg_computed.number_of_edges(), weight=4), \
                 dask.config.set(scheduler='threads'):
             transforms_dict, groupwise_resolution_info_dict = groupwise_resolution(
                 g_reg_computed,
@@ -1358,23 +1359,33 @@ class MVSRegistration:
             transforms_dict[iview] for iview in sorted(g_reg_computed.nodes())
         ]
 
-        for imsim, msim in enumerate(pair_msims):
-            msi_utils.set_affine_transform(
-                msim,
-                transforms[imsim],
-                transform_key=self.reg_transform_key,
-                base_transform_key=self.source_transform_key,
-            )
+        # everything from here to the end of the operation used to report nothing: one run spent
+        # 20 of its 86 minutes past the last optimisation pass, in silence, with no way to tell
+        # which of these stages it was in
+        with self.progress_phase(progress_factory, total=len(pair_msims),
+                                 desc='Applying transforms') as pbar, \
+                Timer('apply registered transforms', verbose=self.logging_time):
+            for imsim, msim in enumerate(pair_msims):
+                msi_utils.set_affine_transform(
+                    msim,
+                    transforms[imsim],
+                    transform_key=self.reg_transform_key,
+                    base_transform_key=self.source_transform_key,
+                )
+                if pbar is not None:
+                    pbar.update(1)
 
         if plot_summary:
-            plot_info = _plot_registration_summaries(
-                pair_msims,
-                self.source_transform_key,
-                self.reg_transform_key,
-                g_reg_computed,
-                groupwise_resolution_info_dict,
-                show_plot=plot_summary,
-            )
+            with self.progress_phase(progress_factory, total=1, desc='Registration summary'), \
+                    Timer('plot registration summaries', verbose=self.logging_time):
+                plot_info = _plot_registration_summaries(
+                    pair_msims,
+                    self.source_transform_key,
+                    self.reg_transform_key,
+                    g_reg_computed,
+                    groupwise_resolution_info_dict,
+                    show_plot=plot_summary,
+                )
         else:
             plot_info = {}
 
@@ -1408,9 +1419,14 @@ class MVSRegistration:
         # copy transforms from the registration-stage msims onto self.msims (the persistent,
         # full per-source pyramid) - msim -> msim, writes the same affine onto every scale,
         # no sim round-trip needed
-        for reg_msim, index in zip(pair_msims, register_indices):
-            reg_transform = msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key)
-            msi_utils.set_affine_transform(self.msims[index], reg_transform, transform_key=self.reg_transform_key)
+        with self.progress_phase(progress_factory, total=len(pair_msims),
+                                 desc='Storing transforms') as pbar, \
+                Timer('store transforms on sources', verbose=self.logging_time):
+            for reg_msim, index in zip(pair_msims, register_indices):
+                reg_transform = msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key)
+                msi_utils.set_affine_transform(self.msims[index], reg_transform, transform_key=self.reg_transform_key)
+                if pbar is not None:
+                    pbar.update(1)
 
         # set missing transforms - sources that never took part in registration (e.g. filtered out)
         for msim in self.msims:
@@ -1433,7 +1449,8 @@ class MVSRegistration:
         mappings_dict = {index: mapping for index, mapping in zip(register_indices, mappings)}
 
         reg_channel = params.get('channel', 0)
-        with self.progress_phase(progress_factory, total=1, desc='Global registration metrics'):
+        with self.progress_phase(progress_factory, total=1, desc='Global registration metrics'), \
+                Timer('global registration metrics', verbose=self.logging_time):
             metrics = calc_global_metrics(pair_msims, self.source_transform_key, self.reg_transform_key,
                                           params.get('metrics', []), reg_channel=reg_channel,
                                           reg_results=reg_result,

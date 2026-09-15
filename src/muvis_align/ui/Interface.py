@@ -1337,10 +1337,15 @@ class Interface:
 
     @catch_run_errors
     def run_global_registration(self, progress_factory=None):
-        # register_global() spends most of itself inside one blocking call that reports
-        # nothing, so it also reports its own stage boundaries (progress_factory) - without them
-        # the bar would sit at nothing until dask work near the end finally moved it
-        with self._operation_progress('Global registration', progress_factory, phases=3) as factory:
+        # register_global() spends most of itself inside one blocking call that reports nothing on
+        # its own, so it reports its own stage boundaries (progress_factory): the optimisation
+        # (GlobalOptProgress, which follows the optimiser's log), applying the transforms, the
+        # summary plots, storing the transforms, and the metrics. Weighted equally they are far
+        # from it - the optimisation was 66 of one run's 86 minutes - but declaring how many there
+        # are is what keeps the last of them from taking most of the bar each. The optimisation
+        # claims 4 of these 8 units; which of the other stages holds the 20 minutes past it is
+        # what the timings now logged around them will say, and the weights can follow that
+        with self._operation_progress('Global registration', progress_factory, phases=8) as factory:
             def register_global(worker_factory):
                 with NapariDaskProgress(progress_class=worker_factory, desc='Global registration'), \
                         Timer('global registration', verbose=self._timing_verbose()):
