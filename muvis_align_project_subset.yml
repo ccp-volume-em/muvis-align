@@ -1,0 +1,47 @@
+input_output:
+  source_position_z: fn[-4]
+  source_position_y: fn[-3]*24
+  source_position_x: fn[-2]*24
+  source_scale_z: '1'
+  source_scale_y: '0.004'
+  source_scale_x: '0.004'
+  source_rotation: source
+  preview_scale: 16
+  coordinate_system: source_metadata
+  metadata_table: []
+  registration_dimension: space
+  channels_table:
+    label:
+    - channel 0
+    color:
+    - (1, 1, 1)
+  output_path: output_subset
+  overwrite: true
+  input_path: ../../../../Project/slides/12193/data_subset/*/*.tiff
+pre_processing:
+  scale: 8
+  flatfield_quantiles: ''
+  normalisation: none
+  filter_foreground: false
+registration:
+  operation: register
+  pairing: orthogonal
+  transform_type: rigid
+  method: phase_correlation
+  normalisation: true
+  max_keypoints: 5000
+  inlier_threshold_factor: 0.05
+  max_trials: 1000
+  ransac_iterations: 3
+  metrics_table: []
+  channel: channel 0
+  reg_preview_image1: S000_000_000
+  reg_preview_image2: S001_000_000
+  pair_registration: false
+  preview_registration: false
+fusion:
+  method: average
+  spacing: mean
+  tile_size: ''
+  ome_version: '0.5'
+  preview_fusion: false
