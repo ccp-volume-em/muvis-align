@@ -1548,10 +1548,6 @@ class MVSRegistration:
         default_output_chunksize = get_chunk_sizes(sim0.dtype, list(output_stack_properties['shape']),
                                                    num_sources=len(msims),
                                                    num_z_positions=num_z_positions)
-        if self.verbose:
-            logging.info(f'Fusion output_chunksize: {numpy_to_native(output_chunksize or default_output_chunksize)}'
-                         f' ({len(msims)} sources over {max(1, num_z_positions)} z position(s))')
-
         saving_zarr = False
         if is_channel_overlay:
             # convert to multichannel images - one channel per source, still a real multiscale
@@ -1605,6 +1601,13 @@ class MVSRegistration:
                             num_z_positions=num_z_positions)
                     else:
                         output_chunksize = dict(default_output_chunksize)
+                if self.verbose:
+                    # logged here, where it is finally settled: reported before the branches
+                    # above it named the preview-budgeted default whatever the export went on
+                    # to use, which is the one number this line exists to show
+                    logging.info(f'Fusion output_chunksize: {numpy_to_native(output_chunksize)}'
+                                 f' ({len(msims)} sources over'
+                                 f' {max(1, num_z_positions)} z position(s))')
                 if saving_zarr:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
