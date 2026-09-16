@@ -1464,6 +1464,30 @@ class MVSRegistration:
                 'registration_qualities': registration_qualities_dict,
                 'metrics': metrics}
 
+    @staticmethod
+    def _fusion_batch_options(saving_zarr, max_workers=None):
+        """Fuse a zarr export's blocks concurrently instead of one at a time.
+
+        multiview_stitcher's zarr path walks its blocks in a plain sequential loop unless it is
+        given a batch_func (fusion._core: `for block_id in batch: fuse_chunk(block_id)`), so an
+        export ran on a single core however many the machine had - hours, for a 6.8GB output over
+        3600 blocks. Each block resamples and blends with numpy, which releases the GIL, and
+        writes its own chunk of the store, so a thread pool over a batch is both safe and worth
+        having. The per-block memory budget (default_fusion_chunk_bytes) is already per worker.
+        """
+        if not saving_zarr:
+            return None
+        max_workers = max(1, max_workers or default_fusion_workers)
+        if max_workers == 1:
+            return None
+
+        def fuse_batch(fuse_chunk, block_ids, **_):
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # list() so an exception in any block surfaces here rather than being dropped
+                list(executor.map(fuse_chunk, block_ids))
+
+        return {'batch_func': fuse_batch, 'n_batch': max_workers}
+
     def fuse(self, msims, fusion_method=None, output_spacing='mean', transform_key=None,
              dimension=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
@@ -1581,15 +1605,24 @@ class MVSRegistration:
                         tile_size = [tile_size] * 2
                     output_chunksize = xyz_to_dict(tile_size)
                     if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
-                        # zarr export streams one z-slice at a time to keep peak memory low
-                        output_chunksize['z'] = 1
+                        # tile_size says nothing about z, so the budget decides it: one plane per
+                        # block wherever sources sit at distinct z positions (a block spanning Nz
+                        # planes pulls in every source from all of them - see get_chunk_sizes),
+                        # and a genuine z-stack's own depth where they do not
+                        output_chunksize['z'] = default_output_chunksize.get('z', 1)
                 if output_chunksize is None:
-                    # no caller value and (for zarr) no configured tile_size to derive one from
-                    # - fall back to the memory-budgeted default, still streaming one z-slice at
-                    # a time for a zarr export, as above
-                    output_chunksize = dict(default_output_chunksize)
-                    if saving_zarr and 'z' in output_chunksize:
-                        output_chunksize['z'] = 1
+                    # no caller value and (for zarr) no configured tile_size to derive one from -
+                    # fall back to the memory-budgeted default. For an export that budget is
+                    # taken at the export's own block size, not the preview's: an export's blocks
+                    # are fused once and written, so the only thing a small one buys is more of
+                    # the fixed per-block cost (measured 3.6x over the same pixels, 1024 vs 4096)
+                    if saving_zarr:
+                        output_chunksize = get_chunk_sizes(
+                            sim0.dtype, list(output_stack_properties['shape']),
+                            num_sources=len(msims), num_z_positions=num_z_positions,
+                            xy_chunk_size=default_export_chunk_size)
+                    else:
+                        output_chunksize = dict(default_output_chunksize)
                 if saving_zarr:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
@@ -1604,7 +1637,8 @@ class MVSRegistration:
                         output_stack_properties=output_stack_properties,
                         output_zarr_url=output_filename,
                         zarr_options=zarr_options,
-                        output_chunksize=output_chunksize
+                        output_chunksize=output_chunksize,
+                        batch_options=self._fusion_batch_options(saving_zarr)
                     )
             else:
                 # 'compose' mode: no actual fusion, just return the per-source msims as-is
