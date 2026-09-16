@@ -186,14 +186,11 @@ def redimension_data(data, old_order, new_order, **indices):
 
 
 def redimension_sim_data(image, old_order, new_order, **indices):
-    # xarray-native equivalent of redimension_data: lazy .isel()/.expand_dims()/.transpose() on an
-    # existing (already dask-backed) DataArray, instead of numpy ops on a raw array - keeps whatever
-    # coords the dims already have (e.g. 'c' channel labels, 't' timepoints), only touching dims
-    # old_order/new_order actually mention. Presence/absence is always checked against image.dims
-    # itself (never a separately-tracked old_order/new_order string) - image can already carry
-    # extra dims neither order lists (e.g. a forced 't' when redimensioning a 2D source into a 3D
-    # output_order), and those are left untouched rather than assumed absent, which would otherwise
-    # make the final transpose miss a dim it doesn't know exists.
+    # xarray-native equivalent of redimension_data: lazy isel/expand_dims/transpose on an
+    # already-dask-backed DataArray rather than numpy ops on a raw one, keeping whatever coords
+    # the dims have and touching only those old_order/new_order mention. Presence is checked
+    # against image.dims, never the order strings: the image can carry dims neither lists, and
+    # assuming those absent would make the final transpose miss a dim it does not know exists.
     if new_order == old_order and set(new_order) == set(image.dims):
         return image
 
@@ -270,28 +267,21 @@ def calc_pyramid_level_factors(sizes, pyramid_downsample=2, min_size=default_chu
 
 def build_missing_pyramid_levels(data, dimension_order, pixel_size, pyramid_downsample=2,
                                  min_size=default_chunk_size):
-    """A source with only one real resolution (e.g. a plain, non-pyramidal TIFF) leaves napari
-    with no coarse level to show while zoomed out, so drawing it forces computing the *entire*
-    finest-level dask graph just to render a thumbnail-sized view - the usual cause of a slow
-    first draw despite loading (building the lazy graph) itself being fast. Synthesize coarser
-    levels so a small one always exists for that overview; full resolution is only ever computed
-    once the user actually zooms in that far.
+    """Synthesize coarser levels for a source with only one real resolution.
 
-    Deliberately strided (nearest-neighbour) subsampling, not a real mean-downsample: a
-    non-pyramidal source is typically also a single monolithic dask chunk (an untiled TIFF
-    strip/page, decoded whole regardless of what slice is asked of it) - `data` itself has
-    already paid that one decode. A mean-downsample chain would then run len(levels)-1 extra
-    full-array reduction passes on top of that decode just to get a thumbnail only ever used for
-    a quick, zoomed-out preview; slicing every `pyramid_downsample`-th pixel instead reuses the
-    same already-decoded array for near-zero extra cost. Measured on a real, non-pyramidal 47MP
-    EM tile: dropped get_contrast_limits() (which reads this coarsest level) from ~0.46s back to
-    ~0.07s, i.e. down to roughly the cost of the one unavoidable decode.
+    Without them napari has nothing to show while zoomed out, so drawing forces computing the
+    entire finest-level graph for a thumbnail - the usual cause of a slow first draw despite a
+    fast load. Full resolution is then only computed once the user zooms in that far.
 
-    How many levels, and how much coarser each is, comes from calc_pyramid_level_factors() -
-    shared with the export side (see there), so a synthesized pyramid and a written one agree.
+    Strided (nearest-neighbour) subsampling, not a mean-downsample: a non-pyramidal source is
+    typically one monolithic dask chunk that `data` has already paid to decode, and a
+    mean-downsample chain would run a full reduction pass per level on top of it for a thumbnail.
+    On a 47MP EM tile that took get_contrast_limits() from ~0.46s to ~0.07s, about the cost of
+    the one unavoidable decode.
 
-    Returns ([data] + extra levels, [pixel_size] + matching per-level pixel sizes) - a no-op
-    (single-level) result for a source with no spatial dims at all.
+    Level count and factors come from calc_pyramid_level_factors(), shared with the export side
+    so a synthesized pyramid and a written one agree. Returns ([data] + extra levels,
+    [pixel_size] + matching per-level sizes), a no-op for a source with no spatial dims.
     """
     spatial_axes = {dim: axis for axis, dim in enumerate(dimension_order) if dim in 'xyz'}
     datas = [data]
@@ -1379,11 +1369,6 @@ def detect_area_points(data):
     min_area = max(np.mean([area for contour, area in area_contours]), 1)
     area_points = [(get_center(contour), area) for contour, area in area_contours if area > min_area]
 
-    #image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)
-    #for point in area_points:
-    #    radius = int(np.round(np.sqrt(point[1]/np.pi)))
-    #    cv.circle(image, tuple(np.round(point[0]).astype(int)), radius, (255, 0, 0), -1)
-    #show_image(image)
     return area_points
 
 
@@ -2141,11 +2126,9 @@ def make_sims_2d(sims):
 
 
 def promote_sim_to_3d(sim, z_position):
-    # a sim/level with no native 'z' dim (e.g. a single 2D tile in a project where different
-    # tiles sit at different z heights) gets a size-1 'z' dim added at its own z_position, and
-    # every one of its transforms widened to 3D - the shared body behind make_msims_3d()'s
-    # per-level promotion, also used directly by build_source_shape_sim() (which builds a plain
-    # sim, never a msim, so map_msim_levels() doesn't apply)
+    # a level with no native 'z' gets a size-1 one at its own z_position and every transform
+    # widened to 3D: the shared body behind make_msims_3d()'s per-level promotion, also used by
+    # build_source_shape_sim(), which builds a plain sim so map_msim_levels() does not apply
     if 'z' not in sim.dims:
         sim = sim.expand_dims({'z': [z_position]}, axis=-3)
     for transform_key in si_utils.get_tranform_keys_from_sim(sim):

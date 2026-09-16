@@ -183,12 +183,6 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
                                                               lowe_ratio=self.lowe_ratio, inlier_threshold=inlier_threshold,
                                                               mean_size_dist=mean_size_dist)
 
-            #landmark_initializer = sitk.LandmarkBasedTransformInitializerFilter()
-            #landmark_initializer.SetFixedLandmarks(fixed_points2)
-            #landmark_initializer.SetMovingLandmarks(moving_points2)
-            #transform = sitk.Euler2DTransform()
-            #output_transform = landmark_initializer.Execute(transform)
-            #print(output_transform)
 
             transform = np.array(transform)
 
@@ -200,11 +194,6 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
             #save_tiff(output_filename + '_f.tiff', fixed_data.astype(self.source_type))
             #save_tiff(output_filename + '_m.tiff', moving_data.astype(self.source_type))
 
-            #if np.sum(inliers) > 0:
-            #    draw_keypoints_matches_sk(fixed_data2, fixed_points,
-            #                              moving_data2, moving_points,
-            #                              matches[inliers],
-            #                              show_plot=False, output_filename=output_filename + '_i.tiff')
 
             draw_keypoints_matches(fixed_data2, fixed_points,
                                    moving_data2, moving_points,

@@ -76,11 +76,9 @@ def test2(resource_file):
     msims = wrap_sims_as_msims(sims)
     reg.register_global(msims, params=reg_params)
 
-    # register_global must also propagate the registered transform onto self.msims,
-    # msim -> msim (every scale), not just onto the pair_msims (`msims`) it was called with -
-    # check this before fuse(), which (via make_msims_3d, for datasets with multiple z positions)
-    # mutates reg.msims' transforms in place to promote them to 3D for the output stack, a
-    # pre-existing side effect unrelated to this
+    # register_global must propagate the transform onto self.msims too, every scale, not only
+    # onto the pair_msims it was called with. Checked before fuse(), which mutates reg.msims'
+    # transforms in place to promote them to 3D - a pre-existing side effect, unrelated.
     from multiview_stitcher import spatial_image_utils as si_utils
     assert len(reg.msims) == len(msims)
     for pair_msim, msim in zip(msims, reg.msims):
@@ -91,12 +89,10 @@ def test2(resource_file):
             affine_msim = si_utils.get_affine_from_sim(level_sim, reg.reg_transform_key)
             assert (affine_pair.values == affine_msim.values).all()
 
-    # a store name unique to this test: the resource files' output directories are shared with
-    # the other tests here (test() runs the whole Pipeline into the same one), and writing a
-    # store another test has already written means overwriting it. zarr writes metadata
-    # atomically - temp file, then os.replace onto zarr.json - which on Windows fails with
-    # "Access is denied" if anything still holds the destination open, so a reader left alive
-    # by an earlier test made this fail intermittently.
+    # a store name unique to this test: the resource output directories are shared with the
+    # other tests here, and zarr's atomic metadata write (os.replace onto zarr.json) fails on
+    # Windows if anything still holds the destination open - a reader left alive by an earlier
+    # test made this fail intermittently.
     reg.fuse(reg.msims, output_filename=f'output_test2_{os.path.splitext(resource_file)[0]}')
 
 
@@ -104,12 +100,10 @@ def test2(resource_file):
     "resource_file", test_filenames
 )
 def test_fuse_with_real_pyramid_matches_trivial_wrap(resource_file):
-    # fuse() only ever takes msims - verify that fusing from each source's real, full multiscale
-    # pyramid (self.msims) produces byte-identical scale0 output to fusing a trivial single-level
-    # wrap of the same working-resolution sims (util.wrap_sims_as_msims, the escape hatch used by
-    # callers with no real pyramid available, e.g. an ad-hoc preview resolution) - for a single
-    # registration run (registration itself can be non-deterministic across separate runs, e.g.
-    # RANSAC-based methods, so both fuse() calls here reuse the same already-registered reg.msims)
+    # fusing from each source's real multiscale pyramid must give byte-identical scale0 output
+    # to fusing a trivial single-level wrap of the same sims (wrap_sims_as_msims, the escape
+    # hatch for callers with no real pyramid). Both calls reuse the same already-registered
+    # reg.msims, since registration itself can be non-deterministic across runs.
     import numpy as np
     from muvis_align.image.source_helper import create_image_source
     from muvis_align.image.util import wrap_sims_as_msims
@@ -132,13 +126,10 @@ def test_fuse_with_real_pyramid_matches_trivial_wrap(resource_file):
     from multiview_stitcher import msi_utils
     registered_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.msims]
     trivial_msims = wrap_sims_as_msims(registered_sims)
-    # one output store per parametrisation. Sharing a fixed name across them meant each run
-    # overwrote the previous run's store, and zarr writes metadata atomically (temp file, then
-    # os.replace onto zarr.json) - which on Windows fails with "Access is denied" if anything
-    # still holds the destination open. The reader below is released only when it is collected,
-    # and the cleanup that would have removed the store ignores errors, so a lingering handle
-    # left it in place for the next parametrisation to trip over: an intermittent, full-suite-
-    # only failure.
+    # one output store per parametrisation: a fixed name had each run overwrite the last, and
+    # zarr's atomic metadata write fails on Windows if a handle is still open. The reader below
+    # is released only when collected and the cleanup ignores errors, so a lingering handle left
+    # the store for the next parametrisation - an intermittent, full-suite-only failure.
     stem = os.path.splitext(resource_file)[0]
     filename_trivial = f'test_fuse_trivial_{stem}'
     filename_pyramid = f'test_fuse_pyramid_{stem}'

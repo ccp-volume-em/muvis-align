@@ -443,12 +443,10 @@ class Interface:
                 logging.exception('Unable to read source data')
                 return False
 
-            # the expensive part - actually building each source's multiscale msim (and, for a
-            # multi-z stack, wrapping the whole set into a 3D volume) - is deferred to the lazy
-            # view_msims property below, only forced once something genuinely needs pixel-shaped
-            # data (the fused image preview, once shown after pre-processing). The z-index
-            # remapping itself is cheap (plain dict/set bookkeeping) and stays eager here so
-            # self.reg.positions is immediately correct for shapes, drawn instantly either way.
+            # building each source's multiscale msim is deferred to the lazy view_msims
+            # property, forced only once something needs pixel-shaped data. The z-index
+            # remapping is cheap and stays eager, so reg.positions is immediately correct for
+            # the shapes, which are drawn instantly either way.
             z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
             if len(z_positions) > 1:
                 for position in self.reg.positions:
@@ -742,17 +740,14 @@ class Interface:
 
     def _create_napari_shapes(self, transform_key, force_2d=False):
         if transform_key == self.reg.source_transform_key:
-            # not yet registered (or explicitly asking for original positions) - build cheap,
-            # single-level sims straight from the already-resolved per-source geometry, never
-            # touching self.reg.msims/self.view_msims (the expensive multiscale msim build) -
-            # any other transform_key (e.g. 'registered') means registration has already run,
-            # so self.view_msims is legitimately available and carries that transform already
+            # not yet registered (or asked for original positions): build cheap single-level
+            # sims from the resolved per-source geometry, never touching the expensive msim
+            # build. Any other transform_key means registration has run, so view_msims is
+            # legitimately available and already carries that transform.
             #
-            # promote_z mirrors the make_msims_3d() promotion self.view_msims itself gets: when
-            # output_order has no native 'z' (every source is individually 2D) but different
-            # sources sit at different z heights, each source's own z position must still become
-            # a real 'z' dim on its sim - otherwise it's silently dropped instead of drawn at its
-            # actual z.
+            # promote_z mirrors the make_msims_3d() promotion view_msims gets: with no native
+            # 'z' but sources at different heights, each source's z must become a real dim or it
+            # is silently dropped rather than drawn at its actual height.
             promote_z = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
             with Timer(f'_create_napari_shapes: build {len(self.reg.sources)} source shape geometries',
                       verbose=self._timing_verbose()):
@@ -775,12 +770,10 @@ class Interface:
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(msims))]
 
-        # Once pairwise registration has run, restrict overlap boxes to pairs that were
-        # actually registered (real edges in pairs_graph) - a geometric intersection that
-        # only appears after alignment, between images that were never paired during
-        # registration in the first place, has no quality score behind it and shouldn't be
-        # drawn. Before registration there's no graph yet, so fall back to every
-        # geometrically-overlapping pair (create_overlap_shapes' own default).
+        # once pairwise registration has run, restrict overlap boxes to pairs actually
+        # registered: an intersection appearing only after alignment, between images never
+        # paired, has no quality behind it. Before registration there is no graph, so fall back
+        # to every geometrically-overlapping pair.
         overlap_pairs = list(self.reg.pairs_graph.edges()) if self.reg.is_pairs_registered() else None
         with Timer(f'_create_napari_shapes: create_overlap_shapes ({len(msims)} images,'
                   f' {len(overlap_pairs) if overlap_pairs is not None else "all"} pairs)', verbose=self._timing_verbose()):
@@ -826,13 +819,11 @@ class Interface:
                     if pbar is not None:
                         pbar.update(1)
         else:
-            # view_msims (unlike register_msims) is never scale-reduced - every source's full
-            # native pyramid, un-preprocessed. Fusing that at native/scale0 resolution just to
-            # draw an on-screen overview forces building (and, for get_contrast_limits(), running)
-            # the graph for the largest, most expensive levels of the combined output, even though
-            # only its coarsest handful of pixels is ever actually shown until the user zooms in.
-            # Reduce to the same kind of coarse sub-pyramid MVSRegistration.create_preview() already
-            # uses for its own (exported) preview, rather than fusing every level of every source.
+            # view_msims is never scale-reduced - every source's full native pyramid. Fusing
+            # that at scale0 to draw an overview builds (and, for get_contrast_limits(), runs)
+            # the graph for the largest levels of the combined output, when only its coarsest
+            # pixels are shown until the user zooms in. Reduce to the same coarse sub-pyramid
+            # create_preview() uses for its own exported preview.
             preview_scale = self.params['input_output'].get('preview_scale', default_interactive_preview_scale)
             with phase(1 / 12, total=1) as pbar, \
                  Timer('_create_napari_data: build view_msims', verbose=self._timing_verbose()):
@@ -915,13 +906,11 @@ class Interface:
             blending = 'translucent_no_depth'
             edge_color = 'cyan'
             if do_3d:
-                # A 'polygon' shape can only render one flat face, not a whole non-planar box,
-                # and napari-bbox 0.1.1 (which drew real 3D boxes) is incompatible with current
-                # napari - so each box becomes its own 6 flat quad faces (for an opaque,
-                # quality-colored box) plus one edge-only 'path' outlining every edge (for a
-                # crisp wireframe), combined into one Shapes layer via per-shape lists. Corner
-                # order is _minimal_bb_vertices': 0-3 one face, 4-7 the opposite face, in the
-                # same winding, so corner i and i+4 are the vertical edges between them.
+                # a 'polygon' renders one flat face, not a non-planar box, and napari-bbox
+                # 0.1.1 (which drew real 3D boxes) is incompatible with current napari - so each
+                # box is 6 flat quad faces plus one edge-only 'path' wireframe, in one Shapes
+                # layer. Corner order is _minimal_bb_vertices': 0-3 one face, 4-7 the opposite
+                # in the same winding, so i and i+4 are the vertical edges between them.
                 box_faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4],
                             [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
                 edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
@@ -936,23 +925,18 @@ class Interface:
                 face_shapes, face_only_colors, face_refs, face_labels = [], [], [], []
                 for shape, ref, color in zip(shapes, refs, face_colors):
                     corners = np.asarray(shape)
-                    # napari doesn't render a 3D polygon's face fill unless that face's own
-                    # plane is axis-orthogonal (napari/napari#6860) - a genuinely oriented/
-                    # rotated box (as global registration can produce) gets no face fill at
-                    # all except for whichever face happens to be axis-aligned. Build the
-                    # fill from this box's axis-aligned bounding box instead (always
-                    # axis-orthogonal by construction); the wireframe below keeps using the
-                    # true oriented corners, which render fine as edges regardless of angle.
+                    # napari renders a 3D polygon's face fill only where the face's plane is
+                    # axis-orthogonal (napari/napari#6860), so a rotated box gets almost none.
+                    # Fill from its axis-aligned bounding box instead; the wireframe below keeps
+                    # the true oriented corners, which render fine as edges at any angle.
                     mins, maxs = corners.min(axis=0), corners.max(axis=0)
                     aa_corners = mins + corner_bits * (maxs - mins)
                     centroid = aa_corners.mean(axis=0)
                     for face in box_faces:
                         quad = aa_corners[face]
-                        # box_faces' index order alone doesn't guarantee consistent outward
-                        # winding (e.g. face [0,1,2,3] winds inward, [4,5,6,7] outward, even
-                        # for a plain axis-aligned box) - flip it if the face's own normal
-                        # doesn't point away from the box's center, or napari would
-                        # backface-cull roughly half of every box's faces.
+                        # box_faces' index order does not wind consistently outward, even for
+                        # an axis-aligned box, so flip any face whose normal points inward or
+                        # napari backface-culls about half of them
                         normal = np.cross(quad[1] - quad[0], quad[2] - quad[0])
                         if np.dot(normal, quad.mean(axis=0) - centroid) < 0:
                             quad = quad[::-1]
@@ -970,11 +954,9 @@ class Interface:
 
                 shape_data = face_shapes + wire_shapes
                 shape_type = ['polygon'] * len(face_shapes) + ['path'] * len(wire_shapes)
-                # face_color/edge_color entries must all be the same length (napari can't
-                # build one color array from mixed 3- and 4-tuples, and silently falls back
-                # to plain white for the whole layer instead) - a 'path' has no face to color
-                # and its edge is drawn regardless of face_color, so (0, 0, 0) here is just a
-                # length-matched placeholder, not a meaningful value.
+                # every face_color/edge_color entry must be the same length or napari silently
+                # falls back to white for the whole layer. A 'path' has no face to color, so
+                # this is a length-matched placeholder, not a meaningful value.
                 face_color = face_only_colors + [(0, 0, 0)] * len(wire_shapes)
                 edge_color = [(0, 0, 0)] * len(face_shapes) + [(0, 1, 1)] * len(wire_shapes)
                 edge_width = [0] * len(face_shapes) + [wire_width] * len(wire_shapes)
@@ -995,27 +977,13 @@ class Interface:
                               face_color=face_color, opacity=0.5, edge_width=edge_width, edge_color=edge_color,
                               blending=blending)
 
-            # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
-            #                           face_color=face_colors)
-            # @viewer.mouse_move_callbacks.append
-            # def on_mouse_move(viewer, event):
-            #     self.selected_shape_index = layer._value[0]
-            #
-            # @viewer.mouse_drag_callbacks.append
-            # def on_mouse_drag(viewer, event):
-            #     if event.type == "mouse_press" and event.button == 1:
-            #         if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
-            #             self.on_selection_change(refs[self.selected_shape_index])
-            #     yield
 
     def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False):
-        # MVSRegistration.fuse() always returns msims, never sims - get_msim_level_data (each
-        # level's raw dask array straight off its own Dataset) is always enough to show the
-        # result in napari as a genuine multiscale pyramid, so nothing here needs a sim built
-        # via extract_sims_from_fused. fused is either one real multiscale msim (a DataTree -
-        # already channel-combined by fuse()'s own combine_msims_as_channels when there's more
-        # than one channel, so a 'c' dim just needs channel_axis) or, in 'compose' mode (no
-        # actual fusion), a plain list of per-source msims shown as separate layers.
+        # fuse() always returns msims, and get_msim_level_data (each level's raw dask array off
+        # its own Dataset) is enough to show a genuine multiscale pyramid, so nothing here needs
+        # extract_sims_from_fused. `fused` is either one multiscale msim - already
+        # channel-combined by fuse(), so a 'c' dim just needs channel_axis - or, in 'compose'
+        # mode, a plain list of per-source msims shown as separate layers.
         #
         # cheap=True (update_views()'s overview, not the fusion tab's real preview) swaps
         # get_contrast_limits()'s per-source dask.compute() for a naive dtype-range guess: exact

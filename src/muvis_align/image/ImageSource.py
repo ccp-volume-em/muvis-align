@@ -40,11 +40,10 @@ class ImageSource:
         self._data_loaded = False
         self.init_metadata()
         self.fix_metadata(source_metadata, extra_metadata, matrix_size)
-        # only the *metadata* for any synthesized coarse levels is settled here (pure shape
-        # arithmetic, no arrays) - the arrays themselves are built with the rest of self.data,
-        # on first access. Deciding it up front is what keeps get_shape/get_pixel_size/
-        # get_level_from_scale answering the same thing however early they are called, rather
-        # than growing extra levels the moment something first touches the pixel data.
+        # only the metadata for synthesized coarse levels is settled here - pure shape
+        # arithmetic - with the arrays built on first access to self.data. Deciding it up front
+        # keeps get_shape/get_pixel_size/get_level_from_scale answering the same however early
+        # they are called, rather than growing levels when something first touches the pixels.
         self._add_missing_pyramid_level_metadata()
 
     @property
@@ -291,15 +290,12 @@ class ImageSource:
         self._msim = msi_utils.get_msim_from_sims(sims)
 
     def _restamp_msim(self):
-        # a subclass (e.g. ZarrImageSource) already built self.msim natively via a trusted
-        # reader (e.g. read_msim_from_ome_zarr) - its own position/pixel_size stay exactly as
-        # read, since nothing in the pipeline ever reads geometry off the msim's own coords
-        # (MVSRegistration always uses get_position()/get_pixel_size() instead). The one thing
-        # that does need replacing is the transform: such readers set an identity transform in
-        # their own convention (e.g. read_msim_from_ome_zarr always uses 4x4, since z counts as
-        # a real spatial dim in NGFF even at size 1), which must become our own self.transform,
-        # in our own convention (matching si_utils.get_sim_from_array: no 't' dim, sized to only
-        # the spatial dims that matter here).
+        # a subclass built self.msim natively via a trusted reader, whose position/pixel_size
+        # stay exactly as read - nothing downstream reads geometry off the msim's own coords.
+        # The transform does need replacing: such readers set an identity one in their own
+        # convention (read_msim_from_ome_zarr always 4x4, z being a real NGFF dim even at size
+        # 1), and it must become self.transform in ours - no 't', sized to the spatial dims
+        # that matter here.
         if self.transform is not None:
             xaffine = param_utils.affine_to_xaffine(self.transform)
         else:

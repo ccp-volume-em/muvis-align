@@ -10,14 +10,11 @@ from muvis_align.image.ome_zarr_util import read_ome_zarr_source_metadata
 
 class ZarrImageSource(ImageSource):
     def init_metadata(self):
-        # Metadata only - the per-level arrays are built on first access to self.data
-        # (_load_data below), the same way TiffImageSource defers its own. Reading them eagerly
-        # here meant every source paid for a full xarray DataTree of one sim per pyramid level,
-        # plus one zarr.json read per level, during ordinary project load: ~100ms per source,
-        # i.e. minutes across a few thousand sources, all of it for pixel-shaped data that
-        # nothing has asked for yet (shapes, pixel sizes, origin and channels are all that
-        # project load actually reads). See read_ome_zarr_source_metadata() for how those come
-        # off the store's own consolidated metadata in a single read instead.
+        # Metadata only: the per-level arrays are built on first access to self.data, as
+        # TiffImageSource defers its own. Eagerly, every source paid for a full DataTree of one
+        # sim per level plus a zarr.json read per level during ordinary project load - ~100ms
+        # each, minutes across a few thousand - for pixel-shaped data nothing had asked for.
+        # read_ome_zarr_source_metadata() takes what load does need off consolidated metadata.
         metadata = read_ome_zarr_source_metadata(self.filename)
 
         self.dimension_order = metadata['dimension_order']

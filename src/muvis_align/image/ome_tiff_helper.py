@@ -45,27 +45,21 @@ def extract_ome_translation_from_xml(ome_xml, **kwargs):
 
 
 def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
-    """The first Image's geometry and channels: position (um), physical pixel size and its
-    units, and channel names/colours - everything a source reads out of an OME-TIFF's XML,
-    gathered in one pass.
+    """The first Image's geometry and channels - position (um), physical pixel size and units,
+    channel names and colours - in one pass.
 
-    Parsed incrementally, stopping as soon as the answer is settled, instead of building a DOM
-    of the whole document: a multi-file OME-TIFF repeats the *entire dataset's* OME XML in every
-    file's header, so for a 4733-file set that is a ~2.4MB XML per file, and a full parse of it
-    measured ~210ms - per file, i.e. ~16 CPU-minutes across the set to read a handful of
-    attributes. Everything wanted here lives in the first <Image>, and the parse stops at the
-    second one, so the cost does not depend on the size of the dataset at all. (Fed in chunks
-    rather than via a StringIO over the whole string, which alone costs a full copy of it -
-    measured 3.7ms of 4.1ms at 2.4MB, dwarfing the ~0.4ms parse.)
+    Parsed incrementally and stopped as soon as the answer is settled, rather than building a DOM
+    of the whole document: a multi-file OME-TIFF repeats the entire dataset's XML in every file's
+    header, ~2.4MB each for a 4733-file set, and a full parse measured ~210ms per file - ~16
+    CPU-minutes across the set to read a handful of attributes. Everything wanted is in the first
+    <Image>, so the cost does not scale with the dataset. (Fed in chunks, since a StringIO over
+    the whole string costs a copy of it: 3.7ms of 4.1ms at 2.4MB, against a ~0.4ms parse.)
 
-    `position` is {} when the XML describes more than one Image, which preserves the behaviour
-    of the xml2dict implementation this replaces: repeated <Image> elements became a list, which
-    its 'Pixels' in metadata['Image'] test failed on, so such a file has always yielded no
-    position (positions then come from source_metadata instead). Reading it properly would mean
-    matching the Image whose TiffData/UUID FileName is this file rather than taking the first -
-    a behaviour change, not a refactor, so it is left alone here. `scale`/`units`/channels are
-    taken from the first Image either way, matching what ngff_zarr does (it indexes Image by
-    series, and a source only ever reads series 0).
+    `position` is {} when the XML describes more than one Image, preserving the behaviour of the
+    xml2dict implementation this replaces - such a file has always yielded no position, and
+    positions come from source_metadata instead. Reading it properly would mean matching the
+    Image whose TiffData/UUID names this file, which is a behaviour change, not a refactor.
+    scale, units and channels come from the first Image either way, as ngff_zarr does.
     """
     parser = ElementTree.XMLPullParser(events=['start'])
     position, scale, units = {}, {}, {}
@@ -174,25 +168,19 @@ def read_tiff_source_metadata(filename):
 
 
 def read_tiff_level_arrays(filename):
-    """One dask array per pyramid level of the file's first series, opened straight off
-    tifffile's own zarr store. Returns None if it cannot be done faithfully, leaving the caller
-    on ngff_zarr's own path.
+    """One dask array per pyramid level of the file's first series, off tifffile's own zarr
+    store. Returns None if it cannot be done faithfully, leaving the caller on ngff_zarr's path.
 
-    The arrays are the same ones ngff_zarr.tiff_file_to_ngff_images() produces - it reaches them
-    exactly this way (tif.aszarr() -> zarr group -> da.from_zarr per level, then its axis
-    mapping and channel reshape, both reused here) - but without also rebuilding the metadata
-    the source has already read for itself off tifffile, which is what the rest of that call
-    costs. Measured per source: 3.2ms here against 4.7ms for a plain 800x800 tile, 6.6ms against
+    The same arrays ngff_zarr.tiff_file_to_ngff_images() produces, reached the same way, but
+    without also rebuilding the metadata the source has already read for itself - which is what
+    the rest of that call costs: 3.2ms against 4.7ms for a plain 800x800 tile, 6.6ms against
     9.8ms for a 4096x4096 4-level pyramid.
 
-    The dask wrapping is deliberate, even though reading pixels off the zarr arrays directly is
-    3-4x faster (37ms vs 129ms for a full 4096x4096 level, 75ms vs 190ms compressed): the whole
-    pipeline downstream is lazy, and a zarr array is not. Slicing one reads immediately, which
-    would turn build_missing_pyramid_levels()' near-free strided subsampling into a full decode
-    at source load, and .data on a zarr-backed sim hands back a materialised numpy array rather
-    than a graph. Handing zarr arrays to multiview_stitcher (which does support them natively)
-    is the larger win, but it is a change to how the whole pipeline reads pixels, not to how a
-    TIFF is opened.
+    The dask wrapping is deliberate even though reading pixels off the zarr arrays directly is
+    3-4x faster: the pipeline downstream is lazy and a zarr array is not. Slicing one reads
+    immediately, which would turn build_missing_pyramid_levels()' near-free strided subsampling
+    into a full decode at load. Handing zarr arrays to multiview_stitcher, which supports them
+    natively, is the larger win - but that is a change to how the pipeline reads pixels.
     """
     if map_tiff_axes_to_ngff is None or reshape_tiff_for_channels is None:
         return None
