@@ -859,6 +859,14 @@ class MVSRegistration:
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False,
                    progress_factory=None,
                    **kwargs):
+        if kwargs:
+            # a project file may carry options this does not implement, so an unknown one is not
+            # fatal - but it must be visible. Silently swallowed, a mistyped option (or a whole
+            # params dict handed over as a single keyword) leaves pre-processing at its defaults,
+            # which shows up only as registration being unaccountably slow at full resolution.
+            logging.warning('Ignoring unknown pre-processing option(s):'
+                            f' {", ".join(sorted(str(key) for key in kwargs))}')
+
         def normalisation_enabled(value):
             if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
                 return False

@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import pytest
 from pathlib import Path
@@ -140,6 +141,24 @@ def test_preprocess_sets_modified_flag_for_enabled_steps(kwargs, expected_modifi
     _, _, modified = registration.preprocess(msims, **kwargs)
 
     assert modified is expected_modified
+
+
+def test_preprocess_reports_an_option_it_does_not_recognise(caplog):
+    """A project file may carry options preprocess() does not implement, so an unknown one is
+    not fatal - but passing the whole section as one keyword (params=...) instead of expanding
+    it leaves every step at its default, and registration then runs at full resolution with
+    nothing to say why."""
+    registration = MVSRegistration()
+    registration.scales = [{"x": 1.0, "y": 1.0}]
+    registration.source_transform_key = "source_metadata"
+    msims = _make_msims()
+
+    with caplog.at_level(logging.WARNING):
+        _, _, modified = registration.preprocess(msims, params={"scale": 8}, typo=1)
+
+    assert modified is False
+    assert 'unknown pre-processing option' in caplog.text
+    assert 'params' in caplog.text and 'typo' in caplog.text
 
 
 def test_preprocess_applies_scale_via_select_msim_subpyramid():

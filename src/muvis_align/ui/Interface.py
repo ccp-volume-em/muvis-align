@@ -1494,7 +1494,7 @@ class Interface:
         # empty means 'size it automatically': fuse() then blocks the export against what one
         # block costs in memory, rather than against a number picked for the on-disk layout. The
         # saves below are on-disk layout only, with no per-block cost, so they keep tiling.
-        tile_size = self.params['fusion']['tile_size']
+        tile_size = self.params['fusion'].get('tile_size')
         if isinstance(tile_size, str):
             tile_size = tile_size.strip()
             if not tile_size:
