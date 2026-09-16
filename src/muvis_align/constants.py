@@ -83,6 +83,18 @@ _available_memory_bytes = _available_memory()
 default_fusion_chunk_bytes = min(4 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus))))
+# ...except for an export, which gets the same per-worker share of the allocation without that
+# ceiling. The ceiling is a parallelism argument - one task holding a whole zoomed-out view
+# leaves the other cores idle - and it does not hold here: an export's blocks are fused once and
+# written, and threads over them were measured not to scale (24 threads, 1.4 cores busy: the
+# per-block work is Python holding the GIL), so there is no parallel work for a smaller block to
+# release. What a bigger block does buy is fewer of them, and each carries a fixed cost.
+# This rarely raises a block above default_export_chunk_size; what it does is stop a
+# source-dense dataset having to shrink below it - the budget binds on sources per block, and a
+# 64-core/2TB node computes 8GB of per-worker budget that the 4GB ceiling was discarding.
+default_export_fusion_chunk_bytes = max(default_fusion_chunk_bytes, min(16 * 1024 ** 3, max(
+    64 * 1024 ** 2,
+    int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus)))))
 # multiview_stitcher's fusion holds this many same-shaped float32 arrays per output chunk at
 # once: the stack of every overlapping source transformed into the chunk's grid, the matching
 # blending-weight stack, and their product (fusion._core's field_ims_t / field_ws_t). Used by

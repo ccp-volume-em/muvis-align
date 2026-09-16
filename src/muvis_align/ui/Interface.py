@@ -16,7 +16,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key, \
-    default_interactive_preview_scale, default_preview_workers
+    default_interactive_preview_scale, default_preview_workers, default_chunk_size
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
@@ -1567,11 +1567,22 @@ class Interface:
     def run_fusion(self, progress_factory=None):
         operation = self.params['registration']['operation']
         output_filename = operation_to_past_participle(operation)
+        # empty means 'size it automatically': fuse() then blocks the export against what one
+        # block costs in memory rather than against a number picked for the on-disk layout. For a
+        # zarr export the two are the same value (multiview_stitcher writes one block per chunk),
+        # and a block carries a fixed cost however small it is - 3600 of them is what made a
+        # 6.8GB export take hours. The saves below still tile at default_chunk_size, which is
+        # on-disk layout only and has no such cost.
         tile_size = self.params['fusion']['tile_size']
-        if ',' in tile_size:
-            tile_size = [int(size.strip()) for size in tile_size.split(',')]
-        elif isinstance(tile_size, str):
-            tile_size = int(tile_size.strip())
+        if isinstance(tile_size, str):
+            tile_size = tile_size.strip()
+            if not tile_size:
+                tile_size = None
+            elif ',' in tile_size:
+                tile_size = [int(size.strip()) for size in tile_size.split(',')]
+            else:
+                tile_size = int(tile_size)
+        save_tile_size = tile_size or default_chunk_size
 
         with self._operation_progress('Fusion', progress_factory, phases=2) as factory:
             def fuse(worker_factory):
@@ -1597,7 +1608,7 @@ class Interface:
                                       transform_key=self.reg.reg_transform_key,
                                       translations0=self.reg.positions,
                                       channels=self.extra_metadata.get('channels', []),
-                                      tile_size=tile_size,
+                                      tile_size=save_tile_size,
                                       ome_version=self.params['fusion']['ome_version'])
                     return fused_image
 

@@ -1617,10 +1617,9 @@ class MVSRegistration:
                     # are fused once and written, so the only thing a small one buys is more of
                     # the fixed per-block cost (measured 3.6x over the same pixels, 1024 vs 4096)
                     if saving_zarr:
-                        output_chunksize = get_chunk_sizes(
-                            sim0.dtype, list(output_stack_properties['shape']),
-                            num_sources=len(msims), num_z_positions=num_z_positions,
-                            xy_chunk_size=default_export_chunk_size)
+                        output_chunksize = get_export_chunk_sizes(
+                            sim0.dtype, output_stack_properties, msims,
+                            num_z_positions=num_z_positions)
                     else:
                         output_chunksize = dict(default_output_chunksize)
                 if saving_zarr:
