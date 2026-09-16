@@ -40,7 +40,7 @@ def fused_bytes(msims):
     return estimate_fused_size(msims, KEY)[0]
 
 
-def test_drop_finest_level_removes_one_level():
+def test_drop_finest_level_removes_one_level_or_reports_it_cannot():
     msims = grid()
     assert len(msi_utils.get_sorted_scale_keys(msims[0])) == 4
 
@@ -51,55 +51,36 @@ def test_drop_finest_level_removes_one_level():
     # and the new finest level is the old second one
     assert reduced[0]['scale0'].ds['image'].shape == msims[0]['scale1'].ds['image'].shape
 
-
-def test_drop_finest_level_is_a_no_op_on_a_single_level_msim():
-    msims = grid(levels=1)
-
-    reduced, changed = drop_finest_msim_level(msims)
-
+    # a single-level msim has nothing to drop, and says so rather than returning a copy
+    single, changed = drop_finest_msim_level(grid(levels=1))
     assert changed is False
-    assert all(a is b for a, b in zip(reduced, msims))
 
 
-def test_an_estimate_that_already_fits_is_left_untouched():
-    msims = grid()
+@pytest.mark.parametrize('levels, divisor, expect_untouched', [
+    (4, 2, True),      # already fits: returned as-is
+    (4, 10, False),    # reduced by dropping levels
+    # the preprocessed preview arrives as a single level (pre-processing at scale 8 already
+    # reduced it), so there is nothing to drop - it must still reduce, by striding, or the cap
+    # would not apply on the path that needed it most
+    (1, 8, False),
+])
+def test_a_preview_is_reduced_only_when_it_does_not_fit(levels, divisor, expect_untouched):
+    msims = grid(levels=levels)
     size = fused_bytes(msims)
-
-    capped = reduce_msims_to_fused_size(msims, KEY, max_bytes=size * 2)
-
-    assert capped is msims
-
-
-def test_an_oversized_preview_is_reduced_until_it_fits():
-    msims = grid()
-    size = fused_bytes(msims)
-    budget = size // 10
+    budget = size * 2 if expect_untouched else size // divisor
 
     capped = reduce_msims_to_fused_size(msims, KEY, max_bytes=budget)
 
-    assert fused_bytes(capped) <= budget
-    assert fused_bytes(capped) < size
-    # reduced by dropping levels, not by discarding sources
-    assert len(capped) == len(msims)
+    if expect_untouched:
+        assert capped is msims
+    else:
+        assert fused_bytes(capped) <= budget < size
+        assert len(capped) == len(msims)    # levels dropped, not sources
 
 
-def test_single_level_msims_are_still_reduced_for_display():
-    """The preprocessed preview arrives as a single level - pre-processing at scale 8 has
-    already reduced it - so there is nothing to drop. It must still be reducible for display,
-    by striding, or the cap would not apply on the path that needed it most."""
-    msims = grid(levels=1)
-    size = fused_bytes(msims)
-    budget = size // 8
-
-    capped = reduce_msims_to_fused_size(msims, KEY, max_bytes=budget)
-
-    assert fused_bytes(capped) <= budget
-    assert fused_bytes(capped) < size
-
-
-def test_striding_halves_x_and_y_and_leaves_z_alone():
-    """The output's z extent comes from how many heights the sources sit at, so striding z
-    would drop sections napari steps through without shrinking the fused result."""
+def test_striding_halves_x_and_y_and_keeps_everything_else():
+    """The output's z extent comes from how many heights the sources sit at, so striding z would
+    drop sections napari steps through without shrinking the fused result."""
     msims = grid(levels=1)
     coarser, changed = coarsen_msims(msims)
 
@@ -115,22 +96,15 @@ def test_striding_halves_x_and_y_and_leaves_z_alone():
             si_utils.get_origin_from_sim(before)[dim])
     if 'z' in before.dims:
         assert after.sizes['z'] == before.sizes['z']
-
-
-def test_striding_keeps_the_transform():
-    msims = grid(levels=1)
-    coarser, _ = coarsen_msims(msims)
-
-    before = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
-    after = msi_utils.get_sim_from_msim(coarser[0], scale='scale0')
     np.testing.assert_allclose(
-        np.asarray(si_utils.get_affine_from_sim(after, transform_key=KEY)),
-        np.asarray(si_utils.get_affine_from_sim(before, transform_key=KEY)))
+        np.asarray(si_utils.get_affine_from_sim(
+            msi_utils.get_sim_from_msim(coarser[0], scale='scale0'), transform_key=KEY)),
+        np.asarray(si_utils.get_affine_from_sim(
+            msi_utils.get_sim_from_msim(msims[0], scale='scale0'), transform_key=KEY)))
 
 
 def test_it_gives_up_on_something_that_cannot_shrink(caplog):
-    """A 1x1 image cannot be strided smaller - that must end the loop and be reported, not
-    spin on it."""
+    """A 1x1 image cannot be strided smaller - that must end the loop and be reported."""
     import logging
 
     msims = [make_msim(1, 1)]
@@ -141,27 +115,20 @@ def test_it_gives_up_on_something_that_cannot_shrink(caplog):
     assert 'cannot be reduced any further' in caplog.text
 
 
-def test_the_input_msims_are_not_modified():
+def test_reduction_stops_as_soon_as_it_fits_and_leaves_the_input_alone():
     """The cap is display-only: pre-processing's own scale is what registration uses, and must
     survive untouched."""
     msims = grid(levels=1)
     before = [(len(msi_utils.get_sorted_scale_keys(m)), m['scale0'].ds['image'].shape)
               for m in msims]
-
     reduce_msims_to_fused_size(msims, KEY, max_bytes=fused_bytes(msims) // 8)
+    assert [(len(msi_utils.get_sorted_scale_keys(m)), m['scale0'].ds['image'].shape)
+            for m in msims] == before
 
-    after = [(len(msi_utils.get_sorted_scale_keys(m)), m['scale0'].ds['image'].shape)
-             for m in msims]
-    assert after == before
-
-
-def test_reduction_stops_as_soon_as_it_fits_rather_than_going_coarsest():
+    # ...and it stops at the first level that fits rather than going to the coarsest
     msims = grid()
-    one_level_down, _ = drop_finest_msim_level(msims)
-    budget = fused_bytes(one_level_down)
-
+    budget = fused_bytes(drop_finest_msim_level(msims)[0])
     capped = reduce_msims_to_fused_size(msims, KEY, max_bytes=budget)
-
     assert fused_bytes(capped) == budget
     assert len(msi_utils.get_sorted_scale_keys(capped[0])) == 3
 
@@ -169,12 +136,10 @@ def test_reduction_stops_as_soon_as_it_fits_rather_than_going_coarsest():
 def test_estimate_counts_the_output_stack_not_the_sources():
     """The number that matters is the fused result - overlapping tiles do not each add their
     own bytes to it."""
-    msims = grid(count=2, size=512, levels=1)
-    size = fused_bytes(msims)
+    size = fused_bytes(grid(count=2, size=512, levels=1))
 
     # 4 tiles of 512x512 uint16 laid out with 10% overlap: under 4 separate tiles' worth
-    assert size < 4 * 512 * 512 * 2
-    assert size > 512 * 512 * 2
+    assert 512 * 512 * 2 < size < 4 * 512 * 512 * 2
 
 
 @pytest.mark.parametrize('budget_gb', [0.001, 0.01, 0.1])

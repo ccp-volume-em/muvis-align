@@ -501,46 +501,33 @@ def get_chunk_sizes(dtype, spatial_dims, num_sources=1, num_z_positions=1,
                     xy_chunk_size=default_chunk_size, target_bytes=64 * 1024 ** 2,
                     fusion_target_bytes=None, min_xy_chunk_size=64):
     """Per-spatial-dim chunk sizes for a fused preview, budgeted against what fusing one output
-    chunk actually costs in memory - which is set by how many *sources* land in that chunk, not
-    by the chunk's own size on disk.
+    chunk costs in memory - which is set by how many *sources* land in it, not by its own size.
 
-    multiview_stitcher's fusion works one output chunk at a time, but for each chunk it
-    transforms every overlapping source into a full-chunk-sized float32 array and np.stack()s
-    them (see fusion._core: field_ims_t, plus a same-shaped blending-weight stack and their
-    product - fusion_stack_arrays of them). Peak memory for one chunk is therefore
-    ~views_in_chunk * chunk_voxels * 4 bytes * fusion_stack_arrays, entirely independent of the
-    output dtype.
-    Sizing chunks by output bytes alone (target_bytes / itemsize) misses that factor completely:
-    for a few thousand sources it lands on chunks whose fusion needs hundreds of GB.
+    Fusion transforms every source overlapping a chunk into a full-chunk float32 array and
+    stacks them (fusion_stack_arrays of them), so one chunk peaks at ~views_in_chunk *
+    chunk_voxels * 4 * fusion_stack_arrays, independent of the output dtype. Sizing by output
+    bytes alone misses that factor entirely: for a few thousand sources it lands on chunks whose
+    fusion needs hundreds of GB.
 
-    Two things make coarse pyramid levels the worst case, not the finest:
+    Coarse pyramid levels are the worst case, not the finest:
 
-    - fuse() reuses one output_chunksize for *every* level it builds, so an xy chunk size larger
-      than a coarse level's whole extent collapses that level into a single chunk covering the
-      full field of view - and therefore every source in it. Cost is worst at the level whose
-      extent is about xy_chunk_size (coarser than that the chunk shrinks with the level; finer,
-      the chunk stays fixed while the sources per chunk fall), so bound that level.
-    - when sources are distributed along z (num_z_positions > 1: a stack of 2D sections, each
-      its own set of tiles), a chunk spanning Nz output planes pulls in every source from Nz
-      sections at once. That multiplies views per chunk *and* chunk voxels, so cost grows with
-      the square of the z chunk - one plane per chunk is what keeps a zoomed-out view cheap.
+    - fuse() reuses one output_chunksize for every level, so an xy chunk larger than a coarse
+      level's whole extent collapses it into one chunk covering the field of view, and every
+      source in it. Cost peaks at the level whose extent is about xy_chunk_size, so bound that.
+    - with sources spread along z (a stack of 2D sections), a chunk spanning Nz planes pulls in
+      every source from Nz sections: Nz times the views and Nz times the voxels, so cost grows
+      with the square of the z chunk.
 
-    fusion_target_bytes is the budget for *one* chunk, defaulting to
-    default_fusion_chunk_bytes, which is derived from this job's own CPU and memory allocation:
-    napari (and any dask.compute over a whole level) fuses one chunk per worker concurrently, so
-    process peak is roughly the budget times the worker count. That is what lets the same sizing
-    serve a 64-core/2TB HPC node (which lands on the generous xy_chunk_size, keeping the chunk
-    count - and so the graph-construction cost - low) and a laptop (which trades chunk size for
-    staying inside its own memory) without either being tuned for the other.
+    fusion_target_bytes budgets *one* chunk, defaulting to default_fusion_chunk_bytes, which is
+    derived from this job's own allocation - one chunk is fused per worker concurrently, so the
+    process peak is roughly the budget times the worker count. The same sizing then serves a
+    64-core/2TB node (landing on the generous xy_chunk_size, keeping the chunk count and its
+    graph-construction cost low) and a laptop, neither tuned for the other.
 
-    x/y stay as generous as that budget allows (napari always shows both axes in full, so
-    fragmenting them buys nothing, and x/y sizes are rounded down to a multiple of
-    min_xy_chunk_size to keep the chunk grid tidy), and z takes the remainder: with sources
-    spread over z it is driven down to 1, and only for a genuine z-stack (num_z_positions == 1,
-    where a deeper chunk adds voxels but no extra views) does it fall back to filling
-    target_bytes - keeping z chunks small enough that viewing one slice doesn't force computing
-    many slices' worth of fusion. An isotropic split (the same size on every axis, independent
-    of which one is actually sliced through) knows neither distinction.
+    x/y stay as generous as the budget allows, rounded down to a multiple of min_xy_chunk_size:
+    napari shows both axes in full, so fragmenting them buys nothing. z takes the remainder,
+    driven to 1 wherever sources are spread over it, so that viewing one slice does not force
+    computing many slices' worth of fusion.
     """
     # sources that a single output plane can draw from - the per-z-plane tile count when
     # sources are spread over z, otherwise every source (they all sit at the same height)
@@ -570,11 +557,9 @@ def get_chunk_sizes(dtype, spatial_dims, num_sources=1, num_z_positions=1,
         # distinct z positions the whole budget goes to x/y and z stays at a single plane
         sizes['z'] = 1
     else:
-        # genuine z-stack: extra z depth adds voxels but no extra views, so the output-byte
-        # budget stays the binding constraint, capped by the fusion budget for this many sources.
-        # Floor, not round: rounding up trades a budget overrun for a chunk depth nobody asked
-        # for, and z is the axis a deeper chunk hurts most (napari computes a whole chunk to
-        # show one slice)
+        # genuine z-stack: depth adds voxels but no extra views, so the output-byte budget
+        # binds. Floor, not round - z is the axis a deeper chunk hurts most, napari computing a
+        # whole chunk to show one slice.
         voxels_per_chunk = min(target_bytes / np.dtype(dtype).itemsize,
                                voxel_budget / sources_per_plane)
         sizes['z'] = max(1, int(voxels_per_chunk // xy_size ** 2))
@@ -831,12 +816,10 @@ def get_level_from_scale(source, target_scale=1):
         target_pixel_size = {dim: float(source_pixel_size * target_scale)
                              for dim, source_pixel_size in source.get_pixel_size().items()}
         target_scale = {dim: target_scale for dim in source.get_pixel_size()}
-    # Judged only on the dims this source's pyramid actually reduces. A dim that is the same
-    # size at every level - the size-1 'z' every OME-Zarr tile carries, or a z-stack whose levels
-    # only downsample x/y - keeps a factor of 1 throughout, so testing it let *any* level pass
-    # however coarse: a 16x level satisfied `any(factor <= target)` through its z alone, and a
-    # request for 6x loaded 16x data. Exact-factor requests (8x against 1,2,4,8,16) matched the
-    # right level and hid it; anything in between silently went coarser than asked.
+    # Judged only on the dims this source's pyramid actually reduces. A dim the same size at
+    # every level - the size-1 'z' every OME-Zarr tile carries, or a z-stack downsampling only
+    # x/y - keeps a factor of 1 throughout, which let any level pass however coarse: a request
+    # for 6x loaded 16x data. Exact-factor requests matched the right level and hid it.
     reducing_dims = [dim for dim in source.scale_factors[0]
                      if any(factors.get(dim, 1) > 1 for factors in source.scale_factors)] \
         if source.scale_factors else []
@@ -1282,11 +1265,9 @@ def calc_images_quantiles(images, quantiles):
 
 
 def get_image_quantile(image: np.ndarray, quantile: float, axis=None) -> float:
-    # np.asarray() computes a dask-backed image via its __array__ protocol - a no-op for an
-    # already-plain numpy image. Only ever called on a small, already-coarsest-level image, so
-    # materializing it here avoids depending on dask's own quantile/percentile at all (e.g. dask
-    # 2025.10 still passing numpy's removed interpolation= kwarg internally), rather than passing
-    # a dask array straight into np.quantile() below and dispatching into that code path.
+    # np.asarray() computes a dask-backed image (a no-op for a plain numpy one). Only ever the
+    # small coarsest level, so materializing here avoids depending on dask's own quantile at all
+    # - e.g. dask 2025.10 still passing numpy's removed interpolation= kwarg internally.
     image = np.asarray(image)
     if axis is None:
         image = image.ravel()
@@ -1901,15 +1882,12 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
     shapes = []
     good_pairs = []
     is_multi_z_shapes = (len(set([props['origin'].get('z', 0) for props in all_stack_props])) > 1)
-    # aabbs is only set for the broad-phase-discovered case below (no pair_registration graph
-    # yet to restrict candidates to, e.g. initial project load) - there, sources still sit at
-    # their raw source_metadata transform (no rotation applied yet), so each surviving pair's
-    # own AABB intersection (mins/maxs, already computed by the broad phase) is exact, not just
-    # a bound. Using it directly instead of _get_overlap_bboxes' exact (linprog-based)
-    # intersection test skips that solver call - low-single-digit milliseconds even for a
-    # trivial problem, and the dominant cost once there are thousands of candidate pairs -
-    # entirely for this path. Once real pairs are given (post-registration, a much smaller,
-    # already-curated set, and rotation may genuinely be present) the exact test is still used.
+    # aabbs is set only for the broad-phase-discovered case below (no pair_registration graph to
+    # restrict candidates to yet). There, sources still sit at their raw source_metadata
+    # transform with no rotation applied, so each pair's AABB intersection is exact rather than a
+    # bound - and using it skips _get_overlap_bboxes' linprog call, a few milliseconds each but
+    # the dominant cost across thousands of pairs. Given real pairs (post-registration, curated,
+    # and possibly rotated) the exact test is still used.
     aabbs = None
     if pairs is None:
         broad_phase_start = time.time()
@@ -2388,28 +2366,23 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
                              progress=None):
     """Every source pasted into one array at its registered position - the on-screen overview.
 
-    What napari's main view needs is a picture of where the sources sit, and fusing for that is
-    the wrong tool: multiview_stitcher's cost is per *view*, not per pixel (it inspects every
-    view's transform with per-element xarray label lookups, then plans one graph per output
-    level), so it scales with the dataset however small the preview is made. Measured on a
-    4733-source project: 10.3 minutes to plan the preview fusion, against 33 seconds of shape
-    building and 17 seconds to draw. Shrinking the fused result 256x saved only half of it.
+    The main view needs a picture of where the sources sit, and fusing for that is the wrong
+    tool: multiview_stitcher's cost is per *view*, not per pixel, so it scales with the dataset
+    however small the preview is made. On a 4733-source project, 10.3 minutes to plan the
+    preview fusion against 33 seconds of shape building; shrinking the result 256x saved half.
 
-    Pasting costs one strided copy per source instead, which is O(sources) with a tiny constant -
-    1.9s against 18.6s for 328 sources, including reading every source's pixels (the fusion
-    figure does not: it stays lazy). Overlaps are simply overwritten, nearest-neighbour: this is
-    an overview, not the fused result, and the fusion tab's preview and the export are unchanged.
+    Pasting costs one strided copy per source instead - 1.9s against 18.6s for 328 sources,
+    including reading every pixel, which the fusion figure does not since it stays lazy.
+    Overlaps are overwritten, nearest-neighbour: this is an overview, not the fused result, and
+    the fusion tab's preview and the export are unchanged.
 
-    The output geometry is the one fuse() would have produced (calc_output_properties), so the
-    layer lands exactly where the fused one did, coarsened in x/y if that would be larger than
-    max_bytes. Returns None - leaving the caller to fuse - for anything this cannot place
-    faithfully: a source whose transform is not a pure translation (a rotation needs resampling,
-    not a paste), or sources that disagree about their non-spatial dims.
+    The geometry is the one fuse() would have produced, so the layer lands where the fused one
+    did, coarsened in x/y if that would exceed max_bytes. Returns None - leaving the caller to
+    fuse - for anything it cannot place faithfully: a transform that is not a pure translation
+    (a rotation needs resampling), or sources disagreeing about their non-spatial dims.
 
-    `progress`, if given, is called once per source pasted. This is the longest single step of
-    drawing the view (10 of the 11.6 minutes of a 4733-source refresh), and reading every
-    source's pixels is what it spends that on - so it is also the one step with something real
-    to report, rather than being a block the bar can only sit in front of.
+    `progress`, if given, is called once per source pasted: this is the longest single step of
+    drawing the view, and the one with something real to report.
     """
     sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') if isinstance(msim, DataTree) else msim
             for msim in msims]
@@ -2588,11 +2561,9 @@ def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn
     residuals = []
     for source, msim in zip(sources, msims):
         level, residual, _ = get_level_from_scale(source, target_scale)
-        # only dims this source's own pyramid actually reduces: a dim whose coarsest level is
-        # no smaller than its finest (a size-1 'z', or a z-stack whose levels only downsample
-        # x/y) keeps the full target factor as its residual however complete the pyramid is, and
-        # counting it made every OME-Zarr source - which always carries a 'z' - report the
-        # maximum possible shortfall
+        # only dims this pyramid actually reduces: one whose coarsest level is no smaller than
+        # its finest keeps the full target factor as its residual however complete the pyramid
+        # is, which had every OME-Zarr source report the maximum possible shortfall
         coarsest = source.scale_factors[-1] if source.scale_factors else {}
         reducible = [value for dim, value in residual.items() if coarsest.get(dim, 1) > 1]
         residuals.append(max(reducible) if reducible else 1)

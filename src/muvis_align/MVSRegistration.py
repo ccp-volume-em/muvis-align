@@ -98,20 +98,15 @@ class MVSRegistration:
             if progress_factory is not None
             else nullcontext(None)
         )
-        # This is where each source's pixel data is first actually opened - sources defer that
-        # read until something wants pixel-shaped data, and this is that something. For OME-Zarr
-        # it is ~33ms of the ~43ms per source locally, and 128-200ms on a network filesystem,
-        # where run sequentially it was the largest non-fusion phase of a large project (10-16
-        # minutes for ~4700 sources). It is the same per-file read init_sources() already
-        # overlaps across default_source_init_workers - to great effect there: a 4733-source run
-        # showed 276s of summed per-file time in 5.5s of wall time - so without the same pool
-        # here, deferring the read merely moves an I/O-bound phase into a serial one.
+        # Where each source's pixel data is first opened: sources defer that read until
+        # something wants pixel-shaped data. On a network filesystem it is 128-200ms per source,
+        # the largest non-fusion phase of a large project when run serially (10-16 minutes for
+        # ~4700), and the same read init_sources() already overlaps across its own pool - so
+        # without one here, deferring the read only moves an I/O-bound phase into a serial one.
         #
-        # Threads, not processes: the work is a file read plus xarray construction, and each
-        # source's caches (_msim, _redimensioned_msims) belong to that source alone, so no two
-        # workers touch the same state. On a local SSD the read is already warm and the
-        # GIL-bound xarray half dominates, so this measures 0.9-1.0x there; the win is on the
-        # storage where the read actually costs something.
+        # Threads, not processes: each source's caches belong to that source alone, so no two
+        # workers touch the same state. On a local SSD the read is warm and the GIL-bound xarray
+        # half dominates (0.9-1.0x); the win is where the read actually costs something.
         nsources = len(self.sources)
         msims = [None] * nsources
         # list.append is atomic under the GIL, so plain appends from worker threads need no lock.
@@ -756,11 +751,10 @@ class MVSRegistration:
                 }
                 if pbar is not None:
                     pbar.update(1)
-                # the pairs are known (they came from the saved mapping), so the graph is built
-                # directly rather than having multiview_stitcher rediscover each edge's overlap
-                # with a linear program per pair - 4.1ms each, and every edge attribute below is
-                # written straight over the result anyway. The saved bboxes give the overlap
-                # weight the graph build would have measured, for nothing.
+                # the pairs came from the saved mapping, so build the graph directly rather than
+                # have multiview_stitcher rediscover each edge's overlap with a linear program
+                # (4.1ms each, and every attribute below is written straight over it). The saved
+                # bboxes give the overlap weight that build would have measured, for nothing.
                 overlaps = {key: float(np.prod([abs(high - low) for low, high
                                                 in zip(*np.array(value).reshape(2, -1))]))
                             for key, value in indexed_bboxes.items()}
@@ -1538,15 +1532,11 @@ class MVSRegistration:
         logging.info(f'Fusing {print_hbytes(data_size)}')
 
         # Peak memory while fusing is set by how many sources land in one output chunk, not by
-        # the output's own size: fusion transforms every source overlapping a chunk into a
-        # full-chunk-sized float32 array and stacks them. Left unspecified, fusion.fuse() falls
-        # back to the input's own on-disk chunk grid, which for a coarse output (a preview, or
-        # any coarse pyramid level - fuse() reuses one chunk size for every level it builds)
-        # means chunks spanning the entire field of view, and therefore every source at once.
-        # get_chunk_sizes() sizes them against that real cost instead - see its docstring.
-        # A caller-supplied output_chunksize always wins (the interactive preview computes its
-        # own; the zarr export path below derives one from the configured tile_size, which is
-        # on-disk layout the user asked for and must not be second-guessed here).
+        # the output's size: every source overlapping a chunk is transformed into a full-chunk
+        # float32 array and stacked. Left unspecified, fuse() falls back to the input's own chunk
+        # grid, which for a coarse output means chunks spanning the whole field of view and so
+        # every source at once; get_chunk_sizes() sizes them against that real cost instead.
+        # A caller-supplied output_chunksize always wins, as does a configured tile_size below.
         default_output_chunksize = get_chunk_sizes(sim0.dtype, list(output_stack_properties['shape']),
                                                    num_sources=len(msims),
                                                    num_z_positions=num_z_positions)
@@ -1569,12 +1559,9 @@ class MVSRegistration:
                         sim0.dtype, list(output_stack_properties['shape']))
                 )
 
-            # each fuse() call here only builds one source's own (lazy) dask graph against the
-            # shared output_stack_properties - independent per source, so a thread pool spreads
-            # that graph-construction work (real CPU cost for hundreds of sources) across every
-            # available core instead of paying it out one source at a time. Joined synchronously
-            # (results gathered in submission order below) before returning, same as
-            # init_sources() - no async/background-worker handling needed on the caller's side.
+            # each call builds one source's own lazy graph against the shared
+            # output_stack_properties, independent per source, so a pool spreads that
+            # graph-construction cost across every core. Joined in submission order below.
             channel_results = [None] * len(msims)
             if len(msims) > 1:
                 max_workers = min(default_preview_workers, len(msims))

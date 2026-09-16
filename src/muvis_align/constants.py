@@ -68,18 +68,11 @@ def _available_memory():
 
 
 _available_memory_bytes = _available_memory()
-# Per-output-chunk memory budget for fusion (see image.util.get_chunk_sizes). Fusion holds
-# fusion_stack_arrays float32 arrays of one chunk's shape, times the sources overlapping that
-# chunk - and dask's threaded scheduler runs one such chunk per worker at once, so the process
-# peak is roughly this times the worker count. Budgeting a quarter of the allocation across
-# those workers therefore leaves three quarters for everything else (source data, napari, the
-# fused result itself), and scales the way the machine does: a 2TB/64-core node lands at the
-# ceiling below, a 16GB laptop at a fraction of it. Sized per worker rather than as one global
-# pool because the workers genuinely each hold a chunk simultaneously.
-#
-# The ceiling matters as much as the budget: past a few GB a chunk stops being a useful unit of
-# parallel work (one task holding a whole zoomed-out view leaves 63 cores idle - the failure
-# mode this budget exists to avoid), so extra headroom is spent on more chunks, not bigger ones.
+# Per-output-chunk memory budget for fusion (see image.util.get_chunk_sizes), per worker: one
+# chunk is held per worker at once, so a quarter of the allocation spread across them leaves the
+# rest for source data, napari and the fused result. The ceiling matters as much as the budget -
+# past a few GB a chunk stops being a useful unit of parallel work, one task holding a whole view
+# while the other cores idle - so extra headroom buys more chunks, not bigger ones.
 default_fusion_chunk_bytes = min(4 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus))))
@@ -91,16 +84,14 @@ default_fusion_chunk_bytes = min(4 * 1024 ** 3, max(
 default_export_fusion_chunk_bytes = max(default_fusion_chunk_bytes, min(16 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus)))))
-# multiview_stitcher's fusion holds this many same-shaped float32 arrays per output chunk at
-# once: the stack of every overlapping source transformed into the chunk's grid, the matching
-# blending-weight stack, and their product (fusion._core's field_ims_t / field_ws_t). Used by
-# get_chunk_sizes() to size chunks against fusion's real peak memory rather than the output's
-# own byte size, which for thousands of sources differ by orders of magnitude.
+# same-shaped float32 arrays multiview_stitcher holds per output chunk: every overlapping source
+# transformed into the chunk's grid, the blending-weight stack, and their product (fusion._core's
+# field_ims_t / field_ws_t). What makes a chunk's real cost differ from its own byte size by
+# orders of magnitude, for thousands of sources.
 fusion_stack_arrays = 3
-# get_contrast_limits() computes a real min/max off the coarsest pyramid level. That level is
-# lazy, so the compute runs its whole fusion graph - fine when it is a handful of tasks, but
-# above this many it is no longer the "cheap, up-front" step it is meant to be and a naive
-# dtype-range guess is used instead (the user can auto-contrast from napari's own UI).
+# get_contrast_limits() reads the coarsest pyramid level, which is lazy - so the compute runs its
+# whole fusion graph. Above this many tasks it is no longer the cheap up-front step it is meant
+# to be, and a naive dtype-range guess is used instead.
 default_contrast_limits_max_tasks = 4096
 
 
@@ -114,36 +105,23 @@ def _source_init_worker_ceiling(default=64):
     return default
 
 
-# init_sources() constructs one ImageSource per file, each mostly waiting on a file
-# open/header read rather than doing real CPU work - a thread pool overlaps that I/O latency
-# (dominant on slow/network storage, e.g. a shared HPC filesystem) instead of paying it out
-# serially file by file. Threads blocked on I/O don't consume CPU, so this is deliberately not
-# capped AT core count (confirmed on a 4733-source, 32-worker run: wall time was ~32x less than
-# the summed per-file time, i.e. near-perfectly I/O-bound, not GIL/CPU-bound) - but it still
-# scales with it up to a fixed ceiling, so a genuinely small/constrained machine (few cores,
-# likely also a modest network link) doesn't default to the same 64 threads a big one would.
-# The ceiling itself is overridable (MUVIS_SOURCE_INIT_WORKERS): on a shared HPC filesystem
-# the per-source open is slower still - a 4733-source run measured 27s per source, 55% of it
-# not CPU - and the only way to overlap more of that wait is more threads than a local disk
-# would ever need.
+# init_sources() mostly waits on a file open/header read per source, so this is deliberately not
+# capped at core count: threads blocked on I/O consume no CPU, and a 4733-source run was
+# near-perfectly I/O-bound. It still scales with cores up to a ceiling, so a small machine (and
+# likely a modest network link) doesn't take the same 64 threads a big one would.
+# MUVIS_SOURCE_INIT_WORKERS raises that ceiling, which a shared HPC filesystem needs - the
+# per-source open there is slower still, and more threads is the only way to overlap the wait.
 default_source_init_workers = min(_source_init_worker_ceiling(), _available_cpus * 8)
-# zarr v3 routes all of its own I/O through one shared, process-wide asyncio event loop plus a
-# single internal ThreadPoolExecutor (zarr.core.sync._get_executor()), sized by this config value
-# (default None -> Python's own min(32, cpu_count()+4)) - completely independent of
-# default_source_init_workers above. Without raising it, ZarrImageSource reads stay bottlenecked
-# on zarr's own smaller/default-sized pool no matter how many of our own worker threads are
-# waiting to submit a read, which is why OME-Zarr sources parallelize noticeably worse than
-# OME-TIFF ones (tifffile's own reads don't go through this at all). Set once, globally, here
-# (not inside a `with` block) so it applies for the life of the process.
+# zarr v3 routes its I/O through one process-wide thread pool (zarr.core.sync._get_executor()),
+# independent of the workers above. Unraised, reads stay bottlenecked on it however many of our
+# own threads are waiting to submit one - which is why OME-Zarr sources parallelized worse than
+# OME-TIFF. Set globally, not inside a with block, so it holds for the life of the process.
 zarr.config.set({'threading.max_workers': default_source_init_workers})
-# Windows only: zarr renames each metadata document into place, which fails outright if anything
-# holds the destination open for the instant that takes. Applied here alongside the config above,
-# for the same reason - it has to be in effect for the life of the process, before any store is
-# written. See zarr_compat for what was measured.
+# Windows only: zarr renames each metadata document into place, which fails if anything holds the
+# destination open for that instant. Applied globally, before any store is written.
 apply_windows_atomic_write_retry()
-# per-source preview/fusion prep (building each source's own fuse graph, gathering contrast
-# limits/metadata) is genuine CPU-bound work, not I/O wait - unlike default_source_init_workers
-# above there's no file-handle concern capping it, so this uses every allocated core
+# per-source preview/fusion prep is CPU-bound, not I/O wait, so unlike the workers above it has
+# no file-handle concern capping it
 default_preview_workers = _available_cpus
 # multiview_stitcher's loop over an export's blocks is sequential (fusion._core: batch_func None,
 # n_batch 1), so without a batch_func of our own an export runs on one core. The per-chunk budget
@@ -154,23 +132,17 @@ default_fusion_workers = _available_cpus
 # cost (~0.5s measured) per block however small. Caps the block, does not overrule the budget -
 # and for a zarr export the block size is also the on-disk chunk size, so this bounds that too.
 default_export_chunk_size = 4096
-# the interactive napari preview fuses this many sources' full native pyramids into one on-screen
-# overview - matches MVSRegistration.create_preview()'s own default 'preview_scale' (16), so an
-# on-screen preview stays proportionate to an exported one rather than fusing at native/scale0
-# resolution regardless of how large or how many sources there are
+# what the on-screen overview reduces each source by, matching create_preview()'s own
+# 'preview_scale' so a preview stays proportionate to an exported one
 default_interactive_preview_scale = 16
-# ...and how large the on-screen overview itself may be. Unlike a fused preview (a lazy dask
-# graph napari only ever computes the coarsest level of), the overview is pasted eagerly into one
-# array, so this is real memory - and a few hundred megapixels is already far more than a screen
-# can show.
+# ...and how large that overview may be. Unlike a fused preview (a lazy graph napari computes
+# only the coarsest level of), it is pasted eagerly into one array, so this is real memory.
 default_overview_max_bytes = 512 * 1024 ** 2
-# ...and an upper bound on what that preview may cost regardless of how it was reached. The
-# preview is a few hundred pixels on screen however large the fused stack behind it is, so
-# fusing more than this to draw it is wasted: a run whose pre-processing scale was 1 fused
-# 396.9GB and took 55 minutes to show what an 8x-reduced one showed in 9. preview_scale alone
-# cannot prevent that - it selects a level relative to each source's own pyramid, and the
-# post-pre-processing preview does not go through it at all - so the guard is on the resulting
-# size instead (see image.util.reduce_msims_to_fused_size).
+# ...and an upper bound on the fused preview however it was reached. It is a few hundred pixels
+# on screen whatever is behind it, so fusing more is wasted: one run fused 396.9GB over 55
+# minutes to show what an 8x-reduced one showed in 9. preview_scale cannot prevent that (it is
+# relative to each source's own pyramid, and the post-pre-processing preview skips it), so the
+# guard is on the resulting size - see image.util.reduce_msims_to_fused_size.
 default_preview_max_bytes = 4 * 1024 ** 3
 
 prereg_mappings_name = 'prereg_mappings.csv'

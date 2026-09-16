@@ -261,10 +261,8 @@ class Interface:
                                    overwrite=params['overwrite'],
                                    verbose=self.verbose)
                 if ok:
-                    # _show_loaded_project(), below, always ends by drawing the view (with
-                    # whatever transform its own registration-state check picks) - drawing here
-                    # too would just draw once with the not-yet-registered transform, immediately
-                    # thrown away by that second, correct draw.
+                    # _show_loaded_project() below always ends by drawing the view, so drawing
+                    # here would only draw once with the not-yet-registered transform
                     ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
                     if ok:
                         self.populate_image_selection()
@@ -306,12 +304,9 @@ class Interface:
 
         bridge = _ProgressBridge()
         bridge.moved.connect(progress_factory.set_position, Qt.QueuedConnection)
-        # started where the bar has actually got to, not at zero - see
-        # NapariPhaseProgress.worker_twin(). An operation runs several of these one after another
-        # (opening a project reads the sources, then loads the saved registration), and a twin
-        # that re-planned the bar from empty each time left every call after the first reporting
-        # positions the bar was already past, which it ignores: the bar froze partway and stayed
-        # there until the operation ended
+        # started where the bar has got to, not at zero (NapariPhaseProgress.worker_twin()): an
+        # operation runs several of these in turn, and a twin re-planning from empty each time
+        # reported positions the bar was already past, freezing it partway
         worker_factory = progress_factory.worker_twin(bridge.moved.emit)
 
         def run():
@@ -362,10 +357,8 @@ class Interface:
         """
         factory = progress_factory or getattr(self, '_running_operation', None)
         if factory is not None:
-            # the bar is someone else's, but this operation's own phase count still has to reach
-            # it - without that its phases divide up whatever the outer operation happened to
-            # have left, each taking most of the remainder, and the bar creeps toward full
-            # without arriving
+            # the bar is someone else's, but this operation's phase count still has to reach it,
+            # or its phases each take most of whatever the outer operation had left
             factory.ensure_phases(phases)
             yield factory
             return
@@ -397,14 +390,10 @@ class Interface:
                                                               progress_factory=worker_factory),
                 progress_factory)
             if self.reg.is_pairs_registered() and self.reg.register_msims is None:
-                # reg.init_progress() can load a previously-saved pair registration from disk (a
-                # reloaded project) - in that branch it sets pair_msims straight from
-                # self.reg.msims, the raw full pyramid, bypassing the scale-reduction a live
-                # pair-registration run always applies first (preprocess()'s
-                # select_msim_subpyramid_at_scale). Left unprocessed, a later global
-                # registration's metrics computation can auto-select the full-resolution level
-                # and run out of memory. Run the same preprocessing now and re-point pair_msims
-                # at its result, matching what a fresh run would have produced.
+                # loading a saved pair registration sets pair_msims straight from the raw full
+                # pyramid, bypassing the scale reduction a live run applies first - after which a
+                # global registration's metrics can select full resolution and run out of memory.
+                # Run the same preprocessing now, matching what a fresh run would have produced.
                 self.run_pre_processing(progress_factory=progress_factory)
                 self.reg.pair_msims = self.reg.register_msims
 
@@ -496,10 +485,8 @@ class Interface:
         return self.ensure_view_msims()
 
     def ensure_view_msims(self, progress_factory=None):
-        # same lazy build the view_msims property triggers, but callable ahead of time with a
-        # progress_factory - lets a caller that is about to force it (see
-        # _copy_transforms_to_view_msims()) report it per source instead of it happening
-        # silently inside an argument expression, mirroring MVSRegistration.ensure_msims()
+        # the same lazy build view_msims triggers, callable ahead of time with a progress_factory
+        # so a caller forcing it can report per source - mirrors MVSRegistration.ensure_msims()
         if self._view_msims is None:
             self._view_msims = self._build_view_msims(progress_factory=progress_factory)
             if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
@@ -686,11 +673,10 @@ class Interface:
         is_multi_z_shapes = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
         force_2d = is_multi_z_shapes and not is_3d
 
-        # Each step of the refresh is its own phase, weighted by what it actually costs rather
-        # than counted equally: building the view data dominates everything else (10 of the 11.6
-        # minutes of a 4733-source refresh), so as one of five equal steps it left the bar at 18%
-        # for ten minutes and then crossed most of it at once. It reports from the inside too
-        # (see _create_napari_data), so the long step moves rather than only bracketing itself.
+        # each step is a phase weighted by what it costs, not counted equally: building the view
+        # data is 10 of a 4733-source refresh's 11.6 minutes, and as one of five equal steps it
+        # left the bar at 18% for ten minutes. It also reports from the inside
+        # (_create_napari_data), so the long step moves rather than only bracketing itself.
         view_data_weight = 12
         phases = 3 + (view_data_weight + 1 if show_images else 0)
 
@@ -701,10 +687,8 @@ class Interface:
                 pbar.update(1)
 
             self._clear_napari_view(self.viewer)
-            # before pre-processing has run, only shapes are ever shown (show_images=False) - the
-            # fused image preview always needs every source's real msim built (see
-            # _create_napari_data()), so showing it only once pre-processing/registration has
-            # actually happened is also what keeps that cost from ever blocking initial project load
+            # only shapes before pre-processing has run: the fused preview needs every source's
+            # real msim built, and deferring that keeps it off the initial project load
             if show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
@@ -816,10 +800,8 @@ class Interface:
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
                             composite=False, progress_factory=None, weight=1):
-        # `weight` is what the caller's bar allows this whole step, divided below between the
-        # sub-steps in rough proportion to what each costs on a large project. This is the step
-        # that dominates a refresh, so reporting from inside it is the difference between a bar
-        # that moves for ten minutes and one that sits at a single number throughout.
+        # `weight` is what the caller's bar allows this step, divided below between the sub-steps
+        # in rough proportion to what each costs on a large project
         def phase(share, total=None):
             return self._progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
@@ -832,11 +814,10 @@ class Interface:
                 msims = [msim.copy(deep=True) for msim in self.reg.register_msims]
                 if pbar is not None:
                     pbar.update(1)
-            # promoted here, as self.view_msims does for the other branch, so the size estimate
-            # below sees the same geometry fuse() will: fuse() promotes internally when sources
-            # sit at several z heights, and calc_output_properties cannot combine un-promoted
-            # sims that disagree about z. Not extra work - fuse() now recognises an
-            # already-promoted msim and leaves it alone (see make_msims_3d).
+            # promoted here so the size estimate below sees the geometry fuse() will: it
+            # promotes internally for sources at several z heights, and calc_output_properties
+            # cannot combine un-promoted sims that disagree about z. Not extra work - fuse()
+            # leaves an already-promoted msim alone.
             if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
                 with phase(1 / 12, total=1) as pbar, \
                      Timer('_create_napari_data: promote register_msims to 3D',
@@ -864,15 +845,13 @@ class Interface:
                 msims = select_msim_subpyramid_at_scale(view_msims, self.reg.sources, preview_scale)
                 if pbar is not None:
                     pbar.update(1)
-        # Whichever branch produced them, cap what this preview will actually fuse. The
-        # show_preprocessed branch never consults preview_scale - its resolution comes from
-        # pre_processing's own scale - so with that set to 1 the "preview" is the whole dataset:
-        # one run fused 396.9GB over 55 minutes to draw what an 8x-reduced one drew in 9. And
-        # preview_scale could not have prevented it anyway, since it picks a level per source
-        # rather than bounding the combined result. Note this cannot be done by applying
-        # select_msim_subpyramid_at_scale() here: its level index is relative to each *source's*
-        # own pyramid, while register_msims have already been scale-reduced (at pre-processing
-        # scale 8 they carry a single level), so asking it for level 3 would select nothing.
+        # Whichever branch produced them, cap what this preview will fuse. The show_preprocessed
+        # branch takes its resolution from pre_processing's scale, never preview_scale, so at
+        # scale 1 the "preview" is the whole dataset: one run fused 396.9GB over 55 minutes to
+        # draw what an 8x-reduced one drew in 9. preview_scale could not have prevented it
+        # either, picking a level per source rather than bounding the combined result -
+        # and select_msim_subpyramid_at_scale() cannot be used here for the same reason: its
+        # level is relative to each source's own pyramid, and these are already scale-reduced.
         with phase(1 / 12, total=1) as pbar, \
              Timer('_create_napari_data: cap preview fusion size', verbose=self._timing_verbose()):
             msims = reduce_msims_to_fused_size(
@@ -887,10 +866,9 @@ class Interface:
                 pbar.update(1)
         if composite:
             # the main view only needs to show where the sources sit, and fusing for that costs
-            # per source however small the preview is made (10.3 minutes for 4733 of them) -
-            # paste them instead, and fall back to fusing if that cannot place them faithfully
-            # the one sub-step with real per-source progress to report, and the one that takes
-            # most of the time - so it gets most of what this step was allowed
+            # per source however small the preview (10.3 minutes for 4733) - paste them instead,
+            # falling back to fusing if they cannot be placed faithfully. Also the one sub-step
+            # with real per-source progress, so it gets most of what this step was allowed.
             with phase(7 / 12, total=len(msims)) as pbar, \
                  Timer(f'_create_napari_data: composite overview ({len(msims)} images)',
                        verbose=self._timing_verbose()):
@@ -900,14 +878,10 @@ class Interface:
                     progress=(pbar.update if pbar is not None else None))
             if overview is not None:
                 return overview
-        # output_chunksize is deliberately left to fuse(), which derives it (get_chunk_sizes)
-        # from its own output_stack_properties - i.e. after its internal make_msims_3d promotion,
-        # so the 'z' that promotion introduces is already accounted for. Sizing it here instead
-        # would mean reproducing that promotion rule from the outside, against msims that may
-        # not have a 'z' dim yet.
-        # no declared step count: fuse() plans the whole graph in one call, so this moves by a
-        # share of what is left of its slice on each of the few boundaries it does have, rather
-        # than standing still (see NapariPhaseProgress._advance_phase)
+        # output_chunksize is left to fuse(), which derives it after its own make_msims_3d
+        # promotion - sizing it here would mean reproducing that rule against msims that may not
+        # have a 'z' dim yet. No declared step count either: fuse() plans the whole graph in one
+        # call, so this moves by a share of its remaining slice at each boundary it does have.
         with phase(7 / 12) as pbar, \
              Timer(f'_create_napari_data: fuse ({len(msims)} images)', verbose=self._timing_verbose()):
             if pbar is not None:
@@ -1043,19 +1017,16 @@ class Interface:
         # than one channel, so a 'c' dim just needs channel_axis) or, in 'compose' mode (no
         # actual fusion), a plain list of per-source msims shown as separate layers.
         #
-        # cheap=True (used by update_views()'s general overview, not preview_fusion()'s real
-        # fusion-tab preview) skips get_contrast_limits()'s per-source dask.compute() in favour
-        # of a naive dtype-range guess - correctness there doesn't matter for a first-look
-        # overview, and it's the one per-source cost below that's neither Qt-only nor already
-        # cheap metadata, so removing it (rather than threading it) is the actual win.
+        # cheap=True (update_views()'s overview, not the fusion tab's real preview) swaps
+        # get_contrast_limits()'s per-source dask.compute() for a naive dtype-range guess: exact
+        # limits don't matter for a first look, and it is the one per-source cost here that is
+        # neither Qt-only nor already cheap metadata.
         channels = self.extra_metadata.get('channels', [])
 
         if isinstance(fused, list):
-            # 'compose' mode: no real fusion, one separate napari layer per source. add_image()
-            # itself must stay on the GUI thread (napari/Qt layers aren't thread-safe) - the part
-            # a thread pool can still take off that thread is gathering each source's own
-            # metadata/contrast-limits first, across every available core, joined synchronously
-            # (results collected in original order) before the add_image() calls run serially.
+            # 'compose' mode: one napari layer per source, no real fusion. add_image() must stay
+            # on the GUI thread (Qt layers aren't thread-safe), so what a pool can take off it is
+            # gathering each source's metadata/contrast-limits first, joined in original order.
             def prep_layer(msim, channel):
                 image0 = get_msim_image0(msim)
                 scale = si_utils.get_spacing_from_sim(image0, asarray=True)
@@ -1177,11 +1148,9 @@ class Interface:
                     registration_params = self.params['registration']
                     channel = registration_params.get('channel')
                     cache = self._preview_overlap_cache
-                    # the overlap crop only depends on the source data (register_msims - a new list
-                    # object every time pre-processing actually re-runs) and which pair/channel is
-                    # selected, never on the registration method or its tuning parameters - reuse it
-                    # across parameter-only changes instead of re-cropping from the (possibly large)
-                    # source data every time
+                    # the crop depends only on the source data (a new register_msims list
+                    # whenever pre-processing re-runs) and the selected pair/channel, never on the
+                    # method or its tuning - so parameter-only changes reuse it
                     if (cache is not None and cache['register_msims'] is self.reg.register_msims
                             and cache['index1'] == index1 and cache['index2'] == index2
                             and cache['channel'] == channel):
@@ -1529,29 +1498,20 @@ class Interface:
             msims = self._run_off_thread(
                 lambda worker_factory: self.reg.ensure_msims(progress_factory=worker_factory),
                 progress_factory)
-            # MVSRegistration.fuse() isn't used here - even its 'compose' fusion_method still
-            # builds one shared output_stack_properties canvas across every source first (wasted
-            # work no per-source file needs), and is_channel_overlay would still combine sources
-            # into a single multichannel image regardless of fusion_method whenever multiple
-            # channels are configured. Each source is instead written out individually - one
-            # file per input, named after it, into its own output subfolder, keeping its own
-            # native pyramid levels exactly as-is (save_native_levels()) - never fused/resampled.
+            # not MVSRegistration.fuse(): even its 'compose' method builds one shared output
+            # canvas across every source first, and is_channel_overlay would still combine them
+            # into one multichannel image wherever several channels are configured. Each source
+            # is written out on its own instead, keeping its native pyramid levels exactly
+            # (save_native_levels()), never fused or resampled.
             #
-            # Sequential, not a thread pool: to_ngff_zarr()/zarr's own async store internals
-            # aren't safe to invoke concurrently from multiple threads each running their own
-            # event loop (observed as a Windows PermissionError racing on a store's zarr.json
-            # rename) - each write already parallelises its own array computation across every
-            # core via dask's default threaded scheduler, which is enough on its own.
-            #
-            # A per-source count (files converted so far) is meaningful here, unlike
-            # NapariDaskProgress's per-task count, which resets every iteration and says
-            # nothing about how many of the sources are actually done.
+            # Sequential, not a thread pool: zarr's async store internals aren't safe to invoke
+            # concurrently from threads each running their own event loop (a Windows
+            # PermissionError racing on zarr.json), and each write already parallelises its own
+            # computation across every core. The per-source count is meaningful here, unlike
+            # NapariDaskProgress's per-task one, which resets every iteration.
             with progress_factory(total=len(msims), desc='Converting') as pbar:
-                # file_labels (get_unique_file_labels()) are already disambiguated against every
-                # other source - get_filetitle(filename) alone is not: two sources whose raw
-                # filenames only differ by parent directory (e.g. S000/000_000.tiff vs
-                # S001/000_000.tiff) would both title as "000_000" and silently overwrite each
-                # other's output
+                # file_labels are already disambiguated; get_filetitle() alone is not, so two
+                # sources differing only by parent directory would overwrite each other's output
                 for label, position, msim in zip(self.reg.file_labels, self.reg.positions, msims):
                     output_filename = f'{output_folder}/{label}'
                     self.reg.save_native_levels(output_filename, msim, position=position,
