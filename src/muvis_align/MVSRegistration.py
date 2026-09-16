@@ -231,7 +231,7 @@ class MVSRegistration:
             self.input_dir = input_path
         else:
             self.filenames = dir_regex(input_path)
-            self.input_dir = os.path.dirname(input_path)
+            self.input_dir = pattern_base_dir(input_path)
         if not self.filenames:
             return False
 

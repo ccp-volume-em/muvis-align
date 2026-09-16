@@ -244,6 +244,24 @@ def dir_regex(pattern):
     return files_sorted
 
 
+def pattern_base_dir(pattern):
+    """The real directory an input pattern sits in - what a relative output path is taken to be
+    relative to (MVSRegistration.init).
+
+    os.path.dirname() alone keeps any wildcard in the pattern: for 'data/*/*.tiff' it returns
+    'data/*', which is not a directory, so joining an output onto it yields a path that cannot
+    be created (WinError 123 on Windows, a literal '*' directory elsewhere). Walk up until no
+    component of the tail is a wildcard.
+    """
+    directory = os.path.dirname(pattern)
+    while directory and any(char in os.path.basename(directory) for char in '*?['):
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return ''
+        directory = parent
+    return directory
+
+
 def find_all_numbers(text: str) -> list:
     return list(map(int, re.findall(r'\d+', text)))
 
