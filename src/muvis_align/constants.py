@@ -83,15 +83,11 @@ _available_memory_bytes = _available_memory()
 default_fusion_chunk_bytes = min(4 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus))))
-# ...except for an export, which gets the same per-worker share of the allocation without that
-# ceiling. The ceiling is a parallelism argument - one task holding a whole zoomed-out view
-# leaves the other cores idle - and it does not hold here: an export's blocks are fused once and
-# written, and threads over them were measured not to scale (24 threads, 1.4 cores busy: the
-# per-block work is Python holding the GIL), so there is no parallel work for a smaller block to
-# release. What a bigger block does buy is fewer of them, and each carries a fixed cost.
-# This rarely raises a block above default_export_chunk_size; what it does is stop a
-# source-dense dataset having to shrink below it - the budget binds on sources per block, and a
-# 64-core/2TB node computes 8GB of per-worker budget that the 4GB ceiling was discarding.
+# ...except for an export, which gets the same per-worker share without that ceiling. The ceiling
+# is a parallelism argument (one task holding a whole view leaves the other cores idle) and an
+# export has no such parallelism to protect: threads over its blocks were measured not to scale,
+# the per-block work being Python holding the GIL. It rarely raises a block above
+# default_export_chunk_size; what it stops is a source-dense one having to shrink below it.
 default_export_fusion_chunk_bytes = max(default_fusion_chunk_bytes, min(16 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus)))))
@@ -149,18 +145,14 @@ apply_windows_atomic_write_retry()
 # limits/metadata) is genuine CPU-bound work, not I/O wait - unlike default_source_init_workers
 # above there's no file-handle concern capping it, so this uses every allocated core
 default_preview_workers = _available_cpus
-# A zarr export fuses its output one block at a time - multiview_stitcher's own loop over blocks
-# is sequential (fusion._core: batch_func None, n_batch 1), so without a batch_func of our own a
-# 6.8GB export runs on one core however many the machine has. Each block is numpy resampling and
-# blending, which releases the GIL, so threads scale on it; and the per-chunk memory budget above
-# is already per-worker, sized for exactly this many holding a chunk at once.
+# multiview_stitcher's loop over an export's blocks is sequential (fusion._core: batch_func None,
+# n_batch 1), so without a batch_func of our own an export runs on one core. The per-chunk budget
+# above is already per-worker, sized for this many holding a chunk at once.
 default_fusion_workers = _available_cpus
-# What one output block of an *export* may span, where default_chunk_size (1024) is what a
-# preview wants. The two differ because the block size is also the export's on-disk chunk size:
-# for a preview, x/y chunks larger than the screen buy nothing, but for an export every block
-# carries a fixed cost (~0.5s measured, on top of its pixels), so 3600 small blocks cost 3.6x
-# what the same pixels cost in 225 large ones. Still bounded by default_fusion_chunk_bytes -
-# this only lifts the preview's cap, it does not overrule the memory budget.
+# What one output block of an *export* may span, where default_chunk_size (1024) is what a preview
+# wants: x/y chunks larger than the screen buy a preview nothing, while an export pays a fixed
+# cost (~0.5s measured) per block however small. Caps the block, does not overrule the budget -
+# and for a zarr export the block size is also the on-disk chunk size, so this bounds that too.
 default_export_chunk_size = 4096
 # the interactive napari preview fuses this many sources' full native pyramids into one on-screen
 # overview - matches MVSRegistration.create_preview()'s own default 'preview_scale' (16), so an

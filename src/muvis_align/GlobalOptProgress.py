@@ -1,45 +1,29 @@
 """Progress for multiview_stitcher's global optimization, read out of its own log.
 
-groupwise_resolution() is one blocking call that can run for a day on a large project (4733
-sources, 15576 edges: 22.9 hours in one run) and reports nothing at all while it does. There is
-nothing to hook: its optimiser is plain numpy and networkx, so the dask callback around it never
-sees a task, and multiview_stitcher.param_resolution contains no tqdm to patch. Wrapped in a
-progress phase of its own it still only moved the bar when it returned - which is what left
-'Global registration: 0% (1372.8 minutes so far)' in the heartbeat log, hour after hour.
+groupwise_resolution() is one blocking call that can run for a day, with nothing to hook: its
+optimiser is plain numpy and networkx, so a dask callback never sees a task, and
+multiview_stitcher.param_resolution has no tqdm to patch. It does write a debug line per
+iteration of its inner loop, which is what this listens for.
 
-What it does emit is a debug line per pass of its inner optimisation loop, carrying the iteration
-number and the residuals. That is a real measure of where it has got to, so this listens for it:
-the loop's iteration count against the max_iter ceiling upstream logs on its way in.
+The bar counts passes of the outer loop rather than iterations: a pass removes exactly one edge
+and the loop stops when none is worth removing, so the graph's edge count is a real ceiling on
+them. Each pass also crosses its own share of the bar as its iterations go, since a pass can be
+500 iterations and minutes long.
 
-What that measures is a pass of the inner loop, and the optimiser runs many: the outer loop drops
-the worst edge and runs the inner loop again, 505 times in a 328-source run. So the bar counts
-passes, not iterations - and it can count them against a real total, because a pass removes
-exactly one edge and the loop stops when there is none worth removing. However long it runs, it
-cannot run more passes than the graph has edges.
-
-Giving each pass a phase of its own instead, with no total to count against, is what a first cut
-did: every pass took most of what was left of the bar, so 505 of them had it reading 100% thirty
-seconds in and for the eighty-six minutes that followed. A bar stuck at 100% is worse than one
-stuck at 0% - it says the work is done.
-
-A headless run has no bar, so the same records also go to the log every `heartbeat_seconds`, with
-the residual. Over a run this long, a falling residual is the difference between slow and stuck -
-the elapsed time alone cannot tell them apart.
+A headless run has no bar, so the same records go to the log every `heartbeat_seconds`, with the
+residual - over a run this long, a falling residual is what separates slow from stuck.
 """
 import logging
 import time
 
 
-# the optimiser's own logger, and the two messages of its that say where it has got to. They are
-# upstream's, so they can change: everything here degrades to a single phase that moves when the
-# call returns (which is all there was before) rather than failing, if they ever do.
+# upstream's own logger and messages, so they can change: everything here degrades to a single
+# phase that moves when the call returns, rather than failing, if they ever do
 GLOBAL_OPT_LOGGER = 'multiview_stitcher.param_resolution.global_optimization'
 ITERATION_MESSAGE = 'Glob opt iter %s, node %s, mean residual %s, max residual %s'
 MAX_ITER_MESSAGE = 'Global optimization: setting max_iter to %s'
 FINISHED_MESSAGE = 'Finished glob opt. Max and mean residuals: %s \t %s'
 
-# what upstream falls back to when the caller names no ceiling, used here only if the message
-# above never arrives to say so
 DEFAULT_MAX_ITER = 500
 
 
@@ -47,7 +31,7 @@ class GlobalOptProgress:
     """Reports multiview_stitcher's global optimization into `progress_factory`'s bar.
 
     Used in place of a plain progress phase around groupwise_resolution(); with no factory it
-    still logs, which is the whole of what a headless run can show.
+    still logs, which is all a headless run can show.
     """
 
     heartbeat_seconds = 30
@@ -56,15 +40,9 @@ class GlobalOptProgress:
                  max_iter=None, weight=1, heartbeat_seconds=None):
         self.progress_factory = progress_factory
         self.desc = desc
-        # what this phase is worth beside the operation's others: it is the great majority of the
-        # run (66 of one run's 86 minutes), and equal phases would crawl to a fifth of the bar
-        # over an hour and then cross the rest in twenty minutes
-        self.weight = weight
-        # a pass removes one edge, so the graph's edge count is the most passes there can be. It
-        # is a ceiling, not an estimate - the optimiser stops as soon as no edge is worth removing
-        # (505 passes of a possible 831 in one run), and the phase's own end covers the rest.
         self.max_passes = max(int(max_passes), 1) if max_passes else None
         self.max_iter = max_iter or DEFAULT_MAX_ITER
+        self.weight = weight
         if heartbeat_seconds is not None:
             self.heartbeat_seconds = heartbeat_seconds
         self._logger = None
@@ -81,13 +59,11 @@ class GlobalOptProgress:
 
     def __enter__(self):
         self._logger = logging.getLogger(GLOBAL_OPT_LOGGER)
-        # the iteration line is debug, and an app logging at info would never deliver it. Taking
-        # the logger down to debug to hear it would also flood the app's own log with every other
-        # debug line the optimiser writes, so this takes the records instead of sharing them:
-        # propagation off, and anything not consumed here passed on to the handlers it would have
-        # reached anyway, if the level it was running at would have shown it. The level to put
-        # back is this logger's own - normally unset, so that it follows the app's - while the
-        # one to judge a forwarded record by is the level that was actually in force.
+        # the iteration line is debug, and hearing it means taking this logger down to debug -
+        # which would also flood an app logging at info with every other debug line the optimiser
+        # writes. So take the records rather than share them: propagation off, and anything not
+        # consumed passed on (forward()) if the level actually in force would have shown it. The
+        # level to restore is the logger's own, normally unset so that it follows the app's.
         self._prior_level = self._logger.level
         self._forward_level = self._logger.getEffectiveLevel()
         self._prior_propagate = self._logger.propagate
@@ -106,15 +82,12 @@ class GlobalOptProgress:
             self._logger.propagate = self._prior_propagate
         self._handler = None
         if not self._saw_iterations and exc_type is None:
-            # nothing recognised the whole way through: still cross one phase, so the operation is
-            # left no worse off than the single phase this replaced
+            # nothing recognised: still cross one phase, as the plain phase this replaced did
             self._open_phase()
         self._end_phase(exc_type)
         return False
 
     def forward(self, record):
-        """Pass on a record this is not interested in, to the handlers it would have reached had
-        the level not been lowered to hear the iteration line."""
         if record.levelno < self._forward_level:
             return
         parent = self._logger.parent if self._logger is not None else None
@@ -128,37 +101,36 @@ class GlobalOptProgress:
             pass
 
     def note_iteration(self, iteration, max_residual=None):
-        """One iteration of the inner optimisation loop finished."""
         try:
             iteration = int(iteration)
         except (TypeError, ValueError):
             return
         if self._iteration is not None and iteration <= self._iteration:
-            # the count restarting means the inner loop converged, the outer loop dropped an edge
-            # and began it again: one more of the passes the bar is counting
+            # the count restarting means the outer loop dropped an edge and began again
             self._pass += 1
         self._iteration = iteration
         self._saw_iterations = True
         self._open_phase()
-        # a pass can be 500 iterations and minutes long, so the bar crosses its own share of one
-        # as it goes rather than standing still between pass boundaries
         self._advance(self._pass - 1 + min((iteration + 1) / self.max_iter, 1.0))
         self._log_heartbeat(max_residual)
 
     def note_finished(self):
-        """The optimiser said it was done - the last pass is a whole one, whatever it reached."""
         if self._saw_iterations:
             self._advance(self._pass)
 
     def _open_phase(self):
-        """Opened at the first iteration, not at __enter__: what the passes count against is the
-        max_iter ceiling upstream logs on its way in, which it writes after this is already
-        listening. A phase opened any earlier would size itself against the default."""
+        # opened at the first iteration, not at __enter__: the optimiser logs max_iter after this
+        # is already listening, and a phase opened earlier would size itself against the default
         if self._phase is not None or self.progress_factory is None:
             return
         self._phase = self.progress_factory(total=self.max_passes, desc=self.desc,
                                             weight=self.weight)
         self._phase.__enter__()
+
+    def _end_phase(self, exc_type):
+        if self._phase is not None:
+            self._phase.__exit__(exc_type, None, None)
+            self._phase = None
 
     def _advance(self, progress):
         """Move the phase to `progress` passes done, which only ever grows."""
@@ -169,11 +141,6 @@ class GlobalOptProgress:
         self._reported = progress
         if self._phase is not None and step > 0:
             self._phase.update(step)
-
-    def _end_phase(self, exc_type):
-        if self._phase is not None:
-            self._phase.__exit__(exc_type, None, None)
-            self._phase = None
 
     def _log_heartbeat(self, max_residual):
         if not self.heartbeat_seconds:
@@ -203,14 +170,13 @@ class _RecordListener(logging.Handler):
     def emit(self, record):
         try:
             if record.msg == ITERATION_MESSAGE and record.args:
-                iteration = record.args[0]
                 max_residual = record.args[3] if len(record.args) > 3 else None
-                self.progress.note_iteration(iteration, max_residual)
+                self.progress.note_iteration(record.args[0], max_residual)
                 return
             if record.msg == MAX_ITER_MESSAGE and record.args:
                 self.progress.note_max_iter(record.args[0])
             elif record.msg == FINISHED_MESSAGE:
                 self.progress.note_finished()
             self.progress.forward(record)
-        except Exception:  # pragma: no cover - a progress bar must never break the run it watches
+        except Exception:  # pragma: no cover - progress must never break the run it watches
             self.handleError(record)

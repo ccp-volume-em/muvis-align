@@ -587,22 +587,15 @@ def get_export_chunk_sizes(dtype, output_stack_properties, msims, num_z_position
     """Per-dim block sizes for a full-resolution export, budgeted against the sources that
     actually reach one block.
 
-    get_chunk_sizes() takes every source in a z-plane as potentially landing in any one chunk.
-    That is right for what it sizes - a lazy multiscale preview, whose coarse levels really do
-    put the whole field of view in one chunk - but an export writes one array, at full
-    resolution, where a block spans a few microns and meets the two or three tiles that overlap
-    it. Sized the other way, a 4733-source export lands on 128-pixel blocks: hundreds of
-    thousands of them, each paying the fixed per-block cost, to save memory that was never going
-    to be used.
+    get_chunk_sizes() takes every source in a z-plane as landing in any one chunk. That is right
+    for the lazy multiscale preview it sizes, whose coarse levels do put the whole field of view
+    in one chunk, but an export writes one array at full resolution, where a block spans a few
+    microns and meets the tiles that overlap it - sized the other way, a 4733-source export lands
+    on 128-pixel blocks.
 
-    So the source count per block comes from the geometry here. Sources are spread over the
-    output at a density of `coverage / source_area` (coverage being how many of them cover an
-    average point - 1 for a bare mosaic, more where they overlap), and a block of side B meets
-    those whose own extent brings them within reach of it, ~density * prod(B_d + E_d). Both
-    factors are read off the real sources, so heavy overlap still shrinks the block.
-
-    The budget itself is unchanged - the same per-worker allowance, against the same
-    fusion_stack_arrays float32 arrays per block - and the largest candidate that fits it wins.
+    So the count comes from the geometry: sources lie at `density` per unit output area, and a
+    block meets those whose own extent brings them within reach, ~density * prod(B_d + E_d). The
+    budget is unchanged, so heavy overlap still shrinks the block; the largest size that fits wins.
     """
     if fusion_target_bytes is None:
         fusion_target_bytes = default_export_fusion_chunk_bytes
@@ -622,42 +615,28 @@ def get_export_chunk_sizes(dtype, output_stack_properties, msims, num_z_position
         physical = get_sim_physical_size(msim)
         extents.append([max(1.0, physical.get(dim, 0) / spacing.get(dim, 1)) for dim in xy_dims])
     mean_extent = np.mean(extents, axis=0)
-    source_area = float(np.prod(mean_extent))
-
     sources_per_plane = max(1.0, len(msims) / max(1, num_z_positions))
     output_area = float(np.prod([shape[dim] for dim in xy_dims]))
-    # sources per unit of output area. Not floored at one source per source-area: a handful of
-    # small sources in a large output really do leave most blocks empty, and pretending otherwise
-    # made the estimate claim 1761 sources reach a block when only 4 existed
     density = sources_per_plane / max(output_area, 1.0)
 
-    z_size = 1
-    if 'z' in shape and num_z_positions <= 1:
-        z_size = 1    # a genuine z-stack's depth is decided below, once the xy size is known
-
     def sources_in_block(size):
-        # a source reaches the block if its own extent brings it within reach, so the catchment
-        # is the block grown by one source. Never more sources than the plane holds, and never
+        # the catchment is the block grown by one source: never more than the plane holds, never
         # fewer than the one a block always sits on
         reaching = density * float(np.prod([size + extent for extent in mean_extent]))
         return min(sources_per_plane, max(1.0, reaching))
 
-    def fits(size):
-        return sources_in_block(size) * (size ** len(xy_dims)) * z_size <= voxel_budget
-
     size = max(min_xy_chunk_size, int(xy_chunk_size // min_xy_chunk_size) * min_xy_chunk_size)
-    while size > min_xy_chunk_size and not fits(size):
+    while size > min_xy_chunk_size and sources_in_block(size) * size ** len(xy_dims) > voxel_budget:
         size -= min_xy_chunk_size
     sizes = {dim: size for dim in xy_dims}
 
     if 'z' in shape:
         if num_z_positions > 1:
-            # sources at distinct z: a block spanning Nz planes takes Nz times the sources and Nz
-            # times the voxels, so one plane per block (same reasoning as get_chunk_sizes)
+            # as in get_chunk_sizes: a block spanning Nz planes takes Nz times the sources and Nz
+            # times the voxels, so one plane per block
             sizes['z'] = 1
         else:
-            voxels_per_chunk = voxel_budget / sources_in_block(size)
-            sizes['z'] = max(1, int(voxels_per_chunk // (size ** len(xy_dims))))
+            sizes['z'] = max(1, int((voxel_budget / sources_in_block(size)) // size ** len(xy_dims)))
     return sizes
 
 

@@ -1337,14 +1337,10 @@ class Interface:
 
     @catch_run_errors
     def run_global_registration(self, progress_factory=None):
-        # register_global() spends most of itself inside one blocking call that reports nothing on
-        # its own, so it reports its own stage boundaries (progress_factory): the optimisation
-        # (GlobalOptProgress, which follows the optimiser's log), applying the transforms, the
-        # summary plots, storing the transforms, and the metrics. Weighted equally they are far
-        # from it - the optimisation was 66 of one run's 86 minutes - but declaring how many there
-        # are is what keeps the last of them from taking most of the bar each. The optimisation
-        # claims 4 of these 8 units; which of the other stages holds the 20 minutes past it is
-        # what the timings now logged around them will say, and the weights can follow that
+        # register_global() reports its own stage boundaries (progress_factory): the optimisation,
+        # applying the transforms, the summary plots, storing them, and the metrics. Declaring how
+        # many there are is what keeps the last of them from taking most of the bar each; the
+        # optimisation claims 4 of these 8 units, being most of the run (66 of 86 minutes once)
         with self._operation_progress('Global registration', progress_factory, phases=8) as factory:
             def register_global(worker_factory):
                 with NapariDaskProgress(progress_class=worker_factory, desc='Global registration'), \
@@ -1568,11 +1564,8 @@ class Interface:
         operation = self.params['registration']['operation']
         output_filename = operation_to_past_participle(operation)
         # empty means 'size it automatically': fuse() then blocks the export against what one
-        # block costs in memory rather than against a number picked for the on-disk layout. For a
-        # zarr export the two are the same value (multiview_stitcher writes one block per chunk),
-        # and a block carries a fixed cost however small it is - 3600 of them is what made a
-        # 6.8GB export take hours. The saves below still tile at default_chunk_size, which is
-        # on-disk layout only and has no such cost.
+        # block costs in memory, rather than against a number picked for the on-disk layout. The
+        # saves below are on-disk layout only, with no per-block cost, so they keep tiling.
         tile_size = self.params['fusion']['tile_size']
         if isinstance(tile_size, str):
             tile_size = tile_size.strip()

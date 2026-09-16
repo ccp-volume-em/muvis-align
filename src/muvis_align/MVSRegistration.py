@@ -1343,9 +1343,8 @@ class MVSRegistration:
                 weight_key="quality",
             )
 
-        # not a plain progress phase: the call below is the longest single blocking stretch of a
-        # large run and has nothing to report into one, so GlobalOptProgress follows the
-        # optimiser's own log instead - see its module docstring
+        # not a plain progress phase: the call below has nothing to report into one, so
+        # GlobalOptProgress follows the optimiser's own log instead
         with GlobalOptProgress(progress_factory, desc='Global registration',
                                max_passes=g_reg_computed.number_of_edges(), weight=4), \
                 dask.config.set(scheduler='threads'):
@@ -1359,9 +1358,7 @@ class MVSRegistration:
             transforms_dict[iview] for iview in sorted(g_reg_computed.nodes())
         ]
 
-        # everything from here to the end of the operation used to report nothing: one run spent
-        # 20 of its 86 minutes past the last optimisation pass, in silence, with no way to tell
-        # which of these stages it was in
+        # the stages below are the last 20 minutes of an 86-minute run, and reported nothing
         with self.progress_phase(progress_factory, total=len(pair_msims),
                                  desc='Applying transforms') as pbar, \
                 Timer('apply registered transforms', verbose=self.logging_time):
@@ -1468,12 +1465,9 @@ class MVSRegistration:
     def _fusion_batch_options(saving_zarr, max_workers=None):
         """Fuse a zarr export's blocks concurrently instead of one at a time.
 
-        multiview_stitcher's zarr path walks its blocks in a plain sequential loop unless it is
-        given a batch_func (fusion._core: `for block_id in batch: fuse_chunk(block_id)`), so an
-        export ran on a single core however many the machine had - hours, for a 6.8GB output over
-        3600 blocks. Each block resamples and blends with numpy, which releases the GIL, and
-        writes its own chunk of the store, so a thread pool over a batch is both safe and worth
-        having. The per-block memory budget (default_fusion_chunk_bytes) is already per worker.
+        multiview_stitcher walks them in a plain sequential loop unless given a batch_func
+        (fusion._core), so an export ran on a single core. Each block writes its own chunk of the
+        store, and the per-block memory budget is already per worker.
         """
         if not saving_zarr:
             return None
@@ -1483,7 +1477,7 @@ class MVSRegistration:
 
         def fuse_batch(fuse_chunk, block_ids, **_):
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # list() so an exception in any block surfaces here rather than being dropped
+                # list() so an exception in any block surfaces rather than being dropped
                 list(executor.map(fuse_chunk, block_ids))
 
         return {'batch_func': fuse_batch, 'n_batch': max_workers}
@@ -1605,17 +1599,11 @@ class MVSRegistration:
                         tile_size = [tile_size] * 2
                     output_chunksize = xyz_to_dict(tile_size)
                     if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
-                        # tile_size says nothing about z, so the budget decides it: one plane per
-                        # block wherever sources sit at distinct z positions (a block spanning Nz
-                        # planes pulls in every source from all of them - see get_chunk_sizes),
-                        # and a genuine z-stack's own depth where they do not
+                        # tile_size says nothing about z, so the budget decides it
                         output_chunksize['z'] = default_output_chunksize.get('z', 1)
                 if output_chunksize is None:
-                    # no caller value and (for zarr) no configured tile_size to derive one from -
-                    # fall back to the memory-budgeted default. For an export that budget is
-                    # taken at the export's own block size, not the preview's: an export's blocks
-                    # are fused once and written, so the only thing a small one buys is more of
-                    # the fixed per-block cost (measured 3.6x over the same pixels, 1024 vs 4096)
+                    # no caller value and no configured tile_size: fall back to the memory budget,
+                    # taken for an export at the export's own block size rather than a preview's
                     if saving_zarr:
                         output_chunksize = get_export_chunk_sizes(
                             sim0.dtype, output_stack_properties, msims,
