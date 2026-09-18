@@ -645,6 +645,9 @@ class Interface:
         # replace the plain-text 'color' cells with a MagicColorPicker per channel row, so
         # clicking a channel's color opens a color picker instead of typing a raw tuple
         table = self.param_widgets.get('input_output.channels_table').widget
+        if 'color' not in table.column_headers:
+            # an empty table has no headers at all - nothing to put a picker on
+            return
         color_coli = table.column_headers.index('color')
         for rowi in range(table.shape[0]):
             color = parse_channel_color(table.data[rowi, color_coli]) or (1, 1, 1)

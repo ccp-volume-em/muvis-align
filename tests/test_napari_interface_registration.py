@@ -164,7 +164,9 @@ class TestNapariInterfaceRegistration:
         assert hasattr(interface, 'source_metadata'), "Should have source_metadata attribute"
         assert interface.source_metadata == {}, "source_metadata should be empty after reset"
         assert interface.view_mode is None, "view_mode should be None after reset"
-        assert interface.selected_shape_index is None, "selected_shape_index should be None after reset"
+        assert interface.extra_metadata == {}, "extra_metadata should be empty after reset"
+        assert interface.output_channels == [], "output_channels should be empty after reset"
+        assert interface._preview_overlap_cache is None, "preview overlap cache should be cleared after reset"
         assert hasattr(interface.reg, 'state'), "reg should have state attribute"
 
     def test_interface_tab_management(self, make_napari_viewer, project_config):
