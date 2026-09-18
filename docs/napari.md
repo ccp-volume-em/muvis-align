@@ -74,9 +74,10 @@ An option that is not recognised is reported rather than silently ignored.
 Pick the **Operation** first, since it decides what the rest of the run does:
 
 - **Register** - register the sources, then fuse them on the fusion tab.
-- **Merge** - fuse at the source metadata positions, without registering. The output is
-  named `merged` rather than `registered`. Note that **Process** on this tab still
-  offers to run registration; go straight to the fusion tab to merge only.
+- **Merge** - intended to fuse at the source metadata positions without registering.
+  Currently this only changes the output name to `merged`: **Process** still runs the
+  registration, and the fusion tab is unlocked only once global registration has
+  completed, so there is no way to skip it from the plugin.
 - **Convert** - see [Convert](#convert) below.
 
 The remaining parameters (method, transform type, pairing, feature and RANSAC settings)
