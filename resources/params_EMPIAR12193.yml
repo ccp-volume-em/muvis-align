@@ -43,7 +43,8 @@ operations:
       ransac_iterations: 3
     output: ../../stitched/S{S}/
 
-  - operation: register stack
+  - operation: register
+    pairing: stack
     input:
       #path: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S*/registered.ome.zarr
       path: D:/slides/12193/stitched/S*/registered.ome.zarr

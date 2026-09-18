@@ -679,7 +679,8 @@ def test_input_output_process_resolves_relative_paths_before_reg_init(
             "input_path": "data/input",
             "output_path": "results",
             "overwrite": True,
-        }
+        },
+        "registration": {"pairing": "stack"},
     }
     bare_interface.reg.is_initialised.return_value = False
     bare_interface.need_source_reinit = False
@@ -697,6 +698,8 @@ def test_input_output_process_resolves_relative_paths_before_reg_init(
         input_path=expected_input,
         output_path=expected_output,
         overwrite=True,
+        # is_stack is read from the pairing, so reg has to be initialised with it
+        pairing="stack",
         verbose=False,
     )
 
@@ -1475,6 +1478,61 @@ def test_pair_registration_confirmation_paths(
         warning.assert_called_once()
     assert bare_interface.run_pair_registration.called is runs
     assert bare_interface.update_registered.called is runs
+
+
+@pytest.mark.parametrize("reply", ["Yes", "No"])
+def test_registration_process_merge_opens_fusion_without_registering(
+    bare_interface, monkeypatch, reply
+):
+    """merge fuses at the source positions, so there is nothing to register here."""
+    bare_interface.params = {"registration": {"operation": "merge"}}
+    bare_interface.run_pair_registration = MagicMock()
+    bare_interface.run_global_registration = MagicMock()
+    bare_interface.enable_tabs = MagicMock()
+    bare_interface.select_tab = MagicMock()
+    monkeypatch.setattr(
+        interface_module.QMessageBox,
+        "question",
+        lambda *_: getattr(interface_module.QMessageBox, reply),
+    )
+
+    bare_interface.registration_process()
+
+    assert not bare_interface.run_pair_registration.called
+    assert not bare_interface.run_global_registration.called
+    if reply == "Yes":
+        bare_interface.enable_tabs.assert_called_once_with(True, 4)
+        bare_interface.select_tab.assert_called_once_with(4)
+    else:
+        assert not bare_interface.enable_tabs.called
+        assert not bare_interface.select_tab.called
+
+
+def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch):
+    """A merge never writes a 'registered' transform, so fusion must not assume one."""
+    bare_interface.params = {
+        "registration": {"operation": "merge"},
+        "fusion": {"method": "average", "spacing": "mean",
+                   "tile_size": "", "ome_version": "0.5"},
+        "input_output": {"registration_dimension": "space"},
+    }
+    bare_interface.reg.reg_transform_key = "registered"
+    bare_interface.get_best_transform_key = MagicMock(
+        return_value="source_metadata"
+    )
+    bare_interface.reg.fuse.return_value = ("fused", True)
+    bare_interface._run_off_thread = lambda func, factory: func(MagicMock())
+    monkeypatch.setattr(
+        interface_module, "NapariMVSProgress", lambda **_: nullcontext()
+    )
+    bare_interface._operation_progress = lambda *a, **k: nullcontext(MagicMock())
+
+    assert bare_interface.run_fusion() == "fused"
+
+    _, fuse_kwargs = bare_interface.reg.fuse.call_args
+    assert fuse_kwargs["transform_key"] == "source_metadata"
+    # is_saved was True, so the separate save() path is not taken
+    assert not bare_interface.reg.save.called
 
 
 @pytest.mark.parametrize(

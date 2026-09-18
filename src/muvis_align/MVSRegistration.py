@@ -191,6 +191,7 @@ class MVSRegistration:
         self.fusion_params = params.get('fusion', {})
 
         return self.init(operation=params.get('operation'), label=label, input_path=input_path,
+                         pairing=params.get('pairing', self.register_params.get('pairing', '')),
                          input_labels=self.input_params.get('labels'),
                          output_path=self.output_params.get('path'),
                          source_metadata=self.input_params.get('source_metadata', {}),
@@ -200,9 +201,19 @@ class MVSRegistration:
                          ui=params_general.get('ui', ''),
                          verbose=params_general.get('verbose', False), debug=params_general.get('debug', False))
 
+    @property
+    def is_stack(self):
+        """Stack registration: pair consecutive views, and treat the set as a z-stack rather
+        than a tiled plane. Selected by `pairing: stack` - and only by that. It used to be read
+        from the operation ('register stack') as well, which the plugin can never produce: its
+        operations are register/merge/convert, so self.operation is empty throughout the UI and
+        every stack-specific step was silently skipped there.
+        """
+        return 'stack' in self.pairing
+
     def init(self, operation='', label='', input_path=None, input_labels=None, output_path=None,
              source_metadata={}, extra_metadata={}, global_rotation=None, global_center=None,
-             overwrite=True, clear=False, ui='', verbose=False, debug=False):
+             overwrite=True, clear=False, ui='', verbose=False, debug=False, pairing=''):
         self.overwrite = overwrite
         self.clear = clear
         self.ui = ui
@@ -212,6 +223,7 @@ class MVSRegistration:
         self.logging_time = self.verbose
         self.mpl_ui = ('mpl' in self.ui or 'plot' in self.ui)
         self.operation = operation
+        self.pairing = (pairing or '').lower()
         self.fileset_label = label
         self.global_rotation = global_rotation
         self.global_center = global_center
@@ -277,8 +289,6 @@ class MVSRegistration:
         output_params = self.output_params
         general_output_params = self.params_general.get('output', {})
         overlap_threshold = self.register_params.get('overlap_threshold', self.params.get('overlap_threshold', 0.5))
-        # read the same way register_pairs() reads it, below - is_stack consults it there too
-        pairing = (self.params.get('pairing', self.register_params.get('pairing', '')) or '').lower()
         save_images = self.output_params.get('save_images', self.params.get('save_images', True))
         pairing = self.register_params.get('pairing', '').lower()
 
@@ -306,7 +316,7 @@ class MVSRegistration:
             msims = self.msims
 
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
-        is_stack = ('stack' in operation or 'stack' in pairing)
+        is_stack = self.is_stack
         is_simple_stack = is_stack and not is_3d
         is_transition = ('transition' in operation)
         is_channel_overlay = (len(channels) > 1)
@@ -328,7 +338,7 @@ class MVSRegistration:
             data.append(row)
         export_csv(output + prereg_mappings_name, data, header=mappings_header)
 
-        if len(filenames) == 1 and save_images and not 'register' in operation and not 'stack' in operation:
+        if len(filenames) == 1 and save_images and not 'register' in operation:
             logging.warning('Skipping operation (single image)')
             sim = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
             self.save(output_filename, sim, translations0=self.positions,
@@ -393,7 +403,7 @@ class MVSRegistration:
                                         nom_msims=msims,
                                         transform_key=transform_key)
 
-            if 'register' in operation or 'stack' in operation or 'fuse' in operation:
+            if ('register' in operation or 'fuse' in operation or 'merge' in operation):
                 with Timer('fuse image', self.logging_time):
                     if isinstance(self.fusion_params, dict):
                         fusion_method = self.fusion_params.get('method', '')
@@ -560,7 +570,7 @@ class MVSRegistration:
         rescales = []
 
         is_3d = (source0.get_size().get('z', 0) > 1)
-        is_stack = ('stack' in self.operation)
+        is_stack = self.is_stack
         output_order = 'zyx' if is_3d else 'yx'
 
         ndims = len(output_order)
@@ -772,7 +782,7 @@ class MVSRegistration:
         if self.is_global_registered():
             logging.info(f'Loading global mapping from {mappings_filename}')
 
-            is_stack = ('stack' in self.operation)
+            is_stack = self.is_stack
             #z_positions = set([source.get_position().get('z', 0) for source in self.sources])
             #make_3d = len(z_positions) > 1 or is_stack
             make_3d = is_stack
@@ -1170,8 +1180,11 @@ class MVSRegistration:
         if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
             n_parallel_pairwise_regs = None
 
+        # the caller's params win over whatever init() was given - in the plugin the dropdown
+        # can change between initialising the sources and registering
+        self.pairing = pairing
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
-        is_stack = ('stack' in operation or 'stack' in pairing)
+        is_stack = self.is_stack
 
         reg_channel = params.get('channel', 0)
         if isinstance(reg_channel, int):
@@ -1682,7 +1695,7 @@ class MVSRegistration:
     def create_preview(self, output_filename=None, nom_msims=None, transform_key=None):
         output_params = self.params_general['output']
         preview_scale = output_params.get('preview_scale', 16)
-        is_stack = ('stack' in self.operation)
+        is_stack = self.is_stack
         z_scale = get_metadata_z_scale(self.extra_metadata)
 
         # select this preview resolution directly from self.msims (already built by init_data())

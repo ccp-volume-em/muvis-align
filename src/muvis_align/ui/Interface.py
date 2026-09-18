@@ -274,6 +274,7 @@ class Interface:
                 ok = self.reg.init(input_path=eval_path(input_path),
                                    output_path=output,
                                    overwrite=params['overwrite'],
+                                   pairing=self.params['registration'].get('pairing', ''),
                                    verbose=self.verbose)
                 if ok:
                     # _show_loaded_project() below always ends by drawing the view, so drawing
@@ -1462,6 +1463,18 @@ class Interface:
                     QMessageBox.information(None, 'muvis-align', 'Conversion completed')
             return
 
+        if 'merge' in self.params['registration']['operation']:
+            # merge: fuse at the sources' own metadata positions, registering nothing. There is
+            # no registration step to run here, so this only opens the fusion tab - the fusion
+            # itself falls back to source_transform_key via get_best_transform_key()
+            reply = QMessageBox.question(None, 'muvis-align',
+                                         'Merge without registration, at the source positions?',
+                                         QMessageBox.Yes|QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.enable_tabs(True, 4)
+                self.select_tab(4)
+            return
+
         completion_message = 'Global registration completed'
         if self.reg.is_global_registered():
             message = 'Global registration was already performed. Run global registration?'
@@ -1493,7 +1506,10 @@ class Interface:
 
     @catch_run_errors
     def preview_fusion(self, progress_factory=None):
-        transform_key = self.reg.reg_transform_key
+        # not reg_transform_key directly: a merge fuses without ever registering, so there is no
+        # 'registered' transform to fuse by - get_best_transform_key() falls back to the sources'
+        # own metadata positions, and still returns the registered one wherever it exists
+        transform_key = self.get_best_transform_key()
         # as in update_views(): building the data is the long half, so it is weighted as such and
         # reports from the inside rather than being one block with a tick on either side
         fusion_weight = 12
@@ -1579,6 +1595,9 @@ class Interface:
                     fused_image, is_saved = self.reg.fuse(
                         self.reg.msims,
                         fusion_method=self.params['fusion']['method'],
+                        # fuse() defaults this to reg_transform_key, which a merge never
+                        # writes - see preview_fusion()
+                        transform_key=self.get_best_transform_key(),
                         output_spacing=self.params['fusion']['spacing'],
                         dimension=self.params['input_output']['registration_dimension'],
                         output_filename=output_filename,
@@ -1590,7 +1609,7 @@ class Interface:
                         # whole multiscale pyramid now, so save its finest scale
                         save_sim = extract_sims_from_fused(fused_image)
                         self.reg.save(output_filename, save_sim,
-                                      transform_key=self.reg.reg_transform_key,
+                                      transform_key=self.get_best_transform_key(),
                                       translations0=self.reg.positions,
                                       channels=self.extra_metadata.get('channels', []),
                                       tile_size=save_tile_size,

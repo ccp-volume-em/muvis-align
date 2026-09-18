@@ -18,7 +18,8 @@ general:
     pyramid_downsample: 2
 
 operations:
-  - operation: stack
+  - operation: register
+    pairing: stack
     input: D:/slides/EM04654_slice011/subset_small/*.ome.tif
     source_metadata: source
     registration: phase_correlation

@@ -407,3 +407,22 @@ def test_build_msims_is_parallel_but_keeps_source_order():
         want_origin = si_utils.get_origin_from_sim(get_msim_image0(want))
         assert got_origin == pytest.approx(want_origin)
         assert get_msim_image0(got).shape == get_msim_image0(want).shape
+
+
+@pytest.mark.parametrize(
+    ("operation", "pairing", "expected"),
+    [
+        ("register", "stack", True),
+        ("register", "stack orthogonal", True),
+        ("register", "orthogonal", False),
+        ("register", "", False),
+        # the operation no longer selects stacking - pairing does, and only pairing
+        ("register stack", "", False),
+        ("stack", "", False),
+    ],
+)
+def test_is_stack_reads_pairing_only(operation, pairing, expected):
+    reg = MVSRegistration.__new__(MVSRegistration)
+    reg.operation = operation
+    reg.pairing = pairing
+    assert reg.is_stack is expected

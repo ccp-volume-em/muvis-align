@@ -18,7 +18,8 @@ general:
     pyramid_downsample: 2
 
 operations:
-  - operation: stack
+  - operation: register
+    pairing: stack
     input: D:/slides/EM04788_02_Sub_02/10nm/subset/*.tif
     source_metadata: {'x': 0, 'y': 0}
     extra_metadata: {'scale': {'z': 0.05}}

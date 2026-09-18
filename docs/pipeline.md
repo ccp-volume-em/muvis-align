@@ -124,16 +124,19 @@ Registers (aligns) images using feature matching or phase correlation.
 **Variants:**
 - `register` - Basic registration
 - `register match LABEL` - Group files by matching a label in filenames, then register each group
-- `register stack` - Register images as a z-stack (consecutive 2D registrations)
 - `transition` - Register using a transition transform between filesets
-- `fuse` - Fuse without registering, using the source metadata positions as they are
+- `fuse` / `merge` - Fuse without registering, using the source metadata positions as they are
 
 The operation name also names the output: the verb is written in the past tense, so
 `register` writes `registered.ome.zarr` and `fuse` writes `fused.ome.zarr`.
 
 3D registration is not a separate variant - it follows from the data. Sources with a
-real z extent are registered in 3D; `register stack` max-projects z and registers
-consecutive 2D pairs instead.
+real z extent are registered in 3D.
+
+Registering a z-stack is asked for with `pairing: stack`, not by the operation. An
+earlier `register stack` operation did the same thing and no longer has any effect -
+see the pairing strategies under
+[Registration Configuration](#registration-configuration).
 
 !!! warning "Convert is implemented in the napari plugin only"
     Converting each source individually to OME-Zarr, keeping its native pyramid levels,
@@ -215,12 +218,19 @@ registration:
 **Pairing Strategies:**
 - `orthogonal` - Pair orthogonal tiles (X-Y grid), avoiding diagonal / very small overlaps
 - `overlay` - Pair tiles based on overlap, for stack-like overlaps
-- `stack` - Pair consecutive views, as the `register stack` operation does
+- `stack` - Treat the sources as a z-stack: pair consecutive views, and promote them to
+  3D where the rest of the pipeline needs it
 - unset - Use multiview-stitcher's own default pairing
 
-`pairing: stack` and the `register stack` operation are equivalent: either one
-max-projects z and registers consecutive pairs. Note that this applies to 2D sources -
-sources with a real z extent are registered in 3D, and fall back to the default pairing.
+`pairing: stack` replaces the old `register stack` / `stack` operations, which are no
+longer read - the plugin has no stack operation, so deriving this from the operation
+meant every stack-specific step was silently skipped there. Configuration files under
+`resources/` have been updated to `operation: register` with `pairing: stack`.
+
+For 2D sources, `stack` max-projects z and registers consecutive pairs. Sources with a
+real z extent are registered in 3D, where the pairs are selected by the rest of the
+value: these are matched independently, so `pairing: stack orthogonal` asks for z-stack
+handling with orthogonal pair selection.
 
 **Metrics:**
 - `ncc` - Normalized Cross Correlation

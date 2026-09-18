@@ -38,7 +38,8 @@ operations:
 #      ransac_iterations: 3
 #    output: ../../stitched/S{S}/
 #
-#  - operation: register stack
+#  - operation: register
+#    pairing: stack
 #    #input: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S???/registered.ome.zarr
 #    input: D:/slides/12193/stitched/S???/registered.ome.zarr
 #    source_metadata: source
@@ -71,7 +72,7 @@ operations:
 #      ransac_iterations: 10
 #    output: ../../aligned2/
 
-  - operation: register stack3d
+  - operation: register
     input: /nemo/project/proj-ccp-vem/datasets/12193/data/S*/*.tiff
     #input:
     #  - /nemo/project/proj-ccp-vem/datasets/12193/data/S000/*.tiff
@@ -86,7 +87,9 @@ operations:
     scale: 8
     gaussian_sigma: 2
     flatfield_quantiles: [0.5]
-    pairing: orthogonal
+    # this one wants both: z-stack handling (was 'operation: register stack3d') and
+    # orthogonal pair selection, which are matched independently out of this value
+    pairing: stack orthogonal
     transform_type: rigid
     groupwise_resolution_method: linear_two_pass
     registration:

@@ -21,7 +21,8 @@ general:
     preview:
 
 operations:
-  - operation: stack
+  - operation: register
+    pairing: stack
     #input:
     #  - /nemo/project/proj-ccp-vem/datasets/12193/stitched/S000/registered.ome.zarr
     #  - /nemo/project/proj-ccp-vem/datasets/12193/stitched/S001/registered.ome.zarr
