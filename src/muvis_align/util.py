@@ -170,12 +170,14 @@ def print_dict(dct: dict, indent: int = 0) -> str:
     return s
 
 
-def print_dict_simple(dct: dict) -> str:
+def print_dict_simple(dct: dict, dims: str='zyx') -> str:
     items = []
-    for key, value in dct.items():
-        if isinstance(value, float):
-            value = f'{value:.3f}'
-        items.append(f'{key}: {value}')
+    for dim in dims:
+        if dim in dct:
+            value = dct[dim]
+            if isinstance(value, float):
+                value = f'{value:.3f}'
+            items.append(f'{dim}: {value}')
     return ' '.join(items)
 
 

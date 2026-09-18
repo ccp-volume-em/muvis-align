@@ -44,6 +44,10 @@ class ViewMode(Enum):
     FUSED = auto()
 
 
+def position_sort_key(position):
+    return position.get('z', 0), position.get('y', 0), position.get('x', 0)
+
+
 def parse_channel_color(color):
     if isinstance(color, str):
         try:
@@ -89,7 +93,6 @@ class Interface:
         self.extra_metadata = {}
         self.output_channels = []
         self.view_mode = None
-        self.selected_shape_index = None
         self._preview_overlap_cache = None
         self._view_msims = None
         self.reg.reset()
@@ -450,11 +453,11 @@ class Interface:
         else:
             positions = [get_sim_position_final(sim, transform_keys=transform_keys) for sim in sims]
             scales = [get_sim_physical_size(sim) for sim in sims]
-        data = [[print_dict_simple(position),
-                 print_dict_simple(scale)]
-                for position, scale in zip(positions, scales)]
+        order = sorted(range(len(positions)), key=lambda i: position_sort_key(positions[i]))
+        data = [[print_dict_simple(positions[i]), print_dict_simple(scales[i])] for i in order]
+        row_headers = [self.reg.file_labels[i] for i in order]
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
-        table_widget.set_value((data, self.reg.file_labels, properties))
+        table_widget.set_value((data, row_headers, properties))
         table_widget.set_table_column_resize_mode()
 
     def update_output_channels(self):
@@ -510,6 +513,17 @@ class Interface:
         widget2 = self.param_widgets.get('registration.reg_preview_image2')
         index = 1 if len(labels) > 1 else 0
         widget2.set_value(labels[index], choices=labels)
+
+    def select_pair_preview(self, ref):
+        # a plain image shape's ref is a single index (e.g. '0'); only an overlap shape's
+        # ref ('0 1') identifies a pair, so single-image clicks are ignored here
+        indices = ref.split()
+        if len(indices) != 2:
+            return
+        labels = self.reg.file_labels
+        label1, label2 = labels[int(indices[0])], labels[int(indices[1])]
+        self.param_widgets.get('registration.reg_preview_image1').set_value(label1)
+        self.param_widgets.get('registration.reg_preview_image2').set_value(label2)
 
     def get_best_transform_key(self):
         if not self.reg.is_pairs_registered():
@@ -759,22 +773,18 @@ class Interface:
             text_size = 6 if not bb_supported else 12
             text = {'string': '{labels}', 'size': text_size}
             features = {'refs': refs, 'labels': labels}
-            viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text, features=features,
-                              face_color=face_color, opacity=0.5, edge_width=edge_width, edge_color=edge_color,
-                              blending=blending)
+            layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
+                                      features=features, face_color=face_color, opacity=0.5,
+                                      edge_width=edge_width, edge_color=edge_color, blending=blending)
 
-            # layer = viewer.add_shapes(shapes, name=layer_name, text=text, features=features, opacity=0.5,
-            #                           face_color=face_colors)
-            # @viewer.mouse_move_callbacks.append
-            # def on_mouse_move(viewer, event):
-            #     self.selected_shape_index = layer._value[0]
-            #
-            # @viewer.mouse_drag_callbacks.append
-            # def on_mouse_drag(viewer, event):
-            #     if event.type == "mouse_press" and event.button == 1:
-            #         if viewer.layers.selection.active == layer and self.selected_shape_index is not None:
-            #             self.on_selection_change(refs[self.selected_shape_index])
-            #     yield
+            @layer.mouse_drag_callbacks.append
+            def on_shape_click(clicked_layer, event, refs=refs):
+                if event.button == 1:
+                    value = clicked_layer.get_value(event.position, view_direction=event.view_direction,
+                                                    dims_displayed=event.dims_displayed, world=True)
+                    shape_index = value[0] if value is not None else None
+                    if shape_index is not None:
+                        self.select_pair_preview(refs[shape_index])
 
     def _napari_view_add_fused_data(self, viewer, fused, layer_name):
         # MVSRegistration.fuse() always returns msims, never sims - get_msim_level_data (each
@@ -940,7 +950,14 @@ class Interface:
                 for metric_key, metric_value in transform_value.items():
                     if metric_value is not None and metric_key not in metric_keys:
                         metric_keys.append(metric_key)
-        metrics = metrics_dict.get('pairs')
+        pairs_metrics = metrics_dict.get('pairs')
+        if pairs_metrics:
+            file_rank = {file_index: rank for rank, file_index in
+                        enumerate(sorted(range(len(self.reg.positions)),
+                                         key=lambda i: position_sort_key(self.reg.positions[i])))}
+            pairs_metrics = dict(sorted(pairs_metrics.items(),
+                                        key=lambda item: (file_rank[item[0][0]], file_rank[item[0][1]])))
+        metrics = pairs_metrics
         if metrics:
             for pair_key_indices, pair_value in metrics.items():
                 pair_key = self.reg.file_labels[pair_key_indices[0]] + ' - ' + self.reg.file_labels[pair_key_indices[1]]
@@ -971,7 +988,7 @@ class Interface:
                     if metric_value is not None:
                         col_index = metric_index if is_metric_cols else transform_index
                         metrics_table[0][col_index] = metric_value
-        metrics = metrics_dict.get('pairs')
+        metrics = pairs_metrics
         if metrics:
             for pair_index, pair_value in enumerate(metrics.values()):
                 for transform_index, transform_value in enumerate(pair_value.values()):
