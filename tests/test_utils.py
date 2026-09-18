@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from muvis_align.util import calculate_rigid_difference, create_transform, \
-    resolve_to_project_dir, relativize_to_project_dir
+    pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir
 
 
 @pytest.mark.parametrize(
@@ -111,3 +111,19 @@ def test_relativize_to_project_dir_falls_back_to_absolute_on_different_drive(mon
 
     absolute = os.path.abspath('somewhere/else')
     assert relativize_to_project_dir(absolute, os.path.abspath('project')) == absolute.replace('\\', '/')
+
+
+@pytest.mark.parametrize('pattern, expected', [
+    ('data/tiles/*.tiff', 'data/tiles'),
+    ('data/*/*.tiff', 'data'),          # a wildcard directory is not a directory
+    ('data/**/*.ome.zarr', 'data'),
+    ('data/tile_?.tif', 'data'),
+    ('data/set[0-9]/*.tif', 'data'),
+    ('data/file.tiff', 'data'),
+    ('*/*.tiff', ''),
+    ('file.tiff', ''),
+])
+def test_pattern_base_dir_skips_wildcard_components(pattern, expected):
+    """A relative output path is taken relative to this (MVSRegistration.init), so a wildcard
+    left in it makes an output directory that cannot be created - on Windows, WinError 123."""
+    assert pattern_base_dir(pattern) == expected

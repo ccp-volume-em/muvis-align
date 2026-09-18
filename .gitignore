@@ -85,3 +85,5 @@ venv/
 
 /log
 /output
+/output_zarr
+/output_subset

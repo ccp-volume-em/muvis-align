@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import nullcontext
 import copy
 import dask
+import time
 from dask.diagnostics import ProgressBar
 from enum import Enum, auto
 import logging
@@ -24,9 +25,11 @@ import xarray as xr
 from muvis_align.constants import *
 from muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
 from muvis_align.file.transforms import write_transforms, read_transforms
+from muvis_align.GlobalOptProgress import GlobalOptProgress
 from muvis_align.image.Video import Video
 from muvis_align.image.flatfield import flatfield_correction
 from muvis_align.image.ome_helper import save_image
+from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
@@ -49,6 +52,12 @@ class MVSRegistration:
                  source_metadata={}, extra_metadata={},
                  global_rotation=None, global_center=None,
                  overwrite=True, clear=False, ui='', verbose=False, debug=False):
+        # set here (rather than only in init(), below) so verbose/logging_dask/logging_time are
+        # always defined, even for an instance that never gets init() called on it (e.g. Interface's
+        # placeholder self.reg before a project is loaded)
+        self.verbose = verbose
+        self.logging_dask = self.verbose
+        self.logging_time = self.verbose
         self.reset()
 
         if input_path is not None:
@@ -69,6 +78,11 @@ class MVSRegistration:
     def msims(self, value):
         self._msims = value
 
+    @staticmethod
+    def progress_phase(progress_factory, total=None, desc=None):
+        """One reporting phase of the caller's operation, or nothing to report into."""
+        return progress_factory(total=total, desc=desc) if progress_factory is not None else nullcontext(None)
+
     def ensure_msims(self, progress_factory=None):
         # same lazy build the msims property triggers, but callable ahead of time with a
         # progress_factory - lets a caller that's about to force this (e.g. run_pre_processing())
@@ -84,14 +98,56 @@ class MVSRegistration:
             if progress_factory is not None
             else nullcontext(None)
         )
+        # Where each source's pixel data is first opened: sources defer that read until
+        # something wants pixel-shaped data. On a network filesystem it is 128-200ms per source,
+        # the largest non-fusion phase of a large project when run serially (10-16 minutes for
+        # ~4700), and the same read init_sources() already overlaps across its own pool - so
+        # without one here, deferring the read only moves an I/O-bound phase into a serial one.
+        #
+        # Threads, not processes: each source's caches belong to that source alone, so no two
+        # workers touch the same state. On a local SSD the read is warm and the GIL-bound xarray
+        # half dominates (0.9-1.0x); the win is where the read actually costs something.
+        nsources = len(self.sources)
+        msims = [None] * nsources
+        # list.append is atomic under the GIL, so plain appends from worker threads need no lock.
+        # Both wall and CPU time per source: with several workers a task's wall time also counts
+        # the time it spent waiting for the GIL, so it inflates roughly in proportion to the
+        # worker count whether or not anything was actually overlapped - see the log below
+        source_times = []
+        source_cpu_times = []
+        phase_start, phase_cpu_start = time.time(), time.process_time()
+        max_workers = 1
+
+        def build_msim(index):
+            source_start, cpu_start = time.time(), time.thread_time()
+            msim = build_source_msim(self.sources[index], self._msim_output_order,
+                                     self.positions[index], self._msim_transforms[index],
+                                     self.source_transform_key, z_scale=self._msim_z_scale)
+            source_times.append(time.time() - source_start)
+            source_cpu_times.append(time.thread_time() - cpu_start)
+            return msim
+
         with progress_context as pbar:
-            msims = []
-            for source, translation, transform in zip(self.sources, self.positions, self._msim_transforms):
-                msims.append(build_source_msim(source, self._msim_output_order, translation, transform,
-                                               self.source_transform_key, z_scale=self._msim_z_scale))
+            if nsources > 1:
+                max_workers = min(default_source_init_workers, nsources)
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {executor.submit(build_msim, index): index
+                              for index in range(nsources)}
+                    for future in as_completed(futures):
+                        # collected by index, so msims stays in source order however the futures
+                        # happen to complete - each one is paired with its own position/transform
+                        msims[futures[future]] = future.result()
+                        if pbar is not None:
+                            pbar.update(1)
+            elif nsources:
+                msims[0] = build_msim(0)
                 if pbar is not None:
                     pbar.update(1)
         self._msims = msims
+        if self.logging_time and source_times:
+            logging.info(f'Build msims: {len(source_times)} sources'
+                         f' {format_phase_timing(time.time() - phase_start, source_times, source_cpu_times,
+                                                 max_workers, time.process_time() - phase_cpu_start)}')
 
     def reset(self):
         self.state = RegState.UNINIT
@@ -175,7 +231,7 @@ class MVSRegistration:
             self.input_dir = input_path
         else:
             self.filenames = dir_regex(input_path)
-            self.input_dir = os.path.dirname(input_path)
+            self.input_dir = pattern_base_dir(input_path)
         if not self.filenames:
             return False
 
@@ -215,12 +271,8 @@ class MVSRegistration:
         operation = self.operation
         source_metadata = self.source_metadata
         extra_metadata = self.extra_metadata
-        if isinstance(extra_metadata, dict):
-            z_scale = extra_metadata.get('scale', {}).get('z')
-            channels = extra_metadata.get('channels', [])
-        else:
-            z_scale = None
-            channels = []
+        z_scale = get_metadata_z_scale(extra_metadata)
+        channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
         normalise_orientation = 'norm' in source_metadata
         output_params = self.output_params
         general_output_params = self.params_general.get('output', {})
@@ -433,21 +485,33 @@ class MVSRegistration:
             per_file_metadata.append(copy.deepcopy(source_metadata))
 
         with progress_context as pbar:
+            # per-file wall and CPU durations (list.append is atomic under the GIL, so plain
+            # appends from multiple worker threads are safe here without a lock) - only used to
+            # log where init_sources() actually spends its time; see format_phase_timing()
+            file_times = []
+            file_cpu_times = []
+
             def build_source(index, matrix_size):
-                return create_image_source(
+                start, cpu_start = time.time(), time.thread_time()
+                source = create_image_source(
                     self.filenames[index], per_file_metadata[index], extra_metadata=self.extra_metadata,
                     file_label=self.file_labels[index], transform_key=self.source_transform_key,
                     matrix_size=matrix_size)
+                file_times.append(time.time() - start)
+                file_cpu_times.append(time.thread_time() - cpu_start)
+                return source
 
             # matrix_size is decided once from the first source (matching the previous
             # is_3d-from-source0 behaviour) - build it on its own first, so every other source
             # below can be constructed with that already-known matrix_size from the start
+            phase_start, phase_cpu_start = time.time(), time.process_time()
             first_source = build_source(0, matrix_size=None)
             matrix_size = 4 if first_source.get_size().get('z', 0) > 1 else 3
             self.sources[0] = first_source
             if pbar is not None:
                 pbar.update(1)
 
+            max_workers = 1
             if nfiles > 1:
                 max_workers = min(default_source_init_workers, nfiles - 1)
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -458,6 +522,11 @@ class MVSRegistration:
                         self.sources[index] = future.result()
                         if pbar is not None:
                             pbar.update(1)
+
+        if self.logging_time and file_times:
+            logging.info(f'Init sources: {len(file_times)} files'
+                         f' {format_phase_timing(time.time() - phase_start, file_times, file_cpu_times,
+                                                 max_workers, time.process_time() - phase_cpu_start)}')
 
     def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, target_scale=None, store=True,
                   progress_factory=None):
@@ -470,15 +539,12 @@ class MVSRegistration:
         source_metadata_changed = (source_metadata != self.source_metadata)
         self.source_metadata = source_metadata
         self.extra_metadata = extra_metadata
-        if isinstance(source_metadata, dict):
-            z_scale = source_metadata.get('scale', {}).get('z')
-        if not z_scale and isinstance(extra_metadata, dict):
-            z_scale = extra_metadata.get('scale', {}).get('z')
+        z_scale = get_metadata_z_scale(source_metadata) or get_metadata_z_scale(extra_metadata)
 
         if len(self.filenames) == 0:
             raise ValueError('No input files')
 
-        logging.info('Initialising sims...')
+        logging.info('Initialising sources...')
         if not self.sources or source_metadata_changed:
             self.init_sources(progress_factory=progress_factory)
         sources = self.sources
@@ -523,7 +589,11 @@ class MVSRegistration:
                 z_position = 0
             if last_z_position is not None and z_position != last_z_position:
                 delta_zs.append(z_position - last_z_position)
-            if 'rotation' in source_metadata:
+            if 'rotation' in source_metadata and not check_contains_value(source_metadata['rotation'], 'source'):
+                # 'source' means "keep whatever the file itself reports" - ImageSource.fix_metadata
+                # has already resolved that into source.get_rotation() (read just above). Taking
+                # the raw config value here regardless would hand create_transform() the literal
+                # string 'source' instead of an angle.
                 rotation = source_metadata['rotation']
             if self.global_rotation is not None:
                 rotation = self.global_rotation
@@ -629,14 +699,22 @@ class MVSRegistration:
         elif os.path.exists(pair_mappings_filename):
             self.state = RegState.PAIRS_REG
 
-    def init_progress(self, output_filename, output_format):
+    def init_progress(self, output_filename, output_format, progress_factory=None):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
         metrics_filename = self.output + metrics_name
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
         self.check_progress(output_filename, output_format)
 
-        if self.is_pairs_registered() and os.path.exists(pair_mappings_filename):
+        load_pairs = self.is_pairs_registered() and os.path.exists(pair_mappings_filename)
+        if load_pairs or self.is_global_registered():
+            # both branches below read self.msims, whose lazy build is the single most expensive
+            # thing resuming a saved project does (~15s for 328 sources) - build it here, through
+            # ensure_msims(), so a caller's progress_factory can report it per source instead of
+            # it happening silently inside the first plain `self.msims` expression further down
+            self.ensure_msims(progress_factory=progress_factory)
+
+        if load_pairs:
             # load pair mapping and initialise pair_graph
             logging.info(f'Loading pair mapping from {pair_mappings_filename}')
             pairs = import_json(pair_mappings_filename)
@@ -653,21 +731,37 @@ class MVSRegistration:
                     indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
                     if 'bbox' in value:
                         indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
-            if not is_3d:
-                self.msims = make_msims_2d(self.msims)
-            self.pair_msims = self.msims
-            self.pairs = list(indexed_pair_transforms.keys())
-            self.metrics = {
-                'summary': {default_transform_key: {default_quality_key: np.mean(list(indexed_qualities.values()))}},
-                'pairs': {key: {default_transform_key: {default_quality_key: value.item()}}
-                          for key, value in indexed_qualities.items()}
-            }
-            with dask.config.set(scheduler='single-threaded'):
-                self.pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
-                    self.pair_msims,
-                    transform_key=self.source_transform_key,
-                    pairs=self.pairs
-                )
+            # neither of the two steps left is per-source-divisible (a whole-set redimension and
+            # one graph build over every pair), but together they are seconds to tens of seconds
+            # for a few hundred sources - count them rather than letting them run silently
+            progress_context = (
+                progress_factory(total=2, desc='Loading pair registration')
+                if progress_factory is not None
+                else nullcontext(None)
+            )
+            with progress_context as pbar:
+                if not is_3d:
+                    self.msims = make_msims_2d(self.msims)
+                self.pair_msims = self.msims
+                self.pairs = list(indexed_pair_transforms.keys())
+                self.metrics = {
+                    'summary': {default_transform_key: {default_quality_key: np.mean(list(indexed_qualities.values()))}},
+                    'pairs': {key: {default_transform_key: {default_quality_key: value.item()}}
+                              for key, value in indexed_qualities.items()}
+                }
+                if pbar is not None:
+                    pbar.update(1)
+                # the pairs came from the saved mapping, so build the graph directly rather than
+                # have multiview_stitcher rediscover each edge's overlap with a linear program
+                # (4.1ms each, and every attribute below is written straight over it). The saved
+                # bboxes give the overlap weight that build would have measured, for nothing.
+                overlaps = {key: float(np.prod([abs(high - low) for low, high
+                                                in zip(*np.array(value).reshape(2, -1))]))
+                            for key, value in indexed_bboxes.items()}
+                self.pairs_graph = build_pairs_graph(self.pair_msims, self.pairs,
+                                                     self.source_transform_key, overlaps=overlaps)
+                if pbar is not None:
+                    pbar.update(1)
             nx.set_edge_attributes(self.pairs_graph, indexed_pair_transforms, default_transform_key)
             nx.set_edge_attributes(self.pairs_graph, indexed_qualities, default_quality_key)
             nx.set_edge_attributes(self.pairs_graph, indexed_bboxes, 'bbox')
@@ -679,24 +773,29 @@ class MVSRegistration:
             #z_positions = set([source.get_position().get('z', 0) for source in self.sources])
             #make_3d = len(z_positions) > 1 or is_stack
             make_3d = is_stack
-            if isinstance(self.extra_metadata, dict):
-                z_scale = self.extra_metadata.get('scale', {}).get('z')
-            else:
-                z_scale = None
+            z_scale = get_metadata_z_scale(self.extra_metadata)
 
             mappings = read_transforms(mappings_filename)
             # write reg_transform_key onto self.msims (msim -> msim, every scale, no sim needed) -
             # the persistent pyramid needs the same transform a fresh registration run would have
             # written via register_global, or copy_transforms/get_transforms downstream
             # (Interface.py) won't find it there when resuming from saved state
-            for msim, filename in zip(self.msims, self.filenames):
-                mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
-                if make_3d:
-                    transform = param_utils.identity_transform(ndim=3)
-                    transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
-                else:
-                    transform = mapping
-                msi_utils.set_affine_transform(msim, transform, transform_key=self.reg_transform_key)
+            progress_context = (
+                progress_factory(total=len(self.msims), desc='Loading global registration')
+                if progress_factory is not None
+                else nullcontext(None)
+            )
+            with progress_context as pbar:
+                for msim, filename in zip(self.msims, self.filenames):
+                    mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
+                    if make_3d:
+                        transform = param_utils.identity_transform(ndim=3)
+                        transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
+                    else:
+                        transform = mapping
+                    msi_utils.set_affine_transform(msim, transform, transform_key=self.reg_transform_key)
+                    if pbar is not None:
+                        pbar.update(1)
             if make_3d:
                 self.msims = make_msims_3d(self.msims, z_scale, self.positions)
             elif not is_3d:
@@ -760,6 +859,14 @@ class MVSRegistration:
                    flatfield_quantiles=None, normalisation=None, gaussian_sigma=None, filter_foreground=False,
                    progress_factory=None,
                    **kwargs):
+        if kwargs:
+            # a project file may carry options this does not implement, so an unknown one is not
+            # fatal - but it must be visible. Silently swallowed, a mistyped option (or a whole
+            # params dict handed over as a single keyword) leaves pre-processing at its defaults,
+            # which shows up only as registration being unaccountably slow at full resolution.
+            logging.warning('Ignoring unknown pre-processing option(s):'
+                            f' {", ".join(sorted(str(key) for key in kwargs))}')
+
         def normalisation_enabled(value):
             if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
                 return False
@@ -1045,6 +1152,7 @@ class MVSRegistration:
         return results
 
     def register_pairs(self, register_msims=None, register_indices=None, params=None):
+        logging.info('Pair registration...')
         if register_indices is None:
             if self.register_indices is not None:
                 register_indices = self.register_indices
@@ -1099,7 +1207,7 @@ class MVSRegistration:
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(
             msi_utils.get_sim_from_msim(register_msims[0], scale='scale0'), params=params)
         logging.info(f'Registration method: {reg_method}')
-        logging.info('Registering...')
+        logging.info('Registering pairs...')
         # register_msims is a real multiscale, preprocessed pyramid per source (built by
         # preprocess()) - handing it to registration (instead of a single-level scale_factors=[]
         # wrap) lets compute_pairwise_registrations auto-select a good resolution per pair from
@@ -1193,7 +1301,8 @@ class MVSRegistration:
         }
 
     def register_global(self, pair_msims, register_indices=None, params=None,
-                        pairs_graph=None):
+                        pairs_graph=None, progress_factory=None):
+        logging.info('Global registration...')
         if register_indices is None:
             if self.register_indices is not None:
                 register_indices = self.register_indices
@@ -1236,7 +1345,11 @@ class MVSRegistration:
                 weight_key="quality",
             )
 
-        with dask.config.set(scheduler='threads'):
+        # not a plain progress phase: the call below has nothing to report into one, so
+        # GlobalOptProgress follows the optimiser's own log instead
+        with GlobalOptProgress(progress_factory, desc='Global registration',
+                               max_passes=g_reg_computed.number_of_edges(), weight=4), \
+                dask.config.set(scheduler='threads'):
             transforms_dict, groupwise_resolution_info_dict = groupwise_resolution(
                 g_reg_computed,
                 method=groupwise_resolution_method,
@@ -1247,23 +1360,31 @@ class MVSRegistration:
             transforms_dict[iview] for iview in sorted(g_reg_computed.nodes())
         ]
 
-        for imsim, msim in enumerate(pair_msims):
-            msi_utils.set_affine_transform(
-                msim,
-                transforms[imsim],
-                transform_key=self.reg_transform_key,
-                base_transform_key=self.source_transform_key,
-            )
+        # the stages below are the last 20 minutes of an 86-minute run, and reported nothing
+        with self.progress_phase(progress_factory, total=len(pair_msims),
+                                 desc='Applying transforms') as pbar, \
+                Timer('apply registered transforms', verbose=self.logging_time):
+            for imsim, msim in enumerate(pair_msims):
+                msi_utils.set_affine_transform(
+                    msim,
+                    transforms[imsim],
+                    transform_key=self.reg_transform_key,
+                    base_transform_key=self.source_transform_key,
+                )
+                if pbar is not None:
+                    pbar.update(1)
 
         if plot_summary:
-            plot_info = _plot_registration_summaries(
-                pair_msims,
-                self.source_transform_key,
-                self.reg_transform_key,
-                g_reg_computed,
-                groupwise_resolution_info_dict,
-                show_plot=plot_summary,
-            )
+            with self.progress_phase(progress_factory, total=1, desc='Registration summary'), \
+                    Timer('plot registration summaries', verbose=self.logging_time):
+                plot_info = _plot_registration_summaries(
+                    pair_msims,
+                    self.source_transform_key,
+                    self.reg_transform_key,
+                    g_reg_computed,
+                    groupwise_resolution_info_dict,
+                    show_plot=plot_summary,
+                )
         else:
             plot_info = {}
 
@@ -1297,9 +1418,14 @@ class MVSRegistration:
         # copy transforms from the registration-stage msims onto self.msims (the persistent,
         # full per-source pyramid) - msim -> msim, writes the same affine onto every scale,
         # no sim round-trip needed
-        for reg_msim, index in zip(pair_msims, register_indices):
-            reg_transform = msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key)
-            msi_utils.set_affine_transform(self.msims[index], reg_transform, transform_key=self.reg_transform_key)
+        with self.progress_phase(progress_factory, total=len(pair_msims),
+                                 desc='Storing transforms') as pbar, \
+                Timer('store transforms on sources', verbose=self.logging_time):
+            for reg_msim, index in zip(pair_msims, register_indices):
+                reg_transform = msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key)
+                msi_utils.set_affine_transform(self.msims[index], reg_transform, transform_key=self.reg_transform_key)
+                if pbar is not None:
+                    pbar.update(1)
 
         # set missing transforms - sources that never took part in registration (e.g. filtered out)
         for msim in self.msims:
@@ -1322,9 +1448,12 @@ class MVSRegistration:
         mappings_dict = {index: mapping for index, mapping in zip(register_indices, mappings)}
 
         reg_channel = params.get('channel', 0)
-        metrics = calc_global_metrics(pair_msims, self.source_transform_key, self.reg_transform_key,
-                                      params.get('metrics', []), reg_channel=reg_channel, reg_results=reg_result,
-                                      n_parallel_pairs=n_parallel_pairwise_regs)
+        with self.progress_phase(progress_factory, total=1, desc='Global registration metrics'), \
+                Timer('global registration metrics', verbose=self.logging_time):
+            metrics = calc_global_metrics(pair_msims, self.source_transform_key, self.reg_transform_key,
+                                          params.get('metrics', []), reg_channel=reg_channel,
+                                          reg_results=reg_result,
+                                          n_parallel_pairs=n_parallel_pairwise_regs)
 
         self.metrics = metrics
         self.state = RegState.GLOBAL_REG
@@ -1333,6 +1462,27 @@ class MVSRegistration:
                 'residual_errors': residual_error_dict,
                 'registration_qualities': registration_qualities_dict,
                 'metrics': metrics}
+
+    @staticmethod
+    def _fusion_batch_options(saving_zarr, max_workers=None):
+        """Fuse a zarr export's blocks concurrently instead of one at a time.
+
+        multiview_stitcher walks them in a plain sequential loop unless given a batch_func
+        (fusion._core), so an export ran on a single core. Each block writes its own chunk of the
+        store, and the per-block memory budget is already per worker.
+        """
+        if not saving_zarr:
+            return None
+        max_workers = max(1, max_workers or default_fusion_workers)
+        if max_workers == 1:
+            return None
+
+        def fuse_batch(fuse_chunk, block_ids, **_):
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # list() so an exception in any block surfaces rather than being dropped
+                list(executor.map(fuse_chunk, block_ids))
+
+        return {'batch_func': fuse_batch, 'n_batch': max_workers}
 
     def fuse(self, msims, fusion_method=None, output_spacing='mean', transform_key=None,
              dimension=None, output_filename=None,
@@ -1353,6 +1503,7 @@ class MVSRegistration:
         level then has as many chunks (and dask graph tasks) in z as there are z-slices, even
         once a level's XY extent has been downsampled to a handful of pixels.
         """
+        logging.info('Fusion...')
         if output_filename is not None:
             output_filename = self.output + output_filename
 
@@ -1370,18 +1521,14 @@ class MVSRegistration:
         if transform_key is None:
             transform_key = self.reg_transform_key
 
-        if isinstance(self.source_metadata, dict):
-            z_scale = self.source_metadata.get('scale', {}).get('z')
-        elif isinstance(extra_metadata, dict):
-            z_scale = extra_metadata.get('scale', {}).get('z')
-        else:
-            z_scale = None
+        z_scale = get_metadata_z_scale(self.source_metadata) or get_metadata_z_scale(extra_metadata)
 
         if z_scale is None:
             z_scale = extract_z_scale(self.positions, self.scales)
 
         z_positions = [position.get('z') for position in self.positions if 'z' in position]
-        if len(set(z_positions)) > 1:
+        num_z_positions = len(set(z_positions))
+        if num_z_positions > 1:
             msims = make_msims_3d(msims, z_scale=z_scale, positions=self.positions)
 
         output_stack_properties = calc_output_properties(msims, transform_key,
@@ -1392,16 +1539,43 @@ class MVSRegistration:
         data_size = np.prod(list(output_stack_properties['shape'].values())) * sim0.dtype.itemsize
         logging.info(f'Fusing {print_hbytes(data_size)}')
 
+        # Peak memory while fusing is set by how many sources land in one output chunk, not by
+        # the output's size: every source overlapping a chunk is transformed into a full-chunk
+        # float32 array and stacked. Left unspecified, fuse() falls back to the input's own chunk
+        # grid, which for a coarse output means chunks spanning the whole field of view and so
+        # every source at once; get_chunk_sizes() sizes them against that real cost instead.
+        # A caller-supplied output_chunksize always wins, as does a configured tile_size below.
+        default_output_chunksize = get_chunk_sizes(sim0.dtype, list(output_stack_properties['shape']),
+                                                   num_sources=len(msims),
+                                                   num_z_positions=num_z_positions)
         saving_zarr = False
         if is_channel_overlay:
             # convert to multichannel images - one channel per source, still a real multiscale
             # pyramid (combine_msims_as_channels stacks 'c' per level, not just at one resolution)
-            channel_results = [fusion.fuse(
-                [msim],
-                transform_key=transform_key,
-                output_stack_properties=output_stack_properties,
-                output_chunksize=output_chunksize
-            ) for msim in msims]
+            def build_channel_result(msim):
+                return fusion.fuse(
+                    [msim],
+                    transform_key=transform_key,
+                    output_stack_properties=output_stack_properties,
+                    # one source per fuse() call here, so the per-chunk source count this
+                    # defaults against is 1 - recompute rather than reuse the all-sources value
+                    output_chunksize=output_chunksize or get_chunk_sizes(
+                        sim0.dtype, list(output_stack_properties['shape']))
+                )
+
+            # each call builds one source's own lazy graph against the shared
+            # output_stack_properties, independent per source, so a pool spreads that
+            # graph-construction cost across every core. Joined in submission order below.
+            channel_results = [None] * len(msims)
+            if len(msims) > 1:
+                max_workers = min(default_preview_workers, len(msims))
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    futures = {executor.submit(build_channel_result, msim): index
+                              for index, msim in enumerate(msims)}
+                    for future in as_completed(futures):
+                        channel_results[futures[future]] = future.result()
+            elif msims:
+                channel_results[0] = build_channel_result(msims[0])
             fused_image = combine_msims_as_channels(channel_results, [channel['label'] for channel in channels])
         else:
             if fusion_method:
@@ -1416,8 +1590,24 @@ class MVSRegistration:
                         tile_size = [tile_size] * 2
                     output_chunksize = xyz_to_dict(tile_size)
                     if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
-                        # zarr export streams one z-slice at a time to keep peak memory low
-                        output_chunksize['z'] = 1
+                        # tile_size says nothing about z, so the budget decides it
+                        output_chunksize['z'] = default_output_chunksize.get('z', 1)
+                if output_chunksize is None:
+                    # no caller value and no configured tile_size: fall back to the memory budget,
+                    # taken for an export at the export's own block size rather than a preview's
+                    if saving_zarr:
+                        output_chunksize = get_export_chunk_sizes(
+                            sim0.dtype, output_stack_properties, msims,
+                            num_z_positions=num_z_positions)
+                    else:
+                        output_chunksize = dict(default_output_chunksize)
+                if self.verbose:
+                    # logged here, where it is finally settled: reported before the branches
+                    # above it named the preview-budgeted default whatever the export went on
+                    # to use, which is the one number this line exists to show
+                    logging.info(f'Fusion output_chunksize: {numpy_to_native(output_chunksize)}'
+                                 f' ({len(msims)} sources over'
+                                 f' {max(1, num_z_positions)} z position(s))')
                 if saving_zarr:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
@@ -1432,7 +1622,8 @@ class MVSRegistration:
                         output_stack_properties=output_stack_properties,
                         output_zarr_url=output_filename,
                         zarr_options=zarr_options,
-                        output_chunksize=output_chunksize
+                        output_chunksize=output_chunksize,
+                        batch_options=self._fusion_batch_options(saving_zarr)
                     )
             else:
                 # 'compose' mode: no actual fusion, just return the per-source msims as-is
@@ -1489,10 +1680,7 @@ class MVSRegistration:
         output_params = self.params_general['output']
         preview_scale = output_params.get('preview_scale', 16)
         is_stack = ('stack' in self.operation)
-        if isinstance(self.extra_metadata, dict):
-            z_scale = self.extra_metadata.get('scale', {}).get('z')
-        else:
-            z_scale = None
+        z_scale = get_metadata_z_scale(self.extra_metadata)
 
         # select this preview resolution directly from self.msims (already built by init_data())
         # via pure msim slicing - no sim extraction, no resize, and (below) no wrapping back into
@@ -1532,6 +1720,36 @@ class MVSRegistration:
                    pyramid_downsample=pyramid_downsample, npyramid_add=npyramid_add,
                    ome_version=ome_version,
                    verbose=self.verbose)
+
+    def save_native_levels(self, output_filename, msim, position=None, channels=None, min_length=128,
+                           compression=None, ome_version=default_ome_zarr_version):
+        """Write msim's own native pyramid levels exactly as-is (no resampling) - see
+        save_ome_multiscale_levels(). Used by convert, which never fuses/resamples a source.
+
+        position: this source's own {'z': ..., ...} (self.positions[index]) - a source with no
+        native 'z' dim (e.g. a single 2D tile) only carries its z height as this separate,
+        external metadata, not in its own sim coords. Without promoting, the written file would
+        silently drop that z position entirely instead of storing it as a size-1 'z' dim/
+        translation - same promotion build_source_shape_sim()/make_msims_3d() already apply for
+        shapes/fusion.
+        """
+        if output_filename is not None:
+            output_filename = self.output + output_filename
+        if channels is None:
+            channels = self.extra_metadata.get('channels', []) if isinstance(self.extra_metadata, dict) else []
+
+        if position is not None and 'z' not in get_msim_dims(msim):
+            msim = make_msims_3d([msim], z_scale=self._msim_z_scale, positions=[position])[0]
+
+        scale_keys = msi_utils.get_sorted_scale_keys(msim)
+        images = [msim[scale_key].ds['image'] for scale_key in scale_keys]
+        dim_order = ''.join(images[0].dims)
+        levels = [(image.data, si_utils.get_spacing_from_sim(image)) for image in images]
+        translation = si_utils.get_origin_from_sim(images[0])
+
+        save_ome_multiscale_levels(str(output_filename) + zarr_extension, levels, dim_order, channels,
+                                   translation, min_length=min_length,
+                                   compression=compression, ome_version=ome_version)
 
     def save_video(self, output, msims, fused_msim):
         logging.info('Creating transition video...')

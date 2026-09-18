@@ -237,6 +237,8 @@ parameters:
         value: "register"
       - label: Merge
         value: "merge"
+      - label: Convert
+        value: "convert"
     default: "register"
     cli_tag: "--operation"
     cli_order: 0
@@ -466,8 +468,11 @@ parameters:
   - name: tile_size
     type: textbox
     label: "Tile size(s)"
-    description: "Tile size(s) (e.g. 1024 or 1024,1024,1024)"
-    default: "1024,1024"
+    description: "Tile size(s), or empty to size them automatically (e.g. 1024 or 1024,1024,1024).
+      For a zarr export this is also how the fusion is blocked, so a small value costs real time:
+      the fixed per-block cost is paid once per tile. Left empty, it is sized against the memory
+      one block actually needs."
+    default: ""
     cli_tag: "--tile_size"
     cli_order: 2
     optional: True

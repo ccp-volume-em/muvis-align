@@ -5,6 +5,7 @@ import cv2 as cv
 from datetime import datetime
 import glob
 import json
+import logging
 import math
 import numpy as np
 import os.path
@@ -245,6 +246,24 @@ def dir_regex(pattern):
     return files_sorted
 
 
+def pattern_base_dir(pattern):
+    """The real directory an input pattern sits in - what a relative output path is taken to be
+    relative to (MVSRegistration.init).
+
+    os.path.dirname() alone keeps any wildcard in the pattern: for 'data/*/*.tiff' it returns
+    'data/*', which is not a directory, so joining an output onto it yields a path that cannot
+    be created (WinError 123 on Windows, a literal '*' directory elsewhere). Walk up until no
+    component of the tail is a wildcard.
+    """
+    directory = os.path.dirname(pattern)
+    while directory and any(char in os.path.basename(directory) for char in '*?['):
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return ''
+        directory = parent
+    return directory
+
+
 def find_all_numbers(text: str) -> list:
     return list(map(int, re.findall(r'\d+', text)))
 
@@ -401,6 +420,28 @@ def check_contains_value(value, contains_value):
     return isinstance(value, (dict, str)) and contains_value in value
 
 
+def get_metadata_z_scale(metadata):
+    """The configured z spacing from a source/extra metadata dict, as a number - or None when it
+    is unset, blank, or delegated to the file itself ('source').
+
+    Every consumer of z_scale treats it as a number (fusion output spacing, the z step used to
+    promote 2D sources into a 3D stack), while the configuration it comes from is free-form text
+    a user types: 'source' means "whatever the file reports", which ImageSource.fix_metadata has
+    already applied per source. Reading the raw dict value handed that literal string straight to
+    numpy - e.g. `source_scale_z: source` (any OME-Zarr project using file metadata) failed in
+    fusion with "could not convert string to float: 'source'".
+    """
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get('scale', {}).get('z')
+    if value is None or check_contains_value(value, 'source'):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def eval_context(data, key, default_value, context):
     value = data.get(key, default_value)
     if isinstance(value, str):
@@ -447,15 +488,88 @@ def get_value_units_micrometer(value_units0: list|dict) -> list|dict|None:
     return values_um
 
 
+um_conversions = {
+    'Å': 1e-4, 'A': 1e-4, 'angstrom': 1e-4,
+    'pm': 1e-6, 'picometer': 1e-6,
+    'nm': 1e-3, 'nanometer': 1e-3,
+    'µm': 1, 'um': 1, 'micrometer': 1, 'micron': 1,
+    'mm': 1e3, 'millimeter': 1e3,
+    'cm': 1e4, 'centimeter': 1e4,
+    'm': 1e6, 'meter': 1e6
+}
+
+
+def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None):
+    """One timing line for a threaded per-item phase, reported so it can actually be read.
+
+    The obvious summary - wall time against the summed per-item time - cannot distinguish the
+    two cases it is usually quoted for. Under a thread pool, an item's wall time includes
+    whatever it spent waiting for the GIL, so the sum inflates roughly in proportion to the
+    worker count whether the threads overlapped real waiting or merely queued behind each other.
+    Measured on 328 sources: summed per-source time went 15s -> 1028s from 1 to 64 workers while
+    wall time went 14.9s -> 16.6s, i.e. the 60x "overlap" that ratio suggests was worth nothing.
+
+    Per-item CPU time (time.thread_time) is not distorted that way, so it gives a usable floor:
+    Python can only run one thread's bytecode at a time, so no arrangement of threads finishes
+    this phase faster than the total CPU it needs. Hence
+
+        wall ~= cpu   the phase is at that floor - it is CPU/GIL-bound and more workers cannot
+                      help (they will cost a little)
+        wall >> cpu   time is going somewhere other than CPU (network/disk latency), which is
+                      exactly what more workers can overlap
+
+    so the printed ratio says which regime a run is in, rather than always looking like a win.
+
+    `process_cpu_time` (time.process_time across the phase) is reported alongside, because the
+    per-item figure above is time.thread_time and so counts only the thread that ran the item -
+    never a nested pool it submitted to, nor anything else in the process. One 4733-source run
+    measured 468s of per-item CPU inside a phase whose wall clock was 598s, while the process
+    itself burned 2268s over the same stretch: ~3.8 cores, none of it in the work being timed.
+    Without both numbers that CPU is invisible, and the phase looks merely slow rather than
+    surrounded by something expensive (a rendering stack, a library's own thread pool, a BLAS
+    build spinning its idle threads).
+    """
+    total_time = sum(item_times)
+    total_cpu = sum(item_cpu_times) if item_cpu_times else 0.0
+    summary = (f'with {max_workers} workers, wall {wall_time:.1f}s,'
+               f' per-item total {total_time:.1f}s, cpu {total_cpu:.1f}s'
+               f' (mean {1000 * total_time / len(item_times):.0f}ms,'
+               f' max {1000 * max(item_times):.0f}ms)')
+    if process_cpu_time is not None and wall_time > 0:
+        summary += (f', process cpu {process_cpu_time:.1f}s'
+                    f' ({process_cpu_time / wall_time:.1f} cores)')
+        if total_cpu > 0 and process_cpu_time > 2 * total_cpu:
+            summary += (f' - only {total_cpu / process_cpu_time:.0%} of the process CPU is this'
+                        f' phase: the rest is elsewhere in the process')
+    if total_cpu > 0:
+        ratio = wall_time / total_cpu
+        regime = ('CPU-bound: at the single-thread floor, more workers will not help'
+                  if ratio < 1.3 else
+                  f'{1 - 1 / ratio:.0%} of wall time is not CPU: more workers can overlap it')
+        summary += f' - {regime}'
+    return summary
+
+
 def convert_to_um(value, unit):
-    conversions = {
-        'nm': 1e-3,
-        'µm': 1, 'um': 1, 'micrometer': 1, 'micron': 1,
-        'mm': 1e3, 'millimeter': 1e3,
-        'cm': 1e4, 'centimeter': 1e4,
-        'm': 1e6, 'meter': 1e6
-    }
-    return value * conversions.get(unit, 1)
+    """`value` in `unit`, converted to um. An unrecognised unit is left unscaled - but logged,
+    since silently treating it as um mis-scales geometry with nothing to show for it.
+
+    Both the OME abbreviations (a Plane's PositionXUnit, say) and the spelled-out NGFF names
+    (which ngff_zarr's _normalize_unit produces from them) have to be here: readers pass
+    whichever form they happen to hold, and every length unit OME can express should land on a
+    real factor either way. 'nanometer' in particular used to be missing while 'nm' was present,
+    so a nanometre-scale OME-TIFF read through the spelled-out name was silently scaled by 1.
+    """
+    if unit is None:
+        return value
+    factor = um_conversions.get(unit)
+    if factor is None:
+        factor = um_conversions.get(str(unit).lower())
+    if factor is None:
+        if str(unit).strip():
+            logging.warning(f'Unrecognised physical unit {unit!r}, treating values as um')
+        return value
+    return value * factor
 
 
 def convert_rational_value(value) -> float:

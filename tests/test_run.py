@@ -76,11 +76,9 @@ def test2(resource_file):
     msims = wrap_sims_as_msims(sims)
     reg.register_global(msims, params=reg_params)
 
-    # register_global must also propagate the registered transform onto self.msims,
-    # msim -> msim (every scale), not just onto the pair_msims (`msims`) it was called with -
-    # check this before fuse(), which (via make_msims_3d, for datasets with multiple z positions)
-    # mutates reg.msims' transforms in place to promote them to 3D for the output stack, a
-    # pre-existing side effect unrelated to this
+    # register_global must propagate the transform onto self.msims too, every scale, not only
+    # onto the pair_msims it was called with. Checked before fuse(), which mutates reg.msims'
+    # transforms in place to promote them to 3D - a pre-existing side effect, unrelated.
     from multiview_stitcher import spatial_image_utils as si_utils
     assert len(reg.msims) == len(msims)
     for pair_msim, msim in zip(msims, reg.msims):
@@ -91,22 +89,25 @@ def test2(resource_file):
             affine_msim = si_utils.get_affine_from_sim(level_sim, reg.reg_transform_key)
             assert (affine_pair.values == affine_msim.values).all()
 
-    reg.fuse(reg.msims, output_filename='output')
+    # a store name unique to this test: the resource output directories are shared with the
+    # other tests here, and zarr's atomic metadata write (os.replace onto zarr.json) fails on
+    # Windows if anything still holds the destination open - a reader left alive by an earlier
+    # test made this fail intermittently.
+    reg.fuse(reg.msims, output_filename=f'output_test2_{os.path.splitext(resource_file)[0]}')
 
 
 @pytest.mark.parametrize(
     "resource_file", test_filenames
 )
 def test_fuse_with_real_pyramid_matches_trivial_wrap(resource_file):
-    # fuse() only ever takes msims - verify that fusing from each source's real, full multiscale
-    # pyramid (self.msims) produces byte-identical scale0 output to fusing a trivial single-level
-    # wrap of the same working-resolution sims (util.wrap_sims_as_msims, the escape hatch used by
-    # callers with no real pyramid available, e.g. an ad-hoc preview resolution) - for a single
-    # registration run (registration itself can be non-deterministic across separate runs, e.g.
-    # RANSAC-based methods, so both fuse() calls here reuse the same already-registered reg.msims)
+    # fusing from each source's real multiscale pyramid must give byte-identical scale0 output
+    # to fusing a trivial single-level wrap of the same sims (wrap_sims_as_msims, the escape
+    # hatch for callers with no real pyramid). Both calls reuse the same already-registered
+    # reg.msims, since registration itself can be non-deterministic across runs.
     import numpy as np
     from muvis_align.image.source_helper import create_image_source
     from muvis_align.image.util import wrap_sims_as_msims
+    import gc
     import shutil
 
     with open(os.path.join('resources', resource_file), 'r', encoding='utf8') as file:
@@ -125,19 +126,31 @@ def test_fuse_with_real_pyramid_matches_trivial_wrap(resource_file):
     from multiview_stitcher import msi_utils
     registered_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.msims]
     trivial_msims = wrap_sims_as_msims(registered_sims)
-    filename_trivial, _ = 'test_fuse_trivial', reg.fuse(trivial_msims, output_filename='test_fuse_trivial')[1]
-    filename_pyramid, _ = 'test_fuse_pyramid', reg.fuse(reg.msims, output_filename='test_fuse_pyramid')[1]
+    # one output store per parametrisation: a fixed name had each run overwrite the last, and
+    # zarr's atomic metadata write fails on Windows if a handle is still open. The reader below
+    # is released only when collected and the cleanup ignores errors, so a lingering handle left
+    # the store for the next parametrisation - an intermittent, full-suite-only failure.
+    stem = os.path.splitext(resource_file)[0]
+    filename_trivial = f'test_fuse_trivial_{stem}'
+    filename_pyramid = f'test_fuse_pyramid_{stem}'
+    reg.fuse(trivial_msims, output_filename=filename_trivial)
+    reg.fuse(reg.msims, output_filename=filename_pyramid)
 
     path_trivial = reg.output + filename_trivial + '.ome.zarr'
     path_pyramid = reg.output + filename_pyramid + '.ome.zarr'
+    a = b = None
     try:
         a = create_image_source(path_trivial).get_level_data(0).compute()
         b = create_image_source(path_pyramid).get_level_data(0).compute()
         assert a.shape == b.shape
         np.testing.assert_array_equal(np.asarray(a), np.asarray(b))
     finally:
-        shutil.rmtree(path_trivial, ignore_errors=True)
-        shutil.rmtree(path_pyramid, ignore_errors=True)
+        # drop the readers before removing their stores: on Windows an open handle blocks the
+        # delete, and rmtree here ignores that, which is what used to leave a store behind
+        a = b = None
+        gc.collect()
+        for path in (path_trivial, path_pyramid):
+            shutil.rmtree(path, ignore_errors=True)
 
 
 def test_fuse_channel_overlay_real_pyramid_matches_trivial_wrap():
