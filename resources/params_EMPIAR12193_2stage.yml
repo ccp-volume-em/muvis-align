@@ -87,9 +87,7 @@ operations:
     scale: 8
     gaussian_sigma: 2
     flatfield_quantiles: [0.5]
-    # this one wants both: z-stack handling (was 'operation: register stack3d') and
-    # orthogonal pair selection, which are matched independently out of this value
-    pairing: stack orthogonal
+    pairing: stack
     transform_type: rigid
     groupwise_resolution_method: linear_two_pass
     registration:

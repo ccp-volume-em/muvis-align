@@ -227,10 +227,9 @@ longer read - the plugin has no stack operation, so deriving this from the opera
 meant every stack-specific step was silently skipped there. Configuration files under
 `resources/` have been updated to `operation: register` with `pairing: stack`.
 
-For 2D sources, `stack` max-projects z and registers consecutive pairs. Sources with a
-real z extent are registered in 3D, where the pairs are selected by the rest of the
-value: these are matched independently, so `pairing: stack orthogonal` asks for z-stack
-handling with orthogonal pair selection.
+`stack` pairs consecutive views - N to N+1, N+1 to N+2, and so on - so it is an
+alternative to `orthogonal`/`overlay`, not a modifier on them: a stack is never paired
+orthogonally. It max-projects z to register the pairs in 2D.
 
 **Metrics:**
 - `ncc` - Normalized Cross Correlation
@@ -342,7 +341,8 @@ Registers files from multiple directories (S001, S002, etc.) separately, using `
 
 ```yaml
 operations:
-  - operation: register stack
+  - operation: register
+    pairing: stack
     input: ./registered.ome.zarr
     source_metadata: source
     registration:
@@ -352,7 +352,7 @@ operations:
     output: ../../aligned/
 ```
 
-Registers slices as a z-stack, applying consecutive 2D registrations.
+Registers slices as a z-stack, pairing them consecutively (N to N+1, N+1 to N+2, ...).
 
 ### Multi-Channel Registration
 

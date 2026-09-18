@@ -45,5 +45,6 @@ registration:
 fusion:
   method: average
   spacing: mean
+  tile_size: ''
   ome_version: '0.5'
   preview_fusion: false

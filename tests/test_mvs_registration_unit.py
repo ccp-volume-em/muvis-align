@@ -413,7 +413,6 @@ def test_build_msims_is_parallel_but_keeps_source_order():
     ("operation", "pairing", "expected"),
     [
         ("register", "stack", True),
-        ("register", "stack orthogonal", True),
         ("register", "orthogonal", False),
         ("register", "", False),
         # the operation no longer selects stacking - pairing does, and only pairing
