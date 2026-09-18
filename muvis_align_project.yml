@@ -26,8 +26,8 @@ pre_processing:
   normalisation: none
   filter_foreground: false
 registration:
-  operation: register
-  pairing: default
+  operation: merge
+  pairing: orthogonal
   transform_type: rigid
   method: phase_correlation
   normalisation: true

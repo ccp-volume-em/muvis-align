@@ -581,7 +581,6 @@ class MVSRegistration:
                 output_order = 'c' + output_order
 
         last_z_position = None
-        different_z_positions = False
         delta_zs = []
         for filename, source in zip(self.filenames, sources):
             # position/scale/rotation, and per-source corrections (SBEM, is_center, invert),
@@ -636,7 +635,11 @@ class MVSRegistration:
 
         #translations = [np.array(translation) * 1.25 for translation in translations]
 
-        increase_z_positions = is_stack and not different_z_positions
+        # only reached under `if 'z' in output_order` below, i.e. for sources that are already
+        # 3D: make_msims_3d() gives a stack of 2D slices its z positions instead, but skips a
+        # source that is already 3D (msim_is_already_3d), so this is the only thing that spaces
+        # a stack of volumes out in z
+        increase_z_positions = is_stack
 
         z_position = 0
         final_scales = []
