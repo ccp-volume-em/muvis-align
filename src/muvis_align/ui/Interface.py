@@ -30,6 +30,7 @@ from muvis_align.logging import init_logging
 from muvis_align.metrics import calc_msims_metrics
 from muvis_align.Timer import Timer
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
+from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
@@ -51,6 +52,19 @@ class ViewMode(Enum):
     PAIRS = auto()
     FEATURES = auto()
     FUSED = auto()
+
+
+def position_sort_key(position):
+    return position.get('z', 0), position.get('y', 0), position.get('x', 0)
+
+
+def parse_channel_color(color):
+    if isinstance(color, str):
+        try:
+            return tuple(eval(color))
+        except Exception:
+            return None
+    return color
 
 
 class Interface:
@@ -89,7 +103,6 @@ class Interface:
         self.extra_metadata = {}
         self.output_channels = []
         self.view_mode = None
-        self.selected_shape_index = None
         self._preview_overlap_cache = None
         self._view_msims = None
         self.reg.reset()
@@ -146,6 +159,11 @@ class Interface:
                 value = self.params.get(keys[0], {}).get(keys[1])
                 if value is not None:
                     param_widget.set_value(value)
+                    if param_name == 'input_output.channels_table':
+                        # a project loaded from disk already has channels, so
+                        # update_output_channels() (and its populate_channels_table() call)
+                        # never runs for it - attach the color pickers here instead
+                        self.populate_channels_table_color_pickers()
 
     def write_params(self):
         write_params(self.params_path, self.params)
@@ -235,12 +253,9 @@ class Interface:
         channels = [{'label': label} for label in channels_dict['label']]
         for channeli, channel in enumerate(channels):
             if channeli < len(channels_dict['color']):
-                color = channels_dict['color'][channeli]
-                try:
-                    if color and isinstance(color, str):
-                        channel['color'] = tuple(eval(color))
-                except Exception:
-                    pass
+                color = parse_channel_color(channels_dict['color'][channeli])
+                if color is not None:
+                    channel['color'] = color
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
@@ -593,11 +608,11 @@ class Interface:
         else:
             positions = [get_sim_position_final(sim, transform_keys=transform_keys) for sim in sims]
             scales = [get_sim_physical_size(sim) for sim in sims]
-        data = [[print_dict_simple(position),
-                 print_dict_simple(scale)]
-                for position, scale in zip(positions, scales)]
+        order = sorted(range(len(positions)), key=lambda i: position_sort_key(positions[i]))
+        data = [[print_dict_simple(positions[i]), print_dict_simple(scales[i])] for i in order]
+        row_headers = [self.reg.file_labels[i] for i in order]
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
-        table_widget.set_value((data, self.reg.file_labels, properties))
+        table_widget.set_value((data, row_headers, properties))
         table_widget.set_table_column_resize_mode()
 
     def update_output_channels(self):
@@ -624,6 +639,26 @@ class Interface:
     def populate_channels_table(self):
         param_widget = self.param_widgets.get('input_output.channels_table')
         param_widget.set_value(self.output_channels)
+        self.populate_channels_table_color_pickers()
+
+    def populate_channels_table_color_pickers(self):
+        # replace the plain-text 'color' cells with a MagicColorPicker per channel row, so
+        # clicking a channel's color opens a color picker instead of typing a raw tuple
+        table = self.param_widgets.get('input_output.channels_table').widget
+        color_coli = table.column_headers.index('color')
+        for rowi in range(table.shape[0]):
+            color = parse_channel_color(table.data[rowi, color_coli]) or (1, 1, 1)
+            color_picker = MagicColorPicker(value=color)
+            color_picker.changed.connect(
+                lambda _=None, picker=color_picker, rowi=rowi: self.channel_color_changed(rowi, picker.value))
+            table.native.setCellWidget(rowi, color_coli, color_picker.native)
+
+    def channel_color_changed(self, rowi, color):
+        table = self.param_widgets.get('input_output.channels_table').widget
+        color_coli = table.column_headers.index('color')
+        # writing back into the table's own data model reuses the existing 'changed' wiring
+        # (param persistence + self.extra_metadata update), same as a manual text edit would
+        table.data[rowi, color_coli] = str(tuple(color))
 
     def populate_image_selection(self):
         labels = self.reg.file_labels
@@ -633,6 +668,17 @@ class Interface:
         widget2 = self.param_widgets.get('registration.reg_preview_image2')
         index = 1 if len(labels) > 1 else 0
         widget2.set_value(labels[index], choices=labels)
+
+    def select_pair_preview(self, ref):
+        # a plain image shape's ref is a single index (e.g. '0'); only an overlap shape's
+        # ref ('0 1') identifies a pair, so single-image clicks are ignored here
+        indices = ref.split()
+        if len(indices) != 2:
+            return
+        labels = self.reg.file_labels
+        label1, label2 = labels[int(indices[0])], labels[int(indices[1])]
+        self.param_widgets.get('registration.reg_preview_image1').set_value(label1)
+        self.param_widgets.get('registration.reg_preview_image2').set_value(label2)
 
     def get_best_transform_key(self):
         if not self.reg.is_pairs_registered():
@@ -973,10 +1019,18 @@ class Interface:
             text_size = 6 if not bb_supported else 12
             text = {'string': '{labels}', 'size': text_size}
             features = {'refs': refs, 'labels': labels}
-            viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text, features=features,
-                              face_color=face_color, opacity=0.5, edge_width=edge_width, edge_color=edge_color,
-                              blending=blending)
+            layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
+                                      features=features, face_color=face_color, opacity=0.5,
+                                      edge_width=edge_width, edge_color=edge_color, blending=blending)
 
+            @layer.mouse_drag_callbacks.append
+            def on_shape_click(clicked_layer, event, refs=refs):
+                if event.button == 1:
+                    value = clicked_layer.get_value(event.position, view_direction=event.view_direction,
+                                                    dims_displayed=event.dims_displayed, world=True)
+                    shape_index = value[0] if value is not None else None
+                    if shape_index is not None:
+                        self.select_pair_preview(refs[shape_index])
 
     def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False):
         # fuse() always returns msims, and get_msim_level_data (each level's raw dask array off
@@ -1175,7 +1229,14 @@ class Interface:
                 for metric_key, metric_value in transform_value.items():
                     if metric_value is not None and metric_key not in metric_keys:
                         metric_keys.append(metric_key)
-        metrics = metrics_dict.get('pairs')
+        pairs_metrics = metrics_dict.get('pairs')
+        if pairs_metrics:
+            file_rank = {file_index: rank for rank, file_index in
+                        enumerate(sorted(range(len(self.reg.positions)),
+                                         key=lambda i: position_sort_key(self.reg.positions[i])))}
+            pairs_metrics = dict(sorted(pairs_metrics.items(),
+                                        key=lambda item: (file_rank[item[0][0]], file_rank[item[0][1]])))
+        metrics = pairs_metrics
         if metrics:
             for pair_key_indices, pair_value in metrics.items():
                 pair_key = self.reg.file_labels[pair_key_indices[0]] + ' - ' + self.reg.file_labels[pair_key_indices[1]]
@@ -1206,7 +1267,7 @@ class Interface:
                     if metric_value is not None:
                         col_index = metric_index if is_metric_cols else transform_index
                         metrics_table[0][col_index] = metric_value
-        metrics = metrics_dict.get('pairs')
+        metrics = pairs_metrics
         if metrics:
             for pair_index, pair_value in enumerate(metrics.values()):
                 for transform_index, transform_value in enumerate(pair_value.values()):
