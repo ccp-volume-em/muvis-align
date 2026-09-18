@@ -303,7 +303,7 @@ class MVSRegistration:
             msims = self.msims
 
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
-        is_stack = ('stack' in operation)
+        is_stack = ('stack' in operation or 'stack' in pairing)
         is_simple_stack = is_stack and not is_3d
         is_transition = ('transition' in operation)
         is_channel_overlay = (len(channels) > 1)
@@ -1168,7 +1168,7 @@ class MVSRegistration:
             n_parallel_pairwise_regs = None
 
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
-        is_stack = ('stack' in operation)
+        is_stack = ('stack' in operation or 'stack' in pairing)
 
         reg_channel = params.get('channel', 0)
         if isinstance(reg_channel, int):

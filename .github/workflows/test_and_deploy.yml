@@ -60,6 +60,26 @@ jobs:
       - name: Coverage
         uses: codecov/codecov-action@v7
 
+  docs:
+    name: Build docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Setup python
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          activate-environment: "true"
+      - name: Install docs requirements
+        run: uv pip install -r docs/requirements.txt
+      # --strict turns a broken nav entry, a dead internal link or an unresolved
+      # mkdocstrings reference into a failure, so the docs cannot drift silently
+      - name: Build with mkdocs
+        run: mkdocs build --strict
+
   build-and-inspect-package:
     name: Build & inspect package.
     runs-on: ubuntu-latest
