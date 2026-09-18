@@ -277,7 +277,10 @@ class MVSRegistration:
         output_params = self.output_params
         general_output_params = self.params_general.get('output', {})
         overlap_threshold = self.register_params.get('overlap_threshold', self.params.get('overlap_threshold', 0.5))
+        # read the same way register_pairs() reads it, below - is_stack consults it there too
+        pairing = (self.params.get('pairing', self.register_params.get('pairing', '')) or '').lower()
         save_images = self.output_params.get('save_images', self.params.get('save_images', True))
+        pairing = self.register_params.get('pairing', '').lower()
 
         output_format = output_params.get('format', general_output_params.get('format', zarr_extension))
         output_tile_size = output_params.get('tile_size', general_output_params.get('tile_size'))

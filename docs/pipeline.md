@@ -179,7 +179,7 @@ registration:
   transform_type: rigid
   
   # Pairing strategy
-  pairing: orthogonal       # orthogonal, overlay; unset = multiview-stitcher's own pairing
+  pairing: orthogonal       # orthogonal, overlay, stack; unset = multiview-stitcher's own pairing
   
   # Normalization
   normalisation: True       # True, False, 'global', 'individual'
@@ -215,10 +215,12 @@ registration:
 **Pairing Strategies:**
 - `orthogonal` - Pair orthogonal tiles (X-Y grid), avoiding diagonal / very small overlaps
 - `overlay` - Pair tiles based on overlap, for stack-like overlaps
+- `stack` - Pair consecutive views, as the `register stack` operation does
 - unset - Use multiview-stitcher's own default pairing
 
-Pairing consecutive slices is not a pairing value: use the `register stack`
-operation, which pairs consecutive views directly.
+`pairing: stack` and the `register stack` operation are equivalent: either one
+max-projects z and registers consecutive pairs. Note that this applies to 2D sources -
+sources with a real z extent are registered in 3D, and fall back to the default pairing.
 
 **Metrics:**
 - `ncc` - Normalized Cross Correlation
