@@ -363,9 +363,6 @@ class MVSRegistration:
                 mappings = results['mappings']
                 metrics = results['metrics']
 
-            if is_stack:
-                msims = make_msims_3d(msims, z_scale, self.positions)
-
             if 'register' in operation:
                 logging.info(metrics['summary'])
                 self.save_mappings_csv(mappings, normalise_orientation=normalise_orientation)
@@ -384,8 +381,11 @@ class MVSRegistration:
             transform_key = self.reg_transform_key
             with Timer('plot positions', self.logging_time):
                 # plot_positions is a library function that needs concrete sims - derived here on
-                # demand from msims (the registered transform lives there now, see register_global)
-                plot_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in msims]
+                # demand from msims (the registered transform lives there now, see register_global).
+                # A stack is stored 2D (see fuse()), so it is promoted here, for this plot only,
+                # to keep plotting its slices spaced out in z rather than all at z=0
+                plot_msims = make_msims_3d(msims, z_scale, self.positions) if is_stack else msims
+                plot_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in plot_msims]
                 vis_utils.plot_positions(plot_sims, transform_key=transform_key,
                                          use_positional_colors=False, view_labels=file_labels, view_labels_size=3,
                                          show_plot=self.mpl_ui, output_filename=registered_positions_filename)
@@ -412,8 +412,8 @@ class MVSRegistration:
                         fusion_method = self.fusion_params
                         output_spacing = self.params.get('output_spacing', 'mean')
                     zarr_output_filename = output_filename if 'zar' in output_format else None
-                    # msims was z-stacked in lockstep with sims above (make_msims_3d) when
-                    # is_stack, so it's always safe to hand to fuse() as the primary input here
+                    # msims are handed over as they are stored (2D for a stack) - fuse() promotes
+                    # what it needs to
                     fused_msim, is_saved = self.fuse(msims, fusion_method=fusion_method, output_spacing=output_spacing,
                                                      transform_key=transform_key, output_filename=zarr_output_filename,
                                                      tile_size=output_tile_size, ome_version=output_ome_version)
@@ -785,12 +785,6 @@ class MVSRegistration:
         if self.is_global_registered():
             logging.info(f'Loading global mapping from {mappings_filename}')
 
-            is_stack = self.is_stack
-            #z_positions = set([source.get_position().get('z', 0) for source in self.sources])
-            #make_3d = len(z_positions) > 1 or is_stack
-            make_3d = is_stack
-            z_scale = get_metadata_z_scale(self.extra_metadata)
-
             mappings = read_transforms(mappings_filename)
             # write reg_transform_key onto self.msims (msim -> msim, every scale, no sim needed) -
             # the persistent pyramid needs the same transform a fresh registration run would have
@@ -803,18 +797,13 @@ class MVSRegistration:
             )
             with progress_context as pbar:
                 for msim, filename in zip(self.msims, self.filenames):
+                    # the mapping is stored as registration produced it - 2D for a stack, whose
+                    # msims are stored 2D too (see fuse()), so neither needs widening here
                     mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
-                    if make_3d:
-                        transform = param_utils.identity_transform(ndim=3)
-                        transform.loc[{dim: mapping.coords[dim] for dim in mapping.dims}] = mapping
-                    else:
-                        transform = mapping
-                    msi_utils.set_affine_transform(msim, transform, transform_key=self.reg_transform_key)
+                    msi_utils.set_affine_transform(msim, mapping, transform_key=self.reg_transform_key)
                     if pbar is not None:
                         pbar.update(1)
-            if make_3d:
-                self.msims = make_msims_3d(self.msims, z_scale, self.positions)
-            elif not is_3d:
+            if not is_3d:
                 self.msims = make_msims_2d(self.msims)
             self.pair_msims = self.msims
             metrics = import_json(metrics_filename)
@@ -1547,7 +1536,12 @@ class MVSRegistration:
 
         z_positions = [position.get('z') for position in self.positions if 'z' in position]
         num_z_positions = len(set(z_positions))
-        if num_z_positions > 1:
+        # a stack's sources are slices with no z position of their own, so num_z_positions is 0
+        # for exactly the case that most needs promoting - make_msims_3d() spaces them by index.
+        # This is the one place a stack becomes 3D: msims are stored 2D, and each consumer that
+        # needs the stacked geometry (here, create_preview(), the positions plot in _run) asks
+        # for it, rather than every level of every source being rebuilt up front
+        if num_z_positions > 1 or self.is_stack:
             msims = make_msims_3d(msims, z_scale=z_scale, positions=self.positions)
 
         output_stack_properties = calc_output_properties(msims, transform_key,

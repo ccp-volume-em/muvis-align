@@ -152,3 +152,40 @@ def test_widening_matches_the_label_based_original(label, transform):
 def test_widening_leaves_an_already_3d_transform_untouched():
     transform = param_utils.identity_transform(ndim=3)
     assert widen_xaffine_to_3d(transform) is transform
+
+
+def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused():
+    """A stack's sources are slices with no z position of their own, so nothing in the stored
+    msims says 'z' - promoting them up front rebuilt every level of every source for a geometry
+    only fusion and the preview actually need. fuse() promotes instead, spacing the slices by
+    index (make_msims_3d), so the fused result still steps through in napari.
+    """
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    # no z in the metadata at all: this is what a stack of sections looks like
+    source_metadata = {'scale': {'y': '0.032', 'x': '0.032'}}
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        pairing='stack',
+        input_path=[
+            'data/S000/000_000_0.tiff',
+            'data/S000/000_001_0.tiff',
+        ],
+        output_path='../../output/test_stack_promotion/',
+        source_metadata=source_metadata,
+    )
+    reg.init_data(source_metadata=source_metadata)
+
+    assert reg.is_stack
+    assert not any('z' in position for position in reg.positions)
+    # stored 2D: the promotion no longer happens on the way in
+    assert all('z' not in msim['scale0'].ds['image'].dims for msim in reg.msims)
+
+    fused_msim, _ = reg.fuse(reg.msims, transform_key=reg.source_transform_key)
+
+    # ...and fusion is where it becomes a z-stack, one plane per source
+    assert 'z' in fused_msim['scale0'].ds['image'].dims
+    assert fused_msim['scale0'].ds['image'].sizes['z'] == 2
+    # the sources themselves are left as they were stored
+    assert all('z' not in msim['scale0'].ds['image'].dims for msim in reg.msims)
