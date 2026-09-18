@@ -23,6 +23,7 @@ map_bilayers_to_widget_type = {
     'measurement': 'FileEdit',
     'button': 'PushButton',
     'pushbutton': 'PushButton',
+    'color': 'muvis_align.ui.MagicColorPicker.MagicColorPicker',
 }
 
 

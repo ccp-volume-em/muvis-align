@@ -26,6 +26,7 @@ from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
 from muvis_align.metrics import calc_msims_metrics
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
+from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPreprocessProgress import NapariPreprocessProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
@@ -41,6 +42,15 @@ class ViewMode(Enum):
     PAIRS = auto()
     FEATURES = auto()
     FUSED = auto()
+
+
+def parse_channel_color(color):
+    if isinstance(color, str):
+        try:
+            return tuple(eval(color))
+        except Exception:
+            return None
+    return color
 
 
 class Interface:
@@ -136,6 +146,11 @@ class Interface:
                 value = self.params.get(keys[0], {}).get(keys[1])
                 if value is not None:
                     param_widget.set_value(value)
+                    if param_name == 'input_output.channels_table':
+                        # a project loaded from disk already has channels, so
+                        # update_output_channels() (and its populate_channels_table() call)
+                        # never runs for it - attach the color pickers here instead
+                        self.populate_channels_table_color_pickers()
 
     def write_params(self):
         write_params(self.params_path, self.params)
@@ -225,12 +240,9 @@ class Interface:
         channels = [{'label': label} for label in channels_dict['label']]
         for channeli, channel in enumerate(channels):
             if channeli < len(channels_dict['color']):
-                color = channels_dict['color'][channeli]
-                try:
-                    if color and isinstance(color, str):
-                        channel['color'] = tuple(eval(color))
-                except Exception:
-                    pass
+                color = parse_channel_color(channels_dict['color'][channeli])
+                if color is not None:
+                    channel['color'] = color
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
@@ -469,6 +481,26 @@ class Interface:
     def populate_channels_table(self):
         param_widget = self.param_widgets.get('input_output.channels_table')
         param_widget.set_value(self.output_channels)
+        self.populate_channels_table_color_pickers()
+
+    def populate_channels_table_color_pickers(self):
+        # replace the plain-text 'color' cells with a MagicColorPicker per channel row, so
+        # clicking a channel's color opens a color picker instead of typing a raw tuple
+        table = self.param_widgets.get('input_output.channels_table').widget
+        color_coli = table.column_headers.index('color')
+        for rowi in range(table.shape[0]):
+            color = parse_channel_color(table.data[rowi, color_coli]) or (1, 1, 1)
+            color_picker = MagicColorPicker(value=color)
+            color_picker.changed.connect(
+                lambda _=None, picker=color_picker, rowi=rowi: self.channel_color_changed(rowi, picker.value))
+            table.native.setCellWidget(rowi, color_coli, color_picker.native)
+
+    def channel_color_changed(self, rowi, color):
+        table = self.param_widgets.get('input_output.channels_table').widget
+        color_coli = table.column_headers.index('color')
+        # writing back into the table's own data model reuses the existing 'changed' wiring
+        # (param persistence + self.extra_metadata update), same as a manual text edit would
+        table.data[rowi, color_coli] = str(tuple(color))
 
     def populate_image_selection(self):
         labels = self.reg.file_labels
