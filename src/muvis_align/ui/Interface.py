@@ -1151,7 +1151,22 @@ class Interface:
         reg_msims = [self.reg.register_msims[index] for index in self.pair_indices]
         transforms = {(0, 1): self.calc_mod_pair_transform()}
         metrics = calc_msims_metrics(reg_msims, transforms, metric_methods=self.metrics_methods)
+        self._remap_local_pair_metrics(metrics, self.pair_indices)
         self.populate_metrics_table(metrics)
+
+    @staticmethod
+    def _remap_local_pair_metrics(metrics, indices):
+        """calc_msims_metrics(), handed only the few msims actually involved (a preview pair, a
+        pair being interactively modified), keys metrics['pairs'] by position within that short
+        list (0, 1, ...) - correct for the local graph it built, but populate_metrics_table()
+        always looks its pair keys up in self.reg.file_labels, the *global* source list. Left
+        unmapped, that call always resolved to file_labels[0]/file_labels[1] (e.g. the first two
+        sources by position, whatever pair was actually selected) rather than the pair's own
+        labels. `indices` is the local->global index used to build that short list, in order.
+        """
+        pairs = metrics.get('pairs')
+        if pairs:
+            metrics['pairs'] = {tuple(indices[i] for i in key): value for key, value in pairs.items()}
 
     @catch_run_errors
     def run_preview_registration(self, progress_factory=None):
@@ -1199,6 +1214,7 @@ class Interface:
                     transforms = {(0, 1): transform}
                     qualities = {(0, 1): quality}
                     metrics = calc_msims_metrics((msim1, msim2), transforms, qualities, metric_methods=self.metrics_methods)
+                    self._remap_local_pair_metrics(metrics, (index1, index2))
                     return metrics, results, overlap1, overlap2
 
             return self._run_off_thread(register_preview, factory)
