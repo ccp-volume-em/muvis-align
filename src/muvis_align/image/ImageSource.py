@@ -78,13 +78,7 @@ class ImageSource:
 
     @property
     def metadata(self):
-        """The source's own full-format metadata (e.g. the OME-XML root dict for an OME-TIFF),
-        read on first access rather than during __init__ - the only current reader is the
-        'sbem' branch of fix_metadata(), and a format-native metadata read (e.g. tifffile's
-        xml2dict over the whole OME XML) costs far more than the handful of fields
-        init_metadata() already extracts, so files that never touch self.metadata should never
-        pay for it.
-        """
+        """The source's full-format metadata, read lazily (see _read_metadata)."""
         if self._metadata is None:
             self._metadata = self._read_metadata()
         return self._metadata
@@ -94,9 +88,7 @@ class ImageSource:
         self._metadata = value
 
     def _read_metadata(self):
-        """The format-native metadata dict backing self.metadata. Empty unless a subclass (e.g.
-        TiffImageSource, for an OME-TIFF) overrides this.
-        """
+        # {} unless a subclass (e.g. TiffImageSource) overrides this
         return {}
 
     def get_msim(self, output_order):
@@ -178,9 +170,7 @@ class ImageSource:
                 self.position = {dim: self.position[dim] - self.get_physical_size().get(dim, 0) / 2
                                  for dim in self.position}
 
-        # detected straight from the file's own OME Creator (e.g. 'SBEMimage 2025.3.11 dev') -
-        # no per-source 'sbem' opt-in needed, and no full metadata read either: self.creator is
-        # already populated cheaply by init_metadata() itself.
+        # detected from the file's own OME Creator - no per-source 'sbem' opt-in needed
         if 'SBEMimage' in self.creator:
             source_version = self.creator
             if '2025' in source_version:

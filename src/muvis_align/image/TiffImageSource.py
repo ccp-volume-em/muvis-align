@@ -38,11 +38,7 @@ class TiffImageSource(ImageSource):
         self.rotation = 0
 
     def _read_metadata(self):
-        # the full OME-XML root dict (Image, Pixels, StructuredAnnotations, and root-level
-        # attributes such as Creator) - not otherwise extracted by init_metadata(), which only
-        # pulls the handful of fields (position/scale/units/channels) project load actually
-        # needs. tifffile.xml2dict() DOM-parses the whole XML, so this stays behind the
-        # self.metadata property's lazy read rather than running for every source.
+        # full OME-XML root dict - a DOM parse, so kept behind the lazy metadata property
         with tifffile.TiffFile(self.filename) as tif:
             if tif.is_ome and tif.ome_metadata is not None:
                 return tifffile.xml2dict(tif.ome_metadata).get('OME', {})
@@ -74,8 +70,7 @@ class TiffImageSource(ImageSource):
     def _init_metadata_from_ngff_zarr(self):
         # the original path, kept as the fallback for whenever the fast read declines
         ngff_images, datas = self._read_ngff_images()
-        # ngff_zarr's own NgffImage carries no Creator - read it separately (still just the cheap
-        # incremental parse, not a full metadata read)
+        # ngff_zarr's NgffImage carries no Creator - read it separately
         self.creator = read_tiff_creator(self.filename)
         self.dimension_order = ''.join(ngff_images[0].dims)
         for index, ngff_image in enumerate(ngff_images):

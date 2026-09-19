@@ -2418,12 +2418,8 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
             progress()
         sim_spacing = si_utils.get_spacing_from_sim(sim)
         sim_origin = si_utils.get_origin_from_sim(sim)
-        # one output pixel per `stride` source pixels when this source is finer than the output
-        # grid, or one source pixel repeated `repeat` times when it is coarser - a source no
-        # finer than the sharpest one present (e.g. an SBEMimage overview tile pasted alongside
-        # its own detail tiles) would otherwise get pasted 1:1 into output cells far smaller than
-        # its real pixel size, shrinking its footprint by sim_spacing/spacing instead of
-        # covering it
+        # downsample (stride) a finer source, or upsample (repeat) a coarser one, to match
+        # the output grid - coarser was previously pasted 1:1, shrinking its footprint
         strides, repeats, starts = [], [], []
         for index, dim in enumerate(sdims):
             factor = spacing[dim] / sim_spacing[dim]

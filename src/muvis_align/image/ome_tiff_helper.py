@@ -55,9 +55,7 @@ def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
     <Image>, so the cost does not scale with the dataset. (Fed in chunks, since a StringIO over
     the whole string costs a copy of it: 3.7ms of 4.1ms at 2.4MB, against a ~0.4ms parse.)
 
-    `creator` comes off the root <OME> element - the very first tag parsed, before <Image> is even
-    reached - so capturing it rides along for free and lets a caller recognize the writer (e.g.
-    'SBEMimage 2025.3.11 dev') without a dedicated full-metadata read.
+    `creator` comes off the root <OME> element, the first tag parsed, so it's free to capture.
 
     `position` is {} when the XML describes more than one Image, preserving the behaviour of the
     xml2dict implementation this replaces - such a file has always yielded no position, and
@@ -176,11 +174,7 @@ def read_tiff_source_metadata(filename):
 
 
 def read_tiff_creator(filename):
-    """The OME-XML Creator attribute alone (e.g. 'SBEMimage 2025.3.11 dev'), for callers on the
-    ngff_zarr fallback path (read_tiff_source_metadata() having declined before ever opening the
-    file) that still want to recognize the writer without a full metadata read. Same incremental
-    parse as read_tiff_source_metadata() - see extract_ome_image_metadata().
-    """
+    """The OME-XML Creator attribute alone, for the ngff_zarr fallback path."""
     with tifffile.TiffFile(filename) as tif:
         if not tif.is_ome or tif.ome_metadata is None:
             return ''
