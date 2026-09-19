@@ -65,6 +65,9 @@ class TiffImageSource(ImageSource):
         self.dimension_order = ''.join(ngff_images[0].dims)
         for index, ngff_image in enumerate(ngff_images):
             axes_units = ngff_image.axes_units or {}
+            if index == 0:
+                self.position = {dim: convert_to_um(value, axes_units.get(dim, 'um'))
+                                  for dim, value in ngff_image.translation.items() if dim in 'xyz'}
             if index == 0 and ngff_image.channel_names:
                 for channel_index, channel_name in enumerate(ngff_image.channel_names):
                     channel = {'label': channel_name}
