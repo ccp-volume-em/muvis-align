@@ -164,13 +164,17 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
                 "quality": 0  # float between 0 and 1 (if not available, set to 1.0)
             }
 
-        full_size_min = np.min(self.full_size)
         sizes = [[size for size in list(si_utils.get_shape_from_sim(data).values()) if size > 1]
                  for data in [fixed_data, moving_data]]
-        mean_size_min = np.mean([np.min(size) for size in sizes])
         mean_size_dist = np.mean([np.linalg.norm(size) for size in sizes])
-        scale = mean_size_min / full_size_min
-        gaussian_sigma = self.full_size_gaussian_sigma * (scale ** (1/2))
+        # gaussian_sigma is calibrated for the resolution registration actually runs at - always
+        # the pre-processed scale - so it applies as configured, with no further scale
+        # correction. self.full_size (this registration method's shared, single reference sim,
+        # reused across every pair) used to stand in for "this pair's own resolution" here, but
+        # for a source (e.g. an SBEMimage overview) whose native resolution differs from the
+        # pair actually being registered, that shrank gaussian_sigma by orders of magnitude -
+        # see the pair-registration-vs-preview quality mismatch this was found from.
+        gaussian_sigma = self.full_size_gaussian_sigma
         mean_size = np.mean([np.linalg.norm(data.shape) / np.sqrt(self.ndims) for data in [fixed_data, moving_data]])
         inlier_threshold = mean_size * self.inlier_threshold_factor
 
