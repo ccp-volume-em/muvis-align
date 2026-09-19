@@ -580,6 +580,9 @@ class Interface:
         self.update_views(show_preprocessed=True)
         self.enable_tabs(True, 3)
         self.enable_modify_pair_registration(False)
+        if self.reg.is_pairs_registered():
+            # register_msims just changed - prior pair/global registration is stale
+            self.reg.state = RegState.SIMS_INIT
         self.select_tab(3)
 
     def populate_channels(self):
@@ -1156,14 +1159,7 @@ class Interface:
 
     @staticmethod
     def _remap_local_pair_metrics(metrics, indices):
-        """calc_msims_metrics(), handed only the few msims actually involved (a preview pair, a
-        pair being interactively modified), keys metrics['pairs'] by position within that short
-        list (0, 1, ...) - correct for the local graph it built, but populate_metrics_table()
-        always looks its pair keys up in self.reg.file_labels, the *global* source list. Left
-        unmapped, that call always resolved to file_labels[0]/file_labels[1] (e.g. the first two
-        sources by position, whatever pair was actually selected) rather than the pair's own
-        labels. `indices` is the local->global index used to build that short list, in order.
-        """
+        """Remap metrics['pairs']' local (0, 1, ...) keys to the real, global source indices."""
         pairs = metrics.get('pairs')
         if pairs:
             metrics['pairs'] = {tuple(indices[i] for i in key): value for key, value in pairs.items()}
