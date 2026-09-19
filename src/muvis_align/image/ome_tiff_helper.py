@@ -46,7 +46,7 @@ def extract_ome_translation_from_xml(ome_xml, **kwargs):
 
 def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
     """The first Image's geometry and channels - position (um), physical pixel size and units,
-    channel names and colours - in one pass.
+    channel names and colours - plus the document's own Creator, in one pass.
 
     Parsed incrementally and stopped as soon as the answer is settled, rather than building a DOM
     of the whole document: a multi-file OME-TIFF repeats the entire dataset's XML in every file's
@@ -54,6 +54,10 @@ def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
     CPU-minutes across the set to read a handful of attributes. Everything wanted is in the first
     <Image>, so the cost does not scale with the dataset. (Fed in chunks, since a StringIO over
     the whole string costs a copy of it: 3.7ms of 4.1ms at 2.4MB, against a ~0.4ms parse.)
+
+    `creator` comes off the root <OME> element - the very first tag parsed, before <Image> is even
+    reached - so capturing it rides along for free and lets a caller recognize the writer (e.g.
+    'SBEMimage 2025.3.11 dev') without a dedicated full-metadata read.
 
     `position` is {} when the XML describes more than one Image, preserving the behaviour of the
     xml2dict implementation this replaces - such a file has always yielded no position, and
@@ -64,18 +68,22 @@ def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
     parser = ElementTree.XMLPullParser(events=['start'])
     position, scale, units = {}, {}, {}
     channel_names, channel_colors = [], []
+    creator = ''
     images = 0
     for start in range(0, len(ome_xml), chunk_size):
         parser.feed(ome_xml[start:start + chunk_size])
         for _event, element in parser.read_events():
             # tags carry the OME namespace, e.g. '{http://...}Plane'
             tag = element.tag.rpartition('}')[2]
-            if tag == 'Image':
+            if tag == 'OME':
+                creator = element.get('Creator', '')
+            elif tag == 'Image':
                 images += 1
                 if images > 1:
                     # a second Image settles it - nothing further belongs to this file's own
                     return {'position': {}, 'scale': scale, 'units': units,
-                            'channel_names': channel_names, 'channel_colors': channel_colors}
+                            'channel_names': channel_names, 'channel_colors': channel_colors,
+                            'creator': creator}
             elif tag == 'Pixels':
                 for dim in 'XYZ':
                     value = element.get(f'PhysicalSize{dim}')
@@ -98,7 +106,7 @@ def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
                         position[dim.lower()] = convert_to_um(float(value),
                                                               element.get(f'{key}Unit', 'um'))
     return {'position': position, 'scale': scale, 'units': units,
-            'channel_names': channel_names, 'channel_colors': channel_colors}
+            'channel_names': channel_names, 'channel_colors': channel_colors, 'creator': creator}
 
 
 def read_tiff_source_metadata(filename):
@@ -164,7 +172,19 @@ def read_tiff_source_metadata(filename):
 
     return {'dimension_order': ''.join(dims), 'shapes': shapes, 'dtype': dtype,
             'pixel_sizes': pixel_sizes, 'position': (ome or {}).get('position') or {},
-            'channels': channels}
+            'channels': channels, 'creator': (ome or {}).get('creator') or ''}
+
+
+def read_tiff_creator(filename):
+    """The OME-XML Creator attribute alone (e.g. 'SBEMimage 2025.3.11 dev'), for callers on the
+    ngff_zarr fallback path (read_tiff_source_metadata() having declined before ever opening the
+    file) that still want to recognize the writer without a full metadata read. Same incremental
+    parse as read_tiff_source_metadata() - see extract_ome_image_metadata().
+    """
+    with tifffile.TiffFile(filename) as tif:
+        if not tif.is_ome or tif.ome_metadata is None:
+            return ''
+        return extract_ome_image_metadata(tif.ome_metadata).get('creator', '')
 
 
 def read_tiff_level_arrays(filename):

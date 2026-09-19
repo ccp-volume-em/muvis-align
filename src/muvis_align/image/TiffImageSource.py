@@ -1,7 +1,7 @@
 import tifffile
 from ngff_zarr import tiff_file_to_ngff_images, NgffMultiscales
 
-from muvis_align.image.ome_tiff_helper import read_tiff_level_arrays, read_tiff_source_metadata
+from muvis_align.image.ome_tiff_helper import read_tiff_level_arrays, read_tiff_source_metadata, read_tiff_creator
 from muvis_align.util import convert_to_um
 from muvis_align.image.ImageSource import ImageSource
 from muvis_align.image.color_conversion import hexrgb_to_rgba
@@ -32,9 +32,21 @@ class TiffImageSource(ImageSource):
         self.pixel_size = self.pixel_sizes[0]
         self.position = metadata['position']
         self.channels = metadata['channels']
+        self.creator = metadata['creator']
         # TODO: check with RGB image if better approach is possible
         self.is_rgb = (self.get_nchannels() in (3, 4))
         self.rotation = 0
+
+    def _read_metadata(self):
+        # the full OME-XML root dict (Image, Pixels, StructuredAnnotations, and root-level
+        # attributes such as Creator) - not otherwise extracted by init_metadata(), which only
+        # pulls the handful of fields (position/scale/units/channels) project load actually
+        # needs. tifffile.xml2dict() DOM-parses the whole XML, so this stays behind the
+        # self.metadata property's lazy read rather than running for every source.
+        with tifffile.TiffFile(self.filename) as tif:
+            if tif.is_ome and tif.ome_metadata is not None:
+                return tifffile.xml2dict(tif.ome_metadata).get('OME', {})
+        return {}
 
     def _load_data(self):
         # the arrays come off tifffile's own zarr store (read_tiff_level_arrays), the same route
@@ -62,6 +74,9 @@ class TiffImageSource(ImageSource):
     def _init_metadata_from_ngff_zarr(self):
         # the original path, kept as the fallback for whenever the fast read declines
         ngff_images, datas = self._read_ngff_images()
+        # ngff_zarr's own NgffImage carries no Creator - read it separately (still just the cheap
+        # incremental parse, not a full metadata read)
+        self.creator = read_tiff_creator(self.filename)
         self.dimension_order = ''.join(ngff_images[0].dims)
         for index, ngff_image in enumerate(ngff_images):
             axes_units = ngff_image.axes_units or {}

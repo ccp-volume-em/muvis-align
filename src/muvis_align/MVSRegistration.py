@@ -492,7 +492,7 @@ class MVSRegistration:
                     source_metadata['rotation'] = source_metadata0['rotation']
             if isinstance(source_metadata0, dict):
                 # blanket per-run flags that apply identically to every source
-                for flag in ('sbem', 'invert', 'is_center'):
+                for flag in ('invert', 'is_center'):
                     if flag in source_metadata0:
                         source_metadata[flag] = source_metadata0[flag]
             per_file_metadata.append(copy.deepcopy(source_metadata))
