@@ -2414,10 +2414,17 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
             progress()
         sim_spacing = si_utils.get_spacing_from_sim(sim)
         sim_origin = si_utils.get_origin_from_sim(sim)
-        # one output pixel per `stride` source pixels, and where in the output this source starts
-        strides, starts = [], []
+        # one output pixel per `stride` source pixels when this source is finer than the output
+        # grid, or one source pixel repeated `repeat` times when it is coarser - a source no
+        # finer than the sharpest one present (e.g. an SBEMimage overview tile pasted alongside
+        # its own detail tiles) would otherwise get pasted 1:1 into output cells far smaller than
+        # its real pixel size, shrinking its footprint by sim_spacing/spacing instead of
+        # covering it
+        strides, repeats, starts = [], [], []
         for index, dim in enumerate(sdims):
-            strides.append(max(int(round(spacing[dim] / sim_spacing[dim])), 1))
+            factor = spacing[dim] / sim_spacing[dim]
+            strides.append(max(int(round(factor)), 1) if factor >= 1 else 1)
+            repeats.append(max(int(round(1 / factor)), 1) if factor < 1 else 1)
             starts.append(int(round((sim_origin[dim] + translation[index] - origin[dim])
                                     / spacing[dim])))
         data = np.asarray(sim.data)
@@ -2425,6 +2432,9 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
             return None
         data = data[tuple([slice(None)] * len(nsdims)
                           + [slice(None, None, stride) for stride in strides])]
+        for index, repeat in enumerate(repeats):
+            if repeat > 1:
+                data = np.repeat(data, repeat, axis=len(nsdims) + index)
         target, source = [slice(None)] * len(nsdims), [slice(None)] * len(nsdims)
         for index, dim in enumerate(sdims):
             start = starts[index]
