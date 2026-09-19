@@ -1931,18 +1931,22 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
         # only from here on is an actual sim needed - the exact test below is multiview_stitcher's
         sim1, sim2 = get_pair_sim(pair[0]), get_pair_sim(pair[1])
         if force_2d:
+            # only sims actually promoted to a singleton 'z' (multi-section 2D data) need
+            # squeezing - a source that was never 3D in the first place already is 2D
             projected_sims = []
             for sim in (sim1, sim2):
-                sim_2d = sim.squeeze('z', drop=True)
-                sim_2d.attrs = dict(sim.attrs)
-                sim_2d.attrs['transforms'] = dict(sim.attrs['transforms'])
-                affine_2d = _adapt_transform_to_image_dims(
-                    sim_2d,
-                    sim_2d.attrs['transforms'][transform_key],
-                    transform_key,
-                )
-                si_utils.set_sim_affine(sim_2d, affine_2d, transform_key)
-                projected_sims.append(sim_2d)
+                if 'z' in sim.dims:
+                    sim_2d = sim.squeeze('z', drop=True)
+                    sim_2d.attrs = dict(sim.attrs)
+                    sim_2d.attrs['transforms'] = dict(sim.attrs['transforms'])
+                    affine_2d = _adapt_transform_to_image_dims(
+                        sim_2d,
+                        sim_2d.attrs['transforms'][transform_key],
+                        transform_key,
+                    )
+                    si_utils.set_sim_affine(sim_2d, affine_2d, transform_key)
+                    sim = sim_2d
+                projected_sims.append(sim)
             sim1, sim2 = projected_sims
 
         n_exact_tests += 1
