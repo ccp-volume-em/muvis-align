@@ -1,10 +1,16 @@
+import itertools
+
 import numpy as np
 import pytest
 from unittest.mock import MagicMock, patch
-from multiview_stitcher import spatial_image_utils as si_utils
+from multiview_stitcher import param_utils, spatial_image_utils as si_utils
 
 from muvis_align.image.util import (
+    _axis_aligned_bb_vertices_2d,
+    _bb_vertices,
+    _filter_candidate_overlap_pairs,
     _minimal_bb_vertices,
+    _sweep_candidate_pairs,
     create_overlap_shapes,
     create_image_shapes,
     set_oriented_bounding_box_edges,
@@ -261,3 +267,113 @@ def test_create_image_shapes_force_2d_is_simple_non_crossing_rectangle(points):
 
     shape = np.asarray(shape)
     assert shape.shape == (4, 2)
+
+
+def _all_pairs_overlaps(mins, maxs):
+    """The every-pair AABB comparison _sweep_candidate_pairs() replaced - kept here as the
+    reference the sweep has to reproduce exactly, pair order included.
+    """
+    overlaps = (np.all(mins[:, None, :] <= maxs[None, :, :], axis=-1)
+                & np.all(mins[None, :, :] <= maxs[:, None, :], axis=-1))
+    iu = np.triu_indices(len(mins), 1)
+    return np.transpose(iu)[overlaps[iu]]
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_sweep_candidate_pairs_matches_the_all_pairs_comparison(seed):
+    rng = np.random.default_rng(seed)
+    count = rng.integers(0, 80)
+    mins = rng.uniform(-20, 20, (count, 3)).round(1)
+    maxs = mins + rng.uniform(0, 8, (count, 3)).round(1)
+
+    np.testing.assert_array_equal(_sweep_candidate_pairs(mins, maxs),
+                                  _all_pairs_overlaps(mins, maxs))
+
+
+def test_sweep_candidate_pairs_chunks_without_changing_the_result():
+    # every box overlapping every other is the sweep's worst case: no axis separates anything,
+    # so the candidate list is the full n^2 and has to be produced in budgeted chunks
+    mins = np.zeros((60, 3))
+    maxs = np.ones((60, 3))
+
+    np.testing.assert_array_equal(_sweep_candidate_pairs(mins, maxs, chunk_candidates=7),
+                                  _all_pairs_overlaps(mins, maxs))
+
+
+def test_sweep_candidate_pairs_handles_degenerate_and_empty_input():
+    assert _sweep_candidate_pairs(np.empty((0, 3)), np.empty((0, 3))).shape == (0, 2)
+    assert _sweep_candidate_pairs(np.zeros((1, 3)), np.ones((1, 3))).shape == (0, 2)
+    # zero-extent boxes at the same point still touch, so every pair survives
+    points = np.repeat([[1.0, 2.0, 3.0]], 5, axis=0)
+    np.testing.assert_array_equal(_sweep_candidate_pairs(points, points),
+                                  _all_pairs_overlaps(points, points))
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_axis_aligned_bb_vertices_match_minimal_bb(seed):
+    """The fast path may skip the hull search, but not change a single corner of the answer."""
+    rng = np.random.default_rng(seed)
+    low = rng.uniform(-100, 100, 2)
+    high = low + rng.uniform(1e-6, 100, 2)
+    points = np.array(list(itertools.product(*zip(low, high))))
+
+    np.testing.assert_allclose(_axis_aligned_bb_vertices_2d(low, high),
+                               _minimal_bb_vertices(points))
+    np.testing.assert_allclose(_bb_vertices(points), _minimal_bb_vertices(points))
+
+
+@pytest.mark.parametrize("seed", range(10))
+def test_bb_vertices_falls_back_to_the_full_search_when_rotated(seed):
+    rng = np.random.default_rng(seed)
+    low = rng.uniform(-100, 100, 2)
+    high = low + rng.uniform(1, 100, 2)
+    angle = rng.uniform(0.1, np.pi / 2 - 0.1)
+    rotation = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+    points = np.array(list(itertools.product(*zip(low, high)))) @ rotation.T
+
+    np.testing.assert_allclose(_bb_vertices(points), _minimal_bb_vertices(points))
+
+
+def _overlap_props_grid(nz, nrows, ncols, tile=16, overlap=0.25, with_z=False):
+    step = tile * (1 - overlap)
+    transform = param_utils.identity_transform(3 if with_z else 2)
+    all_props = []
+    for z in range(nz):
+        for row in range(nrows):
+            for col in range(ncols):
+                shape = {'y': tile, 'x': tile}
+                spacing = {'y': 1.0, 'x': 1.0}
+                origin = {'y': row * step, 'x': col * step}
+                if with_z:
+                    shape = {'z': 1, **shape}
+                    spacing = {'z': 1.0, **spacing}
+                    origin = {'z': float(z), **origin}
+                all_props.append({'shape': shape, 'spacing': spacing, 'origin': origin,
+                                  'transform': transform})
+    return all_props
+
+
+@pytest.mark.parametrize("nz, with_z, force_2d", [
+    (1, False, False),
+    (4, True, True),
+    (1, True, True),
+])
+def test_vectorized_aabb_overlap_shapes_match_the_exact_path(nz, with_z, force_2d):
+    """The vectorized fast path is only allowed to be faster: passing the same pairs in
+    explicitly routes them through multiview_stitcher's exact intersection test instead, and
+    both must draw the same boxes for the same pairs.
+    """
+    all_props = _overlap_props_grid(nz, 4, 5, with_z=with_z)
+
+    shapes, pairs = create_overlap_shapes(all_props, 'source_metadata', force_2d=force_2d)
+    candidates, _, _ = _filter_candidate_overlap_pairs(all_props)
+    exact_shapes, exact_pairs = create_overlap_shapes(
+        all_props, 'source_metadata', pairs=[tuple(pair) for pair in candidates],
+        force_2d=force_2d)
+
+    assert len(shapes) > 0
+    np.testing.assert_array_equal(np.asarray(pairs).reshape(-1, 2),
+                                  np.asarray(exact_pairs).reshape(-1, 2))
+    for shape, exact_shape in zip(shapes, exact_shapes):
+        np.testing.assert_allclose(np.asarray(shape, dtype=float),
+                                   np.asarray(exact_shape, dtype=float))

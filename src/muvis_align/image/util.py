@@ -1660,6 +1660,36 @@ def extract_z_scale(positions, scales=None):
     return z_scale
 
 
+def _axis_aligned_bb_vertices_2d(lo, hi):
+    """The corners _minimal_bb_vertices() returns for an axis-aligned 2D box, counter-clockwise
+    from the low one, without the hull search it would run to rediscover them (~1.2ms a box).
+
+    `lo`/`hi` may be single (2,) corners or (N, 2) stacks, giving (4, 2) or (N, 4, 2).
+    """
+    lo = np.asarray(lo, dtype=float)
+    hi = np.asarray(hi, dtype=float)
+    return np.stack([
+        np.stack([lo[..., 0], lo[..., 1]], axis=-1),
+        np.stack([hi[..., 0], lo[..., 1]], axis=-1),
+        np.stack([hi[..., 0], hi[..., 1]], axis=-1),
+        np.stack([lo[..., 0], hi[..., 1]], axis=-1),
+    ], axis=-2)
+
+
+def _bb_vertices(points):
+    """_minimal_bb_vertices(), short-circuited when *points* are already an axis-aligned 2D box
+    - which every source is before registration has rotated anything. A rotated or 3D point set
+    still takes the full search: there the corner ordering depends on the box's own axes.
+    """
+    points = np.asarray(points, dtype=float)
+    if points.ndim == 2 and points.shape[1] == 2:
+        lo, hi = points.min(axis=0), points.max(axis=0)
+        # exact, not isclose: these are the same floats min/max were just taken from
+        if np.all((points == lo) | (points == hi)):
+            return _axis_aligned_bb_vertices_2d(lo, hi)
+    return _minimal_bb_vertices(points)
+
+
 def _minimal_bb_vertices(points, return_edge_path=False):
     """Return the corners of an oriented bounding box around *points*.
 
@@ -1810,7 +1840,7 @@ def create_image_shapes(items, transform_key=None,  force_2d=False):
         if points.shape[1] == 3 and (len(set(points[:, 0])) == 1 or force_2d):
             # remove constant z coordinate
             points = points[:, 1:]
-        shape = _minimal_bb_vertices(points)
+        shape = _bb_vertices(points)
         if is_multi_z_shapes:
             z_position = stack_props['origin'].get('z', 0)
             shape = [[z_position] + list(element) for element in shape]
@@ -1842,13 +1872,94 @@ def _filter_candidate_overlap_pairs(all_stack_props):
         maxs[index] = 0
         mins[index, :ndims] = points.min(axis=0)
         maxs[index, :ndims] = points.max(axis=0)
-    overlaps = (
-        np.all(mins[:, None, :] <= maxs[None, :, :], axis=-1)
-        & np.all(mins[None, :, :] <= maxs[:, None, :], axis=-1)
-    )
-    iu = np.triu_indices(len(all_stack_props), 1)
-    pairs = np.transpose(iu)[overlaps[iu]]
-    return pairs, mins, maxs
+    return _sweep_candidate_pairs(mins, maxs), mins, maxs
+
+
+def _sweep_candidate_pairs(mins, maxs, chunk_candidates=4_000_000):
+    """Index pairs whose axis-aligned boxes overlap, by sweeping one axis rather than comparing
+    every box with every other - the same pairs, in the same (i < j, row-major) order.
+
+    All-pairs is n^2 in time and memory: at 34k sources, a 1.2-billion-element comparison per
+    axis and ~7GB of temporaries, for the ~0.01% of pairs that turn out to be neighbours.
+    Sorted by one axis' lower bound, each box is tested only against those starting before it
+    ends - for tiles in a grid, a handful each.
+    """
+    n = len(mins)
+    if n < 2:
+        return np.empty((0, 2), dtype=int)
+
+    # sweep whichever axis actually separates these boxes - a mosaic one section thick gains
+    # nothing from z. Counting each axis' candidates outright beats guessing from extents.
+    best = None
+    for axis in range(mins.shape[1]):
+        order = np.argsort(mins[:, axis], kind='stable')
+        ends = np.searchsorted(mins[order, axis], maxs[order, axis], side='right')
+        counts = np.maximum(ends - np.arange(n) - 1, 0)
+        total = int(counts.sum())
+        if best is None or total < best[0]:
+            best = (total, order, counts)
+    _, order, counts = best
+
+    mins_sorted, maxs_sorted = mins[order], maxs[order]
+    starts = np.arange(n) + 1
+    cumulative = np.cumsum(counts)
+    blocks = []
+    begin = 0
+    while begin < n:
+        # never fewer than one box: one whose own candidates exceed the budget still goes whole
+        budget = (cumulative[begin - 1] if begin > 0 else 0) + chunk_candidates
+        end = max(int(np.searchsorted(cumulative, budget, side='right')), begin + 1)
+        block_counts = counts[begin:end]
+        n_candidates = int(block_counts.sum())
+        if n_candidates > 0:
+            index1 = np.repeat(np.arange(begin, end), block_counts)
+            # each box's candidates are the contiguous run just after it, so its partner
+            # indices are that run's start plus 0..count-1
+            block_cumulative = np.cumsum(block_counts)
+            offsets = (np.arange(n_candidates)
+                       - np.repeat(block_cumulative - block_counts, block_counts))
+            index2 = np.repeat(starts[begin:end], block_counts) + offsets
+            keep = np.all((mins_sorted[index1] <= maxs_sorted[index2])
+                          & (mins_sorted[index2] <= maxs_sorted[index1]), axis=-1)
+            if keep.any():
+                blocks.append(np.column_stack((order[index1[keep]], order[index2[keep]])))
+        begin = end
+
+    if not blocks:
+        return np.empty((0, 2), dtype=int)
+    pairs = np.concatenate(blocks)
+    # sorting by the sweep axis shuffled both which index of a pair comes first, and which
+    # pair does - undo both, so the result is indistinguishable from the all-pairs one
+    pairs = np.sort(pairs, axis=1)
+    return pairs[np.lexsort((pairs[:, 1], pairs[:, 0]))]
+
+
+def _aabb_overlap_shapes_2d(all_stack_props, pairs, mins, maxs, force_2d, is_multi_z_shapes):
+    """create_overlap_shapes' AABB fast path for every pair at once - same boxes, same order,
+    no per-pair Python. See there for why the AABB intersection is exact in this case.
+    """
+    pairs = np.asarray(pairs).reshape(-1, 2)
+    origins_z = np.array([props['origin'].get('z', 0) for props in all_stack_props], dtype=float)
+    if force_2d:
+        # multi-section 2D data: an overlap only means anything within a section, and the
+        # promoted singleton 'z' leaves the real extent in columns 1/2
+        singleton_z = np.array([props['shape'].get('z') == 1 for props in all_stack_props])
+        both_singleton = singleton_z[pairs[:, 0]] & singleton_z[pairs[:, 1]]
+        same_z = origins_z[pairs[:, 0]] == origins_z[pairs[:, 1]]
+        pairs = pairs[~both_singleton | same_z]
+        axes = slice(1, 3)
+    else:
+        axes = slice(0, 2)
+
+    # broad_phase already guarantees lo <= hi in every axis (that's its own overlap condition)
+    lo = np.maximum(mins[pairs[:, 0]], mins[pairs[:, 1]])[:, axes]
+    hi = np.minimum(maxs[pairs[:, 0]], maxs[pairs[:, 1]])[:, axes]
+    boxes = _axis_aligned_bb_vertices_2d(lo, hi)
+    if is_multi_z_shapes:
+        # the shape sits at the first source's z, as the exact path puts it too
+        z_positions = np.repeat(origins_z[pairs[:, 0], None, None], boxes.shape[1], axis=1)
+        boxes = np.concatenate([z_positions, boxes], axis=2)
+    return list(boxes), list(pairs)
 
 
 def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtype=np.uint8):
@@ -1881,6 +1992,16 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
         logging.info(f'create_overlap_shapes: {len(pairs)} candidate pairs from'
                      f' {len(all_stack_props)} sims'
                      f' (broad phase: {time.time() - broad_phase_start:.1f}s)')
+    # in 2D the AABB fast path is pure arithmetic per pair, so do every pair at once rather
+    # than a Python iteration (and a convex hull) each - 3D and exact tests take the loop
+    if aabbs is not None and (force_2d or not any('z' in props['shape'] for props in all_stack_props)):
+        shapes, good_pairs = _aabb_overlap_shapes_2d(all_stack_props, pairs, mins, maxs,
+                                                     force_2d=force_2d,
+                                                     is_multi_z_shapes=is_multi_z_shapes)
+        logging.info(f'create_overlap_shapes: {len(shapes)} shapes from broad-phase AABB '
+                     f'intersection directly (vectorized, no linprog)')
+        return shapes, good_pairs
+
     n_exact_tests = 0
     exact_test_time = 0.0
     n_fast_shapes = 0
