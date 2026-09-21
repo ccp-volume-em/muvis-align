@@ -49,7 +49,11 @@ def test_reset_clears_registration_state():
 
 
 def test_init_with_explicit_files_sets_labels_and_output(tmp_path):
+    # a list input_path is glob-expanded (it may also be unexpanded patterns, e.g. from a
+    # comma-separated UI input path), so the files need to actually exist here
     inputs = [str(tmp_path / "tile_01.tif"), str(tmp_path / "tile_02.tif")]
+    for path in inputs:
+        Path(path).touch()
 
     registration = MVSRegistration()
     result = registration.init(
