@@ -2,8 +2,8 @@
 #SBATCH --job-name=muvis_align
 #SBATCH --part=ncpu
 #SBATCH --cpus-per-task=64
-#SBATCH --time=1-00:00          # Runtime in D-HH:MM, minimum of 10 minutes
-#SBATCH --mem=640G   # Memory pool for all cores (see also --mem-per-cpu)
+#SBATCH --time=2-00:00          # Runtime in D-HH:MM, minimum of 10 minutes
+#SBATCH --mem=64G   # Memory pool for all cores (see also --mem-per-cpu)
 #SBATCH --output=muvis-align-%j.log
 #SBATCH --error=muvis-align-%j.log
 
@@ -14,7 +14,7 @@ export PYTHONUNBUFFERED=TRUE
 # ===========================================================================
 # Refresh with: sbatch xpra-pull.sh
 CONTAINER_PATH="/nemo/stp/ddt/working/defoltj/muvis-align/muvis-align-xpra_latest"          # container on shared storage
-DATA_DIR="/nemo/project/proj-ccp-vem/datasets"              # directory to expose
+DATA_DIR="/nemo/project"              # directory to expose
 LOGIN_NODE="login.nemo.thecrick.org"         # what you ssh into
 XPRA_PORT=9876                            # port on the compute node
 
