@@ -26,6 +26,17 @@ def test_get_unique_file_labels_trims_shared_prefix_before_falling_back():
     assert labels == [f'{sd}/{name}' for sd in subdirs]
 
 
+def test_get_unique_file_labels_keeps_each_files_own_key_order():
+    # 's' is first introduced by the overview file - it must not push 's' ahead of 'r'/'t'
+    # in the tile files' own labels, which never had 's' first to begin with
+    filenames = [
+        'overviews/sample_ov000_s00025.ome.tif',
+        'tiles/r0004/t0000/sample_r0004_t0000_s00823.ome.tif',
+        'tiles/r0004/t0001/sample_r0004_t0001_s00824.ome.tif',
+    ]
+    assert get_unique_file_labels(filenames) == ['ov000_s00025', 'r0004_t0000_s00823', 'r0004_t0001_s00824']
+
+
 def test_strip_common_path_prefix():
     filenames = ['/a/b/c/x.tif', '/a/b/c/y.tif', '/a/b/d/x.tif']
     assert strip_common_path_prefix(filenames) == ['c/x.tif', 'c/y.tif', 'd/x.tif']
