@@ -286,9 +286,8 @@ def test_init_progress_resume_writes_registered_transform_onto_msims():
 
 
 def test_init_progress_ignores_mappings_for_a_different_fileset():
-    # a mappings.json saved by a different fileset sharing the same output dir (e.g. an earlier
-    # test run, or a project reused across datasets) must not be trusted as this fileset's own
-    # global registration - it previously crashed deep inside multiview_stitcher instead
+    # a mappings.json left over from a different fileset (shared output dir) must be ignored,
+    # not crash - it previously crashed deep inside multiview_stitcher
     from muvis_align.util import operation_to_past_participle
     from muvis_align.constants import zarr_extension
     from muvis_align.MVSRegistration import RegState

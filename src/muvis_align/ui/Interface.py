@@ -623,9 +623,7 @@ class Interface:
 
     def update_output_channels(self):
         channels = self.extra_metadata.get('channels')
-        # a project saved before the label-fallback fix can hold a channel with a blank label -
-        # treat that the same as no channels configured, so it re-derives from source instead of
-        # persisting the blank forever
+        # a blank-labelled channel (e.g. an old save) is treated as unconfigured, so it re-derives
         if not channels or not any(channel.get('label') for channel in channels):
             # get channels from source
             source0 = self.reg.sources[0]

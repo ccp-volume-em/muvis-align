@@ -11,9 +11,7 @@ def test_get_unique_file_labels_simple_same_dir():
 
 
 def test_get_unique_file_labels_trims_shared_prefix_before_falling_back():
-    # same basenames repeated across several subdirectories with no digits of their own -
-    # numeric-only differentiation can't tell them apart, so the fallback must use the path
-    # relative to the shared root, not the raw absolute filename
+    # same basenames, no digits in the subdirectory names - fallback must be the relative path
     base = '/nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_meatballs'
     subdirs = ['subset', 'tiles', 'stitched', 'stitched_hpc']
     name = 'EM04652-02_slice17_meatballs_ov000_s00400.ome.tif'

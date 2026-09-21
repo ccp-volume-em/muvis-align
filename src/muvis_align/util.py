@@ -333,9 +333,8 @@ def get_unique_nums(all_parts: list) -> list:
         if len(set(values)) > 1:
             changing_keys.append(key)
 
-    # keep each file's own key order (not the global one) - a key first seen in one file's
-    # dict shouldn't dictate the position of a same-named key in another file's differently
-    # ordered dict (e.g. an overview file's 's' vs a tile file's 'r'/'t'/'s')
+    # keep each file's own key order - a global order would let one naming scheme dictate
+    # another's (e.g. an overview's 's' pushed ahead of a tile's own 'r'/'t')
     changing = set(changing_keys)
     final_parts = [{key: value for key, value in parts.items() if key in changing} for parts in all_parts]
     return final_parts
