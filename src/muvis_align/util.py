@@ -246,6 +246,16 @@ def dir_regex(pattern):
     return files_sorted
 
 
+def find_sbemimage_meta_dir(filename, max_hops=5):
+    path = os.path.dirname(filename)
+    for _ in range(max_hops):
+        metapath = os.path.join(path, 'meta')
+        if os.path.exists(metapath):
+            return metapath
+        path = os.path.join(path, '..')
+    return None
+
+
 def pattern_base_dir(pattern):
     """The real directory an input pattern sits in - what a relative output path is taken to be
     relative to (MVSRegistration.init).

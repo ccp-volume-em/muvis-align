@@ -285,6 +285,38 @@ def test_init_progress_resume_writes_registered_transform_onto_msims():
         assert (resumed_transform.values == orig_transform.values).all()
 
 
+def test_init_progress_ignores_mappings_for_a_different_fileset():
+    # a mappings.json saved by a different fileset sharing the same output dir (e.g. an earlier
+    # test run, or a project reused across datasets) must not be trusted as this fileset's own
+    # global registration - it previously crashed deep inside multiview_stitcher instead
+    from muvis_align.util import operation_to_past_participle
+    from muvis_align.constants import zarr_extension
+    from muvis_align.MVSRegistration import RegState
+
+    with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
+        params = yaml.safe_load(file)
+    operation_params = params['operations'][0]
+    reg_params = operation_params['registration']
+
+    reg = MVSRegistration()
+    reg.init_params(params['general'], operation_params)
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    reg.register(reg.register_msims, reg.register_indices, params=reg_params)
+    # register() saves mappings.json to disk as a side effect
+
+    resumed = MVSRegistration()
+    resumed.init_params(params['general'], operation_params)
+    resumed.init_data()
+    resumed.filenames[0] = 'data/S000/not_in_the_saved_mapping.ome.zarr'
+    output_filename = operation_to_past_participle(operation_params['operation'])
+    output_format = params['general'].get('output', {}).get('format', zarr_extension)
+
+    resumed.init_progress(output_filename, output_format)
+
+    assert resumed.state is RegState.INIT
+
+
 if __name__ == "__main__":
     for filename in test_filenames:
         print()

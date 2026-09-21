@@ -1,5 +1,4 @@
 import logging
-import os
 from math import ceil
 
 import numpy as np
@@ -10,7 +9,8 @@ from muvis_align.constants import default_transform_key
 from muvis_align.image.util import (combine_transforms, build_source_redimensioned_msim,
                                     build_missing_pyramid_levels, calc_pyramid_level_factors)
 from muvis_align.util import (find_all_numbers, split_numeric_dict, eval_context, check_contains_value,
-                              create_transform, load_sbemimage_best_config, adjust_sbemimage_properties)
+                              create_transform, load_sbemimage_best_config, adjust_sbemimage_properties,
+                              find_sbemimage_meta_dir)
 
 
 class ImageSource:
@@ -174,15 +174,7 @@ class ImageSource:
         if 'SBEMimage' in self.creator:
             source_version = self.creator
             if '2025' in source_version:
-                path = os.path.dirname(self.filename)
-                metapath = None
-                attempts = 0
-                while attempts < 3:
-                    metapath = os.path.join(path, 'meta')
-                    if os.path.exists(metapath):
-                        break
-                    path = os.path.join(path, '..')
-                    attempts += 1
+                metapath = find_sbemimage_meta_dir(self.filename)
                 if metapath:
                     sbemimage_config = load_sbemimage_best_config(metapath, self.filename)
                     if sbemimage_config:

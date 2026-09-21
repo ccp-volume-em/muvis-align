@@ -786,41 +786,49 @@ class MVSRegistration:
             logging.info(f'Loading global mapping from {mappings_filename}')
 
             mappings = read_transforms(mappings_filename)
-            # write reg_transform_key onto self.msims (msim -> msim, every scale, no sim needed) -
-            # the persistent pyramid needs the same transform a fresh registration run would have
-            # written via register_global, or copy_transforms/get_transforms downstream
-            # (Interface.py) won't find it there when resuming from saved state
-            progress_context = (
-                progress_factory(total=len(self.msims), desc='Loading global registration')
-                if progress_factory is not None
-                else nullcontext(None)
-            )
-            with progress_context as pbar:
-                for msim, filename in zip(self.msims, self.filenames):
-                    # the mapping is stored as registration produced it - 2D for a stack, whose
-                    # msims are stored 2D too (see fuse()), so neither needs widening here
-                    mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
-                    msi_utils.set_affine_transform(msim, mapping, transform_key=self.reg_transform_key)
-                    if pbar is not None:
-                        pbar.update(1)
-            if not is_3d:
-                self.msims = make_msims_2d(self.msims)
-            self.pair_msims = self.msims
-            metrics = import_json(metrics_filename)
-            indexed_metrics = {}
-            for key, value in metrics.items():
-                key1, key2 = json.loads(key)
-                index1, index2 = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
-                if index1 is not None and index2 is not None:
-                    indexed_key = index1, index2
-                    indexed_metrics[indexed_key] = value
-            self.metrics = {
-                'summary': {default_transform_key:
-                                {self.reg_transform_key: np.mean([value[default_quality_key]
-                                                                  for value in indexed_metrics.values()
-                                                                  if default_quality_key in value])}},
-                'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
-            }
+            missing = [filename for filename in self.filenames if find_file_dict_item(mappings, filename) is None]
+            if missing:
+                # mappings.json is from a run over a different fileset (e.g. a shared output
+                # dir) - it can't be trusted as this fileset's own global registration
+                logging.warning(f'{mappings_filename} has no mapping for {len(missing)} of '
+                                f'{len(self.filenames)} files (e.g. {missing[0]}) - ignoring it')
+                self.state = RegState.INIT
+            else:
+                # write reg_transform_key onto self.msims (msim -> msim, every scale, no sim
+                # needed) - the persistent pyramid needs the same transform a fresh registration
+                # run would have written via register_global, or copy_transforms/get_transforms
+                # downstream (Interface.py) won't find it there when resuming from saved state
+                progress_context = (
+                    progress_factory(total=len(self.msims), desc='Loading global registration')
+                    if progress_factory is not None
+                    else nullcontext(None)
+                )
+                with progress_context as pbar:
+                    for msim, filename in zip(self.msims, self.filenames):
+                        # the mapping is stored as registration produced it - 2D for a stack,
+                        # whose msims are stored 2D too (see fuse()), so neither needs widening
+                        mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
+                        msi_utils.set_affine_transform(msim, mapping, transform_key=self.reg_transform_key)
+                        if pbar is not None:
+                            pbar.update(1)
+                if not is_3d:
+                    self.msims = make_msims_2d(self.msims)
+                self.pair_msims = self.msims
+                metrics = import_json(metrics_filename)
+                indexed_metrics = {}
+                for key, value in metrics.items():
+                    key1, key2 = json.loads(key)
+                    index1, index2 = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
+                    if index1 is not None and index2 is not None:
+                        indexed_key = index1, index2
+                        indexed_metrics[indexed_key] = value
+                self.metrics = {
+                    'summary': {default_transform_key:
+                                    {self.reg_transform_key: np.mean([value[default_quality_key]
+                                                                      for value in indexed_metrics.values()
+                                                                      if default_quality_key in value])}},
+                    'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
+                }
 
     def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):
         # accepts either sims or msims (each msim's scale0 sim is used) - only position/size

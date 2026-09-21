@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from muvis_align.util import calculate_rigid_difference, create_transform, \
-    pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir
+    pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, find_sbemimage_meta_dir
 
 
 @pytest.mark.parametrize(
@@ -127,3 +127,18 @@ def test_pattern_base_dir_skips_wildcard_components(pattern, expected):
     """A relative output path is taken relative to this (MVSRegistration.init), so a wildcard
     left in it makes an output directory that cannot be created - on Windows, WinError 123."""
     assert pattern_base_dir(pattern) == expected
+
+
+def test_find_sbemimage_meta_dir_walks_up_to_a_deeply_nested_project_root(tmp_path):
+    (tmp_path / 'meta').mkdir()
+    tile_dir = tmp_path / 'tiles' / 'r0004' / 't0000'
+    tile_dir.mkdir(parents=True)
+    filename = str(tile_dir / 'sample_r0004_t0000_s00823.ome.tif')
+
+    assert find_sbemimage_meta_dir(filename) == os.path.join(str(tile_dir), '..', '..', '..', 'meta')
+
+
+def test_find_sbemimage_meta_dir_returns_none_when_not_found(tmp_path):
+    filename = str(tmp_path / 'subset' / 'sample.ome.tif')
+
+    assert find_sbemimage_meta_dir(filename) is None
