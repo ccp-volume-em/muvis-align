@@ -327,13 +327,27 @@ def get_unique_nums(all_parts: list) -> list:
     return final_parts
 
 
+def strip_common_path_prefix(filenames: list) -> list:
+    # leading directories shared by every file are just noise for labelling
+    split = [filename.replace('\\', '/').split('/') for filename in filenames]
+    common_len = 0
+    for parts in zip(*split):
+        if len(set(parts)) > 1:
+            break
+        common_len += 1
+    if common_len == 0:
+        return filenames
+    return ['/'.join(parts[common_len:]) for parts in split]
+
+
 def get_unique_file_labels(filenames: list) -> list:
     file_labels = []
 
     ntot = len(filenames)
+    common_paths = strip_common_path_prefix(filenames)
     parts_dic = get_unique_nums([split_numeric_dict(get_filetitle(filename)) for filename in filenames])
-    parts_dic_full = get_unique_nums([split_numeric_dict(filename) for filename in filenames])
-    parts_num_full = get_unique_nums([{index: value for index, value in enumerate(split_numeric(filename))} for filename in filenames])
+    parts_dic_full = get_unique_nums([split_numeric_dict(filename) for filename in common_paths])
+    parts_num_full = get_unique_nums([{index: value for index, value in enumerate(split_numeric(filename))} for filename in common_paths])
 
     dic_ok = (len(set(['_'.join(parts.values()) for parts in parts_dic])) == ntot)
     full_dic_ok = (len(set(['_'.join(parts.values()) for parts in parts_dic_full])) == ntot)
@@ -346,7 +360,8 @@ def get_unique_file_labels(filenames: list) -> list:
     elif full_num_ok:
         all_parts = parts_num_full
     else:
-        all_parts = [{0: filename} for filename in filenames]
+        # no digit-based split told them apart - use the path relative to the shared root
+        all_parts = [{0: common_path} for common_path in common_paths]
 
     for parts in all_parts:
         file_label = '_'.join([key + part if isinstance(key, str) else part for key, part in parts.items()])
