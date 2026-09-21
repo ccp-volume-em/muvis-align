@@ -189,11 +189,11 @@ class Interface:
         params = self.params['input_output']
         widget = self.param_widgets.get('input_output.input_path')
         input_path = params.get('input_path', '')
-        if isinstance(eval_path(input_path), str):
+        if widget is not None and isinstance(eval_path(input_path), str):
             self._set_path_widget_text(widget, input_path)
         widget = self.param_widgets.get('input_output.output_path')
         output_path = params.get('output_path', '')
-        if isinstance(eval_path(output_path), str):
+        if widget is not None and isinstance(eval_path(output_path), str):
             self._set_path_widget_text(widget, output_path)
         resolved_output_path = resolve_to_project_dir(output_path, self.get_project_dir())
         init_logging(log_filename=os.path.join(resolved_output_path, 'muvis-align.log'), verbose=self.verbose)
@@ -259,6 +259,8 @@ class Interface:
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
+        # re-sync path widget display to the normalised value now, not live while typing
+        self.update_input_output_path()
         params = self.params['input_output']
         project_dir = self.get_project_dir()
         output = resolve_to_project_dir(str(params['output_path']), project_dir)
