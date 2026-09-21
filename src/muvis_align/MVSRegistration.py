@@ -311,7 +311,7 @@ class MVSRegistration:
             logging.warning(f'Skipping existing output {output_filename}')
             return False
 
-        with Timer('init sims', self.logging_time):
+        with Timer('init sims', verbose=self.logging_time):
             self.init_data()
             msims = self.msims
 
@@ -323,7 +323,7 @@ class MVSRegistration:
         if not z_scale:
             z_scale = self.scales[0].get('z', 1)
 
-        with Timer('pre-process', self.logging_time):
+        with Timer('pre-process', verbose=self.logging_time):
             # preprocess() is msims-in/msims-out - register() itself is msims-based too now
             self.preprocess(msims, **self.preprocess_params)
             register_msims, register_indices = self.register_msims, self.register_indices
@@ -357,7 +357,7 @@ class MVSRegistration:
 
         if not self.is_global_registered() or self.overwrite:
             if 'register' in operation:
-                with Timer('register', self.logging_time):
+                with Timer('register', verbose=self.logging_time):
                     results = self.register(register_msims, register_indices, self.register_params)
                 reg_result = results['reg_result']
                 mappings = results['mappings']
@@ -379,7 +379,7 @@ class MVSRegistration:
         registered_positions_filename = output + registered_positions_name
         if self.reg_transform_key in get_msim_transform_keys(msims[0]):
             transform_key = self.reg_transform_key
-            with Timer('plot positions', self.logging_time):
+            with Timer('plot positions', verbose=self.logging_time):
                 # plot_positions is a library function that needs concrete sims - derived here on
                 # demand from msims (the registered transform lives there now, see register_global).
                 # A stack is stored 2D (see fuse()), so it is promoted here, for this plot only,
@@ -398,13 +398,13 @@ class MVSRegistration:
         image_paths = []
         if save_images:
             if self.output_params.get('preview'):
-                with Timer('create preview', self.logging_time):
+                with Timer('create preview', verbose=self.logging_time):
                     self.create_preview('preview_' + output_filename,
                                         nom_msims=msims,
                                         transform_key=transform_key)
 
             if ('register' in operation or 'fuse' in operation or 'merge' in operation):
-                with Timer('fuse image', self.logging_time):
+                with Timer('fuse image', verbose=self.logging_time):
                     if isinstance(self.fusion_params, dict):
                         fusion_method = self.fusion_params.get('method', '')
                         output_spacing = self.fusion_params.get('output_spacing', 'mean')
@@ -431,7 +431,7 @@ class MVSRegistration:
                 if is_saved:
                     extra_output_format = extra_output_format.replace('ome.zarr', '').replace('zar', '')
                 logging.info('Saving fused image...')
-                with Timer('save fused image', self.logging_time):
+                with Timer('save fused image', verbose=self.logging_time):
                     self.save(output_filename, fused_sims,
                               transform_key=transform_key, translations0=self.positions,
                               format = extra_output_format,
@@ -582,6 +582,12 @@ class MVSRegistration:
 
         last_z_position = None
         delta_zs = []
+        # the two per-source passes here (geometry, then transforms) are serial Python over
+        # every file, where init_sources() above is pooled - so on a large project they are
+        # worth timing separately rather than being the unaccounted-for remainder of a phase
+        # whose own log line only covers the pooled part
+        geometry_timer = Timer('init_data: resolve per-source geometry', verbose=self.logging_time)
+        geometry_timer.start()
         for filename, source in zip(self.filenames, sources):
             # position/scale/rotation, and per-source corrections (SBEM, is_center, invert),
             # are now resolved by ImageSource itself (see ImageSource.fix_metadata) - this pass
@@ -616,6 +622,8 @@ class MVSRegistration:
             levels.append(level)
             rescales.append(rescale)
             last_z_position = z_position
+        geometry_timer.record()
+        geometry_timer.get_total_time()
 
         if 'z' in output_order and z_scale is None:
             if len(delta_zs) > 0:
@@ -646,6 +654,9 @@ class MVSRegistration:
         final_translations = []
         transforms = []
         msims = [] if not store else None
+        transform_timer = Timer(f'init_data: build per-source transforms'
+                                f'{"" if store else " and msims"}', verbose=self.logging_time)
+        transform_timer.start()
         for source, level, rescale, scale, translation, rotation, file_label in zip(
                 sources, levels, rescales, scales, translations, rotations, self.file_labels):
             # transform #dimensions need to match
@@ -689,6 +700,8 @@ class MVSRegistration:
                 msims.append(msim)
             final_scales.append(scale)
             final_translations.append(translation)
+        transform_timer.record()
+        transform_timer.get_total_time()
 
         if store:
             self.scales = final_scales
