@@ -161,9 +161,11 @@ def read_tiff_source_metadata(filename):
             for dim in spatial_dims})
 
     channels = []
-    for name, color in zip((ome or {}).get('channel_names') or [],
-                           (ome or {}).get('channel_colors') or []):
-        channel = {'label': name}
+    for index, (name, color) in enumerate(zip((ome or {}).get('channel_names') or [],
+                                               (ome or {}).get('channel_colors') or [])):
+        # an OME <Channel> with no Name attribute parses to '' - fall back to a generated
+        # label so it never renders/saves as blank downstream
+        channel = {'label': name or f'channel {index}'}
         if color:
             channel['color'] = hexrgb_to_rgba(color)
         channels.append(channel)

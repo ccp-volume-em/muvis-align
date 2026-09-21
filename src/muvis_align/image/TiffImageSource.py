@@ -80,7 +80,7 @@ class TiffImageSource(ImageSource):
                                   for dim, value in ngff_image.translation.items() if dim in 'xyz'}
             if index == 0 and ngff_image.channel_names:
                 for channel_index, channel_name in enumerate(ngff_image.channel_names):
-                    channel = {'label': channel_name}
+                    channel = {'label': channel_name or f'channel {channel_index}'}
                     if ngff_image.channel_colors:
                         channel['color'] = hexrgb_to_rgba(ngff_image.channel_colors[channel_index])
                     self.channels.append(channel)

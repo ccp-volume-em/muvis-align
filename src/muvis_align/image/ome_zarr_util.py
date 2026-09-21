@@ -96,6 +96,7 @@ def create_channel_ome_metadata(data, dimension_order, channels, ome_version):
     omezarr_channels = []
     for channeli, channel0 in enumerate(channels):
         channel = channel0.copy()
+        channel['label'] = channel.get('label') or f'Channel {channeli}'
         color = channel.get('color', (1, 1, 1, 1))
         channel['color'] = rgba_to_hexrgb(color)
         if 'window' not in channel:

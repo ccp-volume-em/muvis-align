@@ -59,7 +59,9 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
     multiscales = to_multiscales(image, scale_factors=pyramid_downsample, chunks=create_chunk_dict(default_chunk_size, dim_order))
 
     if channels:
-        omero = Omero(channels=[OmeroChannel(label=channel.get('label', f'Channel {index}'),
+        # dict.get()'s default only applies when the key is missing, so an explicit but blank
+        # label (e.g. an unnamed OME channel) needs `or`, not `get`
+        omero = Omero(channels=[OmeroChannel(label=channel.get('label') or f'Channel {index}',
                                              color=rgba_to_hexrgb(channel.get('color')),
                                              window=OmeroWindow(**get_channel_window(multiscales.images[-1].data, dim_order, index)))
                                 for index, channel in enumerate(channels)])
@@ -152,7 +154,9 @@ def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
 
     metadata = Metadata(coordinateSystems=coordinate_systems, datasets=datasets)
     if channels:
-        omero = Omero(channels=[OmeroChannel(label=channel.get('label', f'Channel {index}'),
+        # dict.get()'s default only applies when the key is missing, so an explicit but blank
+        # label (e.g. an unnamed OME channel) needs `or`, not `get`
+        omero = Omero(channels=[OmeroChannel(label=channel.get('label') or f'Channel {index}',
                                              color=rgba_to_hexrgb(channel.get('color')),
                                              window=OmeroWindow(**get_channel_window(images[-1].data, dim_order, index)))
                                 for index, channel in enumerate(channels)])

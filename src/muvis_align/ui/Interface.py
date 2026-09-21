@@ -620,7 +620,11 @@ class Interface:
         table_widget.set_table_column_resize_mode()
 
     def update_output_channels(self):
-        if not self.extra_metadata.get('channels'):
+        channels = self.extra_metadata.get('channels')
+        # a project saved before the label-fallback fix can hold a channel with a blank label -
+        # treat that the same as no channels configured, so it re-derives from source instead of
+        # persisting the blank forever
+        if not channels or not any(channel.get('label') for channel in channels):
             # get channels from source
             source0 = self.reg.sources[0]
             channels = source0.get_channels()
@@ -632,8 +636,9 @@ class Interface:
 
             self.extra_metadata['channels'] = channels
 
-            # convert to list dict
-            data = [[channel.get('label', f'channel {index}'), channel.get('color', (1, 1, 1))]
+            # convert to list dict - dict.get()'s default only applies when the key is missing,
+            # so an explicit but blank label (e.g. an unnamed OME channel) needs `or`, not `get`
+            data = [[channel.get('label') or f'channel {index}', channel.get('color', (1, 1, 1))]
                      for index, channel in enumerate(channels)]
             self.output_channels = create_dict_of_lists(data, ['label', 'color'])
             return True
