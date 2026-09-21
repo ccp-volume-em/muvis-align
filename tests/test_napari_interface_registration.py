@@ -40,6 +40,20 @@ def suppress_completion_dialogs():
         yield mock_information
 
 
+@pytest.fixture(autouse=True)
+def suppress_confirmation_dialogs():
+    """Keep a confirmation a test forgot to patch from opening a real modal dialog.
+
+    Tests that care about the answer patch question() themselves, which takes precedence;
+    answering No by default means a test that does not still cannot stall the run.
+    """
+    with patch(
+        'muvis_align.ui.Interface.QMessageBox.question',
+        return_value=QMessageBox.No,
+    ) as mock_question:
+        yield mock_question
+
+
 def get_project_configs():
     """Discover all muvis_align_project*.yml files in tests directory."""
     test_dir = Path(__file__).parent
@@ -780,6 +794,77 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     }
 
 
+def _arm_pair_modify_entry(bare_interface, monkeypatch):
+    """Set a bare_interface up so modify_pair_registration() enters pair-modification mode."""
+    import xarray as xr
+
+    bare_interface.view_mode = None
+    bare_interface.viewer = MagicMock()
+    bare_interface.template = {"input_output": [], "registration": [], "fusion": []}
+    tab_states = {
+        "project": True, "input_output": True, "registration": True, "fusion": True
+    }
+    bare_interface.is_tab_enabled = lambda section_id: tab_states[section_id]
+    bare_interface.enable_tab = MagicMock(
+        side_effect=lambda section_id, enabled: tab_states.__setitem__(section_id, enabled)
+    )
+    widget = SimpleNamespace(enabled=True)
+    bare_interface.get_all_widgets = MagicMock(
+        return_value={"registration.metrics": widget}
+    )
+    bare_interface.param_widgets = {
+        "registration.reg_preview_image1": SimpleNamespace(get_value=lambda: "image-0"),
+        "registration.reg_preview_image2": SimpleNamespace(get_value=lambda: "image-0"),
+    }
+    bare_interface.reg.file_labels = ["image-0"]
+    bare_interface._clear_napari_view = MagicMock()
+    bare_interface._napari_view_add_image = MagicMock()
+    bare_interface.update_pair_metrics = MagicMock()
+    transform = xr.DataArray(
+        np.eye(3).reshape(1, 3, 3), dims=["t", "x_in", "x_out"], coords={"t": [0]}
+    )
+    monkeypatch.setattr(
+        interface_module.nx, "get_edge_attributes", lambda *_: {(0, 0): transform}
+    )
+    return widget, tab_states
+
+
+def test_modify_pair_registration_restores_state_when_pre_processing_fails(
+    bare_interface, monkeypatch
+):
+    """Bailing out of entering pair-modification mode has to undo the disabling applied on the
+    way in - leaving it in place would strand the user with every widget and tab dead."""
+    widget, tab_states = _arm_pair_modify_entry(bare_interface, monkeypatch)
+    bare_interface.reg.register_msims = []
+    bare_interface.run_pre_processing = MagicMock(return_value=None)
+
+    bare_interface.modify_pair_registration()
+
+    assert widget.enabled is True
+    assert tab_states == {
+        "project": True, "input_output": True, "registration": True, "fusion": True
+    }
+    assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
+
+
+def test_modify_pair_registration_restores_state_when_entering_raises(
+    bare_interface, monkeypatch
+):
+    """The same applies to a failure part-way through building the pair view."""
+    widget, tab_states = _arm_pair_modify_entry(bare_interface, monkeypatch)
+    bare_interface.reg.register_msims = ["msim"]
+    bare_interface._napari_view_add_image = MagicMock(side_effect=ValueError("boom"))
+
+    with pytest.raises(ValueError):
+        bare_interface.modify_pair_registration()
+
+    assert widget.enabled is True
+    assert tab_states == {
+        "project": True, "input_output": True, "registration": True, "fusion": True
+    }
+    assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
+
+
 def test_tab_changed_clears_feature_view_and_stops_timer(bare_interface):
     bare_interface.viewer = MagicMock()
     bare_interface.view_mode = CanonicalViewMode.FEATURES
@@ -1440,12 +1525,13 @@ def test_run_preview_registration_returns_none_on_failure(
 
 
 @pytest.mark.parametrize(
-    ("global_registered", "pairs_registered", "reply", "runs"),
+    ("global_registered", "pairs_registered", "reply", "runs", "prefix"),
     [
-        (True, False, None, False),
-        (False, False, "No", False),
-        (False, False, "Yes", True),
-        (False, True, "Yes", True),
+        (True, False, "Yes", True, "Global registration was already performed. "),
+        (True, False, "No", False, "Global registration was already performed. "),
+        (False, True, "Yes", True, "Pair registration was already performed. "),
+        (False, False, "Yes", True, ""),
+        (False, False, "No", False, ""),
     ],
 )
 def test_pair_registration_confirmation_paths(
@@ -1456,26 +1542,27 @@ def test_pair_registration_confirmation_paths(
     pairs_registered,
     reply,
     runs,
+    prefix,
 ):
+    """Pair registration is offered whatever has run before: an earlier global (or pair)
+    registration only prepends a note to the confirmation, it no longer blocks the operation."""
     bare_interface.viewer = MagicMock()
     bare_interface.reg.is_global_registered.return_value = global_registered
     bare_interface.reg.is_pairs_registered.return_value = pairs_registered
     bare_interface.reg.source_transform_key = "source_metadata"
     bare_interface.run_pair_registration = MagicMock()
     bare_interface.update_registered = MagicMock()
-    warning = MagicMock()
-    monkeypatch.setattr(interface_module, "show_warning", warning)
-    if reply is not None:
-        monkeypatch.setattr(
-            interface_module.QMessageBox,
-            "question",
-            lambda *_: getattr(interface_module.QMessageBox, reply),
-        )
+    messages = []
+
+    def question(_parent, _title, message, *_):
+        messages.append(message)
+        return getattr(interface_module.QMessageBox, reply)
+
+    monkeypatch.setattr(interface_module.QMessageBox, "question", question)
 
     bare_interface.pair_registration()
 
-    if global_registered:
-        warning.assert_called_once()
+    assert messages == [prefix + "Run pair registration?"]
     assert bare_interface.run_pair_registration.called is runs
     assert bare_interface.update_registered.called is runs
 

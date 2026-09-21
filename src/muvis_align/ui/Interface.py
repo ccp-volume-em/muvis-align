@@ -1416,10 +1416,7 @@ class Interface:
 
             self.view_mode = ViewMode.OVERVIEW
             self.update_registered(view_transform_key=self.reg.source_transform_key)
-            self.temp_widget_state.restore()
-            if self.enable_tab:
-                for section_id, was_enabled in self.temp_tab_states.items():
-                    self.enable_tab(section_id, was_enabled)
+            self._restore_pair_modify_state()
         else:
             self.view_mode = ViewMode.PAIRS
             labels = self.reg.file_labels
@@ -1437,6 +1434,7 @@ class Interface:
                 show_warning('No pair registration found for selected images')
             else:
                 self.temp_widget_state = TemporarilyDisabledWidgets()
+                self.temp_tab_states = {}
                 all_widgets = self.get_all_widgets()
                 all_widgets.pop('registration.modify_pair_registration', None)
                 self.temp_widget_state.disable(all_widgets)
@@ -1452,17 +1450,34 @@ class Interface:
                 eye = np.eye(max(pair_transform.shape))
                 pair_transforms = pair_transform, eye
 
-                if not self.reg.register_msims:
-                    if not self.run_pre_processing():
-                        return
-                self._clear_napari_view(self.viewer)
-                # register_msims is a real multiscale pyramid (built by preprocess()) - lets
-                # napari lazily load whichever level it needs during interactive adjustment
-                register_images = self.reg.register_msims
-                for index, (sim_index, color) in enumerate(zip(indices, colors)):
-                    self._napari_view_add_image(self.viewer, register_images[sim_index], labels[sim_index],
-                                                pair_transforms[index], color, affine_event=True)
-                self.update_pair_metrics()
+                # everything below can bail out (pre-processing failing) or raise, and the
+                # widgets/tabs disabled just above are only ever re-enabled by leaving this mode
+                # - without restoring here a failure leaves the whole plugin permanently dead
+                entered = False
+                try:
+                    if not self.reg.register_msims:
+                        if not self.run_pre_processing():
+                            return
+                    self._clear_napari_view(self.viewer)
+                    # register_msims is a real multiscale pyramid (built by preprocess()) - lets
+                    # napari lazily load whichever level it needs during interactive adjustment
+                    register_images = self.reg.register_msims
+                    for index, (sim_index, color) in enumerate(zip(indices, colors)):
+                        self._napari_view_add_image(self.viewer, register_images[sim_index], labels[sim_index],
+                                                    pair_transforms[index], color, affine_event=True)
+                    self.update_pair_metrics()
+                    entered = True
+                finally:
+                    if not entered:
+                        self.view_mode = ViewMode.OVERVIEW
+                        self._restore_pair_modify_state()
+
+    def _restore_pair_modify_state(self):
+        """Re-enable whatever entering pair-modify mode disabled."""
+        self.temp_widget_state.restore()
+        if self.enable_tab:
+            for section_id, was_enabled in self.temp_tab_states.items():
+                self.enable_tab(section_id, was_enabled)
 
     def calc_mod_pair_transform(self):
         transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
