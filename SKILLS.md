@@ -12,5 +12,8 @@ Distilled from recurring feedback across sessions. Follow these when making chan
 - Reserve full-suite runs for larger/riskier changes, or once before pushing a batch of combined fixes.
 - Don't create a new permanent test file per change - add tests to the existing file matching the module under test (e.g. `tests/test_utils.py` for `util.py`). Only give a feature its own test file when it's substantial/self-contained enough to warrant one.
 
+## Code style
+- Avoid `continue` statements - restructure the loop body (e.g. invert the condition) instead.
+
 ## Git
 - Small, focused commits with a "why" in the message, not a changelog of "what".
