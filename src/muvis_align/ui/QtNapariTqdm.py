@@ -63,5 +63,7 @@ class _QtNapariTqdm:
             self._pending_update = 0
 
     def _process_events(self):
+        from muvis_align.ui._utils import flush_paint_events
+
         if self._app is not None:
-            self._app.processEvents()
+            flush_paint_events()

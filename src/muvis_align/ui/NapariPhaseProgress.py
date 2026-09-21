@@ -10,13 +10,9 @@ def _paint_now():
     call would not actually appear until that call returned - which is the one time it is worth
     having.
     """
-    try:
-        from qtpy.QtWidgets import QApplication
-    except ImportError:  # pragma: no cover - Qt is always present in the napari plugin
-        return
-    app = QApplication.instance()
-    if app is not None:
-        app.processEvents()
+    from muvis_align.ui._utils import flush_paint_events
+
+    flush_paint_events()
 
 
 class NapariPhaseProgress:

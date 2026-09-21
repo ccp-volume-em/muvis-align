@@ -61,3 +61,21 @@ class VisibleActivityDock(object):
 
     def __exit__(self, type, value, traceback):
         self.viewer.window._status_bar._toggle_activity_dock(False)
+
+
+def flush_paint_events():
+    """Let Qt repaint what was just changed, without delivering pending user input.
+
+    Excluding input is what makes this safe to call from inside an event handler: a plain
+    processEvents() also delivers queued mouse events, and a ButtonRelease consumed by that
+    nested pass leaves X's implicit pointer grab stuck - the cursor keeps whatever shape it
+    had (an I-beam, over a text field) and later clicks never reach the widget under it.
+    """
+    try:
+        from qtpy.QtCore import QEventLoop
+        from qtpy.QtWidgets import QApplication
+    except ImportError:  # pragma: no cover - Qt is always present in the napari plugin
+        return
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
