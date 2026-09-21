@@ -28,12 +28,12 @@ def test_bilayers_to_magicgui_field_uses_param_name_for_value_lookup():
         'section_key': 'parameters',
         'options': [
             {'label': 'Default', 'value': 'default'},
-            {'label': 'Overlay', 'value': 'overlay'},
+            {'label': 'Stack', 'value': 'stack'},
         ],
         'default': 'default',
     }
 
-    section_params = {'pairing': 'overlay'}
+    section_params = {'pairing': 'stack'}
     spec = bilayers_to_magicgui_field(
         template_item,
         section_id='registration',
@@ -41,9 +41,9 @@ def test_bilayers_to_magicgui_field_uses_param_name_for_value_lookup():
         widget_type_map=map_bilayers_to_widget_type,
     )
 
-    assert spec.value == 'overlay'
+    assert spec.value == 'stack'
     assert spec.widget_type == 'Dropdown'
-    assert spec.choices == {'default': 'Default', 'overlay': 'Overlay'}
+    assert spec.choices == {'default': 'Default', 'stack': 'Stack'}
 
 
 def test_bilayers_spec_builds_magicgui_choice_mapping():

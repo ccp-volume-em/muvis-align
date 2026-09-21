@@ -1196,14 +1196,14 @@ class MVSRegistration:
                 return si_utils.max_project_sim(level_sim, dim='z') if 'z' in level_sim.dims else level_sim
             register_msims = [map_msim_levels(msim, level_func) for msim in register_msims]
             pairs = [(index, index + 1) for index in range(len(register_msims) - 1)]
-        elif 'ortho' in pairing or 'overla' in pairing:
+        elif 'ortho' in pairing:
             # position/size for pairing distance must match self.positions 1:1 (every source,
             # never a preprocessed/filtered register_msims subset) - self.msims (always the full,
             # untouched per-source pyramid) is exactly that, no sims needed for this metadata
             origins = np.array([get_sim_position_final(msi_utils.get_sim_from_msim(msim, scale='scale0'), position, get_center=True)
                                 for msim, position in zip(self.msims, self.positions)])
             sizes = [get_sim_physical_size(get_msim_image0(msim)) for msim in self.msims]
-            pairs, _ = get_pairs(origins, sizes, pairing)
+            pairs, _ = get_pairs(origins, sizes)
             logging.info(f'#pairs: {len(pairs)}')
             #for pair in pairs:
             #    print(f'{self.file_labels[pair[0]]} - {self.file_labels[pair[1]]}')

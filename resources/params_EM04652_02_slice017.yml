@@ -30,7 +30,6 @@ operations:
 #    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/tiles_slice394/*.ome.tif
 #    source_metadata: sbem
 #    normalisation: global
-#    #pairing: overlay
 #    transform_type: translation
 #    #registration: phase_correlation
 #    registration:

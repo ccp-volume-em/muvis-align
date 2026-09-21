@@ -182,7 +182,7 @@ registration:
   transform_type: rigid
   
   # Pairing strategy
-  pairing: orthogonal       # orthogonal, overlay, stack; unset = multiview-stitcher's own pairing
+  pairing: orthogonal       # orthogonal, stack; unset = multiview-stitcher's own pairing
   
   # Normalization
   normalisation: True       # True, False, 'global', 'individual'
@@ -217,7 +217,6 @@ registration:
 
 **Pairing Strategies:**
 - `orthogonal` - Pair orthogonal tiles (X-Y grid), avoiding diagonal / very small overlaps
-- `overlay` - Pair tiles based on overlap, for stack-like overlaps
 - `stack` - Treat the sources as a z-stack: pair consecutive views, and promote them to
   3D where the rest of the pipeline needs it
 - unset - Use multiview-stitcher's own default pairing
@@ -228,7 +227,7 @@ meant every stack-specific step was silently skipped there. Configuration files 
 `resources/` have been updated to `operation: register` with `pairing: stack`.
 
 `stack` pairs consecutive views - N to N+1, N+1 to N+2, and so on - so it is an
-alternative to `orthogonal`/`overlay`, not a modifier on them: a stack is never paired
+alternative to `orthogonal`, not a modifier on it: a stack is never paired
 orthogonally. It max-projects z to register the pairs in 2D.
 
 **Metrics:**

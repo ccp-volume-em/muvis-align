@@ -259,14 +259,12 @@ parameters:
   - name: pairing
     type: dropdown
     label: "Pairing"
-    description: "Pairing method: use orthogonal to avoid diagonal / very small overlaps, use overlay for stack-like overlaps, use stack to pair consecutive views. Default uses MVS default pairing method"
+    description: "Pairing method: use orthogonal to avoid diagonal / very small overlaps, use stack to pair consecutive views. Default uses MVS default pairing method"
     options:
       - label: Default
         value: "default"
       - label: Orthogonal
         value: "orthogonal"
-      - label: Overlay
-        value: "overlay"
       - label: Stack
         value: "stack"
     default: "default"

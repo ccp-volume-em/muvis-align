@@ -809,7 +809,7 @@ def draw_edge_filter(bounds):
     return position_weights.reshape(np.flip(bounds))
 
 
-def get_pairs(positions, sizes, pairing=None):
+def get_pairs(positions, sizes):
     """
     Get pairs of orthogonal neighbors from a list of tiles.
     Tiles don't have to be placed on a regular grid.
@@ -838,11 +838,7 @@ def get_pairs(positions, sizes, pairing=None):
             distance = math.dist(posi.values(), posj.values())
             min_distance = max(list(sizei.values()) + list(sizej.values()))
 
-        if pairing and 'overla' in pairing:
-            ok = (distance / min_distance < 0.5)
-        else:
-            ok = (distance < min_distance)
-        if ok:
+        if distance < min_distance:
             pairs.append((int(i), int(j)))
             vector = np.array(list(posi.values())) - np.array(list(posj.values()))
             angle = math.degrees(math.atan2(vector[1], vector[0]))

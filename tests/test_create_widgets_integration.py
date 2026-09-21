@@ -6,7 +6,7 @@ class MinimalInterface:
     def __init__(self):
         self.params = {
             'input_output': {
-                'pairing': 'overlay',
+                'pairing': 'stack',
                 'input_path': 'data/*.zarr',
             }
         }
@@ -27,7 +27,7 @@ def test_create_section_container_end_to_end_dropdown_and_fileedit():
             'section_key': 'parameters',
             'options': [
                 {'label': 'Default', 'value': 'default'},
-                {'label': 'Overlay', 'value': 'overlay'},
+                {'label': 'Stack', 'value': 'stack'},
             ],
             'default': 'default',
         },
@@ -53,8 +53,8 @@ def test_create_section_container_end_to_end_dropdown_and_fileedit():
     input_widget = interface.param_widgets['input_output.input_path'].widget
 
     assert pairing_widget.widget_type in {'Dropdown', 'ComboBox'}
-    assert pairing_widget.value == 'overlay'
-    assert tuple(pairing_widget.choices) == ('default', 'overlay')
+    assert pairing_widget.value == 'stack'
+    assert tuple(pairing_widget.choices) == ('default', 'stack')
 
     assert input_widget.widget_type == 'FileEdit'
     assert input_widget.filter == '*.zarr'
