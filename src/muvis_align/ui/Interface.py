@@ -1378,17 +1378,19 @@ class Interface:
 
     def pair_registration(self):
         if self.reg.is_global_registered():
-            show_warning('Global registration was already performed')
+            message = 'Global registration was already performed. '
+        elif self.reg.is_pairs_registered():
+            message = 'Pair registration was already performed. '
         else:
-            message = 'Pair registration was already performed. ' if self.reg.is_pairs_registered() else ''
-            message += 'Run pair registration?'
-            reply = QMessageBox.question(None, 'muvis-align', message,
-                                         QMessageBox.Yes|QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                if not self.run_pair_registration():
-                    return
-                self.update_registered(view_transform_key=self.reg.source_transform_key)
-                QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
+            message = ''
+        message += 'Run pair registration?'
+        reply = QMessageBox.question(None, 'muvis-align', message,
+                                     QMessageBox.Yes|QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if not self.run_pair_registration():
+                return
+            self.update_registered(view_transform_key=self.reg.source_transform_key)
+            QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
 
     def modify_pair_registration(self):
         if self.view_mode == ViewMode.PAIRS:
