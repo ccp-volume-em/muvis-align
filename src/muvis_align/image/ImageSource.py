@@ -91,15 +91,18 @@ class ImageSource:
         # {} unless a subclass (e.g. TiffImageSource) overrides this
         return {}
 
-    def get_msim(self, output_order):
-        """self.msim redimensioned to `output_order`, built once and cached per output_order -
-        build_source_msim() calls this on every run instead of redimensioning self.msim from
-        scratch each time, since redimensioning only depends on (self, output_order), never on
-        per-run geometry (translation/transform).
+    def get_msim(self, output_order, from_level=0):
+        """self.msim redimensioned to `output_order`, built once and cached per (output_order,
+        from_level) - build_source_msim() calls this on every run instead of redimensioning
+        self.msim from scratch each time, since redimensioning only depends on those, never on
+        per-run geometry (translation/transform). `from_level` starts the pyramid coarser than
+        native level 0; self.msim itself always keeps every level.
         """
-        if output_order not in self._redimensioned_msims:
-            self._redimensioned_msims[output_order] = build_source_redimensioned_msim(self, output_order)
-        return self._redimensioned_msims[output_order]
+        key = (output_order, from_level)
+        if key not in self._redimensioned_msims:
+            self._redimensioned_msims[key] = build_source_redimensioned_msim(
+                self, output_order, from_level=from_level)
+        return self._redimensioned_msims[key]
 
     def init_metadata(self):
         raise NotImplementedError("Image source should implement init_metadata() to initialize metadata,"

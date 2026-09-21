@@ -2,6 +2,7 @@ import logging
 import numpy as np
 import pytest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from muvis_align.MVSRegistration import MVSRegistration, RegState
@@ -429,3 +430,49 @@ def test_is_stack_reads_pairing_only(operation, pairing, expected):
     reg.operation = operation
     reg.pairing = pairing
     assert reg.is_stack is expected
+
+
+def _scaled_source(factors=(1, 2, 4)):
+    return SimpleNamespace(scale_factors=[{'y': factor, 'x': factor} for factor in factors],
+                           get_pixel_size=lambda: {'y': 0.5, 'x': 0.5})
+
+
+def test_ensure_msims_builds_each_scale_once_and_keeps_the_full_pyramid_shared():
+    """Pre-processing at a coarse scale must not build the finer levels it is about to drop -
+    but must also not turn scale 1 into a private second copy of the full-resolution build,
+    which is the one self.msims caches for everything else.
+    """
+    registration = MVSRegistration()
+    registration._msims = None
+    registration.sources = [_scaled_source() for _ in range(3)]
+
+    builds = []
+
+    def record_build(progress_factory=None, from_levels=None, store=True):
+        builds.append((tuple(from_levels) if from_levels else None, store))
+        msims = [f'msim{index}' for index in range(len(registration.sources))]
+        if store:
+            registration._msims = msims
+        return msims
+
+    registration._build_msims = record_build
+
+    registration.ensure_msims()
+    registration.ensure_msims()
+    registration.ensure_msims(target_scale=1)
+    registration.ensure_msims(target_scale=4)
+    registration.ensure_msims(target_scale=4)
+    registration.ensure_msims(target_scale=2)
+
+    # scale 1 skips nothing, so it reuses the full build rather than adding a fourth
+    assert builds == [(None, True), ((2, 2, 2), False), ((1, 1, 1), False)]
+    assert sorted(registration._scaled_msims) == ['2', '4']
+
+
+def test_re_resolving_geometry_drops_the_per_scale_msims_too():
+    """A per-scale build is as stale as the full one once positions/transforms are rebuilt."""
+    registration = MVSRegistration()
+    registration._scaled_msims = {'4': ['msim0']}
+    registration.reset()
+
+    assert registration._scaled_msims == {}

@@ -278,9 +278,9 @@ def test_zarr_image_source_restamped_affine_matches_native_shape():
         np.testing.assert_allclose(affine.values, own)
 
 
-def test_get_msim_caches_by_output_order():
-    """get_msim(output_order) redimensions self.msim once per distinct output_order and reuses
-    the cached result on repeat calls, rather than redoing the redimension every time
+def test_get_msim_caches_by_output_order_and_start_level():
+    """get_msim() redimensions self.msim once per distinct (output_order, from_level) and
+    reuses the cached result on repeat calls, rather than redoing the redimension every time
     build_source_msim() is called (e.g. on every init_data() re-run)."""
     source = TiffImageSource(str(DATA_DIR / TIFF_FILES[0]))
 
@@ -288,7 +288,12 @@ def test_get_msim_caches_by_output_order():
     msim_2 = source.get_msim('yx')
 
     assert msim_1 is msim_2
-    assert list(source._redimensioned_msims.keys()) == ['yx']
+    assert list(source._redimensioned_msims.keys()) == [('yx', 0)]
+
+    # a coarser start is a different pyramid, so it gets its own entry rather than the
+    # full-resolution one that happens to share an output_order
+    source.get_msim('yx', from_level=1)
+    assert sorted(source._redimensioned_msims) == [('yx', 0), ('yx', 1)]
 
     image0 = msi_utils.get_sim_from_msim(msim_1, scale='scale0')
     assert image0.dims == ('t', 'c', 'y', 'x')

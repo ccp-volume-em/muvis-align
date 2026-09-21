@@ -565,7 +565,10 @@ class Interface:
             def preprocess(worker_factory):
                 with Timer('run_pre_processing: build msims (load image data)',
                            verbose=self._timing_verbose()):
-                    msims = self.reg.ensure_msims(progress_factory=worker_factory)
+                    # at pre-processing's own scale: building the finer levels only to have
+                    # select_msim_subpyramid_at_scale() drop them is most of this phase
+                    msims = self.reg.ensure_msims(progress_factory=worker_factory,
+                                                  target_scale=params_features.get('scale'))
                 with Timer('run_pre_processing: preprocess', verbose=self._timing_verbose()):
                     return self.reg.preprocess(msims, progress_factory=worker_factory,
                                                **params_features)

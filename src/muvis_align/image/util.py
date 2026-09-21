@@ -303,13 +303,18 @@ def build_missing_pyramid_levels(data, dimension_order, pixel_size, pyramid_down
     return datas, pixel_sizes
 
 
-def build_source_redimensioned_msim(source, output_order, chunk_size=default_chunk_size):
+def build_source_redimensioned_msim(source, output_order, chunk_size=default_chunk_size,
+                                    from_level=0):
     """Redimension `source.msim`'s own per-level 'image' DataArrays into `output_order` (lazy
     transpose/expand_dims), ensure the 'c'/'t' dims every sim needs, and rechunk any level still
     monolithic in x/y. Depends only on `source` and `output_order`, never on per-run geometry
     (translation/transform) - build_source_msim() calls this through source.get_msim(), which
     caches the result, rather than redoing this work on every call. Does not mutate source.msim -
     a fresh DataTree is built and returned.
+
+    `from_level` drops the finest levels, renumbering what remains from scale0: a consumer that
+    only ever works at some coarser scale (pre-processing, registration) would otherwise pay to
+    redimension full-resolution levels it discards on the next line.
     """
     # every sim's 'c' dim is forced to exist (size 1 if the source is single-channel) by
     # si_utils.get_sim_from_array - label it unconditionally so a channel selected by name
@@ -317,22 +322,27 @@ def build_source_redimensioned_msim(source, output_order, chunk_size=default_chu
     # the source is natively multi-channel
     c_coords = [channel.get('label', '') for channel in source.get_channels()]
     datasets = {}
-    for scale_key in msi_utils.get_sorted_scale_keys(source.msim):
+    scale_keys = msi_utils.get_sorted_scale_keys(source.msim)[from_level:]
+    for level, scale_key in enumerate(scale_keys):
         image = source.msim[scale_key].ds['image']
         image = redimension_sim_data(image, source.dimension_order, output_order)
         image = ensure_spatial_image_dims(image, c_coords=c_coords)
         image = rechunk_if_monolithic(image, chunk_size)
-        datasets[scale_key] = xr.Dataset({'image': image})
+        datasets[f'scale{level}'] = xr.Dataset({'image': image})
     return DataTree.from_dict(datasets)
 
 
-def build_source_msim(source, output_order, translation, transform, transform_key, z_scale=None):
+def build_source_msim(source, output_order, translation, transform, transform_key, z_scale=None,
+                      from_level=0):
     """
     Build a new msim for `source` covering every real pyramid level, redimensioned to `output_order`
     and re-geometried with `translation` (intrinsic coords, per level) + `transform` (extrinsic affine,
     same at every level) - starting from source.get_msim(output_order) (redimensioned once, then
     cached on `source`) rather than reconstructing from raw arrays via si_utils.get_sim_from_array.
     Does not mutate the cached msim - a fresh DataTree is built and returned.
+
+    `from_level` starts the pyramid at that native level instead of the finest, renumbered from
+    scale0 - see build_source_redimensioned_msim().
     """
     if transform is None:
         spatial_dims = [dim for dim in output_order if dim in 'xyz']
@@ -347,13 +357,15 @@ def build_source_msim(source, output_order, translation, transform, transform_ke
         if 'y' not in translation_arg:
             translation_arg['y'] = 0
 
-    redimensioned_msim = source.get_msim(output_order)
+    redimensioned_msim = source.get_msim(output_order, from_level=from_level)
     scale_keys = msi_utils.get_sorted_scale_keys(redimensioned_msim)
     datasets = {}
     for level, scale_key in enumerate(scale_keys):
         image = redimensioned_msim[scale_key].ds['image']
 
-        pixel_size = dict(source.pixel_sizes[level])
+        # the source's own per-level metadata is still indexed by native level, not by where
+        # this (possibly truncated) pyramid starts
+        pixel_size = dict(source.pixel_sizes[from_level + level])
         if 'z' in output_order and 'z' not in pixel_size:
             pixel_size['z'] = abs(z_scale) if z_scale else 1
         spatial_dims = si_utils.get_spatial_dims_from_sim(image)
@@ -2670,20 +2682,27 @@ def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn
     size-1 dim (the 'z' every OME-Zarr tile carries, say) is identical at every level, so its
     residual is always the whole requested factor - counting it would report a 16x shortfall for
     a perfectly good pyramid whose x/y reach 8 of the 16 asked for.
+
+    A msim built already truncated (MVSRegistration.ensure_msims' target_scale) is shorter than
+    its source's own pyramid, and that difference is where it starts - so it is sliced from
+    there, not from the source's level 0 all over again.
     """
     result = []
     residuals = []
     for source, msim in zip(sources, msims):
         level, residual, _ = get_level_from_scale(source, target_scale)
+        scale_keys = msi_utils.get_sorted_scale_keys(msim)
+        # however many native levels this msim is missing is where it already starts
+        from_level = max(len(source.scale_factors) - len(scale_keys), 0) if source.scale_factors else 0
+        level = max(level - from_level, 0)
         # only dims this pyramid actually reduces: one whose coarsest level is no smaller than
         # its finest keeps the full target factor as its residual however complete the pyramid
         # is, which had every OME-Zarr source report the maximum possible shortfall
         coarsest = source.scale_factors[-1] if source.scale_factors else {}
         reducible = [value for dim, value in residual.items() if coarsest.get(dim, 1) > 1]
         residuals.append(max(reducible) if reducible else 1)
-        scale_keys = msi_utils.get_sorted_scale_keys(msim)[level:]
         result.append(DataTree.from_dict({f'scale{i}': msim[scale_key].ds
-                                          for i, scale_key in enumerate(scale_keys)}))
+                                          for i, scale_key in enumerate(scale_keys[level:])}))
     worst = max(residuals) if residuals else 1
     if worst >= shortfall_warn_factor:
         short = sum(1 for residual in residuals if residual >= shortfall_warn_factor)

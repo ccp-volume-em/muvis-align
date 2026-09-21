@@ -83,16 +83,30 @@ class MVSRegistration:
         """One reporting phase of the caller's operation, or nothing to report into."""
         return progress_factory(total=total, desc=desc) if progress_factory is not None else nullcontext(None)
 
-    def ensure_msims(self, progress_factory=None):
-        # same lazy build the msims property triggers, but callable ahead of time with a
-        # progress_factory - lets a caller that's about to force this (e.g. run_pre_processing())
-        # show fine-grained, per-source progress for it instead of it happening silently as a
-        # side effect of evaluating `self.msims` as a plain argument expression
+    def ensure_msims(self, progress_factory=None, target_scale=None):
+        """The lazy build the msims property triggers, callable ahead of time with a
+        progress_factory - lets a caller about to force this (e.g. run_pre_processing()) show
+        per-source progress instead of it happening silently as a plain argument expression.
+
+        `target_scale` builds each source's pyramid from the level that scale needs, skipping
+        finer levels the caller is about to discard anyway. Those are cached per scale, never
+        as self.msims, which stays the full-resolution pyramid everything else reads.
+        """
+        key = str(target_scale)
+        if target_scale and key not in self._scaled_msims:
+            from_levels = [get_level_from_scale(source, target_scale)[0] for source in self.sources]
+            # nothing to skip (scale 1, or no source has a coarser level): the shared
+            # full-resolution build is this build, so take it rather than a private copy
+            if any(from_levels):
+                self._scaled_msims[key] = self._build_msims(progress_factory=progress_factory,
+                                                            from_levels=from_levels, store=False)
+        if key in self._scaled_msims:
+            return self._scaled_msims[key]
         if self._msims is None:
             self._build_msims(progress_factory=progress_factory)
         return self._msims
 
-    def _build_msims(self, progress_factory=None):
+    def _build_msims(self, progress_factory=None, from_levels=None, store=True):
         progress_context = (
             progress_factory(total=len(self.sources), desc='Building sources')
             if progress_factory is not None
@@ -122,7 +136,8 @@ class MVSRegistration:
             source_start, cpu_start = time.time(), time.thread_time()
             msim = build_source_msim(self.sources[index], self._msim_output_order,
                                      self.positions[index], self._msim_transforms[index],
-                                     self.source_transform_key, z_scale=self._msim_z_scale)
+                                     self.source_transform_key, z_scale=self._msim_z_scale,
+                                     from_level=from_levels[index] if from_levels else 0)
             source_times.append(time.time() - source_start)
             source_cpu_times.append(time.thread_time() - cpu_start)
             return msim
@@ -143,11 +158,13 @@ class MVSRegistration:
                 msims[0] = build_msim(0)
                 if pbar is not None:
                     pbar.update(1)
-        self._msims = msims
+        if store:
+            self._msims = msims
         if self.logging_time and source_times:
             logging.info(f'Build msims: {len(source_times)} sources'
                          f' {format_phase_timing(time.time() - phase_start, source_times, source_cpu_times,
                                                  max_workers, time.process_time() - phase_cpu_start)}')
+        return msims
 
     def reset(self):
         self.state = RegState.UNINIT
@@ -158,6 +175,7 @@ class MVSRegistration:
         self.extra_metadata = {}
         self.msims = []
         self.register_msims = None
+        self._scaled_msims = {}
         self.sources = []
         self.metrics = {}
         self.register_indices = None
@@ -714,6 +732,9 @@ class MVSRegistration:
             self._msim_z_scale = z_scale
             self._msim_transforms = transforms
             self._msims = None
+            # the geometry every msim was built with has just been re-resolved, so the
+            # per-scale builds are as stale as the full-resolution one
+            self._scaled_msims = {}
             return None
 
         return msims
