@@ -5,7 +5,7 @@ import pytest
 
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
-    find_sbemimage_meta_dir, to_posix_path
+    find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage
 
 
 @pytest.mark.parametrize(
@@ -169,3 +169,29 @@ def test_resolve_to_project_dir_normalises_separators_without_a_base_dir():
 
 def test_relativize_to_project_dir_normalises_separators_without_a_base_dir():
     assert relativize_to_project_dir('C:\\proj\\data', None) == 'C:/proj/data'
+
+
+def test_process_memory_tracks_an_allocation_or_says_it_cannot():
+    """Memory reporting is what a killed run leaves behind, so it has to work where the run
+    happens (Linux) and be harmless where it does not - never raising, never guessing.
+    """
+    before = get_process_memory()
+    assert len(before) == 2
+
+    if before[0] is None and before[1] is None:
+        # a platform with neither /proc nor resource nor the Windows API: say nothing, quietly
+        assert print_memory_usage() == ''
+        return
+
+    block = np.ones(200 * 1024 * 1024 // 8)
+    after = get_process_memory()
+    try:
+        if before[0] is not None:
+            assert after[0] - before[0] > 100 * 1024 ** 2
+        if before[1] is not None:
+            # peak is the figure an OOM post-mortem needs, so it must not fall back
+            assert after[1] >= after[0] if after[0] is not None else True
+            assert after[1] >= before[1]
+    finally:
+        del block
+    assert 'rss' in print_memory_usage() or 'peak' in print_memory_usage()

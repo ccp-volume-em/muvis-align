@@ -10,6 +10,7 @@ import math
 import numpy as np
 import os.path
 import re
+import sys
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
 from xarray import DataArray
@@ -910,6 +911,72 @@ def metric_to_color(value):
     else:
         color = 'red'
     return color
+
+
+def get_process_memory():
+    """This process's (resident, peak resident) memory in bytes, or None where the platform
+    will not say. No psutil - deliberately not a dependency of this package, see
+    constants._available_memory() for the same reasoning.
+    """
+    resident = peak = None
+    try:
+        with open('/proc/self/statm') as file:
+            resident = int(file.read().split()[1]) * os.sysconf('SC_PAGE_SIZE')
+    except (OSError, ValueError, AttributeError, IndexError):
+        pass
+    try:
+        import resource
+        # ru_maxrss is kilobytes on Linux but bytes on macOS
+        max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        peak = max_rss if sys.platform == 'darwin' else max_rss * 1024
+    except (ImportError, AttributeError, OSError, ValueError):
+        pass
+    if resident is None and peak is None:
+        resident, peak = _windows_process_memory()
+    return resident, peak
+
+
+def _windows_process_memory():
+    # neither /proc nor resource exists here - ask the kernel, as _available_memory() does
+    try:
+        import ctypes
+
+        class _ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [('cb', ctypes.c_ulong), ('PageFaultCount', ctypes.c_ulong),
+                        ('PeakWorkingSetSize', ctypes.c_size_t), ('WorkingSetSize', ctypes.c_size_t),
+                        ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                        ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                        ('PagefileUsage', ctypes.c_size_t), ('PeakPagefileUsage', ctypes.c_size_t)]
+
+        counters = _ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(_ProcessMemoryCounters)
+        kernel32 = ctypes.windll.kernel32
+        # the pseudo-handle is -1, which ctypes' default int restype truncates on 64-bit
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.K32GetProcessMemoryInfo.argtypes = [ctypes.c_void_p,
+                                                     ctypes.POINTER(_ProcessMemoryCounters),
+                                                     ctypes.c_ulong]
+        if kernel32.K32GetProcessMemoryInfo(kernel32.GetCurrentProcess(),
+                                            ctypes.byref(counters), counters.cb):
+            return int(counters.WorkingSetSize), int(counters.PeakWorkingSetSize)
+    except Exception:
+        pass
+    return None, None
+
+
+def print_memory_usage():
+    """' rss 1.2GB (peak 3.4GB)' for a log line, or '' where the platform will not say."""
+    resident, peak = get_process_memory()
+    if resident is None and peak is None:
+        return ''
+    parts = []
+    if resident is not None:
+        parts.append(f'rss {print_hbytes(resident)}')
+    if peak is not None:
+        parts.append(f'peak {print_hbytes(peak)}')
+    return ' ' + ' '.join(parts)
 
 
 def to_posix_path(path):

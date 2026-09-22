@@ -2,6 +2,8 @@ import logging
 import threading
 import time
 
+from muvis_align.util import print_memory_usage
+
 
 def _paint_now():
     """Give Qt one pass to paint what was just shown.
@@ -139,7 +141,7 @@ class NapariPhaseProgress:
             # only for operations long enough to have logged their way up - a short one would
             # only ever log 100%, which says nothing
             so_far = (f'{elapsed / 60:.1f} minutes' if elapsed >= 60 else f'{elapsed:.0f} seconds')
-            logging.info(f'{self.desc or "Working"}: 100% ({so_far})')
+            logging.info(f'{self.desc or "Working"}: 100% ({so_far}){print_memory_usage()}')
         if elapsed >= self.completion_dwell_seconds:
             time.sleep(self.completion_dwell_seconds)
 
@@ -156,7 +158,7 @@ class NapariPhaseProgress:
                           else f'{elapsed:.0f} seconds')
                 logging.info(f'{self.desc or "Working"}:'
                              f' {self._position / self.ticks * 100:.0f}%'
-                             f' ({so_far} so far)')
+                             f' ({so_far} so far){print_memory_usage()}')
 
         self._heartbeat = threading.Thread(target=heartbeat, daemon=True,
                                            name='muvis-align progress')

@@ -3,6 +3,8 @@
 import logging
 import time
 
+from muvis_align.util import print_memory_usage
+
 
 class Timer(object):
     def __init__(self, title, auto_unit=True, verbose=True):
@@ -30,7 +32,8 @@ class Timer(object):
                     pelapsed /= 60
                     elapsed /= 60
                     unit = 'hours'
-            logging.info(f'Time {self.title}: {elapsed:.1f} ({pelapsed:.1f}) {unit}')
+            logging.info(f'Time {self.title}: {elapsed:.1f} ({pelapsed:.1f}) {unit}'
+                         f'{print_memory_usage()}')
 
     def reset(self):
         self.total_ptime = 0
