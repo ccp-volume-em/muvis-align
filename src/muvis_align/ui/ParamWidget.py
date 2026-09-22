@@ -1,6 +1,7 @@
 from qtpy.QtWidgets import QHeaderView
 
 from muvis_align.ui.bilayers_util import to_magicgui_choices
+from muvis_align.util import to_posix_path
 
 
 class ParamWidget:
@@ -30,9 +31,9 @@ class ParamWidget:
             if isinstance(value0, dict):
                 value = update_dict_value(value0, value)
         elif self.to_str:
-            # don't rewrite the line edit live - it would erase a trailing '/' as the user
-            # types it. Display is re-synced on Process instead (update_input_output_path()).
-            value = str(value)
+            # the widget's own text is left as typed - rewriting it live would erase a
+            # trailing '/' mid-typing; the display re-syncs on Process (update_input_output_path)
+            value = to_posix_path(str(value))
         self.interface.change_param(self.param_name, value)
 
     def set_table_column_resize_mode(self, mode=QHeaderView.Stretch):

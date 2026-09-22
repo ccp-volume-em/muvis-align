@@ -912,6 +912,12 @@ def metric_to_color(value):
     return color
 
 
+def to_posix_path(path):
+    # one separator everywhere: Windows reports '\' (file dialogs, pathlib) but accepts '/'
+    # just as well, so a path is converted on the way in and stays '/' from there on
+    return path.replace('\\', '/') if isinstance(path, str) else path
+
+
 def eval_path(path):
     if ',' in path:
         parts = path.split(',')
@@ -929,7 +935,7 @@ def resolve_to_project_dir(path, base_dir):
     # joined with base_dir before use. Always returned with forward slashes, even on
     # Windows, so the path is consistent whether it ends up in the UI or on disk.
     if not path or not base_dir:
-        return path
+        return to_posix_path(path)
     parts = [part.strip() for part in path.split(',')]
     resolved = []
     for part in parts:
@@ -937,7 +943,7 @@ def resolve_to_project_dir(path, base_dir):
             resolved.append(part)
         else:
             joined = part if os.path.isabs(part) else os.path.join(base_dir, part)
-            resolved.append(os.path.normpath(joined).replace('\\', '/'))
+            resolved.append(to_posix_path(os.path.normpath(joined)))
     return ', '.join(resolved)
 
 
@@ -947,21 +953,21 @@ def relativize_to_project_dir(path, base_dir):
     # form before it is stored, so the project file keeps portable relative paths. Always
     # returned with forward slashes, even on Windows.
     if not path or not base_dir:
-        return path
+        return to_posix_path(path)
     parts = [part.strip() for part in path.split(',')]
     relativized = []
     for part in parts:
         if not part:
             relativized.append(part)
         elif not os.path.isabs(part):
-            relativized.append(part.replace('\\', '/'))
+            relativized.append(to_posix_path(part))
         else:
             try:
-                relativized.append(os.path.relpath(part, base_dir).replace('\\', '/'))
+                relativized.append(to_posix_path(os.path.relpath(part, base_dir)))
             except ValueError:
                 # path is on a different drive than the project dir (Windows) - can't be
                 # made relative, keep it absolute
-                relativized.append(part.replace('\\', '/'))
+                relativized.append(to_posix_path(part))
     return ', '.join(relativized)
 
 
@@ -972,7 +978,7 @@ def import_metadata(content, fields=None, input_path=None):
         if input_path and not isinstance(content, dict):
             if isinstance(input_path, list):
                 input_path = input_path[0]
-            content = os.path.normpath(os.path.join(os.path.dirname(input_path), content))
+            content = to_posix_path(os.path.normpath(os.path.join(os.path.dirname(input_path), content)))
         if ext == '.csv':
             content = import_csv(content)
         elif ext in ['.json', '.ome.json']:

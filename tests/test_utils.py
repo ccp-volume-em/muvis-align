@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from muvis_align.util import calculate_rigid_difference, create_transform, \
-    pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, find_sbemimage_meta_dir
+    pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
+    find_sbemimage_meta_dir, to_posix_path
 
 
 @pytest.mark.parametrize(
@@ -142,3 +143,29 @@ def test_find_sbemimage_meta_dir_returns_none_when_not_found(tmp_path):
     filename = str(tmp_path / 'subset' / 'sample.ome.tif')
 
     assert find_sbemimage_meta_dir(filename) is None
+
+
+@pytest.mark.parametrize('path, expected', [
+    ('C:\\proj\\data', 'C:/proj/data'),
+    ('data\\input\\', 'data/input/'),
+    ('data/input/', 'data/input/'),
+    ('C:/proj/data', 'C:/proj/data'),
+    ('', ''),
+])
+def test_to_posix_path_converts_separators_and_keeps_a_trailing_one(path, expected):
+    assert to_posix_path(path) == expected
+
+
+@pytest.mark.parametrize('value', [None, 3, ['a\\b']])
+def test_to_posix_path_passes_non_strings_through(value):
+    # a path param can hold a list (a comma-separated input_path, once eval_path has split it)
+    assert to_posix_path(value) is value
+
+
+def test_resolve_to_project_dir_normalises_separators_without_a_base_dir():
+    # nothing to resolve against (an unsaved project), but the separators are still ours
+    assert resolve_to_project_dir('C:\\proj\\data', None) == 'C:/proj/data'
+
+
+def test_relativize_to_project_dir_normalises_separators_without_a_base_dir():
+    assert relativize_to_project_dir('C:\\proj\\data', None) == 'C:/proj/data'
