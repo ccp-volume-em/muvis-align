@@ -151,3 +151,48 @@ def test_result_is_always_within_budget_or_as_coarse_as_possible(budget_gb):
 
     levels = len(msi_utils.get_sorted_scale_keys(capped[0]))
     assert fused_bytes(capped) <= budget or levels == 1
+
+
+def test_drop_finest_level_takes_several_levels_at_once():
+    """Dropping N levels must cost one rebuild, not N - each pass rebuilds every msim, which
+    on a large project is minutes per level dropped.
+    """
+    msims = grid(levels=4)
+
+    reduced, changed = drop_finest_msim_level(msims, levels=2)
+
+    assert changed is True
+    assert len(msi_utils.get_sorted_scale_keys(reduced[0])) == 2
+    assert reduced[0]['scale0'].ds['image'].shape == msims[0]['scale2'].ds['image'].shape
+
+    # asking for more than there are leaves the coarsest level rather than emptying the msim
+    floored, changed = drop_finest_msim_level(grid(levels=3), levels=9)
+    assert changed is True
+    assert len(msi_utils.get_sorted_scale_keys(floored[0])) == 1
+
+
+def test_reduction_reaches_the_budget_in_one_round_however_far_over_it_starts():
+    """The reduction is computed from how far over budget the fusion is, not found by dropping
+    one level and asking again: re-estimating over every source is itself minutes at scale.
+    """
+    msims = grid(levels=5)
+    # far enough over that the one-at-a-time loop needed four rounds to get under
+    budget = fused_bytes(msims) // 200
+
+    estimates = []
+    real_estimate = estimate_fused_size
+
+    def counting_estimate(*args, **kwargs):
+        estimates.append(1)
+        return real_estimate(*args, **kwargs)
+
+    import muvis_align.image.util as image_util
+    image_util.estimate_fused_size = counting_estimate
+    try:
+        reduced = reduce_msims_to_fused_size(msims, KEY, max_bytes=budget)
+    finally:
+        image_util.estimate_fused_size = real_estimate
+
+    assert fused_bytes(reduced) <= budget
+    # one to see it is over, one to confirm where it landed
+    assert len(estimates) <= 3

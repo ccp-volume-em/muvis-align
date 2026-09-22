@@ -867,12 +867,18 @@ class Interface:
             return self._progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
+        # copy_transforms_to_msims() below is the only step here that writes into a msim,
+        # and before registration there is no registered transform for it to write. The
+        # steps between hand back the objects they were given whenever they have nothing
+        # to change, so anything added here that mutates one needs this flag too.
+        writes_transforms = not (show_preprocessed
+                                 and transform_key == self.reg.source_transform_key)
         if show_preprocessed:
-            # copy to avoid transform changes below leaking into the stored register_msims
             with phase(1 / 12, total=1) as pbar, \
                  Timer(f'_create_napari_data: copy {len(self.reg.register_msims)} register_msims',
                       verbose=self._timing_verbose()):
-                msims = [msim.copy(deep=True) for msim in self.reg.register_msims]
+                msims = ([msim.copy(deep=True) for msim in self.reg.register_msims]
+                         if writes_transforms else list(self.reg.register_msims))
                 if pbar is not None:
                     pbar.update(1)
             # promoted here so the size estimate below sees the geometry fuse() will: it
@@ -922,7 +928,7 @@ class Interface:
              Timer('_create_napari_data: copy_transforms_to_msims', verbose=self._timing_verbose()):
             # before registration there is no registered transform to copy, and reading
             # self.reg.msims for it forces the full build get_best_transform_key() just avoided
-            if not (show_preprocessed and transform_key == self.reg.source_transform_key):
+            if writes_transforms:
                 transform_msims = self.reg.msims
                 if show_preprocessed and self.reg.register_indices is not None:
                     # pre-processing may have dropped sources (filter_foreground) - pair each

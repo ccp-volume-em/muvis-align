@@ -2448,20 +2448,25 @@ def extract_sims_from_msims(msims, sources, transform_key, target_scale):
     return sims
 
 
-def drop_finest_msim_level(msims):
-    """Each msim minus its finest level, as a genuine (shallower) sub-pyramid - pure msim
-    slicing, the same construction select_msim_subpyramid_at_scale() uses. Returns
+def drop_finest_msim_level(msims, levels=1):
+    """Each msim minus its `levels` finest levels, as a genuine (shallower) sub-pyramid - pure
+    msim slicing, the same construction select_msim_subpyramid_at_scale() uses. Returns
     (msims, changed); an msim already down to a single level is returned untouched, and
     `changed` is False when none of them could be reduced any further.
+
+    Several levels at once, rather than a pass each: every pass rebuilds all of them, which on
+    a 34k-source project is minutes of DataTree construction per level dropped.
     """
     result = []
     changed = False
     for msim in msims:
         scale_keys = msi_utils.get_sorted_scale_keys(msim)
-        if len(scale_keys) > 1:
+        dropped = min(levels, len(scale_keys) - 1)
+        if dropped > 0:
             changed = True
             result.append(DataTree.from_dict({f'scale{index}': msim[scale_key].ds
-                                              for index, scale_key in enumerate(scale_keys[1:])}))
+                                              for index, scale_key
+                                              in enumerate(scale_keys[dropped:])}))
         else:
             result.append(msim)
     return result, changed
@@ -2684,11 +2689,17 @@ def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_m
     original_size = size
     reduced = msims
     for _ in range(max_steps):
+        # how far over budget decides how many levels to drop, rather than dropping one and
+        # asking again: each round rebuilds every msim and re-estimates over all of them, which
+        # on a 34k-source project is minutes apiece. A level halves x and y, so it quarters the
+        # fused result - the estimate below still has the last word, since sources whose pyramid
+        # runs out first reduce by less than that.
+        steps = max(int(np.ceil(np.log(size / max_bytes) / np.log(4))), 1)
         # a real coarser level where one exists (free - it is already in the file), otherwise
         # strided down for display only
-        coarser, changed = drop_finest_msim_level(reduced)
+        coarser, changed = drop_finest_msim_level(reduced, levels=steps)
         if not changed:
-            coarser, changed = coarsen_msims(reduced)
+            coarser, changed = coarsen_msims(reduced, factor=2 ** steps)
         if not changed:
             logging.warning(
                 f'{label}: fusing {print_hbytes(size)}, over the'

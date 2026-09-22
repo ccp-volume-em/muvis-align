@@ -2451,3 +2451,45 @@ def test_preprocessed_preview_does_not_force_the_full_resolution_msims():
     interface._create_napari_data(reg.source_transform_key, show_preprocessed=True)
 
     assert reg._msims is None
+
+
+def test_preprocessed_preview_leaves_the_stored_register_msims_alone():
+    """Skipping the defensive copy is only safe while nothing writes into these msims.
+
+    The steps between hand back the very objects they were given whenever they have nothing to
+    change - make_msims_3d returns an already-3D msim as-is, and the size cap returns its input
+    untouched when it already fits - so a transform written afterwards would land in
+    reg.register_msims itself.
+    """
+    from multiview_stitcher import msi_utils
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    source_metadata = {
+        'position': {'z': 'fn[-2]', 'y': 0.0, 'x': 'fn[-2]*30'},
+        'scale': {'z': '1', 'y': '0.032', 'x': '0.032'},
+    }
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=['data/S000/000_000_0.tiff', 'data/S000/000_001_0.tiff'],
+        output_path='../../output/test_preprocessed_preview_no_mutation/',
+        source_metadata=source_metadata,
+    )
+    reg.init_data(source_metadata=source_metadata)
+    reg.preprocess(reg.msims, scale=None, flatfield_quantiles='', normalisation='none',
+                   filter_foreground=False)
+
+    def stored_transforms():
+        return [np.asarray(msi_utils.get_transform_from_msim(msim, reg.source_transform_key))
+                for msim in reg.register_msims]
+
+    before = stored_transforms()
+
+    interface = Interface.__new__(Interface)
+    interface.reg = reg
+    interface.params = {'input_output': {'registration_dimension': 'space'}}
+    interface.extra_metadata = {}
+    interface._create_napari_data(reg.source_transform_key, show_preprocessed=True)
+
+    for original, current in zip(before, stored_transforms()):
+        np.testing.assert_array_equal(original, current)
