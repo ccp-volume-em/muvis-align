@@ -64,14 +64,20 @@ def make_pyramid_source(nlevels=4, size=1024, pixel_size=0.5):
         shapes.append((side, side))
         pixel_sizes.append({'y': pixel_size * 2 ** level, 'x': pixel_size * 2 ** level})
         data.append(da.zeros((side, side), chunks=(256, 256), dtype=np.uint16))
+    # c_coords as ImageSource._build_msim passes them, so the msim this fake offers is the one
+    # a real source would have - an unlabelled 'c' would differ from the raw-array path for a
+    # reason no real source has
     sims = [si_utils.get_sim_from_array(array, dims=['y', 'x'], scale=pixel_sizes[level],
                                         translation={'y': 11.0, 'x': 23.0},
-                                        transform_key='source_metadata')
+                                        transform_key='source_metadata',
+                                        c_coords=['channel 0'])
             for level, array in enumerate(data)]
     source = SimpleNamespace(
         msim=msi_utils.get_msim_from_sims(sims), dimension_order='yx', shapes=shapes,
-        shape=shapes[0], pixel_sizes=pixel_sizes, get_channels=lambda: [],
+        shape=shapes[0], pixel_sizes=pixel_sizes, data=data,
+        get_channels=lambda: [{'label': 'channel 0'}],
         get_pixel_size=lambda: pixel_sizes[0],
+        position={'y': 11.0, 'x': 23.0},
         scale_factors=[{'y': shapes[0][0] / s[0], 'x': shapes[0][1] / s[1]} for s in shapes],
         _redimensioned_msims={})
     source.get_msim = lambda output_order, from_level=0: build_source_redimensioned_msim(
@@ -125,3 +131,39 @@ def test_building_at_a_scale_then_selecting_it_matches_building_everything_first
         scale)[0]
 
     assert describe_levels(scaled) == describe_levels(full)
+
+
+@pytest.mark.parametrize('output_order, z_scale', [('yx', None), ('zyx', 2.5), ('cyx', None)])
+def test_level_images_from_raw_arrays_match_the_ones_from_the_source_msim(output_order, z_scale):
+    """The two ways a level's image can be obtained must be indistinguishable.
+
+    Building from the source's own arrays skips a get_sim_from_array and a DataTree per source,
+    but a source with no raw arrays (a natively-read OME-Zarr) still comes through its msim, so
+    both paths stay live and have to describe the same image.
+    """
+    from_arrays = make_pyramid_source()
+    from_msim = make_pyramid_source()
+    from_msim.data = []
+
+    built_from_arrays = build_source_msim(from_arrays, output_order, {'y': 11.0, 'x': 23.0}, None,
+                                          'source_metadata', z_scale=z_scale)
+    built_from_msim = build_source_msim(from_msim, output_order, {'y': 11.0, 'x': 23.0}, None,
+                                        'source_metadata', z_scale=z_scale)
+
+    assert describe_levels(built_from_arrays) == describe_levels(built_from_msim)
+    for scale_key in msi_utils.get_sorted_scale_keys(built_from_arrays):
+        from_array_sim = msi_utils.get_sim_from_msim(built_from_arrays, scale=scale_key)
+        from_msim_sim = msi_utils.get_sim_from_msim(built_from_msim, scale=scale_key)
+        assert from_array_sim.dims == from_msim_sim.dims
+        assert from_array_sim.chunksizes == from_msim_sim.chunksizes
+        assert list(from_array_sim.coords['c'].values) == list(from_msim_sim.coords['c'].values)
+
+
+def test_building_levels_from_raw_arrays_never_builds_the_source_msim():
+    """The point of the raw-array path: a source whose msim would cost a get_sim_from_array per
+    level must not have it built behind the optimisation's back.
+    """
+    source = make_pyramid_source()
+    del source.msim
+
+    build_source_msim(source, 'yx', {'y': 11.0, 'x': 23.0}, None, 'source_metadata')

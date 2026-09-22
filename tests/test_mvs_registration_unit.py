@@ -296,7 +296,9 @@ def test_init_data_defers_msim_construction_to_first_msims_read():
     msims = reg.msims
     assert len(msims) == 2
     assert reg._msims is msims
-    assert all(source._msim is not None for source in reg.sources)
+    # and not even then is each source's own msim built: the run's msims come straight off the
+    # source's arrays, so the get_sim_from_array per level that one would cost never happens
+    assert all(source._msim is None for source in reg.sources)
 
 
 def test_select_pair_overlap_then_register_overlap_matches_register_pairs():

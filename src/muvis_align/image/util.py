@@ -315,21 +315,57 @@ def build_source_redimensioned_msim(source, output_order, chunk_size=default_chu
     `from_level` drops the finest levels, renumbering what remains from scale0: a consumer that
     only ever works at some coarser scale (pre-processing, registration) would otherwise pay to
     redimension full-resolution levels it discards on the next line.
+
+    Built from the source's own arrays where it has them, not from source.msim - see
+    _source_level_images().
     """
-    # every sim's 'c' dim is forced to exist (size 1 if the source is single-channel) by
-    # si_utils.get_sim_from_array - label it unconditionally so a channel selected by name
-    # (e.g. registration's 'channel' param) can be found via .sel(c=...) regardless of whether
-    # the source is natively multi-channel
-    c_coords = [channel.get('label', '') for channel in source.get_channels()]
+    # None, not []: a source reporting no channels at all still gets the forced 'c' dim, and an
+    # empty label list cannot be assigned to it
+    c_coords = [channel.get('label', '') for channel in source.get_channels()] or None
     datasets = {}
-    scale_keys = msi_utils.get_sorted_scale_keys(source.msim)[from_level:]
-    for level, scale_key in enumerate(scale_keys):
-        image = source.msim[scale_key].ds['image']
+    for level, image in enumerate(_source_level_images(source, output_order, from_level)):
         image = redimension_sim_data(image, source.dimension_order, output_order)
         image = ensure_spatial_image_dims(image, c_coords=c_coords)
+        # every 'c', not just one ensure_spatial_image_dims added itself: a channel selected by
+        # name (registration's 'channel' param) is found via .sel(c=...), so it needs the label
+        if c_coords and 'c' in image.dims and len(c_coords) == image.sizes['c']:
+            image = image.assign_coords(c=list(c_coords))
         image = rechunk_if_monolithic(image, chunk_size)
         datasets[f'scale{level}'] = xr.Dataset({'image': image})
     return DataTree.from_dict(datasets)
+
+
+def _source_level_images(source, output_order, from_level):
+    """One image per pyramid level, taken straight off the source's own arrays.
+
+    Reading them out of source.msim instead costs a get_sim_from_array per level and a whole
+    DataTree to hold them, and every coordinate that assigns is overwritten again by
+    build_source_msim()'s own geometry - ~18ms a source that this path never needs. A source
+    with no raw arrays to offer (an OME-Zarr read natively - see
+    ZarrImageSource._build_msim_natively) has nowhere else to come from, so it still goes
+    through its msim; test_level_images_from_raw_arrays_match_the_ones_from_the_source_msim
+    holds the two together.
+    """
+    data = getattr(source, 'data', None)
+    if not data:
+        scale_keys = msi_utils.get_sorted_scale_keys(source.msim)[from_level:]
+        return [source.msim[scale_key].ds['image'] for scale_key in scale_keys]
+
+    translation = dict(source.position)
+    if translation:
+        translation.setdefault('x', 0)
+        translation.setdefault('y', 0)
+    images = []
+    for level, array in enumerate(data[from_level:]):
+        image = xr.DataArray(array, dims=list(source.dimension_order))
+        # a spatial dim output_order drops keeps the coord get_sim_from_array gave it, as the
+        # scalar its isel leaves behind - carry it over rather than silently dropping it
+        pixel_size = source.pixel_sizes[from_level + level]
+        dropped = {dim: translation.get(dim, 0) + np.arange(image.sizes[dim]) * pixel_size.get(dim, 1)
+                   for dim in source.dimension_order
+                   if dim in 'zyx' and dim not in output_order and dim in image.dims}
+        images.append(image.assign_coords(dropped) if dropped else image)
+    return images
 
 
 def build_source_msim(source, output_order, translation, transform, transform_key, z_scale=None,
