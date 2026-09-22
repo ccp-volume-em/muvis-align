@@ -985,6 +985,15 @@ def to_posix_path(path):
     return path.replace('\\', '/') if isinstance(path, str) else path
 
 
+def path_param_to_text(value):
+    # a multi-path param (several globs) can be stored either as one comma-separated string or
+    # as a yaml list - the path widgets show, and the path helpers below take, a single line of
+    # text either way
+    if isinstance(value, (list, tuple)):
+        return ', '.join(str(part).strip() for part in value)
+    return '' if value is None else str(value)
+
+
 def eval_path(path):
     if ',' in path:
         parts = path.split(',')

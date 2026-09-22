@@ -37,7 +37,7 @@ from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
-    calculate_rigid_difference, operation_to_past_participle, eval_path, \
+    calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
     resolve_to_project_dir, relativize_to_project_dir
 
 
@@ -188,12 +188,14 @@ class Interface:
         # line edit's text is set directly instead, bypassing that conversion
         params = self.params['input_output']
         widget = self.param_widgets.get('input_output.input_path')
-        input_path = params.get('input_path', '')
-        if widget is not None and isinstance(eval_path(input_path), str):
+        # several comma-separated globs are one valid path value - show them as they are stored
+        # rather than leaving the widget empty (the widget holds plain text, not a single file)
+        input_path = path_param_to_text(params.get('input_path', ''))
+        if widget is not None:
             self._set_path_widget_text(widget, input_path)
         widget = self.param_widgets.get('input_output.output_path')
-        output_path = params.get('output_path', '')
-        if widget is not None and isinstance(eval_path(output_path), str):
+        output_path = path_param_to_text(params.get('output_path', ''))
+        if widget is not None:
             self._set_path_widget_text(widget, output_path)
         resolved_output_path = resolve_to_project_dir(output_path, self.get_project_dir())
         init_logging(log_filename=os.path.join(resolved_output_path, 'muvis-align.log'), verbose=self.verbose)
@@ -263,12 +265,12 @@ class Interface:
         self.update_input_output_path()
         params = self.params['input_output']
         project_dir = self.get_project_dir()
-        output = resolve_to_project_dir(str(params['output_path']), project_dir)
+        output = resolve_to_project_dir(path_param_to_text(params['output_path']), project_dir)
         if not self.reg.is_initialised() or self.need_source_reinit:
             self.need_source_reinit = False
             if not output.endswith('/'):
                 output += '/'
-            input_path = resolve_to_project_dir(params['input_path'], project_dir)
+            input_path = resolve_to_project_dir(path_param_to_text(params['input_path']), project_dir)
             # one bar for opening the project - reading the sources and loading any saved
             # registration. It finishes before the view work starts, which shows the one bar
             # after it (see _show_loaded_project(), _operation_progress())
