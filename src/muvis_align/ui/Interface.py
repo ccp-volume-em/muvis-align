@@ -564,8 +564,11 @@ class Interface:
         params_features = self.params['pre_processing']
         # both phases below (per-source msim build, then pre-processing itself) report into the
         # one bar this opens - or into the caller's, when pre-processing is a phase of a larger
-        # operation such as loading a saved project
-        with self._operation_progress('Pre-processing', progress_factory, phases=2) as progress_factory, \
+        # operation such as loading a saved project. The build only reports when it actually
+        # runs: reserving its half for msims already built left the bar (and its time estimate)
+        # finishing at 50%, the end of the one phase that did run
+        phases = 2 if self.reg.msims_build_pending(params_features.get('scale')) else 1
+        with self._operation_progress('Pre-processing', progress_factory, phases=phases) as progress_factory, \
              Timer('pre_processing_process', verbose=self._timing_verbose()):
             # self.reg.msims is built lazily (see MVSRegistration.msims) - building it here
             # explicitly, through ensure_msims(), gives that per-source construction its own

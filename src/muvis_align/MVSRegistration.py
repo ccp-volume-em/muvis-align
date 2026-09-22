@@ -106,6 +106,23 @@ class MVSRegistration:
             self._build_msims(progress_factory=progress_factory)
         return self._msims
 
+    def msims_build_pending(self, target_scale=None):
+        """Whether ensure_msims() would actually build - i.e. report a phase of its own.
+
+        A caller sizes its bar by how many phases it expects (see Interface._operation_progress).
+        Reserving one for a build that is already cached leaves that slice unused, and the bar
+        stops at the end of the phases that did run - pre-processing over already-built msims
+        finished at half a bar, with a time estimate to match.
+        """
+        key = str(target_scale)
+        if key in self._scaled_msims:
+            return False
+        if target_scale:
+            from_levels = [get_level_from_scale(source, target_scale)[0] for source in self.sources]
+            if any(from_levels):
+                return True
+        return self._msims is None
+
     def _build_msims(self, progress_factory=None, from_levels=None, store=True):
         progress_context = (
             progress_factory(total=len(self.sources), desc='Building sources')
