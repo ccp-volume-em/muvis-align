@@ -739,6 +739,18 @@ class MVSRegistration:
 
         return msims
 
+    def has_saved_progress(self, output_filename=None, output_format=None):
+        """Whether there is a saved registration to resume - the same files check_progress()
+        reads, without moving the state machine, for a caller asking before init_data() has run.
+        Without an output filename only the mappings are checked, the fused output being the one
+        of the three that is named after the operation.
+        """
+        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
+        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        return bool((output_filename and self.output_exists(output_filename, output_format))
+                    or os.path.exists(mappings_filename)
+                    or os.path.exists(pair_mappings_filename))
+
     def check_progress(self, output_filename, output_format):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)

@@ -122,6 +122,27 @@ class NapariPhaseProgress:
         """
         self.phases_left = max(self.phases_left, float(phases))
 
+    # how long a filled bar is held before closing: one painted frame is not reliably seen over
+    # a remote display, which is what made every operation look like it stopped where it was
+    completion_dwell_seconds = 0.4
+
+    def _report_completed(self):
+        """Show, and log, that the operation reached 100% - the counterpart to the heartbeat.
+
+        Reserved phases that never report leave the bar short, and filling it silently at the
+        last instant is indistinguishable from giving up at whatever it last showed.
+        """
+        if self.emit is not None:
+            return
+        elapsed = time.monotonic() - (self._started_at or time.monotonic())
+        if self.heartbeat_seconds and elapsed >= self.heartbeat_seconds:
+            # only for operations long enough to have logged their way up - a short one would
+            # only ever log 100%, which says nothing
+            so_far = (f'{elapsed / 60:.1f} minutes' if elapsed >= 60 else f'{elapsed:.0f} seconds')
+            logging.info(f'{self.desc or "Working"}: 100% ({so_far})')
+        if elapsed >= self.completion_dwell_seconds:
+            time.sleep(self.completion_dwell_seconds)
+
     def _start_heartbeat(self):
         if self.emit is not None or not self.heartbeat_seconds:
             # a twin reports through the one that owns the bar, which does the logging
@@ -150,6 +171,7 @@ class NapariPhaseProgress:
                 # filling and closing in one pass shows the operation part-done and then gone,
                 # which reads as having given up rather than finished
                 _paint_now()
+                self._report_completed()
             self._pbar.close()
             self._pbar = None
         if self.emit is None:

@@ -2413,3 +2413,41 @@ def test_update_views_draws_the_pasted_overview_not_a_fusion(bare_interface, mon
 
     _, kwargs = bare_interface._create_napari_data.call_args
     assert kwargs['composite'] is True
+
+
+def test_preprocessed_preview_does_not_force_the_full_resolution_msims():
+    """Drawing the post-pre-processing preview must not build the full-resolution msims.
+
+    get_best_transform_key() returns the source transform without touching reg.msims precisely
+    to avoid that build; copying transforms onto the preview then forced it anyway, rebuilding
+    every source at full resolution (14 minutes for 34k) for a transform the preview's own msims
+    already carry.
+    """
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    source_metadata = {
+        'position': {'z': 'fn[-2]', 'y': 0.0, 'x': 'fn[-2]*30'},
+        'scale': {'z': '1', 'y': '0.032', 'x': '0.032'},
+    }
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=['data/S000/000_000_0.tiff', 'data/S000/000_001_0.tiff'],
+        output_path='../../output/test_preprocessed_preview_no_full_build/',
+        source_metadata=source_metadata,
+    )
+    reg.init_data(source_metadata=source_metadata)
+    reg.preprocess(reg.msims, scale=None, flatfield_quantiles='', normalisation='none',
+                   filter_foreground=False)
+    # back to the deferred state a real run is in here: pre-processing works off the msims built
+    # for its own scale, leaving the full-resolution ones unbuilt
+    reg._msims = None
+
+    interface = Interface.__new__(Interface)
+    interface.reg = reg
+    interface.params = {'input_output': {'registration_dimension': 'space'}}
+    interface.extra_metadata = {}
+
+    interface._create_napari_data(reg.source_transform_key, show_preprocessed=True)
+
+    assert reg._msims is None

@@ -272,13 +272,20 @@ class Interface:
             # one bar for opening the project - reading the sources and loading any saved
             # registration. It finishes before the view work starts, which shows the one bar
             # after it (see _show_loaded_project(), _operation_progress())
-            with self._operation_progress('Initialising sources', phases=4) as factory:
+            with self._operation_progress('Initialising sources', phases=1) as factory:
                 ok = self.reg.init(input_path=eval_path(input_path),
                                    output_path=output,
                                    overwrite=params['overwrite'],
                                    pairing=self.params['registration'].get('pairing', ''),
                                    verbose=self.verbose)
                 if ok:
+                    # resuming a saved registration does far more here than a fresh open (see
+                    # _load_saved_progress) - reserve that room before reading the sources, the
+                    # one phase a fresh open has, sizes itself against the whole bar
+                    operation = self.params['registration'].get('operation', '')
+                    fused_name = operation_to_past_participle(operation) if operation else None
+                    if self.reg.has_saved_progress(fused_name, zarr_extension):
+                        factory.ensure_phases(4)
                     # _show_loaded_project() below always ends by drawing the view, so drawing
                     # here would only draw once with the not-yet-registered transform
                     ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
@@ -913,7 +920,15 @@ class Interface:
                 pbar.update(1)
         with phase(1 / 12, total=1) as pbar, \
              Timer('_create_napari_data: copy_transforms_to_msims', verbose=self._timing_verbose()):
-            copy_transforms_to_msims(self.reg.msims, msims, transform_key)
+            # before registration there is no registered transform to copy, and reading
+            # self.reg.msims for it forces the full build get_best_transform_key() just avoided
+            if not (show_preprocessed and transform_key == self.reg.source_transform_key):
+                transform_msims = self.reg.msims
+                if show_preprocessed and self.reg.register_indices is not None:
+                    # pre-processing may have dropped sources (filter_foreground) - pair each
+                    # target with the source it came from, not with whatever sits beside it
+                    transform_msims = [self.reg.msims[index] for index in self.reg.register_indices]
+                copy_transforms_to_msims(transform_msims, msims, transform_key)
             if pbar is not None:
                 pbar.update(1)
         if composite:
