@@ -6,6 +6,7 @@ the first half, so the bar (and its time estimate) finished at the end of the se
 slice: half a bar, an estimate twice the real time, and then a jump to 100% at the close.
 """
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 from muvis_align.MVSRegistration import MVSRegistration
@@ -42,11 +43,13 @@ def test_build_pending_when_a_coarser_level_exists_for_that_scale():
         assert registration.msims_build_pending(2) is True
 
 
-def _phases_declared_by_run_pre_processing(build_pending):
+def _run_pre_processing(build_pending, eager=False):
+    """Returns (phases reserved, weight the msim build was given)."""
     interface = interface_module.Interface.__new__(interface_module.Interface)
     interface.params = {'pre_processing': {'scale': 2}}
     interface.reg = MagicMock()
     interface.reg.msims_build_pending.return_value = build_pending
+    interface.reg.has_eager_pre_processing.return_value = eager
     interface.reg.preprocess.return_value = (None, None, True)
     interface._timing_verbose = lambda: False
     interface._run_off_thread = lambda work, factory: work(factory)
@@ -57,8 +60,6 @@ def _phases_declared_by_run_pre_processing(build_pending):
         def __call__(self, *args, **kwargs):
             raise AssertionError('no phase should be opened by the mocked work')
 
-    from contextlib import contextmanager
-
     @contextmanager
     def operation_progress(desc, progress_factory=None, phases=1):
         declared['phases'] = phases
@@ -66,9 +67,29 @@ def _phases_declared_by_run_pre_processing(build_pending):
 
     interface._operation_progress = operation_progress
     interface.run_pre_processing()
-    return declared['phases']
+    return declared['phases'], interface.reg.ensure_msims.call_args.kwargs['weight']
 
 
 def test_only_the_phases_that_will_run_are_reserved():
-    assert _phases_declared_by_run_pre_processing(build_pending=True) == 2
-    assert _phases_declared_by_run_pre_processing(build_pending=False) == 1
+    assert _run_pre_processing(build_pending=False)[0] == 1
+
+
+def test_the_build_takes_the_bar_in_proportion_to_what_it_costs():
+    # opening every source is nearly all of a run whose only step is scaling - splitting the
+    # bar evenly with it left the work finishing at the halfway mark
+    phases, weight = _run_pre_processing(build_pending=True)
+    assert (phases, weight) == (9, 8)
+
+    # a step that computes over the data makes the rest of the run real work again
+    phases, weight = _run_pre_processing(build_pending=True, eager=True)
+    assert (phases, weight) == (3, 2)
+
+
+def test_eager_pre_processing_is_recognised_from_the_project_params():
+    eager = MVSRegistration.has_eager_pre_processing
+    assert eager({'scale': 8, 'gaussian_sigma': 2.0}) is False
+    # as a project file stores "no normalisation" - plain truthiness reads it as on
+    assert eager({'normalisation': 'none'}) is False
+    assert eager({'normalisation': 'global'}) is True
+    assert eager({'flatfield_quantiles': '0.05, 0.95'}) is True
+    assert eager({'filter_foreground': True}) is True

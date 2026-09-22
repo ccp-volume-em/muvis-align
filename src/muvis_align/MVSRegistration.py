@@ -47,6 +47,14 @@ class RegState(Enum):
     FUSED = auto()
 
 
+def normalisation_enabled(value):
+    # a project file carries this as text, where 'none' (or 'no'/'false'/empty) means off -
+    # plain truthiness would read every one of those as on
+    if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
+        return False
+    return bool(value)
+
+
 class MVSRegistration:
     def __init__(self, operation='register', label='', input_path=None, output_path=None,
                  source_metadata={}, extra_metadata={},
@@ -79,11 +87,24 @@ class MVSRegistration:
         self._msims = value
 
     @staticmethod
+    def has_eager_pre_processing(params):
+        """Whether pre-processing will compute over the image data, rather than only rebuild
+        the graph.
+
+        Scaling and Gaussian filtering are lazy - selecting a sub-pyramid, adding a map_blocks -
+        so with only those, the per-source msim build before them is nearly all of the run and
+        takes the bar accordingly (see Interface.run_pre_processing). Flat-field, normalisation
+        and foreground filtering read every source, which makes the rest of the run real work.
+        """
+        return bool(params.get('flatfield_quantiles') or params.get('filter_foreground')
+                    or normalisation_enabled(params.get('normalisation')))
+
+    @staticmethod
     def progress_phase(progress_factory, total=None, desc=None):
         """One reporting phase of the caller's operation, or nothing to report into."""
         return progress_factory(total=total, desc=desc) if progress_factory is not None else nullcontext(None)
 
-    def ensure_msims(self, progress_factory=None, target_scale=None):
+    def ensure_msims(self, progress_factory=None, target_scale=None, weight=1):
         """The lazy build the msims property triggers, callable ahead of time with a
         progress_factory - lets a caller about to force this (e.g. run_pre_processing()) show
         per-source progress instead of it happening silently as a plain argument expression.
@@ -99,11 +120,12 @@ class MVSRegistration:
             # full-resolution build is this build, so take it rather than a private copy
             if any(from_levels):
                 self._scaled_msims[key] = self._build_msims(progress_factory=progress_factory,
-                                                            from_levels=from_levels, store=False)
+                                                            from_levels=from_levels, store=False,
+                                                            weight=weight)
         if key in self._scaled_msims:
             return self._scaled_msims[key]
         if self._msims is None:
-            self._build_msims(progress_factory=progress_factory)
+            self._build_msims(progress_factory=progress_factory, weight=weight)
         return self._msims
 
     def msims_build_pending(self, target_scale=None):
@@ -123,9 +145,9 @@ class MVSRegistration:
                 return True
         return self._msims is None
 
-    def _build_msims(self, progress_factory=None, from_levels=None, store=True):
+    def _build_msims(self, progress_factory=None, from_levels=None, store=True, weight=1):
         progress_context = (
-            progress_factory(total=len(self.sources), desc='Building sources')
+            progress_factory(total=len(self.sources), desc='Building sources', weight=weight)
             if progress_factory is not None
             else nullcontext(None)
         )
@@ -942,11 +964,6 @@ class MVSRegistration:
             # which shows up only as registration being unaccountably slow at full resolution.
             logging.warning('Ignoring unknown pre-processing option(s):'
                             f' {", ".join(sorted(str(key) for key in kwargs))}')
-
-        def normalisation_enabled(value):
-            if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
-                return False
-            return bool(value)
 
         do_normalisation = normalisation_enabled(normalisation)
 

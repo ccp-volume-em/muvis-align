@@ -566,8 +566,14 @@ class Interface:
         # one bar this opens - or into the caller's, when pre-processing is a phase of a larger
         # operation such as loading a saved project. The build only reports when it actually
         # runs: reserving its half for msims already built left the bar (and its time estimate)
-        # finishing at 50%, the end of the one phase that did run
-        phases = 2 if self.reg.msims_build_pending(params_features.get('scale')) else 1
+        # finishing at 50%, the end of the one phase that did run.
+        # It also takes the bar in proportion to what it costs: opening every source is 15.6 of
+        # the 16.2 seconds of a 328-source run whose only step is scaling, and splitting the bar
+        # evenly put the end of the work at the halfway mark just the same. A step that computes
+        # over the data (flat-field, normalisation, foreground) makes the rest real work again.
+        build_weight = 2 if self.reg.has_eager_pre_processing(params_features) else 8
+        build_pending = self.reg.msims_build_pending(params_features.get('scale'))
+        phases = build_weight + 1 if build_pending else 1
         with self._operation_progress('Pre-processing', progress_factory, phases=phases) as progress_factory, \
              Timer('pre_processing_process', verbose=self._timing_verbose()):
             # self.reg.msims is built lazily (see MVSRegistration.msims) - building it here
@@ -580,7 +586,8 @@ class Interface:
                     # at pre-processing's own scale: building the finer levels only to have
                     # select_msim_subpyramid_at_scale() drop them is most of this phase
                     msims = self.reg.ensure_msims(progress_factory=worker_factory,
-                                                  target_scale=params_features.get('scale'))
+                                                  target_scale=params_features.get('scale'),
+                                                  weight=build_weight)
                 with Timer('run_pre_processing: preprocess', verbose=self._timing_verbose()):
                     return self.reg.preprocess(msims, progress_factory=worker_factory,
                                                **params_features)
@@ -749,13 +756,21 @@ class Interface:
         # left the bar at 18% for ten minutes. It also reports from the inside
         # (_create_napari_data), so the long step moves rather than only bracketing itself.
         view_data_weight = 12
-        phases = 3 + (view_data_weight + 1 if show_images else 0)
+        # building the shapes is the other step that grows with the source count (a geometry per
+        # source, then every overlapping pair), and it reports per source from the inside too
+        shapes_weight = 3
+        phases = shapes_weight + 2 + (view_data_weight + 1 if show_images else 0)
 
         with self._operation_progress('Refreshing view', progress_factory, phases=phases) as factory:
-            with factory(total=1) as pbar, \
-                 Timer('update_views: create shapes', verbose=self._timing_verbose()):
-                shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=force_2d)
-                pbar.update(1)
+            with Timer('update_views: create shapes', verbose=self._timing_verbose()):
+                # pure geometry, touching no viewer, so it runs off the Qt thread like the
+                # fusion below - on the Qt thread it froze the window, and the bar with it,
+                # for as long as it took (minutes on a large project)
+                shapes, refs, labels, face_colors = self._run_off_thread(
+                    lambda worker_factory: self._create_napari_shapes(
+                        transform_key, force_2d=force_2d, progress_factory=worker_factory,
+                        weight=shapes_weight),
+                    factory)
 
             self._clear_napari_view(self.viewer)
             # only shapes before pre-processing has run: the fused preview needs every source's
@@ -812,7 +827,14 @@ class Interface:
         if viewer is not None and len(viewer.layers) > 0:
             viewer.layers.clear()
 
-    def _create_napari_shapes(self, transform_key, force_2d=False):
+    def _create_napari_shapes(self, transform_key, force_2d=False, progress_factory=None, weight=1):
+        # `weight` is what the caller's bar allows this step, divided below between the
+        # sub-steps in rough proportion to what each costs on a large project. Building the
+        # geometries is the one with a real per-source count, and most of the cost with it
+        def phase(share, total=None):
+            return self._progress_phase(progress_factory, total=total,
+                                        weight=max(weight * share, 1))
+
         if transform_key == self.reg.source_transform_key:
             # not yet registered (or asked for original positions): build cheap single-level
             # sims from the resolved per-source geometry, never touching the expensive msim
@@ -823,23 +845,32 @@ class Interface:
             # 'z' but sources at different heights, each source's z must become a real dim or it
             # is silently dropped rather than drawn at its actual height.
             promote_z = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
-            with Timer(f'_create_napari_shapes: build {len(self.reg.sources)} source shape geometries',
+            with phase(3 / 5, total=len(self.reg.sources)) as pbar, \
+                 Timer(f'_create_napari_shapes: build {len(self.reg.sources)} source shape geometries',
                       verbose=self._timing_verbose()):
                 # stack properties, not sims: shapes need geometry only, so this reads, creates
                 # and allocates no image data at all (see build_source_stack_props)
-                msims = [
-                    build_source_stack_props(source, self.reg._msim_output_order, translation, transform,
-                                             transform_key, z_scale=self.reg._msim_z_scale,
-                                             promote_z=promote_z)
-                    for source, translation, transform in
-                    zip(self.reg.sources, self.reg.positions, self.reg._msim_transforms)
-                ]
+                msims = []
+                for source, translation, transform in zip(self.reg.sources, self.reg.positions,
+                                                          self.reg._msim_transforms):
+                    msims.append(
+                        build_source_stack_props(source, self.reg._msim_output_order, translation, transform,
+                                                 transform_key, z_scale=self.reg._msim_z_scale,
+                                                 promote_z=promote_z))
+                    if pbar is not None:
+                        pbar.update(1)
         else:
-            with Timer('_create_napari_shapes: get view_msims', verbose=self._timing_verbose()):
+            with phase(3 / 5, total=1) as pbar, \
+                 Timer('_create_napari_shapes: get view_msims', verbose=self._timing_verbose()):
                 msims = self.view_msims
+                if pbar is not None:
+                    pbar.update(1)
 
-        with Timer(f'_create_napari_shapes: create_image_shapes ({len(msims)} images)', verbose=self._timing_verbose()):
+        with phase(1 / 5, total=1) as pbar, \
+             Timer(f'_create_napari_shapes: create_image_shapes ({len(msims)} images)', verbose=self._timing_verbose()):
             shapes = create_image_shapes(msims, transform_key=transform_key, force_2d=force_2d)
+            if pbar is not None:
+                pbar.update(1)
         refs = [str(index) for index in range(len(msims))]
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(msims))]
@@ -849,10 +880,13 @@ class Interface:
         # paired, has no quality behind it. Before registration there is no graph, so fall back
         # to every geometrically-overlapping pair.
         overlap_pairs = list(self.reg.pairs_graph.edges()) if self.reg.is_pairs_registered() else None
-        with Timer(f'_create_napari_shapes: create_overlap_shapes ({len(msims)} images,'
+        with phase(1 / 5, total=1) as pbar, \
+             Timer(f'_create_napari_shapes: create_overlap_shapes ({len(msims)} images,'
                   f' {len(overlap_pairs) if overlap_pairs is not None else "all"} pairs)', verbose=self._timing_verbose()):
             shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, pairs=overlap_pairs,
                                                    force_2d=force_2d)
+            if pbar is not None:
+                pbar.update(1)
         shapes.extend(shapes2)
         refs += [f'{index1} {index2}' for index1, index2 in pairs]
         labels += ['' for _ in pairs]

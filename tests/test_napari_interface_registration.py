@@ -20,7 +20,7 @@ import importlib
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import ANY, MagicMock, patch, call
 import pytest
 import yaml
 import numpy as np
@@ -1048,8 +1048,10 @@ def test_update_views_adds_enabled_preview_layers(
         call(bare_interface.viewer),
         call(bare_interface.overview),
     ]
+    # the viewer's shapes are built off the Qt thread, reporting per source into the refresh's
+    # own bar; the overview's are rebuilt flattened (see _refresh_overview_shapes)
     assert bare_interface._create_napari_shapes.call_args_list == [
-        call("registered", force_2d=False),
+        call("registered", force_2d=False, progress_factory=ANY, weight=3),
         call("registered", force_2d=True),
     ]
     assert bare_interface._create_napari_data.call_count == 1
@@ -1098,8 +1100,64 @@ def test_update_views_detects_multi_z_from_view_msims(
     bare_interface.update_views(transform_key="source_metadata", show_images=False)
 
     bare_interface._create_napari_shapes.assert_called_once_with(
-        "source_metadata", force_2d=True
+        "source_metadata", force_2d=True, progress_factory=ANY, weight=3
     )
+
+
+def test_create_napari_shapes_reports_per_source(bare_interface, monkeypatch):
+    """Building the shapes is one geometry per source and then every overlapping pair - minutes
+    on a large project, during which the refresh's bar used to show nothing at all. It now takes
+    a share of that bar and reports its own sub-steps, the per-source build counting each one."""
+    sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10}) for _ in range(3)]
+    bare_interface.reg.sources = sources
+    bare_interface.reg.positions = [{"z": 0}] * 3
+    bare_interface.reg._msim_transforms = [None] * 3
+    bare_interface.reg._msim_output_order = "yx"
+    bare_interface.reg._msim_z_scale = 1
+    bare_interface.reg.source_transform_key = "source_metadata"
+    bare_interface.reg.is_pairs_registered.return_value = False
+    bare_interface.reg.file_labels = ["a", "b", "c"]
+    monkeypatch.setattr(
+        interface_module, "build_source_stack_props", lambda *_, **__: "props"
+    )
+    monkeypatch.setattr(
+        interface_module, "create_image_shapes",
+        lambda msims, **__: [np.zeros((4, 2)) for _ in msims],
+    )
+    monkeypatch.setattr(
+        interface_module, "create_overlap_shapes", lambda *_, **__: ([], [])
+    )
+
+    phases = []
+
+    class _Phase:
+        def __init__(self, total, weight):
+            self.total = total
+            self.weight = weight
+            self.updates = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def update(self, n=1):
+            self.updates += n
+
+    def factory(total=None, desc=None, weight=1, **_):
+        phase = _Phase(total, weight)
+        phases.append(phase)
+        return phase
+
+    bare_interface._create_napari_shapes(
+        "source_metadata", progress_factory=factory, weight=5
+    )
+
+    # the per-source build, then create_image_shapes and create_overlap_shapes
+    assert [(phase.total, phase.updates) for phase in phases] == [(3, 3), (1, 1), (1, 1)]
+    # and it is the per-source build that gets most of what the step was allowed
+    assert phases[0].weight > phases[1].weight
 
 
 def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
