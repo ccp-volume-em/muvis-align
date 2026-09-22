@@ -47,6 +47,18 @@ RESOLUTION="1920x1080"
 ENCODING="h264"
 MIN_QUALITY=50
 MIN_SPEED=70
+
+# ---------------------------------------------------------------------------
+#  SOURCE READING  (optional)
+# ---------------------------------------------------------------------------
+#  Threads used to read each source's metadata when a project is opened.
+#  A thread spends almost all of that waiting on a file open rather than on
+#  the CPU - one 34k-tile project measured 364ms per file of which 14ms was
+#  CPU - so on a shared filesystem this wants to be well above the core count.
+#  Raise it while "Init sources" still reports a low core count; lower it if
+#  the filesystem starts complaining.
+# ---------------------------------------------------------------------------
+SOURCE_INIT_WORKERS=256
 # ===========================================================================
 
 set -euo pipefail
@@ -142,6 +154,7 @@ apptainer exec \
     --bind "${DATA_DIR}:${DATA_DIR}" \
     --env "USER=${USER}" \
     --env "XDG_RUNTIME_DIR=${RUN_DIR}" \
+    --env "MUVIS_SOURCE_INIT_WORKERS=${SOURCE_INIT_WORKERS}" \
     "${CONTAINER_PATH}" \
     xpra start \
         --bind-tcp="0.0.0.0:${XPRA_PORT},auth=file:filename=${PASSWORD_FILE}" \

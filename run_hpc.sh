@@ -6,6 +6,9 @@
 #SBATCH --mem=640G   # Memory pool for all cores (see also --mem-per-cpu)
 
 export PYTHONUNBUFFERED=TRUE
+# threads for reading source metadata at project load - almost all of that time is
+# spent waiting on a file open, so a shared filesystem wants well above the core count
+export MUVIS_SOURCE_INIT_WORKERS=256
 ml purge
 ml Anaconda3
 source /camp/apps/eb/software/Anaconda/conda.env.sh
