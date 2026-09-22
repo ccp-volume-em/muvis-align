@@ -1071,9 +1071,12 @@ def test_update_views_adds_enabled_preview_layers(
         bare_interface.viewer,
         *expected_shape_call,
     )
+    # the overview reuses the viewer's own shapes, drawn much smaller - a label per shape is
+    # unreadable there and covers the layout it is there to show
     bare_interface._update_view_add_shapes.assert_any_call(
         bare_interface.overview,
         *expected_shape_call,
+        show_labels=False,
     )
     assert bare_interface._update_view_add_shapes.call_count == 2
     assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
@@ -1273,6 +1276,76 @@ def test_update_napari_shapes_uses_shapes_layer_for_2d(
     assert kwargs["shape_type"] == "polygon"
     assert kwargs["edge_width"] == 0.1
     assert kwargs["features"]["refs"] == ["0"]
+
+
+def test_update_napari_shapes_labels_only_where_asked(
+    bare_interface, monkeypatch
+):
+    """The overview shows the viewer's own shapes at a fraction of the size, where one label
+    per shape is unreadable and covers the layout the overview is there to show - so it takes
+    the same shapes untexted, while the viewer keeps its labels."""
+    bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
+    bare_interface.reg.positions = [{"z": 0}]
+    monkeypatch.setattr(
+        interface_module.si_utils, "get_origin_from_sim", lambda _: {}
+    )
+    monkeypatch.setattr(
+        interface_module, "get_msim_image0", lambda msim: msim
+    )
+    shapes = [np.zeros((4, 2))]
+
+    viewer = MagicMock()
+    bare_interface._update_view_add_shapes(
+        viewer, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes"
+    )
+    _, kwargs = viewer.add_shapes.call_args
+    assert kwargs["text"] == {"string": "{labels}", "size": 6}
+
+    overview = MagicMock()
+    bare_interface._update_view_add_shapes(
+        overview, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes", show_labels=False
+    )
+    _, kwargs = overview.add_shapes.call_args
+    assert kwargs["text"] is None
+    # the shapes themselves are unchanged - the same ones the viewer was given
+    np.testing.assert_allclose(overview.add_shapes.call_args[0][0], [shapes[0]])
+    assert kwargs["features"]["refs"] == ["0"]
+
+
+def test_update_napari_shapes_labels_only_where_asked(
+    bare_interface, monkeypatch
+):
+    """The overview shows the viewer's own shapes at a fraction of the size, where one label
+    per shape is unreadable and covers the layout the overview is there to show - so it takes
+    the same shapes untexted, and without the per-shape column only that text ever read."""
+    bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
+    bare_interface.reg.positions = [{"z": 0}]
+    monkeypatch.setattr(
+        interface_module.si_utils, "get_origin_from_sim", lambda _: {}
+    )
+    monkeypatch.setattr(
+        interface_module, "get_msim_image0", lambda msim: msim
+    )
+    shapes = [np.zeros((4, 2))]
+
+    viewer = MagicMock()
+    bare_interface._update_view_add_shapes(
+        viewer, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes"
+    )
+    _, kwargs = viewer.add_shapes.call_args
+    assert kwargs["text"] == {"string": "{labels}", "size": 6}
+    assert kwargs["features"]["labels"] == ["image-0"]
+
+    overview = MagicMock()
+    bare_interface._update_view_add_shapes(
+        overview, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes", show_labels=False
+    )
+    args, kwargs = overview.add_shapes.call_args
+    assert kwargs["text"] is None
+    assert "labels" not in kwargs["features"]
+    assert kwargs["features"]["refs"] == ["0"]
+    # the shapes themselves are unchanged - the same ones the viewer was given
+    np.testing.assert_allclose(args[0], [shapes[0]])
 
 
 def test_update_napari_features_dispatches_all_layer_types(

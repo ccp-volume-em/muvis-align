@@ -802,7 +802,8 @@ class Interface:
         if shapes is None or is_3d:
             shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=True)
         self._clear_napari_view(self.overview)
-        self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
+        self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors,
+                                     f'{self.reg.fileset_label} shapes', show_labels=False)
 
     def _clear_napari_view(self, viewer):
         # Avoid emitting an empty LayerList.clear() event.  Under xpra/Xvfb,
@@ -971,7 +972,8 @@ class Interface:
                                           extra_metadata=self.extra_metadata)
         return fused_msim
 
-    def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name):
+    def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name,
+                                show_labels=True):
         # is_3d/is_multi_z_shapes read cheap per-source metadata (self.reg.sources/positions)
         # rather than self.view_msims, so drawing shapes never forces the expensive msim build
         # this is otherwise deferred to the fused image preview / pre-processing
@@ -1055,11 +1057,14 @@ class Interface:
                 edge_width = 0.1
                 face_color = face_colors
 
-            # half napari's default (12), which reads oversized against these shapes - and half
-            # again in the overview widget, which draws them much smaller on screen
-            text_size = 3 if not bb_supported else 6
-            text = {'string': '{labels}', 'size': text_size}
-            features = {'refs': refs, 'labels': labels}
+            # half napari's default (12), which reads oversized against these shapes
+            # the overview draws the same shapes much smaller, where a label per shape is
+            # unreadable and covers the layout it is there to show - so it takes them untexted
+            text = {'string': '{labels}', 'size': 6} if show_labels else None
+            # 'labels' is only ever read by that text string - with no text it is a per-shape
+            # column napari carries for nothing. 'refs' stays either way as the shapes' identity
+            # in the layer (the click handler below closes over its own copy of it)
+            features = {'refs': refs, 'labels': labels} if show_labels else {'refs': refs}
             layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
                                       features=features, face_color=face_color, opacity=0.5,
                                       edge_width=edge_width, edge_color=edge_color, blending=blending)
