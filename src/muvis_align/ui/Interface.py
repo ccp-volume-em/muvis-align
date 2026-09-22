@@ -1029,9 +1029,9 @@ class Interface:
                 edge_width = 0.1
                 face_color = face_colors
 
-            # the overview widget draws the same shapes much smaller on screen than the main
-            # viewer - napari's default text size (12) reads oversized there, so halve it
-            text_size = 6 if not bb_supported else 12
+            # half napari's default (12), which reads oversized against these shapes - and half
+            # again in the overview widget, which draws them much smaller on screen
+            text_size = 3 if not bb_supported else 6
             text = {'string': '{labels}', 'size': text_size}
             features = {'refs': refs, 'labels': labels}
             layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
