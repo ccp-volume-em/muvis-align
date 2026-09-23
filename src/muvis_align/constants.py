@@ -127,9 +127,12 @@ default_preview_workers = _available_cpus
 # n_batch 1), so without a batch_func of our own an export runs on one core. The per-chunk budget
 # above is already per-worker, sized for this many holding a chunk at once.
 default_fusion_workers = _available_cpus
-# pairs per dask compute (so in flight at once) when n_parallel_pairwise_regs is blank: 2 a core keeps
-# the threads busy, and one graph of all 115549 pairs took 110GB and reported nothing in 9 hours
+# pairs per dask compute (so in flight at once) for the pair metrics: 2 a core keeps the threads busy,
+# and one graph of all 115549 pairs took 110GB and reported nothing in 9 hours
 default_pair_batch_size = max(_available_cpus * 2, 2)
+# pairs registered at once when n_parallel_pairwise_regs is blank, one a thread: registration is
+# GIL-bound (~8 of 24 cores busy), so more threads than cores would only hold more crops
+default_pair_workers = _available_cpus
 # What one output block of an *export* may span, where default_chunk_size (1024) is what a preview
 # wants: x/y chunks larger than the screen buy a preview nothing, while an export pays a fixed
 # cost (~0.5s measured) per block however small. Caps the block, does not overrule the budget -

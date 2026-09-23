@@ -6,7 +6,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions
+    timed_module_functions, rolling_map
 
 
 @pytest.mark.parametrize(
@@ -223,3 +223,40 @@ def test_timed_module_functions_times_calls_and_restores():
         module.score(2)
     assert len(cpu_times['score']) == 2
     assert module.score is original
+
+
+def test_rolling_map_yields_every_item_with_a_bounded_number_submitted():
+    import threading
+    import time
+    lock = threading.Lock()
+    started = []
+    consumed = []
+
+    def work(item):
+        with lock:
+            started.append(item)
+        time.sleep(0.01 * (item % 3))
+        return item * 10
+
+    for item, result in rolling_map(work, range(40), workers=4):
+        assert result == item * 10
+        consumed.append(item)
+        # never more than 2x workers started ahead of what has been handed back
+        assert len(started) <= len(consumed) + 2 * 4
+    assert sorted(consumed) == list(range(40))
+
+
+def test_rolling_map_raises_and_skips_what_was_still_queued():
+    import time
+    started = []
+
+    def work(item):
+        started.append(item)
+        if item == 0:
+            raise ValueError('pair failed')
+        time.sleep(0.05)
+        return item
+
+    with pytest.raises(ValueError, match='pair failed'):
+        list(rolling_map(work, range(100), workers=2))
+    assert len(started) < 10

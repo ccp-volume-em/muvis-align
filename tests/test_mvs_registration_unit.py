@@ -419,6 +419,55 @@ def test_register_pairs_defers_link_quality_without_changing_results():
         np.testing.assert_array_equal(deferred[edge][1], transform)
 
 
+def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
+    """Each pair is its own compute on a thread; results must not depend on how many threads. A
+    lone thread keeps the threads scheduler so a single pair still runs its tasks in parallel."""
+    import dask
+    import networkx as nx
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[
+            'data/S000/S000_000_000.ome.zarr',
+            'data/S000/S000_000_001.ome.zarr',
+            'data/S000/S000_001_000.ome.zarr',
+            'data/S000/S000_001_001.ome.zarr',
+        ],
+        output_path='../../output/test_register_pairs_rolling/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    original = mvs_registration_module.compute_pairwise_registrations
+
+    def register(threads):
+        seen = []
+
+        def recording(msims, g_reg, **kwargs):
+            seen.append((g_reg.number_of_edges(), dask.config.get('scheduler', None)))
+            return original(msims, g_reg, **kwargs)
+
+        with patch.object(mvs_registration_module, 'compute_pairwise_registrations', recording):
+            reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
+                                                           'n_parallel_pairwise_regs': threads})
+        results = {edge: (float(np.asarray(quality).squeeze()),
+                          np.asarray(nx.get_edge_attributes(reg.pairs_graph, 'transform')[edge]))
+                   for edge, quality in nx.get_edge_attributes(reg.pairs_graph, 'quality').items()}
+        return results, seen
+
+    single, single_seen = register(1)
+    threaded, threaded_seen = register(3)
+
+    assert len(single) > 1
+    assert set(single_seen) == {(1, 'threads')}
+    assert set(threaded_seen) == {(1, 'synchronous')}
+    assert threaded.keys() == single.keys()
+    for edge, (quality, transform) in single.items():
+        assert threaded[edge][0] == pytest.approx(quality, nan_ok=True)
+        np.testing.assert_array_equal(threaded[edge][1], transform)
+
+
 def test_register_overlap_reuses_cached_overlap_across_param_changes():
     """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
     crop can be registered again with different registration parameters, without recomputing the

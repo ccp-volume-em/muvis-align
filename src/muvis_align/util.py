@@ -1,4 +1,5 @@
 import ast
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from configparser import ConfigParser
 from contextlib import contextmanager
 import csv
@@ -7,6 +8,7 @@ import functools
 from datetime import datetime
 import gc
 import glob
+import itertools
 import json
 import logging
 import math
@@ -597,6 +599,31 @@ def timed_calls(func, times, cpu_times):
             times.append(time.perf_counter() - start)
             cpu_times.append(time.thread_time() - cpu_start)
     return timed
+
+
+def rolling_map(func, items, workers):
+    """(item, func(item)) for each of `items` as it finishes, on `workers` threads. Only twice that
+    many are submitted at once, so memory stays bounded however many items there are, and a slow
+    item holds up only its own thread, not a whole batch.
+    """
+    items = iter(items)
+    pending = {}
+    with ThreadPoolExecutor(workers) as pool:
+        def submit(count):
+            for item in itertools.islice(items, count):
+                pending[pool.submit(func, item)] = item
+
+        submit(2 * workers)
+        try:
+            while pending:
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    yield pending.pop(future), future.result()
+                submit(len(done))
+        finally:
+            # on an error or an early stop, leaving the pool would otherwise still run every queued item
+            for future in pending:
+                future.cancel()
 
 
 @contextmanager

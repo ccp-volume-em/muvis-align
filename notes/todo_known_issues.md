@@ -77,7 +77,20 @@ Progress (no memory changes yet):
   deferred and computed for the kept one only - identical results, pair CPU 432s -> 217s,
   register_pairs 129.5s -> 90.6s on 51 tiffs. Worth fixing upstream in multiview_stitcher.
 - Next idea: batches wait on their slowest pair (up to 15.6s, overview pairs) - a rolling window
-  of synchronous per-pair computes on a thread pool, prototype in the scratchpad.
+  of synchronous per-pair computes on a thread pool, prototype in the scratchpad (rolling.py).
+- Rolling window measured on 51 tiffs, 8 workers (local runs capped at 8, memory watchdog):
+  61-62s every run, peak 2.5GB; batches of 16 took 64.8-117s (noisy), peak 2.1-2.3GB.
+  Results identical to batches only without threadpool_limits(1) on BLAS: with it 6 of 179
+  pairs moved by ~1 sub-pixel step (0.001). Batch results are identical across repeats and
+  across 1 vs 16 pairs per compute.
+- A graph built without a dask scheduler set makes multiview_stitcher compute overlaps with
+  spawned processes: a script without a __main__ guard then re-runs itself in each (>10GB).
+  register_pairs and metrics both set a scheduler.
+- Done: register_pairs registers one pair per synchronous compute on a thread (util.rolling_map,
+  at most 2x threads submitted); n_parallel_pairwise_regs is now the thread count, default one
+  a core; 1 thread keeps the threads scheduler. 51 tiffs, 8 workers, vs batches of 16: results
+  identical on all 179 pairs, pair loop 50-52s -> 38-41s, register_pairs 70-72s -> 58-61s,
+  7-8 cores busy (was ~4.8), peak 2.2GB -> 2.5-2.8GB.
 - Next: run on the HPC and read those lines.
 
 ## TODO
