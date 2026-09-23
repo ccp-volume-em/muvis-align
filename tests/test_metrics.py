@@ -75,17 +75,26 @@ def register_msims():
     return reg.register_msims, reg.source_transform_key
 
 
-def test_batched_pair_metrics_match_one_call(register_msims):
+def test_pair_metrics_one_call_a_pair_match_one_call_over_all(register_msims):
+    import multiview_stitcher.metrics
+    from muvis_align.metrics import create_metric_methods
+
     msims, transform_key = register_msims
     graph = nx.Graph()
     for pair in [(0, 1), (0, 2), (1, 3), (2, 3)]:
         graph.add_edge(*pair, transform=param_utils.identity_transform(ndim=2), quality=0.5)
 
-    whole = calc_pair_metrics(msims, graph, ['ncc'], transform_key)
-    batched = calc_pair_metrics(msims, graph, ['ncc'], transform_key, n_parallel_pairs=1)
+    whole = multiview_stitcher.metrics.tile_pair_image_metrics(
+        msims, base_transform_key=transform_key, pairs_graph=graph,
+        metric_funcs=create_metric_methods(['ncc'], msims[0]))
+    single = calc_pair_metrics(msims, graph, ['ncc'], transform_key, n_parallel_pairs=1)
+    threaded = calc_pair_metrics(msims, graph, ['ncc'], transform_key, n_parallel_pairs=3)
 
-    assert set(batched['pairs']) == set(whole['pairs'])
-    for pair, value in whole['pairs'].items():
-        assert np.isclose(batched['pairs'][pair]['transform']['ncc'], value['transform']['ncc'],
-                          equal_nan=True)
-    assert batched['summary']['transform']['quality'] == whole['summary']['transform']['quality']
+    for result in (single, threaded):
+        assert set(result['pairs']) == set(whole['pairs'])
+        for pair, value in whole['pairs'].items():
+            assert np.isclose(result['pairs'][pair]['transform']['ncc'], value['transform']['ncc'],
+                              equal_nan=True)
+        # axis-aligned tiles: each pair's bbox area equals the overlap area the summary weights by
+        assert result['summary']['transform']['ncc'] == pytest.approx(whole['summary']['transform']['ncc'])
+        assert result['summary']['transform']['quality'] == 0.5

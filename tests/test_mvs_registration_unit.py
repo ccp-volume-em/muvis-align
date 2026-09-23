@@ -341,7 +341,7 @@ def test_select_pair_overlap_then_register_overlap_matches_register_pairs():
 def test_register_pairs_computes_without_linear_fusion():
     """dask's linear fusion can give two pairs' fused chains one key (a 115-char prefix plus 4 hash
     digits), handing a pair another pair's crop - so both computes of register_pairs() run without it.
-    The metrics run threaded with OpenBLAS at one thread: its own pool, started from many threads,
+    The metrics run on threads with OpenBLAS at one thread: its own pool, started from many threads,
     crashed the process."""
     import dask
     import multiview_stitcher.metrics
@@ -377,7 +377,8 @@ def test_register_pairs_computes_without_linear_fusion():
         reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal'})
 
     assert seen['pairs']['fuse'] is False
-    assert seen['metrics'] == {'fuse': False, 'scheduler': 'threads', 'blas_threads': {1}}
+    # one synchronous compute a pair, on several threads
+    assert seen['metrics'] == {'fuse': False, 'scheduler': 'synchronous', 'blas_threads': {1}}
 
 
 def test_register_pairs_defers_link_quality_without_changing_results():

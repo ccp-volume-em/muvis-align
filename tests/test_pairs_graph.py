@@ -4,7 +4,7 @@ import numpy as np
 from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.image.util import batch_graph_edges, build_pairs_graph, make_msims_2d, msim_is_2d, wrap_sims_as_msims
+from muvis_align.image.util import build_pairs_graph, make_msims_2d, msim_is_2d, wrap_sims_as_msims
 
 TRANSFORM_KEY = 'affine_metadata'
 
@@ -95,29 +95,3 @@ def test_make_msims_2d_still_converts_a_3d_msim():
 
     assert converted[0] is not msims[0]
     assert msim_is_2d(converted[0])
-
-
-def test_batches_cover_every_edge_once_keeping_attributes():
-    graph = nx.Graph()
-    for index in range(7):
-        graph.add_edge(index, index + 1, overlap=index)
-    graph.add_node(20, stack_props='props')
-    graph.add_edge(20, 0)
-
-    batches = batch_graph_edges(graph, 3)
-
-    assert [batch.number_of_edges() for batch in batches] == [3, 3, 2]
-    edges = [frozenset(edge) for batch in batches for edge in batch.edges]
-    assert sorted(edges, key=sorted) == sorted((frozenset(edge) for edge in graph.edges), key=sorted)
-    assert all(batch.edges[edge].get('overlap') == graph.edges[edge].get('overlap')
-               for batch in batches for edge in batch.edges)
-    assert any(batch.nodes[20].get('stack_props') == 'props' for batch in batches if 20 in batch)
-
-
-def test_graph_without_edges_is_one_batch():
-    graph = nx.Graph()
-    graph.add_nodes_from(range(3))
-
-    batches = batch_graph_edges(graph, 2)
-
-    assert len(batches) == 1 and batches[0].number_of_nodes() == 3
