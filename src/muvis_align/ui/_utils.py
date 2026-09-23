@@ -51,16 +51,27 @@ class TemporarilyDisabledWidgets(object):
 
 class VisibleActivityDock(object):
     """
-    Context manager to temporarily show the activity dock during long computation
+    Context manager to temporarily show the activity dock during long computation.
+
+    napari's welcome screen, shown whenever the viewer has no layers, is drawn over the dock -
+    the bar disappeared for the whole first refresh of a project. It is kept off meanwhile.
     """
     def __init__(self, viewer):
         self.viewer = viewer
+        self._welcome_shown = None
 
     def __enter__(self):
+        qt_viewer = getattr(self.viewer.window, '_qt_viewer', None)
+        if qt_viewer is not None and hasattr(qt_viewer, 'show_welcome_screen'):
+            self._welcome_shown = qt_viewer.show_welcome_screen
+            qt_viewer.show_welcome_screen = False
         self.viewer.window._status_bar._toggle_activity_dock(True)
 
     def __exit__(self, type, value, traceback):
         self.viewer.window._status_bar._toggle_activity_dock(False)
+        if self._welcome_shown is not None:
+            self.viewer.window._qt_viewer.show_welcome_screen = self._welcome_shown
+            self._welcome_shown = None
 
 
 def flush_paint_events():

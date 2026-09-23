@@ -785,9 +785,8 @@ class Interface:
                             transform_key, show_preprocessed=show_preprocessed, composite=True,
                             progress_factory=worker_factory, weight=view_data_weight),
                         factory)
-            # cleared only now, with the new layers ready: an empty viewer shows napari's welcome
-            # screen, which is drawn over the activity dialog - the bar vanished for as long as
-            # building the view took (44 minutes on a 34k-source project)
+            # cleared only once the new data is ready: an empty viewer shows the welcome screen,
+            # which hides the activity dialog - for 44 minutes on a 34k-source project
             self._clear_napari_view(self.viewer)
             if show_images:
                 if data is not None:
@@ -1406,9 +1405,8 @@ class Interface:
 
         with self._operation_progress('Pair registration', progress_factory, phases=2) as factory:
             def register_pairs(worker_factory):
-                # its two phases (the pairs, in batches, then their metrics) report per batch to
-                # the worker's own factory - see _run_off_thread(). A dask callback here would
-                # open a phase for every batch's compute.
+                # the pairs, then their metrics, report per batch to the worker's factory - a dask
+                # callback here would open a phase for every batch's compute
                 with Timer('pair registration', verbose=self._timing_verbose()):
                     return self.reg.register_pairs(
                         self.reg.register_msims,

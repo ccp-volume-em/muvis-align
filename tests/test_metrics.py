@@ -1,7 +1,10 @@
+import networkx as nx
 import numpy as np
+import pytest
 import xarray as xr
+from multiview_stitcher import param_utils
 
-from muvis_align.metrics import quality_to_scalar
+from muvis_align.metrics import calc_pair_metrics, quality_to_scalar
 
 
 def test_quality_to_scalar_selects_t0_from_dataarray_with_t_dim():
@@ -54,3 +57,35 @@ def test_calc_msims_metrics_uses_real_pyramid_directly():
     metrics = calc_msims_metrics([msim1, msim2], transforms, metric_methods=['ncc'])
 
     assert isinstance(metrics['pairs'][(0, 1)]['transform']['ncc'], float)
+
+
+
+@pytest.fixture(scope='module')
+def register_msims():
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[f'data/S000/S000_00{y}_00{x}.ome.zarr' for y in range(2) for x in range(2)],
+        output_path='../../output/test_pair_batches/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    return reg.register_msims, reg.source_transform_key
+
+
+def test_batched_pair_metrics_match_one_call(register_msims):
+    msims, transform_key = register_msims
+    graph = nx.Graph()
+    for pair in [(0, 1), (0, 2), (1, 3), (2, 3)]:
+        graph.add_edge(*pair, transform=param_utils.identity_transform(ndim=2), quality=0.5)
+
+    whole = calc_pair_metrics(msims, graph, ['ncc'], transform_key)
+    batched = calc_pair_metrics(msims, graph, ['ncc'], transform_key, n_parallel_pairs=1)
+
+    assert set(batched['pairs']) == set(whole['pairs'])
+    for pair, value in whole['pairs'].items():
+        assert np.isclose(batched['pairs'][pair]['transform']['ncc'], value['transform']['ncc'],
+                          equal_nan=True)
+    assert batched['summary']['transform']['quality'] == whole['summary']['transform']['quality']

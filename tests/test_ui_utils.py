@@ -36,3 +36,22 @@ def test_catch_run_errors_shows_popup_and_logs_on_failure(monkeypatch, caplog):
     assert "run_thing failed" in shown[0]
     assert "boom" in shown[0]
     assert any("run_thing failed" in record.message for record in caplog.records)
+
+
+def test_activity_dock_keeps_welcome_screen_off_while_open():
+    """napari's welcome screen (an empty viewer) is drawn over the activity dock, hiding the bar
+    for a project's whole first refresh - it is off while the dock is up, then back as it was."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+    from muvis_align.ui._utils import VisibleActivityDock
+
+    qt_viewer = SimpleNamespace(show_welcome_screen=True)
+    status_bar = MagicMock()
+    viewer = SimpleNamespace(window=SimpleNamespace(_qt_viewer=qt_viewer, _status_bar=status_bar))
+
+    with VisibleActivityDock(viewer):
+        assert qt_viewer.show_welcome_screen is False
+        status_bar._toggle_activity_dock.assert_called_once_with(True)
+
+    assert qt_viewer.show_welcome_screen is True
+    status_bar._toggle_activity_dock.assert_called_with(False)

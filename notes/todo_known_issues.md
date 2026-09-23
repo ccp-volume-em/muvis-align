@@ -13,8 +13,9 @@ under xpra, with the slides test project (C:/project/slides) and delays added to
   cleared the old layers before building the new view, which left the viewer empty - and the
   bar hidden - for the whole build, 44.6 minutes on a 33996-source project. It now clears them
   only once the new data is ready.
-- Still open for the first refresh after opening a project: there is nothing on screen yet, so
-  the welcome screen hides the bar while the shapes are built (51s at 34k sources).
+- Fixed for the first refresh after opening a project, when there is nothing to keep on screen:
+  the welcome screen is switched off while an operation's activity dock is up
+  (`VisibleActivityDock`), and restored afterwards.
 
 The bar also stops moving (without disappearing) in steps that report once, when they finish -
 promoting to 3D (8.9 min at 34k) and capping the preview size (5.2 min) - and while viewer steps
@@ -26,7 +27,6 @@ leaving the pointer grab stuck under xpra).
 
 ## TODO
 
-- [ ] Keep the bar visible on the first refresh after opening a project (empty viewer, see above).
 - [ ] Keep the refresh view bar moving: give the long single-step phases (promoting to 3D,
       capping the preview fusion size, adding and refreshing shapes) per-source or per-batch
       progress.
