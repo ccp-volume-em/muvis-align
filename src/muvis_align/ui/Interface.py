@@ -772,9 +772,9 @@ class Interface:
                         weight=shapes_weight),
                     factory)
 
-            self._clear_napari_view(self.viewer)
             # only shapes before pre-processing has run: the fused preview needs every source's
             # real msim built, and deferring that keeps it off the initial project load
+            data = None
             if show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
@@ -785,6 +785,11 @@ class Interface:
                             transform_key, show_preprocessed=show_preprocessed, composite=True,
                             progress_factory=worker_factory, weight=view_data_weight),
                         factory)
+            # cleared only now, with the new layers ready: an empty viewer shows napari's welcome
+            # screen, which is drawn over the activity dialog - the bar vanished for as long as
+            # building the view took (44 minutes on a 34k-source project)
+            self._clear_napari_view(self.viewer)
+            if show_images:
                 if data is not None:
                     with factory(total=1) as pbar, \
                          Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
