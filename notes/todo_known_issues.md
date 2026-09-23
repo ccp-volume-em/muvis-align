@@ -91,13 +91,16 @@ Progress (no memory changes yet):
   a core; 1 thread keeps the threads scheduler. 51 tiffs, 8 workers, vs batches of 16: results
   identical on all 179 pairs, pair loop 50-52s -> 38-41s, register_pairs 70-72s -> 58-61s,
   7-8 cores busy (was ~4.8), peak 2.2GB -> 2.5-2.8GB.
-- Uncommitted: same rolling window for calc_pair_metrics (one tile_pair_image_metrics call a
-  pair, BLAS still at 1 thread), summary weighted by each pair's comparison bbox area. 51 tiffs,
+- Done: same rolling window for calc_pair_metrics (one tile_pair_image_metrics call a pair,
+  BLAS still at 1 thread), summary weighted by each pair's comparison bbox area. 51 tiffs,
   8 workers, ncc/ssim/onmi: per-pair values identical, 11.3s -> 9.9s. Summary now equals one
   call over all pairs exactly (ncc 0.5153); the batched summary was wrong (0.6525), as it
-  weighted batches by pair count. Waiting on the user: keep it, or overlap metrics with
-  registration.
-- Next: run on the HPC and read those lines.
+  weighted batches by pair count.
+- Tried, not worth it: each pair's metrics right after its registration on the same thread.
+  46.7/47.2s -> 44.1/43.6s (~7%: registration already keeps the threads busy), and it needs BLAS
+  at 1 thread for registration too, which moves 6 of 179 pairs by a sub-pixel step.
+- Next: run on the HPC, check the rolling window scales there (64 threads) and read the
+  verbose timing/memory lines.
 
 ## TODO
 
