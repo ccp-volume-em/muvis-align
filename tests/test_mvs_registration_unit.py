@@ -380,6 +380,45 @@ def test_register_pairs_computes_without_linear_fusion():
     assert seen['metrics'] == {'fuse': False, 'scheduler': 'threads', 'blas_threads': {1}}
 
 
+def test_register_pairs_defers_link_quality_without_changing_results():
+    """Only the chosen candidate's spearman quality is computed; the result must match computing
+    all of them, and multiview_stitcher's function is put back afterwards."""
+    import contextlib
+    import networkx as nx
+    from multiview_stitcher import registration
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[
+            'data/S000/S000_000_000.ome.zarr',
+            'data/S000/S000_000_001.ome.zarr',
+        ],
+        output_path='../../output/test_register_pairs_deferred_quality/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    params = {'method': 'phase_correlation', 'pairing': 'orthogonal'}
+    original = registration.link_quality_metric_func
+
+    def register():
+        reg.register_pairs(reg.register_msims, params=params)
+        return {edge: (float(np.asarray(quality).squeeze()),
+                       np.asarray(nx.get_edge_attributes(reg.pairs_graph, 'transform')[edge]))
+                for edge, quality in nx.get_edge_attributes(reg.pairs_graph, 'quality').items()}
+
+    deferred = register()
+    assert registration.link_quality_metric_func is original
+    with patch.object(mvs_registration_module, 'deferred_link_quality', contextlib.nullcontext):
+        eager = register()
+
+    assert deferred.keys() == eager.keys()
+    for edge, (quality, transform) in eager.items():
+        assert deferred[edge][0] == pytest.approx(quality, nan_ok=True)
+        np.testing.assert_array_equal(deferred[edge][1], transform)
+
+
 def test_register_overlap_reuses_cached_overlap_across_param_changes():
     """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
     crop can be registered again with different registration parameters, without recomputing the

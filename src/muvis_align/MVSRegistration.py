@@ -2,9 +2,10 @@
 # https://github.com/pydata/xarray/issues/8828
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import copy
 import dask
+import functools
 import time
 from dask.diagnostics import ProgressBar
 from enum import Enum, auto
@@ -53,6 +54,41 @@ def normalisation_enabled(value):
     if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
         return False
     return bool(value)
+
+
+class _DeferredQuality:
+    """A link quality whose computation waits until it is known to be kept."""
+    __slots__ = ('func', 'args')
+
+    def __init__(self, func, *args):
+        self.func = func
+        self.args = args
+
+    def value(self):
+        return self.func(*self.args)
+
+
+@contextmanager
+def deferred_link_quality():
+    """Phase correlation scores every candidate shift (~11 a pair) with a spearman quality, then
+    keeps only the chosen one's: defer them, and let resolve_deferred_quality() compute that one."""
+    original = registration.link_quality_metric_func
+    registration.link_quality_metric_func = lambda *args: _DeferredQuality(original, *args)
+    try:
+        yield
+    finally:
+        registration.link_quality_metric_func = original
+
+
+def resolve_deferred_quality(pairwise_reg_func):
+    """`pairwise_reg_func` with a deferred quality in its result computed. Keeps its signature."""
+    @functools.wraps(pairwise_reg_func)
+    def resolved(*args, **kwargs):
+        result = pairwise_reg_func(*args, **kwargs)
+        if isinstance(result.get('quality'), _DeferredQuality):
+            result['quality'] = result['quality'].value()
+        return result
+    return resolved
 
 
 class MVSRegistration:
@@ -1371,7 +1407,8 @@ class MVSRegistration:
                 g_reg_computed = g_reg.copy()
                 edge_batches = batch_graph_edges(g_reg, n_parallel_pairwise_regs)
                 pair_times, pair_cpu_times = [], []
-                timed_reg_func = timed_calls(pairwise_reg_func, pair_times, pair_cpu_times)
+                timed_reg_func = timed_calls(resolve_deferred_quality(pairwise_reg_func), pair_times,
+                                             pair_cpu_times)
                 # phase correlation scores every candidate shift with these: their share of a pair's CPU
                 scoring = (timed_module_functions(registration, ['structural_similarity', 'link_quality_metric_func'])
                            if self.logging_time else nullcontext({}))
@@ -1380,7 +1417,7 @@ class MVSRegistration:
                                          desc='Registering pairs') as pbar, \
                         Timer(f'register {g_reg.number_of_edges()} pairs in {len(edge_batches)} batches',
                               verbose=self.logging_time), \
-                        scoring as scoring_cpu_times:
+                        scoring as scoring_cpu_times, deferred_link_quality():
                     for batch_index, batch_graph in enumerate(edge_batches):
                         batch_start = time.time()
                         batch_computed = compute_pairwise_registrations(
@@ -1395,7 +1432,7 @@ class MVSRegistration:
                         for edge in batch_computed.edges:
                             g_reg_computed.edges[edge].update(batch_computed.edges[edge])
                         del batch_computed
-                        release_memory()
+                        release_memory(generation=1)
                         if self.logging_time:
                             logging.info(f'Pair batch {batch_index + 1}/{len(edge_batches)}:'
                                          f' {batch_graph.number_of_edges()} pairs in {time.time() - batch_start:.1f}s'

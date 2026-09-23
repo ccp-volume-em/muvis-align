@@ -71,6 +71,13 @@ Progress (no memory changes yet):
   fails. Now threaded with OpenBLAS at one thread (threadpoolctl): 51 tiffs 18.5s vs 52s,
   results equal to 4e-15, 9 + 18 threaded runs without a crash. Still only ~3.3 cores.
 - Metrics already run at the pre-processed scale (msims_reg scale0), as registration does.
+- Per-batch release_memory() now collects only young generations: a full gc.collect scans every
+  live object (0.4s at 484k on 51 tiffs, far more at 34k sources, ~1800 batches).
+- Phase correlation computed a spearman quality for all ~11 candidate shifts and kept one: now
+  deferred and computed for the kept one only - identical results, pair CPU 432s -> 217s,
+  register_pairs 129.5s -> 90.6s on 51 tiffs. Worth fixing upstream in multiview_stitcher.
+- Next idea: batches wait on their slowest pair (up to 15.6s, overview pairs) - a rolling window
+  of synchronous per-pair computes on a thread pool, prototype in the scratchpad.
 - Next: run on the HPC and read those lines.
 
 ## TODO
