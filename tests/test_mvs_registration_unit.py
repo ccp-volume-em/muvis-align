@@ -338,6 +338,40 @@ def test_select_pair_overlap_then_register_overlap_matches_register_pairs():
     assert 'moving_points' in result
 
 
+def test_register_pairs_computes_without_linear_fusion():
+    """dask's linear fusion can give two pairs' fused chains one key (a 115-char prefix plus 4 hash
+    digits), handing a pair another pair's crop - so both computes of register_pairs() run without it."""
+    import dask
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    fuse_active = {}
+
+    def recording(name, func):
+        def wrapper(*args, **kwargs):
+            fuse_active[name] = dask.config.get('optimization.fuse.active', None)
+            return func(*args, **kwargs)
+        return wrapper
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[
+            'data/S000/S000_000_000.ome.zarr',
+            'data/S000/S000_000_001.ome.zarr',
+        ],
+        output_path='../../output/test_register_pairs_fusion/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    with patch.object(mvs_registration_module, 'compute_pairwise_registrations',
+                      recording('pairs', mvs_registration_module.compute_pairwise_registrations)), \
+            patch.object(mvs_registration_module, 'calc_pair_metrics',
+                         recording('metrics', mvs_registration_module.calc_pair_metrics)):
+        reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal'})
+
+    assert fuse_active == {'pairs': False, 'metrics': False}
+
+
 def test_register_overlap_reuses_cached_overlap_across_param_changes():
     """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
     crop can be registered again with different registration parameters, without recomputing the

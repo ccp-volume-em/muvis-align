@@ -25,8 +25,41 @@ Earlier fixes in this area: `16771aa` (bar froze partway, then filled and closed
 off-thread call re-planned it from zero) and `96192ce` (the bar's repaint delivered queued input,
 leaving the pointer grab stuck under xpra).
 
+### Pair registration mixing up pairs' crops (fixed)
+
+dask's linear fusion renames a fused chain to a 115-char prefix plus 4 hex digits of `hash()`,
+so two pairs' crop chains in one compute could share a key and one pair registered the other's
+crop - silently, or failing with `ValueError: inhomogeneous shape` in phase correlation when the
+shapes differed. `register_pairs` now computes with `optimization.fuse.active` off. Still in
+dask 2026.8.0.
+
+## In progress
+
+Huge memory use on the HPC, where all tasks were effectively spawned at the same time instead of
+a bounded number running at once. Test project (local):
+`C:/Project/slides/EM04652-02_slice17_spaghettiandmeatballs2` (51 sources, 179 pairs).
+Plan:
+- Find which step schedules everything at once (pair registration/metrics batches, overview,
+  preview fusion) and measure its peak rss on the test project.
+- Bound the number of tasks in flight, then re-measure.
+Progress (no memory changes yet):
+- Pair registration on the test project: peak rss 2.8GB -> 4.8GB, threads ~100 -> ~410, of
+  which only ~35 are Python threads. Not nested dask computes (only 2 top-level computes).
+- Native pools (2x OpenBLAS, OpenMP, OpenCV) each default to the core count, so likely one set
+  per dask worker - 64x64 on a 64-core node. Next: cap them to 1 inside the pair batches
+  (`threadpoolctl.threadpool_limits(1)`, `cv2.setNumThreads(1)`) and re-measure.
+- Local env updated to multiview-stitcher 0.1.62 (matches HPC). Measured there (24 cores):
+  - native threads capped to 1: peak 4.67GB vs 4.73GB uncapped - not the cause.
+  - pairs per compute 8 / 96 (default) / 179: peak 3.8 / 4.7 / 4.2GB, wall 1.7min / 54s / 54s.
+    CPU ~8 of 24 cores at best (436s cpu in 54s). No blow-up with batch size at this scale:
+    crops are ~200x200 at registration resolution. The HPC memory is not reproduced here.
+- Measured before the fused key collision fix (see Known issues); re-measure with it.
+
 ## TODO
 
+- [ ] Other computes over many similar per-source chains (fusion, overview, metrics outside
+      register_pairs) can hit the same dask fused-key collision - check, or switch linear fusion
+      off process-wide. Worth reporting upstream to dask.
 - [ ] Keep the refresh view bar moving: give the long single-step phases (promoting to 3D,
       capping the preview fusion size, adding and refreshing shapes) per-source or per-batch
       progress.

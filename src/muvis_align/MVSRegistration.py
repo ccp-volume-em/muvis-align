@@ -1355,7 +1355,12 @@ class MVSRegistration:
                         scale_node.ds[self.source_transform_key] = adapted
 
         try:
-            with dask.config.set(scheduler='threads'):
+            # Linear fusion off: dask (default_fused_keys_renamer, still in 2026.8.0) renames a fused
+            # chain to its first 115 chars plus 4 hex digits of hash(), dropping the unique token. The
+            # per-pair crop chains of one compute (read-astype-affine_transform) then collide about 1 in
+            # 20 computes at 36 pairs, near certain at 256: a pair silently registers another pair's
+            # crop, and only when their shapes differ does phase correlation fail ('inhomogeneous shape').
+            with dask.config.set({'scheduler': 'threads', 'optimization.fuse.active': False}):
                 g_reg = mv_graph.build_view_adjacency_graph_from_msims(
                     msims_reg,
                     transform_key=self.source_transform_key,
@@ -1396,9 +1401,12 @@ class MVSRegistration:
         mappings_dict = {(register_indices[indices[0]], register_indices[indices[1]]): mapping
                          for indices, mapping in mappings.items()}
 
-        metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []), self.source_transform_key,
-                                    reg_channel=reg_channel_index, n_parallel_pairs=n_parallel_pairwise_regs,
-                                    progress_factory=progress_factory)
+        # the metrics build the same per-pair chains - see the fused key collision above
+        with dask.config.set({'optimization.fuse.active': False}):
+            metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []),
+                                        self.source_transform_key, reg_channel=reg_channel_index,
+                                        n_parallel_pairs=n_parallel_pairwise_regs,
+                                        progress_factory=progress_factory)
         release_memory('Pair metrics')
 
         self.pairs_graph = g_reg_computed
