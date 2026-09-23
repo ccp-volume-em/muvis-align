@@ -1422,9 +1422,7 @@ class MVSRegistration:
         mappings_dict = {(register_indices[indices[0]], register_indices[indices[1]]): mapping
                          for indices, mapping in mappings.items()}
 
-        # the metrics build the same per-pair chains - see the fused key collision above
-        with dask.config.set({'optimization.fuse.active': False}), \
-                Timer(f'pair metrics ({g_reg_computed.number_of_edges()} pairs)', verbose=self.logging_time):
+        with Timer(f'pair metrics ({g_reg_computed.number_of_edges()} pairs)', verbose=self.logging_time):
             metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []),
                                         self.source_transform_key, reg_channel=reg_channel_index,
                                         n_parallel_pairs=n_parallel_pairwise_regs,

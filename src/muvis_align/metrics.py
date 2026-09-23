@@ -1,4 +1,4 @@
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import dask
 #import frc
 import multiview_stitcher.metrics
@@ -8,6 +8,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
 from sklearn.metrics import euclidean_distances
+from threadpoolctl import threadpool_limits
 from xarray import DataArray
 
 from muvis_align.constants import default_transform_key, default_quality_key
@@ -41,6 +42,15 @@ def quality_to_scalar(value):
     return value
 
 
+@contextmanager
+def _pair_metrics_compute():
+    """Threads across pairs. OpenBLAS is held to one thread per call: each pair's overlap mask is a
+    matmul, and OpenBLAS starting its own pool from many threads at once crashed the process."""
+    # fusion off for the fused key collision described in MVSRegistration.register_pairs
+    with dask.config.set({'scheduler': 'threads', 'optimization.fuse.active': False}),             threadpool_limits(1, user_api='blas'):
+        yield
+
+
 def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
                       n_parallel_pairs=None, progress_factory=None):
     metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
@@ -49,7 +59,7 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
     batch_results = []
     progress = (progress_factory(total=pairs_graph.number_of_edges(), desc='Pair metrics')
                 if progress_factory is not None else nullcontext(None))
-    with progress as pbar, dask.config.set(scheduler='single-threaded'):
+    with progress as pbar, _pair_metrics_compute():
         for batch_graph in batch_graph_edges(pairs_graph, n_parallel_pairs):
             # only the batch's own msims: every call builds a sim for each msim it is given.
             # Renumbered in order, so the lower index stays the fixed one
@@ -113,7 +123,7 @@ def merge_metric_results(batch_results):
 def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_methods, reg_channel=None,
                         reg_results=None, n_parallel_pairs=None):
     metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
-    with dask.config.set(scheduler='single-threaded'):
+    with _pair_metrics_compute():
         metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
             msims,
             base_transform_key=base_transform_key,  # defines overlap region

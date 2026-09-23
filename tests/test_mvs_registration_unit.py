@@ -340,15 +340,23 @@ def test_select_pair_overlap_then_register_overlap_matches_register_pairs():
 
 def test_register_pairs_computes_without_linear_fusion():
     """dask's linear fusion can give two pairs' fused chains one key (a 115-char prefix plus 4 hash
-    digits), handing a pair another pair's crop - so both computes of register_pairs() run without it."""
+    digits), handing a pair another pair's crop - so both computes of register_pairs() run without it.
+    The metrics run threaded with OpenBLAS at one thread: its own pool, started from many threads,
+    crashed the process."""
     import dask
+    import multiview_stitcher.metrics
+    from threadpoolctl import threadpool_info
     import muvis_align.MVSRegistration as mvs_registration_module
 
-    fuse_active = {}
+    seen = {}
 
     def recording(name, func):
         def wrapper(*args, **kwargs):
-            fuse_active[name] = dask.config.get('optimization.fuse.active', None)
+            seen[name] = {
+                'fuse': dask.config.get('optimization.fuse.active', None),
+                'scheduler': dask.config.get('scheduler', None),
+                'blas_threads': {pool['num_threads'] for pool in threadpool_info() if pool['user_api'] == 'blas'},
+            }
             return func(*args, **kwargs)
         return wrapper
 
@@ -364,12 +372,12 @@ def test_register_pairs_computes_without_linear_fusion():
     reg.init_data()
     reg.preprocess(reg.msims)
     with patch.object(mvs_registration_module, 'compute_pairwise_registrations',
-                      recording('pairs', mvs_registration_module.compute_pairwise_registrations)), \
-            patch.object(mvs_registration_module, 'calc_pair_metrics',
-                         recording('metrics', mvs_registration_module.calc_pair_metrics)):
+                      recording('pairs', mvs_registration_module.compute_pairwise_registrations)),             patch.object(multiview_stitcher.metrics, 'tile_pair_image_metrics',
+                         recording('metrics', multiview_stitcher.metrics.tile_pair_image_metrics)):
         reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal'})
 
-    assert fuse_active == {'pairs': False, 'metrics': False}
+    assert seen['pairs']['fuse'] is False
+    assert seen['metrics'] == {'fuse': False, 'scheduler': 'threads', 'blas_threads': {1}}
 
 
 def test_register_overlap_reuses_cached_overlap_across_param_changes():

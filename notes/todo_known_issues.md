@@ -66,6 +66,11 @@ Progress (no memory changes yet):
   8.5 cores; scoring 238s of the 302s (spearman 160s, SSIM 78s). Metrics 18s single-threaded,
   ~0.1s a pair - over 3h serial at 115k pairs.
 - Peak in the batch lines is the process's lifetime peak, so a batch shows only if it raises it.
+- Pair metrics were single-threaded because threaded ones crashed (access violation): each
+  pair's overlap mask is a matmul, and OpenBLAS starting its own pool from many threads at once
+  fails. Now threaded with OpenBLAS at one thread (threadpoolctl): 51 tiffs 18.5s vs 52s,
+  results equal to 4e-15, 9 + 18 threaded runs without a crash. Still only ~3.3 cores.
+- Metrics already run at the pre-processed scale (msims_reg scale0), as registration does.
 - Next: run on the HPC and read those lines.
 
 ## TODO
