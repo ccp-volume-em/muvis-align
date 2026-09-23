@@ -3,6 +3,7 @@ from configparser import ConfigParser
 import csv
 import cv2 as cv
 from datetime import datetime
+import gc
 import glob
 import json
 import logging
@@ -977,6 +978,30 @@ def print_memory_usage():
     if peak is not None:
         parts.append(f'peak {print_hbytes(peak)}')
     return ' ' + ' '.join(parts)
+
+
+def release_memory(label=None):
+    """Hand memory the process has freed back to the OS, logging what that recovered.
+
+    glibc keeps a heap (arena) per thread, and a large buffer freed inside one returns to the OS
+    only if nothing still in use sits above it. Hundreds of reader threads each decoding tiles
+    left one 34k-source run holding 240GB after the overview, which on Windows kept 160KB a
+    source for the same work. malloc_trim() returns every such free page; elsewhere this just
+    collects garbage.
+    """
+    gc.collect()
+    if not sys.platform.startswith('linux'):
+        return
+    try:
+        import ctypes
+        before, _ = get_process_memory()
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+        after, _ = get_process_memory()
+    except (OSError, AttributeError):
+        return
+    if label and before is not None and after is not None:
+        logging.info(f'{label}: released {print_hbytes(max(before - after, 0))} to the OS,'
+                     f' rss {print_hbytes(before)} -> {print_hbytes(after)}')
 
 
 def to_posix_path(path):

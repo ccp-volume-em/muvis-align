@@ -59,6 +59,9 @@ MIN_SPEED=70
 #  the filesystem starts complaining.
 # ---------------------------------------------------------------------------
 SOURCE_INIT_WORKERS=256
+#  MALLOC_MMAP_THRESHOLD_ (set on the apptainer line below) has glibc give
+#  each decoded tile its own mapping, returned to the OS when freed. Left to
+#  glibc's per-thread heaps, one 34k-tile overview kept 240GB after use.
 # ===========================================================================
 
 set -euo pipefail
@@ -155,6 +158,7 @@ apptainer exec \
     --env "USER=${USER}" \
     --env "XDG_RUNTIME_DIR=${RUN_DIR}" \
     --env "MUVIS_SOURCE_INIT_WORKERS=${SOURCE_INIT_WORKERS}" \
+    --env "MALLOC_MMAP_THRESHOLD_=1048576" \
     "${CONTAINER_PATH}" \
     xpra start \
         --bind-tcp="0.0.0.0:${XPRA_PORT},auth=file:filename=${PASSWORD_FILE}" \

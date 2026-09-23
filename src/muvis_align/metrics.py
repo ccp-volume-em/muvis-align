@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 import dask
 #import frc
 import multiview_stitcher.metrics
@@ -10,8 +11,8 @@ from sklearn.metrics import euclidean_distances
 from xarray import DataArray
 
 from muvis_align.constants import default_transform_key, default_quality_key
-from muvis_align.image.util import image_reshape, get_msim_transform_keys
-from muvis_align.util import apply_transform
+from muvis_align.image.util import image_reshape, get_msim_transform_keys, batch_graph_edges
+from muvis_align.util import apply_transform, release_memory
 
 
 def create_metric_methods(metric_methods, msim, reg_channel=None):
@@ -41,16 +42,33 @@ def quality_to_scalar(value):
 
 
 def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
-                      n_parallel_pairs=None):
+                      n_parallel_pairs=None, progress_factory=None):
     metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
-    with dask.config.set(scheduler='single-threaded'):
-        metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
-            msims,
-            base_transform_key=base_transform_key,  # defines overlap region
-            pairs_graph=pairs_graph,
-            metric_funcs=metric_funcs,
-            n_parallel_pairs=n_parallel_pairs
-        )
+    # in batches for the same reason as the registration itself (see default_pair_batch_size):
+    # multiview_stitcher would otherwise plan every pair's metrics in one graph
+    batch_results = []
+    progress = (progress_factory(total=pairs_graph.number_of_edges(), desc='Pair metrics')
+                if progress_factory is not None else nullcontext(None))
+    with progress as pbar, dask.config.set(scheduler='single-threaded'):
+        for batch_graph in batch_graph_edges(pairs_graph, n_parallel_pairs):
+            # only the batch's own msims: every call builds a sim for each msim it is given.
+            # Renumbered in order, so the lower index stays the fixed one
+            nodes = sorted(batch_graph.nodes)
+            batch_result = multiview_stitcher.metrics.tile_pair_image_metrics(
+                [msims[node] for node in nodes],
+                base_transform_key=base_transform_key,  # defines overlap region
+                pairs_graph=nx.relabel_nodes(batch_graph, {node: index for index, node in enumerate(nodes)}),
+                metric_funcs=metric_funcs,
+                n_parallel_pairs=n_parallel_pairs
+            )
+            for key in ('pairs', 'bboxes'):
+                batch_result[key] = {(nodes[fixed], nodes[moving]): value
+                                     for (fixed, moving), value in batch_result.get(key, {}).items()}
+            batch_results.append(batch_result)
+            release_memory()
+            if pbar is not None:
+                pbar.update(batch_graph.number_of_edges())
+    metric_results = merge_metric_results(batch_results)
 
     qualities = nx.get_edge_attributes(pairs_graph, default_quality_key)
 
@@ -65,6 +83,31 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
     metric_results['summary'][default_transform_key][default_quality_key] = value
 
     return metric_results
+
+
+def merge_metric_results(batch_results):
+    """One tile_pair_image_metrics() result from several over disjoint sets of pairs. Each batch's
+    summary is an overlap-weighted mean over its own pairs, and the overlaps are not returned, so
+    the batches are weighted by how many pairs each had a value for - close to, not exactly, what
+    one call over every pair would report."""
+    merged = {'pairs': {}, 'bboxes': {}, 'summary': {}}
+    weights = {}
+    for result in batch_results:
+        merged['pairs'].update(result.get('pairs', {}))
+        merged['bboxes'].update(result.get('bboxes', {}))
+        for candidate_key, metric_values in result.get('summary', {}).items():
+            # kept even with no metrics asked for: the caller adds the quality under it
+            merged['summary'].setdefault(candidate_key, {})
+            for metric_key, value in metric_values.items():
+                count = sum(1 for pair in result.get('pairs', {}).values()
+                            if not np.isnan(float(pair.get(candidate_key, {}).get(metric_key, np.nan))))
+                if count and value is not None and not np.isnan(value):
+                    weights.setdefault((candidate_key, metric_key), []).append((value, count))
+                merged['summary'].setdefault(candidate_key, {}).setdefault(metric_key, np.nan)
+    for (candidate_key, metric_key), values in weights.items():
+        merged['summary'][candidate_key][metric_key] = float(
+            sum(value * count for value, count in values) / sum(count for _, count in values))
+    return merged
 
 
 def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_methods, reg_channel=None,

@@ -1532,6 +1532,7 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
     bare_interface.reg.register_pairs.assert_called_once_with(
         ["register-msim"],
         params={"method": "phase", "metrics": ["ncc"]},
+        progress_factory=ANY,
     )
     bare_interface.reg.save_pair_mappings.assert_called_once_with(
         {(0, 1): "mapping"},

@@ -31,7 +31,7 @@ except Exception as e:
 from muvis_align.constants import (default_chunk_size, default_contrast_limits_max_tasks,
                                    default_export_chunk_size, default_export_fusion_chunk_bytes,
                                    default_fusion_chunk_bytes, default_overview_max_bytes,
-                                   default_preview_max_bytes,
+                                   default_pair_batch_size, default_preview_max_bytes,
                                    fusion_stack_arrays)
 from muvis_align.util import *
 
@@ -2663,6 +2663,18 @@ def build_pairs_graph(msims, pairs, transform_key, overlaps=None):
         overlap = (overlaps or {}).get(tuple(pair))
         graph.add_edge(*pair, **({'overlap': overlap} if overlap is not None else {}))
     return graph
+
+
+def batch_graph_edges(graph, batch_size=None):
+    """`graph` split into subgraphs of at most `batch_size` edges each (default_pair_batch_size
+    if None), keeping their node ids and attributes - so each can be registered or measured in a
+    compute of its own, with progress between them and memory released after each one.
+    """
+    batch_size = batch_size or default_pair_batch_size
+    edges = list(graph.edges)
+    # a graph without edges is still handed over once, as it always was
+    return [graph.edge_subgraph(edges[start:start + batch_size]).copy()
+            for start in range(0, len(edges), batch_size)] or [graph.copy()]
 
 
 def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_max_bytes,

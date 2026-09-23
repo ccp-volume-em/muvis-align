@@ -38,7 +38,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir
+    resolve_to_project_dir, relativize_to_project_dir, release_memory
 
 
 class _ProgressBridge(QObject):
@@ -989,6 +989,8 @@ class Interface:
                     msims, transform_key, z_scale=self.reg._msim_z_scale,
                     label=f'Overview ({len(msims)} images)',
                     progress=(pbar.update if pbar is not None else None))
+            # every source's pixels were decoded and dropped again, on many threads
+            release_memory(f'Overview ({len(msims)} images)')
             if overview is not None:
                 return overview
         # output_chunksize is left to fuse(), which derives it after its own make_msims_3d
@@ -1399,14 +1401,14 @@ class Interface:
 
         with self._operation_progress('Pair registration', progress_factory, phases=2) as factory:
             def register_pairs(worker_factory):
-                # the progress patches belong to the thread doing the work, reporting to its own
-                # factory - see _run_off_thread()
-                with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_registration=True), \
-                        NapariDaskProgress(progress_class=worker_factory, desc='Pair registration'), \
-                        Timer('pair registration', verbose=self._timing_verbose()):
+                # its two phases (the pairs, in batches, then their metrics) report per batch to
+                # the worker's own factory - see _run_off_thread(). A dask callback here would
+                # open a phase for every batch's compute.
+                with Timer('pair registration', verbose=self._timing_verbose()):
                     return self.reg.register_pairs(
                         self.reg.register_msims,
-                        params=self.params['registration'] | {'metrics': self.metrics_methods})
+                        params=self.params['registration'] | {'metrics': self.metrics_methods},
+                        progress_factory=worker_factory)
 
             results = self._run_off_thread(register_pairs, factory)
 

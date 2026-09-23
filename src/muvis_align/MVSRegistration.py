@@ -1244,7 +1244,8 @@ class MVSRegistration:
         self.save_metrics(results['metrics'])
         return results
 
-    def register_pairs(self, register_msims=None, register_indices=None, params=None):
+    def register_pairs(self, register_msims=None, register_indices=None, params=None,
+                       progress_factory=None):
         logging.info('Pair registration...')
         if register_indices is None:
             if self.register_indices is not None:
@@ -1257,8 +1258,9 @@ class MVSRegistration:
                              params.get('registration', {}).get('pairing', '')).lower()
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
                                               params.get('registration', {}).get('n_parallel_pairwise_regs'))
-        if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
-            n_parallel_pairwise_regs = None
+        # blank or 0 is automatic; a widget can hand the number over as a string or a float
+        n_parallel_pairwise_regs = (int(float(n_parallel_pairwise_regs))
+                                    if is_valid_value(n_parallel_pairwise_regs) else None) or None
 
         # the caller's params win over whatever init() was given - in the plugin the dropdown
         # can change between initialising the sources and registering
@@ -1361,27 +1363,43 @@ class MVSRegistration:
                     overlap_tolerance=overlap_tolerance,
                 )
 
-                g_reg_computed = compute_pairwise_registrations(
-                    msims_reg,
-                    g_reg,
-                    transform_key=self.source_transform_key,
-                    overlap_tolerance=overlap_tolerance,
-                    pairwise_reg_func=pairwise_reg_func,
-                    pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
-                    n_parallel_pairwise_regs=n_parallel_pairwise_regs,
-                )
+                g_reg_computed = g_reg.copy()
+                edge_batches = batch_graph_edges(g_reg, n_parallel_pairwise_regs)
+                with self.progress_phase(progress_factory, total=g_reg.number_of_edges(),
+                                         desc='Registering pairs') as pbar, \
+                        Timer(f'register {g_reg.number_of_edges()} pairs in {len(edge_batches)} batches',
+                              verbose=self.logging_time):
+                    for batch_graph in edge_batches:
+                        batch_computed = compute_pairwise_registrations(
+                            msims_reg,
+                            batch_graph,
+                            transform_key=self.source_transform_key,
+                            overlap_tolerance=overlap_tolerance,
+                            pairwise_reg_func=pairwise_reg_func,
+                            pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
+                            n_parallel_pairwise_regs=n_parallel_pairwise_regs,
+                        )
+                        for edge in batch_computed.edges:
+                            g_reg_computed.edges[edge].update(batch_computed.edges[edge])
+                        del batch_computed
+                        release_memory()
+                        if pbar is not None:
+                            pbar.update(batch_graph.number_of_edges())
 
                 # ******* end MVS registration functions
 
         except NotEnoughOverlapError:
             g_reg_computed = g_reg
 
+        release_memory('Pair registration')
         mappings = nx.get_edge_attributes(g_reg_computed, default_transform_key)
         mappings_dict = {(register_indices[indices[0]], register_indices[indices[1]]): mapping
                          for indices, mapping in mappings.items()}
 
         metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []), self.source_transform_key,
-                                    reg_channel=reg_channel_index, n_parallel_pairs=n_parallel_pairwise_regs)
+                                    reg_channel=reg_channel_index, n_parallel_pairs=n_parallel_pairwise_regs,
+                                    progress_factory=progress_factory)
+        release_memory('Pair metrics')
 
         self.pairs_graph = g_reg_computed
         self.pair_msims = msims_reg
