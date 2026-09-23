@@ -53,7 +53,20 @@ Progress (no memory changes yet):
   - pairs per compute 8 / 96 (default) / 179: peak 3.8 / 4.7 / 4.2GB, wall 1.7min / 54s / 54s.
     CPU ~8 of 24 cores at best (436s cpu in 54s). No blow-up with batch size at this scale:
     crops are ~200x200 at registration resolution. The HPC memory is not reproduced here.
-- Measured before the fused key collision fix (see Known issues); re-measure with it.
+- Measured before the fused key collision fix (see Known issues); re-measured with it,
+  headless on 51 tiffs: pairs per compute 8 / 24 / 96 / 179 -> peak +1.1 / +1.7 / +2.0 / +1.9GB,
+  wall 149 / 101 / 80 / 80s, 2.9 / 4.8 / 7.4 / 8.1 cores. Memory still flat with batch size.
+- CPU (cProfile, 12 tiffs, single-threaded): ~0.9s per pair, mostly multiview_stitcher's
+  `link_quality_metric_func` - spearmanr (16s of 31s) and SSIM (9s), ~11 candidate shifts per
+  pair. Tile reads 0.8s, affine resampling 2.8s. Likely GIL-bound, hence ~8 cores at most.
+- Done: pairs per compute capped at 2x cores (`default_pair_batch_size`), and
+  register_pairs logs, when verbose: each batch's pairs, time and rss/peak; per-pair CPU vs
+  wall (`format_phase_timing`); the scoring share (SSIM, spearman); pair metrics time.
+- 51 tiffs, 48 per compute: 65.6s wall (80s at 96). Pairs 302s CPU of 683s pair wall, process
+  8.5 cores; scoring 238s of the 302s (spearman 160s, SSIM 78s). Metrics 18s single-threaded,
+  ~0.1s a pair - over 3h serial at 115k pairs.
+- Peak in the batch lines is the process's lifetime peak, so a batch shows only if it raises it.
+- Next: run on the HPC and read those lines.
 
 ## TODO
 

@@ -5,7 +5,8 @@ import pytest
 
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
-    find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage
+    find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
+    timed_module_functions
 
 
 @pytest.mark.parametrize(
@@ -195,3 +196,30 @@ def test_process_memory_tracks_an_allocation_or_says_it_cannot():
     finally:
         del block
     assert 'rss' in print_memory_usage() or 'peak' in print_memory_usage()
+
+
+def test_timed_calls_records_each_call_and_keeps_the_signature():
+    from dask.utils import has_keyword
+
+    def register(fixed_data, moving_data, scale=1):
+        return fixed_data * scale
+
+    times, cpu_times = [], []
+    timed = timed_calls(register, times, cpu_times)
+    assert timed(2, 3, scale=4) == 8
+    assert timed(1, 1) == 1
+    assert len(times) == len(cpu_times) == 2
+    assert all(time_ >= 0 for time_ in times + cpu_times)
+    # multiview_stitcher picks how to call a registration function by its keywords
+    assert has_keyword(timed, 'fixed_data') and has_keyword(timed, 'moving_data')
+
+
+def test_timed_module_functions_times_calls_and_restores():
+    import types
+    module = types.SimpleNamespace(score=lambda value: value + 1)
+    original = module.score
+    with timed_module_functions(module, ['score']) as cpu_times:
+        assert module.score(1) == 2
+        module.score(2)
+    assert len(cpu_times['score']) == 2
+    assert module.score is original

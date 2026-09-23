@@ -1370,17 +1370,25 @@ class MVSRegistration:
 
                 g_reg_computed = g_reg.copy()
                 edge_batches = batch_graph_edges(g_reg, n_parallel_pairwise_regs)
+                pair_times, pair_cpu_times = [], []
+                timed_reg_func = timed_calls(pairwise_reg_func, pair_times, pair_cpu_times)
+                # phase correlation scores every candidate shift with these: their share of a pair's CPU
+                scoring = (timed_module_functions(registration, ['structural_similarity', 'link_quality_metric_func'])
+                           if self.logging_time else nullcontext({}))
+                phase_start, phase_cpu_start = time.time(), time.process_time()
                 with self.progress_phase(progress_factory, total=g_reg.number_of_edges(),
                                          desc='Registering pairs') as pbar, \
                         Timer(f'register {g_reg.number_of_edges()} pairs in {len(edge_batches)} batches',
-                              verbose=self.logging_time):
-                    for batch_graph in edge_batches:
+                              verbose=self.logging_time), \
+                        scoring as scoring_cpu_times:
+                    for batch_index, batch_graph in enumerate(edge_batches):
+                        batch_start = time.time()
                         batch_computed = compute_pairwise_registrations(
                             msims_reg,
                             batch_graph,
                             transform_key=self.source_transform_key,
                             overlap_tolerance=overlap_tolerance,
-                            pairwise_reg_func=pairwise_reg_func,
+                            pairwise_reg_func=timed_reg_func,
                             pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
                             n_parallel_pairwise_regs=n_parallel_pairwise_regs,
                         )
@@ -1388,8 +1396,21 @@ class MVSRegistration:
                             g_reg_computed.edges[edge].update(batch_computed.edges[edge])
                         del batch_computed
                         release_memory()
+                        if self.logging_time:
+                            logging.info(f'Pair batch {batch_index + 1}/{len(edge_batches)}:'
+                                         f' {batch_graph.number_of_edges()} pairs in {time.time() - batch_start:.1f}s'
+                                         f'{print_memory_usage()}')
                         if pbar is not None:
                             pbar.update(batch_graph.number_of_edges())
+                if self.logging_time and pair_times:
+                    workers = dask.config.get('num_workers', None) or dask.system.CPU_COUNT
+                    logging.info(f'Register pairs: {len(pair_times)} pairs'
+                                 f' {format_phase_timing(time.time() - phase_start, pair_times, pair_cpu_times,
+                                                         workers, time.process_time() - phase_cpu_start)}')
+                    logging.info('Pair scoring cpu: '
+                                 + ', '.join(f'{name} {sum(cpu_times):.1f}s ({len(cpu_times)} calls)'
+                                             for name, cpu_times in scoring_cpu_times.items())
+                                 + f' of {sum(pair_cpu_times):.1f}s in the pairs themselves')
 
                 # ******* end MVS registration functions
 
@@ -1402,7 +1423,8 @@ class MVSRegistration:
                          for indices, mapping in mappings.items()}
 
         # the metrics build the same per-pair chains - see the fused key collision above
-        with dask.config.set({'optimization.fuse.active': False}):
+        with dask.config.set({'optimization.fuse.active': False}), \
+                Timer(f'pair metrics ({g_reg_computed.number_of_edges()} pairs)', verbose=self.logging_time):
             metrics = calc_pair_metrics(msims_reg, g_reg_computed, params.get('metrics', []),
                                         self.source_transform_key, reg_channel=reg_channel_index,
                                         n_parallel_pairs=n_parallel_pairwise_regs,

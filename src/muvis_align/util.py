@@ -1,7 +1,9 @@
 import ast
 from configparser import ConfigParser
+from contextlib import contextmanager
 import csv
 import cv2 as cv
+import functools
 from datetime import datetime
 import gc
 import glob
@@ -12,6 +14,7 @@ import numpy as np
 import os.path
 import re
 import sys
+import time
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
 from xarray import DataArray
@@ -579,6 +582,37 @@ def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, proc
         summary += f' - {regime}'
     return summary
 
+
+
+def timed_calls(func, times, cpu_times):
+    """`func`, appending each call's wall and thread CPU time to `times` and `cpu_times` - the
+    per-item figures format_phase_timing() reads. Keeps func's signature for callers that inspect it.
+    """
+    @functools.wraps(func)
+    def timed(*args, **kwargs):
+        start, cpu_start = time.perf_counter(), time.thread_time()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            times.append(time.perf_counter() - start)
+            cpu_times.append(time.thread_time() - cpu_start)
+    return timed
+
+
+@contextmanager
+def timed_module_functions(module, names):
+    """For the duration, time calls to `module`'s functions `names` (looked up there at call time),
+    yielding {name: [thread CPU time per call]}. Replaces them process-wide, restored on exit.
+    """
+    cpu_times = {name: [] for name in names}
+    originals = {name: getattr(module, name) for name in names}
+    for name, func in originals.items():
+        setattr(module, name, timed_calls(func, [], cpu_times[name]))
+    try:
+        yield cpu_times
+    finally:
+        for name, func in originals.items():
+            setattr(module, name, func)
 
 def convert_to_um(value, unit):
     """`value` in `unit`, converted to um. An unrecognised unit is left unscaled - but logged,
