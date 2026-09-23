@@ -1014,7 +1014,7 @@ def print_memory_usage():
     return ' ' + ' '.join(parts)
 
 
-def release_memory(label=None):
+def release_memory(label=None, generation=2):
     """Hand memory the process has freed back to the OS, logging what that recovered.
 
     glibc keeps a heap (arena) per thread, and a large buffer freed inside one returns to the OS
@@ -1022,8 +1022,11 @@ def release_memory(label=None):
     left one 34k-source run holding 240GB after the overview, which on Windows kept 160KB a
     source for the same work. malloc_trim() returns every such free page; elsewhere this just
     collects garbage.
+
+    `generation` 1 collects only young objects, enough for what one batch left behind: a full
+    collection scans every live object, 0.4s at 484k and growing with the project.
     """
-    gc.collect()
+    gc.collect(generation)
     if not sys.platform.startswith('linux'):
         return
     try:

@@ -75,7 +75,7 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
                 batch_result[key] = {(nodes[fixed], nodes[moving]): value
                                      for (fixed, moving), value in batch_result.get(key, {}).items()}
             batch_results.append(batch_result)
-            release_memory()
+            release_memory(generation=1)
             if pbar is not None:
                 pbar.update(batch_graph.number_of_edges())
     metric_results = merge_metric_results(batch_results)
