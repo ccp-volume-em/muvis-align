@@ -21,6 +21,26 @@ Each of the stuck steps is one progress phase with `total=1`, so nothing is repo
 finishes; only the composite overview reports per source. The first refresh after opening the
 project shows the same pattern on a smaller scale (create shapes, add shapes to viewer).
 
+Two ways the bar goes quiet in the current code:
+
+- Off the Qt thread (`_run_off_thread`): promoting to 3D and capping the preview size report
+  nothing until they finish, so the bar holds its position.
+- On the Qt thread: adding the fused data and shapes to the viewer and refreshing the overview
+  shapes touch napari, so they have to run there. While they run Qt processes no events and
+  cannot repaint anything, the bar included - worse under xpra, where the display is remote.
+
+Earlier fixes in this area, for context:
+
+- `16771aa`: the bar froze partway and then filled and closed in the same instant ("stuck, and
+  disappears before completion") - each `_run_off_thread` call re-planned the bar from zero.
+  The same work moved the heavy steps off the Qt thread behind a nested event loop.
+- `96192ce`: the bar's repaint (`processEvents()`) also delivered queued input, which under
+  xpra left the pointer grab stuck; it now flushes paints only (`flush_paint_events()`).
+
+Not yet confirmed whether the bar actually disappears (the activity dock or window not painted)
+or only stops moving - worth checking under xpra against the log's heartbeat, which keeps
+reporting the stuck percentage throughout.
+
 ## TODO
 
 - [ ] Keep the refresh view bar visible and moving throughout: give the long single-step phases
