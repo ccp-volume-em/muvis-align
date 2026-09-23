@@ -99,8 +99,13 @@ Progress (no memory changes yet):
 - Tried, not worth it: each pair's metrics right after its registration on the same thread.
   46.7/47.2s -> 44.1/43.6s (~7%: registration already keeps the threads busy), and it needs BLAS
   at 1 thread for registration too, which moves 6 of 179 pairs by a sub-pixel step.
-- Next: run on the HPC, check the rolling window scales there (64 threads) and read the
-  verbose timing/memory lines.
+- Pushed up to edff812 (rolling window for registration and pair metrics, exact metrics summary).
+- Next (user, manually): rebuild and push the container (docker-build-push.sh), refresh it on the
+  HPC (sbatch xpra-pull.sh), then run through xpra-slurm.sh - it runs the code baked into the
+  image, so without the rebuild it tests the old batched code. Verbose timing logging on.
+- Then: check the rolling window scales to 64 threads. Local baseline, 51 tiffs, 8 workers:
+  pair loop 50-52s (batches) -> 38-41s, cores ~4.8 -> 7-8, peak 2.2GB -> 2.5-2.8GB. On the HPC
+  compare peak memory against the earlier run's, and the per-2x-threads pair lines over time.
 
 ## TODO
 
