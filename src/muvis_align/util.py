@@ -1094,8 +1094,10 @@ def describe_live_buffers(min_bytes=1 << 20, top=5):
     Seconds per call on a large project: for diagnosing, not routine logging.
     """
     seen = set()
+    expanded = set()
     holders = {}
     examples = {}
+    container_types = (dict, list, tuple, set, frozenset)
     for holder in gc.get_objects():
         stack = [(value, type(holder).__qualname__) for value in gc.get_referents(holder)]
         while stack:
@@ -1107,11 +1109,13 @@ def describe_live_buffers(min_bytes=1 << 20, top=5):
                     count, total = holders.get(path, (0, 0))
                     holders[path] = (count + 1, total + memory[1])
                     examples.setdefault(path, holder)
-            elif isinstance(value, (dict, list, tuple, set, frozenset)) and not gc.is_tracked(value) \
-                    and path.count('>') < 4:
-                # a tracked container is reached as a holder of its own
-                stack.extend((item, f'{path}>{type(value).__qualname__}')
-                             for item in gc.get_referents(value))
+            elif isinstance(value, container_types) and not gc.is_tracked(value) \
+                    and path.count('>') < 4 and id(value) not in expanded:
+                # once each: one shared by many holders made this quadratic. A tracked container is
+                # reached as a holder of its own
+                expanded.add(id(value))
+                stack.extend((item, f'{path}>{type(value).__qualname__}') for item in gc.get_referents(value)
+                             if isinstance(item, (np.ndarray, bytes, bytearray, memoryview) + container_types))
     if not holders:
         return f'no live buffers of {print_hbytes(min_bytes)} or more'
     frame_type = type(sys._getframe())
