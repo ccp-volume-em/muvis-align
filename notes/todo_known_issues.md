@@ -162,6 +162,9 @@ Progress:
   browser tab, napari starts maximised (c90d870); Dockerfile examples now use the quay.io tag
   (637704e), the stale local muvis-align-xpra:latest (7 Sep) removed. Container rebuilt and
   pushed by the user, checked locally in a new Chrome tab: right size, buttons work.
+- The live-buffer test failed on every Python 3.14 job: 3.14 tracks a dict of arrays itself, so
+  the holder reads 'dict x4 12.0MB (held by _TileKeeper)'. Test accepts both forms (58fc9bb,
+  pushed; CI running). No 3.14 interpreter locally (.tox/py314-windows is empty).
 - Next (user, on the HPC): git pull (xpra-slurm.sh: screen settings, LOG_LIVE_BUFFERS=1),
   sbatch xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, open the project, run
   pre-processing, send the log - the lines to read are 'Overview (... images): n/N pasted' and
