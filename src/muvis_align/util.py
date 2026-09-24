@@ -1118,13 +1118,22 @@ def describe_live_buffers(min_bytes=1 << 20, top=5):
                              if isinstance(item, (np.ndarray, bytes, bytearray, memoryview) + container_types))
     if not holders:
         return f'no live buffers of {print_hbytes(min_bytes)} or more'
+    ranked = sorted(holders.items(), key=lambda item: -item[1][1])[:top]
+    # the largest holders' owners, by one more pass over the referents: gc.get_referrers() ran
+    # over 10 minutes on the full test suite's objects (Linux, 3.12, Qt on a display)
+    targets = {id(examples[path]): path for path, _ in ranked}
+    owners = {path: set() for path, _ in ranked}
     frame_type = type(sys._getframe())
+    for owner in gc.get_objects():
+        if owner is not examples and not isinstance(owner, frame_type):
+            for value in gc.get_referents(owner):
+                path = targets.get(id(value))
+                if path is not None:
+                    owners[path].add(type(owner).__qualname__)
     parts = []
-    for path, (count, total) in sorted(holders.items(), key=lambda item: -item[1][1])[:top]:
-        owners = {type(owner).__qualname__ for owner in gc.get_referrers(examples[path])
-                  if owner is not examples and not isinstance(owner, frame_type)}
+    for path, (count, total) in ranked:
         parts.append(f'{path} x{count} {print_hbytes(total)}'
-                     + (f' (held by {", ".join(sorted(owners)[:3])})' if owners else ''))
+                     + (f' (held by {", ".join(sorted(owners[path])[:3])})' if owners[path] else ''))
     count = sum(count for count, _ in holders.values())
     total = sum(total for _, total in holders.values())
     return f'{count} live buffers of {print_hbytes(min_bytes)}+, {print_hbytes(total)}: ' + '; '.join(parts)
