@@ -143,8 +143,12 @@ Progress:
   ~2s a check on 51 sources, more at 34k. Doesn't see a running function's locals (on 3.12
   reading f_locals keeps them alive). Local baseline (data_400, HPC config): "no live buffers"
   during the paste; after, only the overview's own 215MB (Array held by Variable).
-- Next (user): rebuild the container, run on the HPC, send the log - the lines to read are
-  'Overview (... images): n/N pasted' and 'Overview (... images) done'.
+- Pushed as aa63a09 (full suite: 679 passed).
+- Next (user): rebuild and push the container (docker-build-push.sh), refresh it on the HPC
+  (sbatch xpra-pull.sh), pull the repo there for xpra-slurm.sh's LOG_LIVE_BUFFERS=1, run
+  xpra-slurm.sh and send the log - the lines to read are 'Overview (... images): n/N pasted'
+  and 'Overview (... images) done'. Then: fix what holds the tiles, and only after that test
+  pair registration on the HPC.
 
 ## TODO
 
