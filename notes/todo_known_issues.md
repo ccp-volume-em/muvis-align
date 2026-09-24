@@ -201,6 +201,10 @@ Progress:
   (find_candidate_overlap_pairs) instead. data_400: same edges with and without the overview
   (overlap values within 2.8e-16), graph build 13.2s -> 1.1s with it; register_pairs results
   identical on all 179 pairs, 36.5s -> 28.9s. At 34k: ~115k candidates instead of ~1.2 billion.
+  Pushed as cddd7fe.
+- Next (user): rebuild the container, HPC run: pre-processing (rss over the overview, was
+  9.6 -> 232GB, with the synchronous paste), then pair registration (default now starts pairs
+  within minutes; orthogonal as before) - the 'Pairs n/N' lines, 'Register pairs' cores, metrics.
 - Next (user): rebuild the container (docker-build-push.sh), on the HPC git pull, sbatch
   xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, run pre-processing, compare rss
   over the overview (previous: 9.6 -> 232GB). If it still grows: grep -E 'RssAnon|RssFile'
