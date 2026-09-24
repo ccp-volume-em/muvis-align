@@ -355,7 +355,9 @@ def test_register_pairs_computes_without_linear_fusion():
             seen[name] = {
                 'fuse': dask.config.get('optimization.fuse.active', None),
                 'scheduler': dask.config.get('scheduler', None),
-                'blas_threads': {pool['num_threads'] for pool in threadpool_info() if pool['user_api'] == 'blas'},
+                # only OpenBLAS crashed; macOS numpy uses Accelerate, which has no pool to limit
+                'openblas_threads': {pool['num_threads'] for pool in threadpool_info()
+                                     if pool['internal_api'] == 'openblas'},
             }
             return func(*args, **kwargs)
         return wrapper
@@ -378,7 +380,9 @@ def test_register_pairs_computes_without_linear_fusion():
 
     assert seen['pairs']['fuse'] is False
     # one synchronous compute a pair, on several threads
-    assert seen['metrics'] == {'fuse': False, 'scheduler': 'synchronous', 'blas_threads': {1}}
+    assert seen['metrics']['fuse'] is False
+    assert seen['metrics']['scheduler'] == 'synchronous'
+    assert seen['metrics']['openblas_threads'] <= {1}
 
 
 def test_register_pairs_defers_link_quality_without_changing_results():
