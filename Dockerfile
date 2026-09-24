@@ -122,11 +122,11 @@ CMD echo "Launching napari on Xpra. Connect via http://localhost:$XPRA_PORT or $
 
 ENTRYPOINT []
 
-# Build:
-# docker build -t muvis-align-xpra .
+# Build (the name docker-build-push.sh gives it):
+# docker build --target muvis-align-xpra -t quay.io/ccp-volume-em/muvis-align-xpra:latest .
 
-# Run:
-# docker run -v "D:\slides:/data" -p 9876:9876 muvis-align-xpra
+# Run, then connect in a new browser tab (an open one reconnects with its old size):
+# docker run --rm -v "D:\slides:/data" -p 9876:9876 quay.io/ccp-volume-em/muvis-align-xpra:latest
 
 # Build & push (tagged with the current GitHub release version, and "latest",
 # for xpra-pull.sh) - see docker-build-push.sh:
