@@ -186,6 +186,10 @@ Progress:
   per-thread heaps keep the memory: if the HPC stops growing, that was it. Local: same speed
   (UI data_400 2.3s vs 2.6s; Linux container 510 sources 35.7s vs 36.4s), nothing kept either
   way - the memory growth does not show locally, so the HPC run is the test.
+- Linux with napari's Qt/OpenGL, locally too (xpra image, Xvfb, UI driver, data_400 with the
+  HPC config, current src; scratchpad linux_ui/run.sh): nothing kept. Per-second RssAnon flat
+  at 783-805MB over the paste (the 280MB overview allocated just before), RssFile constant at
+  253MB. Every local setup is now covered; the HPC run is the only test left.
 - Next (user): rebuild the container, run the HPC refresh after pre-processing, compare rss
   over the overview (previous: 9.6 -> 232GB).
 - Next: reproduce on Linux with napari's Qt/OpenGL running (xpra container, virtual display,
