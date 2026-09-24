@@ -274,7 +274,9 @@ def test_describe_live_buffers_names_the_holder_and_counts_a_view_once():
 
     line = describe_live_buffers(min_bytes=2 << 20)
 
-    assert '_TileKeeper>dict x4 12.0MB' in line
+    # 3.14 tracks a dict of arrays itself, and names its owner as a referrer instead
+    assert ('_TileKeeper>dict x4 12.0MB' in line
+            or 'dict x4 12.0MB (held by' in line and '_TileKeeper' in line)
     # the views share their tiles' memory, so they add nothing
     assert '_TileKeeper>list' not in line
     del keeper
