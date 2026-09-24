@@ -172,6 +172,17 @@ Progress:
   before this fix, so its overview memory checks may be slow.
 - In the container, test_process_memory_tracks_an_allocation_or_says_it_cannot fails (passes on
   CI Linux) - likely container-specific, not looked into.
+- HPC run 2 (image b492a35, diagnostic on): rss 35 -> 232GB over the paste, but the live
+  buffers of 1MB+ stayed at 263MB throughout (napari shape meshes), 650MB after (+ the 387MB
+  overview). So the kept tiles (~6.8MB a source) are not in Python-visible arrays/buffers:
+  native code, or memory the allocator keeps (malloc_trim got 1.3GB back). Each check took
+  135-175s (~22 of the overview's 57 min).
+- Diagnostic removed again (the user dislikes explicit gc; on CI's Ubuntu 3.12 runner it hung in
+  gc.get_referrers(), then got the runner shut down mid-test). faulthandler_timeout = 300 stays.
+- Next: reproduce on Linux with napari's Qt/OpenGL running (xpra container, virtual display,
+  UI driver, data_400 with the HPC config), reading RssAnon vs RssFile from /proc - allocated
+  memory vs files mapped in. Windows with the UI and Linux headless keep nothing.
+- User running pair registration on the HPC now (rolling window), results to follow.
 - HPC run 2 in progress (user): refresh after pre-processing predicts ~2 min early, then ~50 min
   after ~10 min. The bar's weights misjudge 34k sources: shapes and copies fast and weighted
   generously (27% at 1 min), then 3D promote (9 min) and preview cap (5 min) each report once.

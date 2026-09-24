@@ -93,14 +93,3 @@ def test_composite_declines_a_transform_it_cannot_paste():
 
 def test_composite_of_nothing_is_nothing():
     assert composite_msims_overview([], TRANSFORM_KEY) is None
-
-
-def test_composite_logs_memory_every_so_many_sources(caplog):
-    msims = [make_msim(value, (0, 8 * value)) for value in range(5)]
-
-    with caplog.at_level('INFO'):
-        composite_msims_overview(msims, TRANSFORM_KEY, log_memory_every=2)
-
-    lines = [record.getMessage() for record in caplog.records if 'pasted' in record.getMessage()
-             and 'live buffers' in record.getMessage()]
-    assert [line.split(':')[1].split()[0] for line in lines] == ['2/5', '4/5']
