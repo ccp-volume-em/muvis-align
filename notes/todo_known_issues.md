@@ -180,6 +180,14 @@ Progress:
 - Diagnostic removed again (the user dislikes explicit gc; on CI's Ubuntu 3.12 runner it hung in
   gc.get_referrers(), then got the runner shut down mid-test). faulthandler_timeout = 300 stays.
   Pushed as 79e33db; CI running - check the Ubuntu 3.12 job passes now.
+- CI green on 79e33db, Ubuntu 3.12 included (9 min).
+- The overview's paste now computes each source with dask's synchronous scheduler (one tile a
+  compute, so its thread pool only added threads). Tests whether dask's threads plus glibc's
+  per-thread heaps keep the memory: if the HPC stops growing, that was it. Local: same speed
+  (UI data_400 2.3s vs 2.6s; Linux container 510 sources 35.7s vs 36.4s), nothing kept either
+  way - the memory growth does not show locally, so the HPC run is the test.
+- Next (user): rebuild the container, run the HPC refresh after pre-processing, compare rss
+  over the overview (previous: 9.6 -> 232GB).
 - Next: reproduce on Linux with napari's Qt/OpenGL running (xpra container, virtual display,
   UI driver, data_400 with the HPC config), reading RssAnon vs RssFile from /proc - allocated
   memory vs files mapped in. Windows with the UI and Linux headless keep nothing.

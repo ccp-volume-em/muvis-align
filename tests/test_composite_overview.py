@@ -93,3 +93,26 @@ def test_composite_declines_a_transform_it_cannot_paste():
 
 def test_composite_of_nothing_is_nothing():
     assert composite_msims_overview([], TRANSFORM_KEY) is None
+
+
+def test_composite_computes_each_source_without_dask_threads():
+    """One tile a compute: dask's thread pool would add nothing but threads."""
+    import dask
+    import dask.array as da
+
+    schedulers = []
+
+    def record(block):
+        schedulers.append(dask.config.get('scheduler', None))
+        return block
+
+    sims = [msi_utils.get_sim_from_msim(make_msim(value, translation))
+            for value, translation in ((10, (0, 0)), (20, (0, 8)))]
+    # meta given, so map_blocks does not call record() itself to infer it
+    msims = wrap_sims_as_msims([sim.copy(data=da.asarray(sim.data).map_blocks(record, meta=np.array((), sim.dtype)))
+                                for sim in sims])
+
+    overview = overview_array(composite_msims_overview(msims, TRANSFORM_KEY))
+
+    assert schedulers and set(schedulers) == {'synchronous'}
+    assert np.all(overview[:, :8] == 10) and np.all(overview[:, 8:] == 20)

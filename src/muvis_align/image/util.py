@@ -2601,7 +2601,10 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
             repeats.append(max(int(round(1 / factor)), 1) if factor < 1 else 1)
             starts.append(int(round((sim_origin[dim] + translation[index] - origin[dim])
                                     / spacing[dim])))
-        data = np.asarray(sim.data)
+        # one tile a compute gives dask's thread pool nothing to parallelise, only more threads
+        # (and, on Linux, more per-thread heaps holding on to freed memory)
+        with dask.config.set(scheduler='synchronous'):
+            data = np.asarray(sim.data)
         if data.ndim != len(nsdims) + len(sdims):
             return None
         data = data[tuple([slice(None)] * len(nsdims)
