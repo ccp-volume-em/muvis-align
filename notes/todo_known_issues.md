@@ -165,6 +165,17 @@ Progress:
 - The live-buffer test failed on every Python 3.14 job: 3.14 tracks a dict of arrays itself, so
   the holder reads 'dict x4 12.0MB (held by _TileKeeper)'. Test accepts both forms (58fc9bb,
   pushed; CI running). No 3.14 interpreter locally (.tox/py314-windows is empty).
+- CI on f7159bc: all 3.14 jobs pass; Ubuntu 3.12 hung in test_utils.py (full suite; alone on
+  Linux 3.12 it passes). Cancelled and re-ran that job. Likely cause, fixed (02f50b0):
+  describe_live_buffers expanded a shared untracked container once per referrer - quadratic
+  (200 holders of one 200k tuple: 23.1s -> 1.3s). The HPC run in progress uses the image from
+  before this fix, so its overview memory checks may be slow.
+- In the container, test_process_memory_tracks_an_allocation_or_says_it_cannot fails (passes on
+  CI Linux) - likely container-specific, not looked into.
+- HPC run 2 in progress (user): refresh after pre-processing predicts ~2 min early, then ~50 min
+  after ~10 min. The bar's weights misjudge 34k sources: shapes and copies fast and weighted
+  generously (27% at 1 min), then 3D promote (9 min) and preview cap (5 min) each report once.
+  Fix later: per-source progress (and speed) in make_msims_3d and reduce_msims_to_fused_size.
 - Next (user, on the HPC): git pull (xpra-slurm.sh: screen settings, LOG_LIVE_BUFFERS=1),
   sbatch xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, open the project, run
   pre-processing, send the log - the lines to read are 'Overview (... images): n/N pasted' and
