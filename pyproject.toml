@@ -95,6 +95,9 @@ xfail_strict = true
 # filterwarnings = ["error"]  # recommended by PP309; deprecation warnings cause failures so leaving for the user to enable if desired
 log_cli_level = "INFO"
 testpaths = ["tests"]
+# a test still running after this long gets every thread's stack dumped to the log: a hang
+# otherwise shows only as a CI job that never finishes
+faulthandler_timeout = 300
 
 [tool.black]
 line-length = 79
