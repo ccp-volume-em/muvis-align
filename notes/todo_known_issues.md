@@ -190,8 +190,14 @@ Progress:
   HPC config, current src; scratchpad linux_ui/run.sh): nothing kept. Per-second RssAnon flat
   at 783-805MB over the paste (the 280MB overview allocated just before), RssFile constant at
   253MB. Every local setup is now covered; the HPC run is the only test left.
-- Next (user): rebuild the container, run the HPC refresh after pre-processing, compare rss
-  over the overview (previous: 9.6 -> 232GB).
+- All pushed up to d8043b2 (synchronous paste b80119a included).
+- Next (user): rebuild the container (docker-build-push.sh), on the HPC git pull, sbatch
+  xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, run pre-processing, compare rss
+  over the overview (previous: 9.6 -> 232GB). If it still grows: grep -E 'RssAnon|RssFile'
+  /proc/<napari pid>/status near the overview's end - allocated memory vs NFS files mapped in.
+  Flat: dask's threads plus the allocator were it - apply the same wherever tiles are read
+  one per compute. Then the paste's speed (rolling window), the slow single refresh steps,
+  and the HPC registration results (user ran registration with the rolling window).
 - Next: reproduce on Linux with napari's Qt/OpenGL running (xpra container, virtual display,
   UI driver, data_400 with the HPC config), reading RssAnon vs RssFile from /proc - allocated
   memory vs files mapped in. Windows with the UI and Linux headless keep nothing.
