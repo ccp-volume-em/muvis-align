@@ -83,10 +83,13 @@ RUN apt-get update && \
 
 ENV DISPLAY=:100
 ENV XPRA_PORT=9876
-ENV XPRA_START="python3 -m napari --with muvis-align"
+# napari with the plugin open, maximised: to the browser tab's size, as the screen follows it
+ENV XPRA_START="python3 -c \"import napari; viewer = napari.Viewer(); viewer.window.add_plugin_dock_widget('muvis-align'); viewer.window._qt_window.showMaximized(); napari.run()\""
 ENV XPRA_EXIT_WITH_CHILDREN="yes"
 ENV XPRA_EXIT_WITH_CLIENT="no"
-ENV XPRA_XVFB_SCREEN="1920x1080x24+32"
+# largest the screen can grow to while following the browser (--resize-display): a tab larger than
+# this is scaled, and then clicks land off target. ~150MB, once.
+ENV XPRA_XVFB_SCREEN="8192x4096x24+32"
 ENV XDG_RUNTIME_DIR=/tmp/runtime-muvis
 # Debian's Xpra module is installed for /usr/bin/python3. Xpra uses this
 # interpreter for helper processes such as the IBus daemonizer.
@@ -111,7 +114,7 @@ CMD echo "Launching napari on Xpra. Connect via http://localhost:$XPRA_PORT or $
     --exit-with-children="$XPRA_EXIT_WITH_CHILDREN" \
     --exit-with-client="$XPRA_EXIT_WITH_CLIENT" \
     --daemon=no \
-    --xvfb="/usr/bin/Xvfb +extension Composite -screen 0 $XPRA_XVFB_SCREEN -dpi 96 -nolisten tcp -noreset" \
+    --xvfb="/usr/bin/Xvfb +extension Composite +extension RANDR -screen 0 $XPRA_XVFB_SCREEN -dpi 96 -nolisten tcp -noreset" \
     --pulseaudio=no \
     --notifications=no \
     --bell=no \

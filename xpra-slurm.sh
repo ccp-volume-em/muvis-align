@@ -22,12 +22,12 @@ XPRA_PORT=9876                            # port on the compute node
 #  DISPLAY / RESPONSIVENESS TUNING  (optional)
 # ---------------------------------------------------------------------------
 #  Latency over a tunnel is dominated by video encoding, not by OpenGL.
-#  If the GUI feels sluggish, lower RESOLUTION first, then QUALITY.
+#  If the GUI feels sluggish, make the browser window smaller, then lower QUALITY.
 #
-#  RESOLUTION  Maximum virtual screen size available to application windows.
-#              In seamless mode the browser controls each window's actual size.
-#              Smaller = fewer pixels to encode = snappier.
-#              1920x1080 (default) | 1600x900 | 1280x1024 | 1280x720
+#  RESOLUTION  Largest the virtual screen can grow to. The screen follows the
+#              browser tab's size (--resize-display), so a maximised napari
+#              fills the tab exactly; a tab larger than this is scaled instead,
+#              and then clicks land off target. 8192x4096 costs ~150MB, once.
 #
 #  ENCODING    h264  - best latency/bandwidth for GUI work (recommended)
 #              vp9   - better compression, more CPU
@@ -43,7 +43,7 @@ XPRA_PORT=9876                            # port on the compute node
 #  NOTE: for critical visual assessment of tomograms, raise MIN_QUALITY to
 #  90-100 or use ENCODING=rgb, since lossy encoding can mask fine detail.
 # ---------------------------------------------------------------------------
-RESOLUTION="1920x1080"
+RESOLUTION="8192x4096"
 ENCODING="h264"
 MIN_QUALITY=50
 MIN_SPEED=70
@@ -147,11 +147,11 @@ cat <<EOF
 EOF
 
 
-XPRA_START="python3 -m napari --with muvis-align"
+# napari with the plugin open, maximised: to the browser tab's size, as the screen follows it
+XPRA_START="python3 -c \"import napari; viewer = napari.Viewer(); viewer.window.add_plugin_dock_widget('muvis-align'); viewer.window._qt_window.showMaximized(); napari.run()\""
 
-# Seamless mode exposes napari as an individual window.  In desktop mode
-# napari maximizes against the fixed-size Xvfb desktop, which can be larger
-# than the browser canvas and leaves controls outside the visible area.
+# Seamless mode exposes napari as an individual window.  A screen of fixed size
+# scaled into the browser tab put the pointer off target when maximised (Chrome 154).
 apptainer exec \
     --cleanenv \
     --containall \
@@ -172,7 +172,8 @@ apptainer exec \
         --start-child="$XPRA_START" \
         --socket-dir="${RUN_DIR}" \
         --log-dir="${RUN_DIR}" \
-        --xvfb="Xvfb +extension GLX +extension Composite -screen 0 ${RESOLUTION}x24 -nolisten tcp -noreset" \
+        --xvfb="Xvfb +extension GLX +extension Composite +extension RANDR -screen 0 ${RESOLUTION}x24 -nolisten tcp -noreset" \
+        --resize-display=yes \
         --encoding="${ENCODING}" \
         --min-quality="${MIN_QUALITY}" \
         --min-speed="${MIN_SPEED}" \

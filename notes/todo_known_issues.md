@@ -25,6 +25,20 @@ Earlier fixes in this area: `16771aa` (bar froze partway, then filled and closed
 off-thread call re-planned it from zero) and `96192ce` (the bar's repaint delivered queued input,
 leaving the pointer grab stuck under xpra).
 
+### Buttons unclickable with napari maximised under xpra in Chrome
+
+Since Chrome 154 (installed here 2026-09-23 22:24), a maximised napari window under xpra's
+HTML5 client shows an I-beam over the plugin's buttons and clicks go elsewhere: the pointer maps
+to the wrong place (over a text field). Un-maximised it works, and Edge (Chromium 153) works
+maximised. Not muvis-align or the image: the same happened with this morning's code, with the
+older xpra-html5 21 client, locally and on the HPC. A maximised window takes the size of xpra's
+fixed virtual screen (1920x1080) and the browser scales it into the tab.
+Fixed in xpra-slurm.sh and the Dockerfile: Xvfb gets an 8192x4096 framebuffer (xpra's own default)
+so --resize-display can make the screen follow the tab (1879x884 in the test: no scaling), and
+napari starts maximised. Tested in Chrome 154, maximised: buttons work. Costs ~150MB (Xvfb rss
+220MB vs 72MB), no CPU: only the current size is drawn and encoded.
+Side finding: xpra.org no longer serves xpra-html5 21 (stable or beta), so rebuilds get 19.
+
 ### Pair registration mixing up pairs' crops (fixed)
 
 dask's linear fusion renames a fused chain to a 115-char prefix plus 4 hex digits of `hash()`,
