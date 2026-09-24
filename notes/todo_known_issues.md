@@ -100,6 +100,9 @@ Progress (no memory changes yet):
   46.7/47.2s -> 44.1/43.6s (~7%: registration already keeps the threads busy), and it needs BLAS
   at 1 thread for registration too, which moves 6 of 179 pairs by a sub-pixel step.
 - Pushed up to edff812 (rolling window for registration and pair metrics, exact metrics summary).
+- CI had failed on macOS since 0232e3d: the metrics test asserted every BLAS pool at 1 thread,
+  and macOS numpy uses Accelerate (no pool). Now checks only OpenBLAS pools (587727f); CI green
+  on all 9 jobs.
 - Next (user, manually): rebuild and push the container (docker-build-push.sh), refresh it on the
   HPC (sbatch xpra-pull.sh), then run through xpra-slurm.sh - it runs the code baked into the
   image, so without the rebuild it tests the old batched code. Verbose timing logging on.
