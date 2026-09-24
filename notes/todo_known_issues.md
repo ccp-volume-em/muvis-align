@@ -179,6 +179,7 @@ Progress:
   135-175s (~22 of the overview's 57 min).
 - Diagnostic removed again (the user dislikes explicit gc; on CI's Ubuntu 3.12 runner it hung in
   gc.get_referrers(), then got the runner shut down mid-test). faulthandler_timeout = 300 stays.
+  Pushed as 79e33db; CI running - check the Ubuntu 3.12 job passes now.
 - Next: reproduce on Linux with napari's Qt/OpenGL running (xpra container, virtual display,
   UI driver, data_400 with the HPC config), reading RssAnon vs RssFile from /proc - allocated
   memory vs files mapped in. Windows with the UI and Linux headless keep nothing.
