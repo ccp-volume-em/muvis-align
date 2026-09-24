@@ -112,6 +112,9 @@ def _source_init_worker_ceiling(default=64):
 # MUVIS_SOURCE_INIT_WORKERS raises that ceiling, which a shared HPC filesystem needs - the
 # per-source open there is slower still, and more threads is the only way to overlap the wait.
 default_source_init_workers = min(_source_init_worker_ceiling(), _available_cpus * 8)
+# log what holds large live buffers during and after the view's overview (util.describe_live_buffers):
+# seconds a call on a large project, so only when asked
+log_live_buffers = os.environ.get('MUVIS_LOG_LIVE_BUFFERS', '').lower() in ('1', 'true', 'yes')
 # zarr v3 routes its I/O through one process-wide thread pool (zarr.core.sync._get_executor()),
 # independent of the workers above. Unraised, reads stay bottlenecked on it however many of our
 # own threads are waiting to submit one - which is why OME-Zarr sources parallelized worse than

@@ -1068,6 +1068,64 @@ def release_memory(label=None, generation=2):
                      f' rss {print_hbytes(before)} -> {print_hbytes(after)}')
 
 
+def _buffer_memory(value):
+    """(id, bytes) of the memory `value` keeps alive, if it is a numpy array or byte buffer - a
+    view counts as the array it views into - else None."""
+    if isinstance(value, np.ndarray):
+        while isinstance(value.base, np.ndarray):
+            value = value.base
+        return id(value), value.nbytes
+    if isinstance(value, (bytes, bytearray)):
+        return id(value), len(value)
+    if isinstance(value, memoryview):
+        return id(value.obj), value.nbytes
+    return None
+
+
+def describe_live_buffers(min_bytes=1 << 20, top=5):
+    """The live numpy arrays and byte buffers of at least `min_bytes`, summed by what holds them,
+    for a log line - to find what keeps memory that should have been freed.
+
+    Arrays are not tracked by the garbage collector, and neither is a dict or tuple holding only
+    untracked values, so each tracked object's referents are followed down through such
+    containers; a buffer is put to the tracked object above it, with the containers between
+    (e.g. 'Keeper>dict>dict'). Each buffer counts once. The largest holders' referrers are named.
+    A running function's locals are not seen: on 3.12 reading f_locals would keep them alive.
+    Seconds per call on a large project: for diagnosing, not routine logging.
+    """
+    seen = set()
+    holders = {}
+    examples = {}
+    for holder in gc.get_objects():
+        stack = [(value, type(holder).__qualname__) for value in gc.get_referents(holder)]
+        while stack:
+            value, path = stack.pop()
+            memory = _buffer_memory(value)
+            if memory is not None:
+                if memory[1] >= min_bytes and memory[0] not in seen:
+                    seen.add(memory[0])
+                    count, total = holders.get(path, (0, 0))
+                    holders[path] = (count + 1, total + memory[1])
+                    examples.setdefault(path, holder)
+            elif isinstance(value, (dict, list, tuple, set, frozenset)) and not gc.is_tracked(value) \
+                    and path.count('>') < 4:
+                # a tracked container is reached as a holder of its own
+                stack.extend((item, f'{path}>{type(value).__qualname__}')
+                             for item in gc.get_referents(value))
+    if not holders:
+        return f'no live buffers of {print_hbytes(min_bytes)} or more'
+    frame_type = type(sys._getframe())
+    parts = []
+    for path, (count, total) in sorted(holders.items(), key=lambda item: -item[1][1])[:top]:
+        owners = {type(owner).__qualname__ for owner in gc.get_referrers(examples[path])
+                  if owner is not examples and not isinstance(owner, frame_type)}
+        parts.append(f'{path} x{count} {print_hbytes(total)}'
+                     + (f' (held by {", ".join(sorted(owners)[:3])})' if owners else ''))
+    count = sum(count for count, _ in holders.values())
+    total = sum(total for _, total in holders.values())
+    return f'{count} live buffers of {print_hbytes(min_bytes)}+, {print_hbytes(total)}: ' + '; '.join(parts)
+
+
 def to_posix_path(path):
     # one separator everywhere: Windows reports '\' (file dialogs, pathlib) but accepts '/'
     # just as well, so a path is converted on the way in and stays '/' from there on

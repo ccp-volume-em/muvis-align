@@ -6,7 +6,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map
+    timed_module_functions, rolling_map, describe_live_buffers
 
 
 @pytest.mark.parametrize(
@@ -260,3 +260,22 @@ def test_rolling_map_raises_and_skips_what_was_still_queued():
     with pytest.raises(ValueError, match='pair failed'):
         list(rolling_map(work, range(100), workers=2))
     assert len(started) < 10
+
+
+class _TileKeeper:
+    def __init__(self):
+        # a dict of arrays only is not tracked by the garbage collector itself
+        self.tiles = {index: np.zeros(3 << 20, np.uint8) for index in range(4)}
+        self.views = [tile[::2] for tile in self.tiles.values()]
+
+
+def test_describe_live_buffers_names_the_holder_and_counts_a_view_once():
+    keeper = _TileKeeper()
+
+    line = describe_live_buffers(min_bytes=2 << 20)
+
+    assert '_TileKeeper>dict x4 12.0MB' in line
+    # the views share their tiles' memory, so they add nothing
+    assert '_TileKeeper>list' not in line
+    del keeper
+    assert '_TileKeeper' not in describe_live_buffers(min_bytes=2 << 20)

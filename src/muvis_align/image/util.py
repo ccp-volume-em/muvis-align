@@ -2524,7 +2524,7 @@ def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scal
 
 def composite_msims_overview(msims, transform_key, z_scale=None,
                              max_bytes=default_overview_max_bytes, label='Overview',
-                             progress=None):
+                             progress=None, log_memory_every=None):
     """Every source pasted into one array at its registered position - the on-screen overview.
 
     The main view needs a picture of where the sources sit, and fusing for that is the wrong
@@ -2543,7 +2543,8 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     (a rotation needs resampling), or sources disagreeing about their non-spatial dims.
 
     `progress`, if given, is called once per source pasted: this is the longest single step of
-    drawing the view, and the one with something real to report.
+    drawing the view, and the one with something real to report. `log_memory_every` sources,
+    rss and what holds the large live buffers are logged (describe_live_buffers).
     """
     sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') if isinstance(msim, DataTree) else msim
             for msim in msims]
@@ -2587,9 +2588,13 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     leading = [sims[0].sizes[dim] for dim in nsdims]
     overview = np.zeros(leading + [shape[dim] for dim in sdims], dtype=sims[0].dtype)
 
-    for sim, translation in zip(sims, translations):
+    for index, (sim, translation) in enumerate(zip(sims, translations)):
         if progress is not None:
             progress()
+        if log_memory_every and index and index % log_memory_every == 0:
+            log_start = time.time()
+            logging.info(f'{label}: {index}/{len(sims)} pasted{print_memory_usage()}; {describe_live_buffers()}'
+                         f' ({time.time() - log_start:.1f}s to find)')
         sim_spacing = si_utils.get_spacing_from_sim(sim)
         sim_origin = si_utils.get_origin_from_sim(sim)
         # downsample (stride) a finer source, or upsample (repeat) a coarser one, to match

@@ -16,7 +16,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key, \
-    default_interactive_preview_scale, default_preview_workers, default_chunk_size
+    default_interactive_preview_scale, default_preview_workers, default_chunk_size, log_live_buffers
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
@@ -38,7 +38,8 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, release_memory
+    resolve_to_project_dir, relativize_to_project_dir, release_memory, print_memory_usage, \
+    describe_live_buffers
 
 
 class _ProgressBridge(QObject):
@@ -992,9 +993,12 @@ class Interface:
                 overview = composite_msims_overview(
                     msims, transform_key, z_scale=self.reg._msim_z_scale,
                     label=f'Overview ({len(msims)} images)',
-                    progress=(pbar.update if pbar is not None else None))
+                    progress=(pbar.update if pbar is not None else None),
+                    log_memory_every=max(len(msims) // 8, 1) if log_live_buffers else None)
             # every source's pixels were decoded and dropped again, on many threads
             release_memory(f'Overview ({len(msims)} images)')
+            if log_live_buffers:
+                logging.info(f'Overview ({len(msims)} images) done:{print_memory_usage()}; {describe_live_buffers()}')
             if overview is not None:
                 return overview
         # output_chunksize is left to fuse(), which derives it after its own make_msims_3d

@@ -59,6 +59,9 @@ MIN_SPEED=70
 #  the filesystem starts complaining.
 # ---------------------------------------------------------------------------
 SOURCE_INIT_WORKERS=256
+#  1 logs what holds large buffers in memory during and after the view's
+#  overview (seconds per check on a large project) - for diagnosing only.
+LOG_LIVE_BUFFERS=1
 #  MALLOC_MMAP_THRESHOLD_ (set on the apptainer line below) has glibc give
 #  each decoded tile its own mapping, returned to the OS when freed. Left to
 #  glibc's per-thread heaps, one 34k-tile overview kept 240GB after use.
@@ -158,6 +161,7 @@ apptainer exec \
     --env "USER=${USER}" \
     --env "XDG_RUNTIME_DIR=${RUN_DIR}" \
     --env "MUVIS_SOURCE_INIT_WORKERS=${SOURCE_INIT_WORKERS}" \
+    --env "MUVIS_LOG_LIVE_BUFFERS=${LOG_LIVE_BUFFERS}" \
     --env "MALLOC_MMAP_THRESHOLD_=1048576" \
     "${CONTAINER_PATH}" \
     xpra start \

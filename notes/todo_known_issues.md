@@ -109,6 +109,42 @@ Progress (no memory changes yet):
 - Then: check the rolling window scales to 64 threads. Local baseline, 51 tiffs, 8 workers:
   pair loop 50-52s (batches) -> 38-41s, cores ~4.8 -> 7-8, peak 2.2GB -> 2.5-2.8GB. On the HPC
   compare peak memory against the earlier run's, and the per-2x-threads pair lines over time.
+  On hold until pre-processing and its view refresh are sorted out (below).
+
+Current task: pre-processing and the view refresh after it. HPC run 2026-09-24 (34k sources,
+64 cores, xpra, code at edff812; napari closed by hand after the refresh, so registration never ran):
+- init sources 4.3 min (3.8 cores), build msims 13.9 min (2.7 cores of 64).
+- refresh after pre-processing 47 min, rss left at 230GB. Composite overview 30.6 min, rss
+  9.6 -> 232GB rising ~5GB/30s, for a 1081x575x653 result; only 1.4GB released after, so
+  ~6.8MB a source is still referenced (MALLOC_MMAP_THRESHOLD_ is set). Promote register_msims
+  to 3D 9.0 min, cap preview fusion size 5.2 min.
+Plan: reproduce locally, headless (51 or 328 tiffs; 8 workers, memory watchdog): pre-process,
+then the overview, measuring rss per source. Find what holds each source's data after it is
+pasted and fix it; then the slow single steps (3D promote, preview cap) and the core use.
+Progress:
+- One data_400 tile is 2304x3072 uint8 = 6.75MiB: the HPC keeps one full-res tile per source.
+- Not reproduced on data_400 (51 sources; output folder purged first, it loaded saved pairs):
+  UI driver, and headless (scratchpad overview_3d.py) with 1 or 5 fake sections, with the
+  preview cap forced to coarsen ~1000x as on the HPC, and in the Linux container (src mounted,
+  MALLOC_MMAP_THRESHOLD_ set): the overview adds only its own array, all freed after.
+- Locally napari add_image adds 1.2-1.6GB for a 226MB full-res overview (HPC: none, 406MB).
+- HPC project: pre_processing scale 2, no normalisation/flatfield/filter, pairing default.
+  UI driver with that config on data_400 (output in scratchpad): still nothing kept.
+- Scale 2 does work: sources are 1152x1536 at 0.02um (2304x3072 at 0.01um at scale 1). The
+  overview is the same size at both because its budget sets its grid (mean spacing halved
+  until it fits: 0.0147um x4 = 0.0294um x2 = 0.0588um), not the sources.
+- So the HPC kept ~6.8MB a source = a full-res tile, although pre-processing works at scale 2
+  (1.7MB). Not a view onto the decoded tile: a computed scale-2 level owns its own 1.69MiB.
+- 510 sources (51 files x10), scale 2, 5 sections, 4GB budget: overview +0.27GB, all freed -
+  no build-up with source count either.
+- Added a diagnostic for the next HPC run, on with MUVIS_LOG_LIVE_BUFFERS=1 (xpra-slurm.sh sets
+  it): during the overview (every 1/8 of the sources) and after the refresh, rss and the live
+  numpy arrays/byte buffers of 1MB+ summed by what holds them (util.describe_live_buffers).
+  ~2s a check on 51 sources, more at 34k. Doesn't see a running function's locals (on 3.12
+  reading f_locals keeps them alive). Local baseline (data_400, HPC config): "no live buffers"
+  during the paste; after, only the overview's own 215MB (Array held by Variable).
+- Next (user): rebuild the container, run on the HPC, send the log - the lines to read are
+  'Overview (... images): n/N pasted' and 'Overview (... images) done'.
 
 ## TODO
 
