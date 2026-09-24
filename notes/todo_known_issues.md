@@ -191,6 +191,16 @@ Progress:
   at 783-805MB over the paste (the 280MB overview allocated just before), RssFile constant at
   253MB. Every local setup is now covered; the HPC run is the only test left.
 - All pushed up to d8043b2 (synchronous paste b80119a included).
+- HPC registration (pairing default) stuck at 0% for 34+ min, one core, rss 231 -> 344GB:
+  multiview_stitcher's default pair search (cKDTree radius = largest source's diameter) with
+  the ~1mm overview images in the input pairs every source with nearly every other (~1.2
+  billion candidates at 34k), each a delayed overlap task. data_400: 2550 candidates (all
+  ordered pairs) with ov000, 436 without, for 179 / 129 real overlaps. User killed it; should
+  have been orthogonal pairing.
+- Fixed: default pairing hands multiview_stitcher the bounding-box sweep's candidates
+  (find_candidate_overlap_pairs) instead. data_400: same edges with and without the overview
+  (overlap values within 2.8e-16), graph build 13.2s -> 1.1s with it; register_pairs results
+  identical on all 179 pairs, 36.5s -> 28.9s. At 34k: ~115k candidates instead of ~1.2 billion.
 - Next (user): rebuild the container (docker-build-push.sh), on the HPC git pull, sbatch
   xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, run pre-processing, compare rss
   over the overview (previous: 9.6 -> 232GB). If it still grows: grep -E 'RssAnon|RssFile'

@@ -1923,6 +1923,14 @@ def _filter_candidate_overlap_pairs(all_stack_props):
     return _sweep_candidate_pairs(mins, maxs), mins, maxs
 
 
+def find_candidate_overlap_pairs(items, transform_key=None):
+    """(i, j) index pairs, i < j, of the sims/msims whose bounding boxes overlap: every pair that
+    can overlap, and few others - a candidate list for an exact overlap test to confirm.
+    """
+    pairs, _, _ = _filter_candidate_overlap_pairs(stack_props_from_any(items, transform_key))
+    return [(int(first), int(second)) for first, second in pairs]
+
+
 def _sweep_candidate_pairs(mins, maxs, chunk_candidates=4_000_000):
     """Index pairs whose axis-aligned boxes overlap, by sweeping one axis rather than comparing
     every box with every other - the same pairs, in the same (i < j, row-major) order.

@@ -473,6 +473,38 @@ def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
         np.testing.assert_array_equal(threaded[edge][1], transform)
 
 
+def test_register_pairs_default_pairing_hands_over_candidates_for_the_same_graph():
+    """Left to search itself, multiview_stitcher pairs every source within the largest one's
+    diameter - with overview images among tiles, nearly every pair. It gets the bounding-box
+    candidates instead, and must end up with the graph its own search gives."""
+    import dask
+    from multiview_stitcher import mv_graph
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=[f'data/S000/S000_00{y}_00{x}.ome.zarr' for y in range(2) for x in range(2)],
+        output_path='../../output/test_register_pairs_default_pairing/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    original = mv_graph.build_view_adjacency_graph_from_msims
+    handed = []
+
+    def recording(msims, **kwargs):
+        handed.append(kwargs.get('pairs'))
+        return original(msims, **kwargs)
+
+    with patch.object(mvs_registration_module.mv_graph, 'build_view_adjacency_graph_from_msims', recording):
+        reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'default'})
+    with dask.config.set(scheduler='threads'):
+        own = original(reg.pair_msims, transform_key=reg.source_transform_key, overlap_tolerance=0)
+
+    assert handed and handed[0] is not None
+    assert {frozenset(edge) for edge in reg.pairs_graph.edges} == {frozenset(edge) for edge in own.edges}
+
+
 def test_register_overlap_reuses_cached_overlap_across_param_changes():
     """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
     crop can be registered again with different registration parameters, without recomputing the

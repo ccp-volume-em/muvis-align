@@ -1397,10 +1397,14 @@ class MVSRegistration:
             # 20 computes at 36 pairs, near certain at 256: a pair silently registers another pair's
             # crop, and only when their shapes differ does phase correlation fail ('inhomogeneous shape').
             with dask.config.set({'scheduler': 'threads', 'optimization.fuse.active': False}):
+                # left to find its own pairs, multiview_stitcher tests every source within the largest
+                # one's diameter: with overview images among tiles, nearly every pair of 34k sources
+                graph_pairs = (pairs if pairs is not None
+                               else find_candidate_overlap_pairs(msims_reg, self.source_transform_key))
                 g_reg = mv_graph.build_view_adjacency_graph_from_msims(
                     msims_reg,
                     transform_key=self.source_transform_key,
-                    pairs=pairs,
+                    pairs=graph_pairs,
                     overlap_tolerance=overlap_tolerance,
                 )
 
