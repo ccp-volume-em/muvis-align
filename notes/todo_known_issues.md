@@ -158,11 +158,15 @@ Progress:
   reading f_locals keeps them alive). Local baseline (data_400, HPC config): "no live buffers"
   during the paste; after, only the overview's own 215MB (Array held by Variable).
 - Pushed as aa63a09 (full suite: 679 passed).
-- Next (user): rebuild and push the container (docker-build-push.sh), refresh it on the HPC
-  (sbatch xpra-pull.sh), pull the repo there for xpra-slurm.sh's LOG_LIVE_BUFFERS=1, run
-  xpra-slurm.sh and send the log - the lines to read are 'Overview (... images): n/N pasted'
-  and 'Overview (... images) done'. Then: fix what holds the tiles, and only after that test
-  pair registration on the HPC.
+- Meanwhile fixed the unclickable buttons under xpra (see Known issues): screen follows the
+  browser tab, napari starts maximised (c90d870); Dockerfile examples now use the quay.io tag
+  (637704e), the stale local muvis-align-xpra:latest (7 Sep) removed. Container rebuilt and
+  pushed by the user, checked locally in a new Chrome tab: right size, buttons work.
+- Next (user, on the HPC): git pull (xpra-slurm.sh: screen settings, LOG_LIVE_BUFFERS=1),
+  sbatch xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, open the project, run
+  pre-processing, send the log - the lines to read are 'Overview (... images): n/N pasted' and
+  'Overview (... images) done'. Then: fix what holds the tiles, and only after that test pair
+  registration on the HPC.
 
 ## TODO
 
