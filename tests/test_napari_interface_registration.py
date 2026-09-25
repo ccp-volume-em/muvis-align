@@ -2028,7 +2028,8 @@ def test_napari_view_add_fused_data_shows_real_multiscale_pyramid(make_napari_vi
     reg.init_params(params['general'], operation_params)
     reg.init_data()
     reg.preprocess(reg.msims, **operation_params.get('preprocess', {}))
-    reg.register(reg.register_msims, reg.register_indices, params=operation_params)
+    # the section the pipeline hands over (register_params), not the whole operation
+    reg.register(reg.register_msims, reg.register_indices, params=operation_params['registration'])
 
     fused_image, _ = reg.fuse(reg.msims, transform_key=reg.reg_transform_key)
     n_levels = len(msi_utils.get_sorted_scale_keys(fused_image))

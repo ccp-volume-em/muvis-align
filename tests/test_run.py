@@ -119,7 +119,7 @@ def test_fuse_with_real_pyramid_matches_trivial_wrap(resource_file):
     reg.init_params(params['general'], operation_params)
     reg.init_data()
     reg.preprocess(reg.msims, **operation_params.get('preprocess', {}))
-    reg.register(reg.register_msims, reg.register_indices, params=operation_params)
+    reg.register(reg.register_msims, reg.register_indices, params=reg_params)
 
     # the registered transform lives on reg.msims (written by register_global) - extract the
     # registered scale0 sims from there

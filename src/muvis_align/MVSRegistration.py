@@ -1140,8 +1140,6 @@ class MVSRegistration:
         registration_method = None
         pairwise_reg_func_kwargs = None
 
-        if 'registration' in params:
-            params = params['registration']
         if not method:
             method = params.get('method',
                                 params.get('name', ''))
@@ -1289,11 +1287,8 @@ class MVSRegistration:
             else:
                 register_indices = range(len(self.msims))
 
-        operation = self.operation
-        pairing = params.get('pairing',
-                             params.get('registration', {}).get('pairing', '')).lower()
-        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
-                                              params.get('registration', {}).get('n_parallel_pairwise_regs'))
+        pairing = params.get('pairing', '').lower()
+        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
         # blank or 0 is automatic; a widget can hand the number over as a string or a float
         n_parallel_pairwise_regs = (int(float(n_parallel_pairwise_regs))
                                     if is_valid_value(n_parallel_pairwise_regs) else None) or None
@@ -1507,20 +1502,16 @@ class MVSRegistration:
 
         ndims = si_utils.get_ndim_from_sim(get_msim_image0(pair_msims[0]))
 
-        groupwise_resolution_method = params.get('groupwise_resolution_method',
-                                                 params.get('registration', {}).get('groupwise_resolution_method', 'global_optimization'))
+        groupwise_resolution_method = params.get('groupwise_resolution_method', 'global_optimization')
         groupwise_resolution_kwargs = {}
         if groupwise_resolution_method == 'global_optimization':
-           groupwise_resolution_kwargs['transform'] = params.get('transform_type',
-                                                                 params.get('registration', {}).get('transform_type', 'affine'))
+           groupwise_resolution_kwargs['transform'] = params.get('transform_type', 'affine')
            # transform_type options include 'translation', 'rigid', 'affine', 'similarity'
 
-        post_registration_quality_threshold = params.get('post_registration_quality_threshold',
-                                                         params.get('registration', {}).get('post_registration_quality_threshold'))
+        post_registration_quality_threshold = params.get('post_registration_quality_threshold')
         post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
 
-        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs',
-                                              params.get('registration', {}).get('n_parallel_pairwise_regs'))
+        n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
         if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
             n_parallel_pairwise_regs = None
 
