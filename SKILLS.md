@@ -22,6 +22,7 @@ Distilled from recurring feedback across sessions. Follow these when making chan
 
 ## Code style
 - Avoid `continue` statements - restructure the loop body (e.g. invert the condition) instead.
+- No single-letter variable names, comprehension variables included: `field for field in fields`, not `f for f in fields`.
 
 ## Carrying work across sessions
 - Record the current task, its plan and how far it got under "In progress" in `notes/todo_known_issues.md` before editing code, and keep it updated. Clear it once the task is done.
