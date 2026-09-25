@@ -91,6 +91,22 @@ def resolve_deferred_quality(pairwise_reg_func):
     return resolved
 
 
+def resolve_registration_channel(msim, channel):
+    """The 'c' label to register on, from `channel` as an index or a label. A label msim lacks - a
+    project set up for files that named it differently - falls back to the only channel if there
+    is one, with a warning; with several it is an error naming them."""
+    labels = list(get_msim_image0(msim).coords['c'].values)
+    if isinstance(channel, (int, np.integer)):
+        return labels[channel]
+    if channel in labels:
+        return channel
+    if len(labels) == 1:
+        logging.warning(f'Registration channel {channel!r} not found - using the only channel, {str(labels[0])!r}')
+        return labels[0]
+    raise ValueError(f'Registration channel {channel!r} not found; the channels are '
+                     + ', '.join(repr(str(label)) for label in labels))
+
+
 class MVSRegistration:
     def __init__(self, operation='register', label='', input_path=None, output_path=None,
                  source_metadata={}, extra_metadata={},
@@ -1201,9 +1217,7 @@ class MVSRegistration:
         # own channel-selection (which only runs as part of its full multi-pair graph, not for a
         # single ad-hoc pair)
         if 'c' in get_msim_dims(msim1):
-            reg_channel = params.get('channel', 0)
-            if isinstance(reg_channel, int):
-                reg_channel = get_msim_image0(msim1).coords['c'][reg_channel]
+            reg_channel = resolve_registration_channel(msim1, params.get('channel', 0))
             msim1 = msi_utils.multiscale_sel_coords(msim1, {'c': reg_channel})
             msim2 = msi_utils.multiscale_sel_coords(msim2, {'c': reg_channel})
 
@@ -1354,12 +1368,10 @@ class MVSRegistration:
         # (get_msim_dims) - no sim needs to be built just to ask
         has_channel = ["c" in get_msim_dims(msim) for msim in register_msims]
         if has_channel[0]:
-            if reg_channel is None:
-                if reg_channel_index is None:
-                    if any(has_channel):
-                        raise Exception("Please choose a registration channel.")
-                else:
-                    reg_channel = get_msim_image0(register_msims[0]).coords["c"][reg_channel_index]
+            if reg_channel is None and reg_channel_index is None:
+                raise Exception("Please choose a registration channel.")
+            reg_channel = resolve_registration_channel(
+                register_msims[0], reg_channel_index if reg_channel is None else reg_channel)
 
             msims_reg = [
                 msi_utils.multiscale_sel_coords(msim, {"c": reg_channel})

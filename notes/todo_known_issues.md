@@ -291,6 +291,12 @@ Progress:
   scale-2 tree 16.2ms (~4ms a level of xarray construction, as the promotion was).
 - HPC run 4 pair registration failed: KeyError 'channel 0' - the new pyramid files name their
   channel '#0' (OME Channel Name="#0"); the HPC project still says channel: 'channel 0'.
+- Done: channel fallback (resolve_registration_channel, in register_pairs and select_pair_overlap):
+  a channel name the sources lack - one channel: use it and warn; several: error naming them.
+  153 pyramid files with the HPC's 'channel 0': warns, registers on '#0', identical to '#0' on
+  all 831 pairs. Full suite 693 passed.
+- Next (user, HPC): rebuild the container, rerun pre-processing (Build msims ~26 -> ~22 min
+  expected) and pair registration (channel 'channel 0' now falls back to '#0'; or set '#0').
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),

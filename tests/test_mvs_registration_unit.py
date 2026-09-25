@@ -506,6 +506,53 @@ def test_register_pairs_default_pairing_hands_over_candidates_for_the_same_graph
     assert {frozenset(edge) for edge in reg.pairs_graph.edges} == {frozenset(edge) for edge in own.edges}
 
 
+def _channel_msim(labels):
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.image.util import wrap_sims_as_msims
+
+    sim = si_utils.get_sim_from_array(np.zeros((1, len(labels), 4, 4), dtype=np.uint8), dims=['t', 'c', 'y', 'x'],
+                                      c_coords=list(labels))
+    return wrap_sims_as_msims([sim])[0]
+
+
+def test_registration_channel_by_index_by_label_or_the_only_one():
+    from muvis_align.MVSRegistration import resolve_registration_channel
+
+    assert resolve_registration_channel(_channel_msim(['#0', '#1']), 1) == '#1'
+    assert resolve_registration_channel(_channel_msim(['#0', '#1']), '#1') == '#1'
+    # a project set up for files that named their one channel differently
+    assert resolve_registration_channel(_channel_msim(['#0']), 'channel 0') == '#0'
+    with pytest.raises(ValueError, match="'#0', '#1'"):
+        resolve_registration_channel(_channel_msim(['#0', '#1']), 'channel 0')
+
+
+def test_register_pairs_registers_on_the_only_channel_whatever_it_is_called(caplog):
+    import networkx as nx
+
+    reg = MVSRegistration()
+    reg.init(
+        operation='register',
+        input_path=['data/S000/S000_000_000.ome.zarr', 'data/S000/S000_000_001.ome.zarr'],
+        output_path='../../output/test_register_pairs_channel/',
+    )
+    reg.init_data()
+    reg.preprocess(reg.msims)
+
+    def register(channel):
+        reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
+                                                       'channel': channel})
+        return {edge: np.asarray(transform) for edge, transform in nx.get_edge_attributes(reg.pairs_graph, 'transform').items()}
+
+    by_name = register('0')
+    with caplog.at_level('WARNING'):
+        by_wrong_name = register('channel 0')
+
+    assert any("'channel 0' not found" in message for message in caplog.messages)
+    assert by_wrong_name.keys() == by_name.keys()
+    for edge, transform in by_name.items():
+        np.testing.assert_array_equal(by_wrong_name[edge], transform)
+
+
 def test_register_overlap_reuses_cached_overlap_across_param_changes():
     """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
     crop can be registered again with different registration parameters, without recomputing the
