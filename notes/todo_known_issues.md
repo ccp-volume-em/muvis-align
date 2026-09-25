@@ -251,9 +251,15 @@ Progress:
   overview 22s reading level 1. With the cap shrinking ~1000x as on the HPC: cap 15.2s, overview
   10.0s reading the coarsest stored level (31KB a source). HPC estimate: promote ~8.5 min, cap
   ~5.5 min, overview ~4 min (was 32).
-- Next: the promotion does all 4 levels of every source, though the cap keeps only the
-  coarsest - promote only what the cap keeps (results must stay identical). Then re-measure the
-  HPC memory with the new files.
+- Tried, no gain (identical output both, not committed; scratchpad promote_cap.py):
+  - cap the 2D msims first, promoting only each one's finest level for the estimates and what is
+    kept at the end: 1530 sources 17.6-41.8s vs promote-then-cap 17.0-23.3s - each estimate now
+    builds a one-level tree and promotes it for every source.
+  - cheaper z (Variable.set_dims) and widening each transform once a source: 8.99/10.06s vs
+    9.65/9.84s. What remains is xarray building a Dataset per level (alignment, merge).
+  - The one large saving left is structural: no 3D promotion for the overview - place 2D sources
+    at their section z from the positions, and estimate the size from those. Not started.
+- Next: re-measure the HPC memory and the refresh with the new files.
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),
