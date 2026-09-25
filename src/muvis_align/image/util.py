@@ -1615,17 +1615,45 @@ def get_sim_physical_size(sim):
     return physical_size
 
 
-def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None):
+def promoted_geometry(item, transform_key, z_position):
+    """(stack properties, affine matrix) of a sim's, or a msim's finest level's, geometry as
+    make_msims_3d() would promote it - a size-1 z at z_position, the transform widened - read
+    from its coordinates alone, building no xarray objects (the promotion's whole cost)."""
+    if isinstance(item, DataTree):
+        image, affine = item['scale0'].ds['image'], item['scale0'].ds[transform_key]
+    else:
+        image, affine = item, si_utils.get_affine_from_sim(item, transform_key)
+    if 't' in affine.dims:
+        affine = affine.sel(t=0)
+    shape, spacing, origin = (si_utils.get_shape_from_sim(image), si_utils.get_spacing_from_sim(image),
+                              si_utils.get_origin_from_sim(image))
+    if 'z' not in shape:
+        # si_utils reports a size-1 dim's spacing as 1.0, whatever the nominal pixel size
+        shape, spacing, origin = {'z': 1, **shape}, {'z': 1.0, **spacing}, {'z': float(z_position), **origin}
+    return {'shape': shape, 'spacing': spacing, 'origin': origin}, np.asarray(widen_xaffine_to_3d(affine), dtype=float)
+
+
+def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
     # accepts either sims or msims - each msim is converted to its scale0 sim right where needed
     # below (spacing/affine/origin metadata reads only, never pixel data - fusion.calc_fusion_
     # stack_properties itself only reads this same cheap per-sim metadata) instead of requiring
-    # the caller to have already built a separate sims list just to call this function
-    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-           for item in sims]
+    # the caller to have already built a separate sims list just to call this function.
+    # z_positions: sources at several heights, not promoted to 3D - taken as make_msims_3d()
+    # would make them (see promoted_geometry), with the same result
+    if z_positions is not None:
+        views = [promoted_geometry(item, transform_key, z) for item, z in zip(sims, z_positions)]
+        spacings = [view[0]['spacing'] for view in views]
+        dims = list(spacings[0])
+        is_3d = views[0][0]['shape'].get('z', 0) > 1
+        z_origins = [view[0]['origin'].get('z', 0) for view in views]
+    else:
+        sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
+                for item in sims]
+        spacings = [si_utils.get_spacing_from_sim(sim) for sim in sims]
+        dims = list(spacings[0])
+        is_3d = (sims[0].sizes.get('z', 0) > 1)
+        z_origins = [si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims]
     output_spacing = {}
-    spacings = [si_utils.get_spacing_from_sim(sim) for sim in sims]
-    dims = list(spacings[0])
-    is_3d = (sims[0].sizes.get('z', 0) > 1)
 
     if output_spacing_method:
         output_spacing_method = output_spacing_method.lower()
@@ -1638,17 +1666,21 @@ def calc_output_properties(sims, transform_key, output_spacing_method=None, z_sc
 
     if z_scale and 'z' in dims and not is_3d:
         output_spacing['z'] = z_scale
-    output_properties = fusion.calc_fusion_stack_properties(
-        sims,
-        [si_utils.get_affine_from_sim(sim, transform_key) for sim in sims],
-        output_spacing,
-        mode='union',
-    )
+    if z_positions is not None:
+        stack = fusion.calc_stack_properties_from_view_properties_and_params(
+            [view[0] for view in views], [view[1] for view in views], spacing=output_spacing, mode='union')
+        output_properties = {key: {dim: value[index] for index, dim in enumerate(dims)} for key, value in stack.items()}
+    else:
+        output_properties = fusion.calc_fusion_stack_properties(
+            sims,
+            [si_utils.get_affine_from_sim(sim, transform_key) for sim in sims],
+            output_spacing,
+            mode='union',
+        )
     if 'z' in output_properties['shape'] and not is_3d:
-        z_positions = sorted(set([si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims]))
-        z_shape = len(z_positions)
+        z_shape = len(set(z_origins))
         if z_shape <= 1:
-            z_shape = len(sims)
+            z_shape = len(z_origins)
         output_properties['shape']['z'] = z_shape
     return output_properties
 
@@ -2530,7 +2562,7 @@ def coarsen_msims(msims, factor=2):
         result.append(DataTree.from_dict({'scale0': xr.Dataset({'image': coarser, **transforms})}))
     return result, changed
 
-def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scale=None):
+def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
     """Bytes the fused output of `msims` would occupy, by the same reckoning MVSRegistration.
     fuse() reports as 'Fusing ...' - the output stack's own shape times the source dtype.
 
@@ -2540,14 +2572,14 @@ def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scal
     """
     properties = calc_output_properties(msims, transform_key,
                                         output_spacing_method=output_spacing_method,
-                                        z_scale=z_scale)
+                                        z_scale=z_scale, z_positions=z_positions)
     itemsize = get_msim_image0(msims[0]).dtype.itemsize
     return int(np.prod([int(size) for size in properties['shape'].values()]) * itemsize), properties
 
 
 def composite_msims_overview(msims, transform_key, z_scale=None,
                              max_bytes=default_overview_max_bytes, label='Overview',
-                             progress=None):
+                             progress=None, z_positions=None):
     """Every source pasted into one array at its registered position - the on-screen overview.
 
     The main view needs a picture of where the sources sit, and fusing for that is the wrong
@@ -2566,31 +2598,39 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     (a rotation needs resampling), or sources disagreeing about their non-spatial dims.
 
     `progress`, if given, is called once per source pasted: this is the longest single step of
-    drawing the view, and the one with something real to report.
+    drawing the view, and the one with something real to report. `z_positions`: 2D sources at
+    several heights, each pasted into its own section's plane, as if promoted to 3D.
     """
     sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') if isinstance(msim, DataTree) else msim
             for msim in msims]
     if not sims:
         return None
-    sdims = si_utils.get_spatial_dims_from_sim(sims[0])
-    nsdims = [dim for dim in sims[0].dims if dim not in sdims]
-    if any(si_utils.get_spatial_dims_from_sim(sim) != sdims for sim in sims):
+    source_dims = si_utils.get_spatial_dims_from_sim(sims[0])
+    nsdims = [dim for dim in sims[0].dims if dim not in source_dims]
+    if any(si_utils.get_spatial_dims_from_sim(sim) != source_dims for sim in sims):
         return None
 
+    if z_positions is not None:
+        views = [promoted_geometry(sim, transform_key, z) for sim, z in zip(sims, z_positions)]
+    else:
+        views = []
+        for sim in sims:
+            affine = si_utils.get_affine_from_sim(sim, transform_key)
+            if 't' in affine.dims:
+                affine = affine.sel(t=0)
+            views.append(({'spacing': si_utils.get_spacing_from_sim(sim), 'origin': si_utils.get_origin_from_sim(sim)},
+                          np.asarray(affine, dtype=float)))
+    sdims = list(views[0][0]['spacing'])
+    ndim = len(sdims)
     translations = []
-    for sim in sims:
-        affine = si_utils.get_affine_from_sim(sim, transform_key)
-        if 't' in affine.dims:
-            affine = affine.sel(t=0)
-        matrix = np.asarray(affine, dtype=float)
-        ndim = len(sdims)
+    for _, matrix in views:
         if not np.allclose(matrix[:ndim, :ndim], np.eye(ndim), atol=1e-6):
             logging.info(f'{label}: source transforms are not translations only - fusing instead')
             return None
         translations.append(matrix[:ndim, ndim])
 
-    properties = calc_output_properties(sims, transform_key, output_spacing_method='mean',
-                                        z_scale=z_scale)
+    properties = calc_output_properties(msims, transform_key, output_spacing_method='mean',
+                                        z_scale=z_scale, z_positions=z_positions)
     spacing = dict(properties['spacing'])
     origin = dict(properties['origin'])
     shape = {dim: int(properties['shape'][dim]) for dim in sdims}
@@ -2610,11 +2650,10 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     leading = [sims[0].sizes[dim] for dim in nsdims]
     overview = np.zeros(leading + [shape[dim] for dim in sdims], dtype=sims[0].dtype)
 
-    for sim, translation in zip(sims, translations):
+    for sim, (view, _), translation in zip(sims, views, translations):
         if progress is not None:
             progress()
-        sim_spacing = si_utils.get_spacing_from_sim(sim)
-        sim_origin = si_utils.get_origin_from_sim(sim)
+        sim_spacing, sim_origin = view['spacing'], view['origin']
         # downsample (stride) a finer source, or upsample (repeat) a coarser one, to match
         # the output grid - coarser was previously pasted 1:1, shrinking its footprint
         strides, repeats, starts = [], [], []
@@ -2628,6 +2667,9 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
         # (and, on Linux, more per-thread heaps holding on to freed memory)
         with dask.config.set(scheduler='synchronous'):
             data = np.asarray(sim.data)
+        if len(sdims) > len(source_dims):
+            # a 2D source's size-1 z, as promotion would have added it
+            data = np.expand_dims(data, axis=len(nsdims))
         if data.ndim != len(nsdims) + len(sdims):
             return None
         data = data[tuple([slice(None)] * len(nsdims)
@@ -2640,9 +2682,9 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
             stop = min(start + data.shape[len(nsdims) + index], shape[dim])
             source.append(slice(max(-start, 0), max(stop - start, 0)))
             target.append(slice(max(start, 0), max(stop, 0)))
-        if any(piece.stop <= piece.start for piece in target[len(nsdims):]):
-            continue    # entirely outside the output
-        overview[tuple(target)] = data[tuple(source)]
+        # nothing to paste for a source entirely outside the output
+        if all(piece.stop > piece.start for piece in target[len(nsdims):]):
+            overview[tuple(target)] = data[tuple(source)]
 
     sim = si_utils.get_sim_from_array(
         overview,
@@ -2739,7 +2781,7 @@ def build_pairs_graph(msims, pairs, transform_key, overlaps=None):
 
 def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_max_bytes,
                                output_spacing_method=None, z_scale=None, max_steps=16,
-                               label='preview'):
+                               label='preview', z_positions=None):
     """`msims` stepped to coarser pyramid levels until fusing them would produce at most
     max_bytes - the guard that keeps an on-screen preview from fusing an arbitrarily large
     stack.
@@ -2754,8 +2796,11 @@ def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_m
 
     Sources whose pyramid runs out first simply stop contributing reductions - hence the
     `changed` check, which ends the loop when nothing moved rather than spinning.
+
+    z_positions: 2D sources at several heights, sized as if promoted to 3D (see
+    calc_output_properties) - the levels kept are the same, and nothing is promoted.
     """
-    size, _ = estimate_fused_size(msims, transform_key, output_spacing_method, z_scale)
+    size, _ = estimate_fused_size(msims, transform_key, output_spacing_method, z_scale, z_positions)
     if size <= max_bytes:
         return msims
     original_size = size
@@ -2778,7 +2823,7 @@ def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_m
                 f' {print_hbytes(max_bytes)} budget - cannot be reduced any further')
             return reduced
         reduced = coarser
-        size, _ = estimate_fused_size(reduced, transform_key, output_spacing_method, z_scale)
+        size, _ = estimate_fused_size(reduced, transform_key, output_spacing_method, z_scale, z_positions)
         if size <= max_bytes:
             break
     logging.info(f'{label}: reduced to {print_hbytes(size)} '

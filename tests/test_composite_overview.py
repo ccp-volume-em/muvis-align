@@ -128,3 +128,24 @@ def test_enlarging_matches_repeating_each_axis(repeats):
         expected = np.repeat(expected, repeat, axis=axis)
 
     assert np.array_equal(_enlarge_nearest(data, list(repeats)), expected)
+
+
+def test_sources_at_several_heights_need_not_be_promoted():
+    """Sized and pasted from each 2D source's own z, as if promoted to 3D: the same output
+    properties, and the same overview, as promoting them first - without building the 3D trees."""
+    from muvis_align.image.util import calc_output_properties, make_msims_3d
+
+    msims = [make_msim(10, (0, 0)), make_msim(20, (0, 8)), make_msim(30, (0, 0)), make_msim(40, (4, 4), spacing=2.0)]
+    positions = [{'z': 0.0}, {'z': 0.0}, {'z': 5.0}, {'z': 10.0}]
+    z_positions = [position['z'] for position in positions]
+    promoted = make_msims_3d(msims, positions=positions)
+
+    assert calc_output_properties(msims, TRANSFORM_KEY, 'mean', z_scale=5.0, z_positions=z_positions) == \
+        calc_output_properties(promoted, TRANSFORM_KEY, 'mean', z_scale=5.0)
+
+    flat = msi_utils.get_sim_from_msim(composite_msims_overview(msims, TRANSFORM_KEY, z_scale=5.0, z_positions=z_positions))
+    expected = msi_utils.get_sim_from_msim(composite_msims_overview(promoted, TRANSFORM_KEY, z_scale=5.0))
+    assert flat.dims == expected.dims and 'z' in flat.dims
+    assert np.array_equal(np.asarray(flat.data), np.asarray(expected.data))
+    assert si_utils.get_spacing_from_sim(flat) == si_utils.get_spacing_from_sim(expected)
+    assert si_utils.get_origin_from_sim(flat) == si_utils.get_origin_from_sim(expected)

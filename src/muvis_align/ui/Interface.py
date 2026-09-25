@@ -917,6 +917,7 @@ class Interface:
         # to change, so anything added here that mutates one needs this flag too.
         writes_transforms = not (show_preprocessed
                                  and transform_key == self.reg.source_transform_key)
+        z_positions = None
         if show_preprocessed:
             with phase(1 / 12, total=1) as pbar, \
                  Timer(f'_create_napari_data: copy {len(self.reg.register_msims)} register_msims',
@@ -925,17 +926,11 @@ class Interface:
                          if writes_transforms else list(self.reg.register_msims))
                 if pbar is not None:
                     pbar.update(1)
-            # promoted here so the size estimate below sees the geometry fuse() will: it
-            # promotes internally for sources at several z heights, and calc_output_properties
-            # cannot combine un-promoted sims that disagree about z. Not extra work - fuse()
-            # leaves an already-promoted msim alone.
+            # sources at several heights are sized and pasted as if promoted to 3D, the geometry
+            # fuse() gives them, without promoting them (9 minutes at 34k): each at its own z, as
+            # make_msims_3d() takes it
             if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                with phase(1 / 12, total=1) as pbar, \
-                     Timer('_create_napari_data: promote register_msims to 3D',
-                          verbose=self._timing_verbose()):
-                    msims = make_msims_3d(msims, positions=self.reg.positions)
-                    if pbar is not None:
-                        pbar.update(1)
+                z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
         else:
             # view_msims is never scale-reduced - every source's full native pyramid. Fusing
             # that at scale0 to draw an overview builds (and, for get_contrast_limits(), runs)
@@ -961,11 +956,12 @@ class Interface:
         # either, picking a level per source rather than bounding the combined result -
         # and select_msim_subpyramid_at_scale() cannot be used here for the same reason: its
         # level is relative to each source's own pyramid, and these are already scale-reduced.
-        with phase(1 / 12, total=1) as pbar, \
+        # the promotion's share of the bar, where it no longer happens, goes to the cap
+        with phase((2 if z_positions is not None else 1) / 12, total=1) as pbar, \
              Timer('_create_napari_data: cap preview fusion size', verbose=self._timing_verbose()):
             msims = reduce_msims_to_fused_size(
                 msims, transform_key, z_scale=self.reg._msim_z_scale,
-                label=f'Preview fusion ({len(msims)} images)')
+                label=f'Preview fusion ({len(msims)} images)', z_positions=z_positions)
             if pbar is not None:
                 pbar.update(1)
         with phase(1 / 12, total=1) as pbar, \
@@ -992,7 +988,7 @@ class Interface:
                 overview = composite_msims_overview(
                     msims, transform_key, z_scale=self.reg._msim_z_scale,
                     label=f'Overview ({len(msims)} images)',
-                    progress=(pbar.update if pbar is not None else None))
+                    progress=(pbar.update if pbar is not None else None), z_positions=z_positions)
             # every source's pixels were decoded and dropped again, on many threads
             release_memory(f'Overview ({len(msims)} images)')
             if overview is not None:

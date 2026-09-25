@@ -258,7 +258,14 @@ Progress:
   - cheaper z (Variable.set_dims) and widening each transform once a source: 8.99/10.06s vs
     9.65/9.84s. What remains is xarray building a Dataset per level (alignment, merge).
   - The one large saving left is structural: no 3D promotion for the overview - place 2D sources
-    at their section z from the positions, and estimate the size from those. Not started.
+    at their section z from the positions, and estimate the size from those.
+- Done: the refresh after pre-processing no longer promotes to 3D. calc_output_properties /
+  estimate_fused_size / reduce_msims_to_fused_size / composite_msims_overview take z_positions
+  (promoted_geometry: each 2D source's finest level as promotion would make it, from its coords).
+  Output properties exactly equal at every cap level; same levels kept; overview identical
+  (pixels, spacing, origin, dims); fuse() fallback on the 2D sources identical to promoted.
+  1530 sources: default budget 36.2s -> 16.1s, 1000x cap 33.6s -> 9.3s. Plugin, 153 sources:
+  promote 1.8s gone, cap 0.6 -> 0.2s, same overview. Full suite 691 passed.
 - Next: re-measure the HPC memory and the refresh with the new files.
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
