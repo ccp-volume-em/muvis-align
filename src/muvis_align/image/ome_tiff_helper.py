@@ -1,6 +1,8 @@
+import os
 from xml.etree import ElementTree
 
 import dask.array as da
+from dask.base import tokenize
 import zarr
 from ome_zarr.scale import Scaler
 from tifffile import TiffWriter, tifffile
@@ -221,11 +223,16 @@ def read_tiff_level_arrays(filename):
         dims, _, channel_indices, dropped_indices = map_tiff_axes_to_ngff(axes, series.shape)
 
     datas = []
-    for array in arrays:
+    # names from the file and level, not from_zarr's tokenize of each zarr array (~6ms a source);
+    # its size and time too, so a file rewritten in place gets new ones
+    stat = os.stat(filename)
+    for level, array in enumerate(arrays):
         # the level's shape in NGFF terms (unsupported axes dropped, channel-like axes - 'S'
         # samples included - flattened onto 'c'), then the array reshaped to match it
         shape = map_tiff_axes_to_ngff(axes, array.shape)[1]
-        data = da.from_zarr(array)
+        # as from_zarr, with the dtype given rather than probed with a read of the array
+        data = da.from_array(array, chunks=array.chunks, meta=np.empty((0,) * array.ndim, dtype=array.dtype),
+                             name='tiff-' + tokenize(filename, stat.st_size, stat.st_mtime_ns, level))
         if tuple(data.shape) != tuple(shape):
             data = reshape_tiff_for_channels(data, axes, tuple(array.shape), dims, tuple(shape),
                                              list(channel_indices), list(dropped_indices))

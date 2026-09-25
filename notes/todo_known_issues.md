@@ -274,6 +274,23 @@ Progress:
   within seconds and the first 'Pairs 128/' within minutes (was ~5h).
 - Then, depending on that run: the HPC memory if it still builds up; the refresh's remaining
   steps (cap, overview per-source overhead); registration throughput (~7 pairs/s at 64 threads).
+- HPC run 4 (4372fcf, pyramid files; stopped after the refresh, no registration): refresh after
+  pre-processing 17.7 min (was 47-49): cap 3.4, overview 11.7, no promote; rss 14.4GB after the
+  overview (was 230-232GB) - memory build-up gone. But pre-processing 28.4 min (was 14.5-14.9):
+  Build msims 26.3 min (was 13.4-13.9), CPU a source ~47ms (was ~27ms), 2.7 cores - the
+  msims now carry 4 stored levels (1-4), each opened and built.
+- Profiled (153 sources, single-threaded, 23ms cpu a source): no pixel reads (1.2MB for 20 files);
+  read_tiff_level_arrays ~1/3 (opens the zarr group, from_zarr on all 5 levels, tokenizing each
+  zarr array ~6ms a source), per-level coords (ensure_spatial_image_dims/assign_coords) ~1/4,
+  per-level Dataset + DataTree ~1/5.
+- Done: TIFF level arrays via da.from_array with chunks, dtype meta and a name from path, size,
+  mtime and level (no tokenize, no dtype probe). 153 sources: trees identical (levels, dims,
+  shapes, dtype, chunks, coords, transforms, attrs, pixels), 24.1-25.4 -> 21.0-21.2ms cpu a
+  source; orthogonal registration identical on all 831 pairs. Now: wrapping 5 levels 5.6ms
+  (level 0 ~1ms - skipping it needs source.data lazy per level, not worth it), building the
+  scale-2 tree 16.2ms (~4ms a level of xarray construction, as the promotion was).
+- HPC run 4 pair registration failed: KeyError 'channel 0' - the new pyramid files name their
+  channel '#0' (OME Channel Name="#0"); the HPC project still says channel: 'channel 0'.
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),
