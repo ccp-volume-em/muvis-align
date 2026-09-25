@@ -91,20 +91,27 @@ def resolve_deferred_quality(pairwise_reg_func):
     return resolved
 
 
-def resolve_registration_channel(msim, channel):
-    """The 'c' label to register on, from `channel` as an index or a label. A label msim lacks - a
-    project set up for files that named it differently - falls back to the only channel if there
-    is one, with a warning; with several it is an error naming them."""
-    labels = list(get_msim_image0(msim).coords['c'].values)
+def resolve_registration_channel(msim, channel, chosen=None):
+    """The 'c' label to register on in this msim, from `channel` as an index or a label. A label
+    msim lacks - files that name their channel differently, even within one project - falls back
+    to its only channel if it has one, with a warning; with several it is an error naming them.
+    `chosen`, a dict shared across a project's msims, keeps one answer (and warning) per set of labels."""
+    labels = tuple(str(label) for label in get_msim_image0(msim).coords['c'].values)
+    if chosen is not None and labels in chosen:
+        return chosen[labels]
     if isinstance(channel, (int, np.integer)):
-        return labels[channel]
-    if channel in labels:
-        return channel
-    if len(labels) == 1:
-        logging.warning(f'Registration channel {channel!r} not found - using the only channel, {str(labels[0])!r}')
-        return labels[0]
-    raise ValueError(f'Registration channel {channel!r} not found; the channels are '
-                     + ', '.join(repr(str(label)) for label in labels))
+        label = labels[channel]
+    elif channel in labels:
+        label = channel
+    elif len(labels) == 1:
+        logging.warning(f'Registration channel {channel!r} not found - using the only channel, {labels[0]!r}')
+        label = labels[0]
+    else:
+        raise ValueError(f'Registration channel {channel!r} not found; the channels are '
+                         + ', '.join(repr(label) for label in labels))
+    if chosen is not None:
+        chosen[labels] = label
+    return label
 
 
 class MVSRegistration:
@@ -1217,9 +1224,11 @@ class MVSRegistration:
         # own channel-selection (which only runs as part of its full multi-pair graph, not for a
         # single ad-hoc pair)
         if 'c' in get_msim_dims(msim1):
-            reg_channel = resolve_registration_channel(msim1, params.get('channel', 0))
-            msim1 = msi_utils.multiscale_sel_coords(msim1, {'c': reg_channel})
-            msim2 = msi_utils.multiscale_sel_coords(msim2, {'c': reg_channel})
+            chosen = {}
+            msim1 = msi_utils.multiscale_sel_coords(
+                msim1, {'c': resolve_registration_channel(msim1, params.get('channel', 0), chosen)})
+            msim2 = msi_utils.multiscale_sel_coords(
+                msim2, {'c': resolve_registration_channel(msim2, params.get('channel', 0), chosen)})
 
         sim1_0 = msi_utils.get_sim_from_msim(msim1, scale='scale0')
         sim2_0 = msi_utils.get_sim_from_msim(msim2, scale='scale0')
@@ -1370,11 +1379,12 @@ class MVSRegistration:
         if has_channel[0]:
             if reg_channel is None and reg_channel_index is None:
                 raise Exception("Please choose a registration channel.")
-            reg_channel = resolve_registration_channel(
-                register_msims[0], reg_channel_index if reg_channel is None else reg_channel)
-
+            requested = reg_channel_index if reg_channel is None else reg_channel
+            # each source by its own labels: one project's files need not all name it the same
+            chosen = {}
             msims_reg = [
-                msi_utils.multiscale_sel_coords(msim, {"c": reg_channel})
+                msi_utils.multiscale_sel_coords(
+                    msim, {"c": resolve_registration_channel(msim, requested, chosen)})
                 if has_channel[imsim]
                 else msim
                 for imsim, msim in enumerate(register_msims)

@@ -297,6 +297,14 @@ Progress:
   all 831 pairs. Full suite 693 passed.
 - Next (user, HPC): rebuild the container, rerun pre-processing (Build msims ~26 -> ~22 min
   expected) and pair registration (channel 'channel 0' now falls back to '#0'; or set '#0').
+- HPC run 5 (c1e869c): the fallback warned and chose '#0' from the first source, then selecting
+  '#0' failed (KeyError '#0') - the HPC sources do not all name their channel the same (local
+  ones are all '#0'). Fixed: the channel is resolved per source by its own labels, one warning
+  per distinct set of labels (register_pairs and select_pair_overlap). 153 pyramid files with
+  every third renamed 'channel 0', 'channel 0' requested: one warning, identical to all-'#0' on
+  all 831 pairs; the tests reproduce the HPC error on the previous fix. Full suite 694 passed.
+- Worth checking on the HPC: which files name their channel 'channel 0' - an old export mixed
+  in with the pyramid files would also be single-level.
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),

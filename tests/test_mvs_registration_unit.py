@@ -526,6 +526,18 @@ def test_registration_channel_by_index_by_label_or_the_only_one():
         resolve_registration_channel(_channel_msim(['#0', '#1']), 'channel 0')
 
 
+def test_registration_channel_is_chosen_once_per_set_of_labels(caplog):
+    from muvis_align.MVSRegistration import resolve_registration_channel
+
+    chosen = {}
+    with caplog.at_level('WARNING'):
+        labels = [resolve_registration_channel(_channel_msim([name]), 'channel 0', chosen)
+                  for name in ('#0', '#0', 'other', '#0')]
+
+    assert labels == ['#0', '#0', 'other', '#0']
+    assert sum('not found' in message for message in caplog.messages) == 2
+
+
 def test_register_pairs_registers_on_the_only_channel_whatever_it_is_called(caplog):
     import networkx as nx
 
@@ -551,6 +563,18 @@ def test_register_pairs_registers_on_the_only_channel_whatever_it_is_called(capl
     assert by_wrong_name.keys() == by_name.keys()
     for edge, transform in by_name.items():
         np.testing.assert_array_equal(by_wrong_name[edge], transform)
+
+    # sources of one project naming their channel differently: each registers on its own
+    reg.register_msims[1] = reg.register_msims[1].map_over_datasets(
+        lambda dataset: dataset.assign_coords(c=['other']) if 'c' in dataset.coords else dataset)
+    for channel in ('0', 'channel 0'):
+        caplog.clear()
+        with caplog.at_level('WARNING'):
+            mixed = register(channel)
+        assert sum('not found' in message for message in caplog.messages) == (1 if channel == '0' else 2)
+        assert mixed.keys() == by_name.keys()
+        for edge, transform in by_name.items():
+            np.testing.assert_array_equal(mixed[edge], transform)
 
 
 def test_register_overlap_reuses_cached_overlap_across_param_changes():
