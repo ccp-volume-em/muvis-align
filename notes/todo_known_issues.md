@@ -239,6 +239,21 @@ Progress:
   - So partial reads only pay off if the overview reads the files itself: sampled rows of each
     uncompressed source straight from its file, several sources at a time, falling back to the
     dask path otherwise. Not done - for the user to decide.
+- 2026-09-25: the test images were wrong (single level). Local and HPC files now have 5 levels
+  (4 SubIFDs, x2 each), uncompressed, one strip per level; file 1.332x level 0. Verified locally
+  for all 153. Pre-processing at scale 2 now reads stored level 1 only (3.00 of 8.99MiB).
+- Re-evaluated for the pyramid files: every code change stands (scheduling, geometry, pairing,
+  settings, promotion code, xpra are file-independent; orthogonal geometry from metadata still
+  identical). The synchronous paste is at least as fast as threaded (1530 sources 23.1/21.7s vs
+  24.1/25.0s, identical overview). Out of date: the memory analysis (full-res tile kept per
+  source), whole-file reads, and the memmap/row-read experiments - stored levels do that now.
+- New measurements, 1530 sources: promote 23s (4 levels a source now, was 2 - 6.8s), cap 2.7s,
+  overview 22s reading level 1. With the cap shrinking ~1000x as on the HPC: cap 15.2s, overview
+  10.0s reading the coarsest stored level (31KB a source). HPC estimate: promote ~8.5 min, cap
+  ~5.5 min, overview ~4 min (was 32).
+- Next: the promotion does all 4 levels of every source, though the cap keeps only the
+  coarsest - promote only what the cap keeps (results must stay identical). Then re-measure the
+  HPC memory with the new files.
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),
