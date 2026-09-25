@@ -214,6 +214,19 @@ Progress:
   (33.5k sources, 1081 sections) 1.9s; pair graph identical (edges, overlaps within 3e-16, node
   stack_props), 4.5s -> 0.3s; orthogonal geometry from metadata identical, no msims build;
   register_pairs orthogonal identical on all 831 pairs. Expected on the HPC: ~5h of setup -> minutes.
+- Pushed as b6dd0d1 and 3494f19 (registration settings read from the registration section only;
+  two tests passed a whole operation dict).
+- Refresh after pre-processing, locally (3-section data x10 = 1530 sources, scale 2; scratchpad
+  refresh_profile.py / refresh_time.py). HPC per source: 3D promote 16ms (9.3 min), preview cap
+  9ms (5.3 min), overview paste 56ms (32 min).
+  - 25ff85a: 3D promote on the levels' datasets (identical trees) 14.2s -> 6.8s; overview images
+    enlarged in one copy (5x). Overview unchanged (same md5); 26.2s -> 23.6s.
+  - Overview is read-bound: 1530 file reads 6.6s + zarr's async per-chunk machinery. The tiles
+    are uncompressed, one contiguous strip each, and the HPC overview keeps ~1 pixel in 85 per
+    axis, yet reads every tile whole (~238GB over NFS, ~125MB/s). Proposal (user to decide):
+    read contiguous uncompressed TIFF levels through a memmap-backed array so a strided or
+    cropped read touches only the pages it needs - overview and registration crops alike.
+    Core read path, so not done without asking.
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),
