@@ -72,6 +72,25 @@ def test_promotion_still_adds_the_z_dim_napari_steps_through():
             assert float(image.coords['z'].values[0]) == pytest.approx(position['z'])
 
 
+def test_promotion_is_identical_to_promoting_each_level_as_a_sim():
+    """Promoted on the levels' own datasets rather than through a sim <-> msim round trip each:
+    the same tree, data, coordinates and attributes."""
+    from muvis_align.image.util import map_msim_levels, promote_sim_to_3d
+
+    sources, positions = sources_and_positions()
+    flat = [build_source_msim(source, 'tcyx', position, None, KEY)
+            for source, position in zip(sources, positions)]
+    # and one with a second level, as pre-processing's scaled pyramids have
+    flat[0] = msi_utils.get_msim_from_sim(msi_utils.get_sim_from_msim(flat[0]), scale_factors=[{'y': 2, 'x': 2}])
+    assert len(msi_utils.get_sorted_scale_keys(flat[0])) == 2
+
+    promoted = make_msims_3d(flat, z_scale=1.0, positions=positions)
+
+    for msim, original, position in zip(promoted, flat, positions):
+        expected = map_msim_levels(original, lambda sim, scale_key: promote_sim_to_3d(sim, position['z']))
+        assert msim.identical(expected)
+
+
 def test_a_flat_msim_is_not_mistaken_for_a_promoted_one():
     sources, positions = sources_and_positions()
     flat = [build_source_msim(source, 'tcyx', position, None, KEY)

@@ -116,3 +116,15 @@ def test_composite_computes_each_source_without_dask_threads():
 
     assert schedulers and set(schedulers) == {'synchronous'}
     assert np.all(overview[:, :8] == 10) and np.all(overview[:, 8:] == 20)
+
+
+@pytest.mark.parametrize('repeats', [(1, 1, 3, 2), (1, 1, 1, 4), (2, 1, 1, 1)])
+def test_enlarging_matches_repeating_each_axis(repeats):
+    from muvis_align.image.util import _enlarge_nearest
+
+    data = np.arange(2 * 1 * 3 * 4, dtype=np.uint16).reshape(2, 1, 3, 4)
+    expected = data
+    for axis, repeat in enumerate(repeats):
+        expected = np.repeat(expected, repeat, axis=axis)
+
+    assert np.array_equal(_enlarge_nearest(data, list(repeats)), expected)

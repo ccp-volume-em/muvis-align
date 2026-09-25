@@ -2366,20 +2366,35 @@ def msim_is_already_3d(msim):
 
 
 def make_msims_3d(msims, z_scale=None, positions=None):
-    # msim-native equivalent of make_sims_3d: same promote_sim_to_3d() logic, applied
-    # independently to every pyramid level via map_msim_levels - skipping any msim already in
-    # that form, since rebuilding it would only reproduce it (see msim_is_already_3d)
+    # msim-native equivalent of make_sims_3d: promote_sim_to_3d()'s result for every pyramid
+    # level - skipping any msim already in that form, since rebuilding it would only reproduce it
+    # (see msim_is_already_3d)
     if not z_scale:
         z_scale = 1
     new_msims = []
     for index, msim in enumerate(msims):
         if msim_is_already_3d(msim):
             new_msims.append(msim)
-            continue
-        z_position = positions[index].get('z', index * z_scale) if positions else index * z_scale
-        new_msims.append(map_msim_levels(
-            msim, lambda sim, scale_key, z_position=z_position: promote_sim_to_3d(sim, z_position)))
+        else:
+            z_position = positions[index].get('z', index * z_scale) if positions else index * z_scale
+            new_msims.append(_promote_msim_to_3d(msim, z_position))
     return new_msims
+
+
+def _promote_msim_to_3d(msim, z_position):
+    """promote_sim_to_3d() on each level, done on the levels' own datasets: the same tree
+    (asserted identical), without the sim <-> msim round trip per level, most of 9 minutes at 34k."""
+    nodes = {}
+    for scale_key in msi_utils.get_sorted_scale_keys(msim):
+        dataset = msim[scale_key].ds
+        image = dataset['image']
+        if 'z' not in image.dims:
+            image = image.expand_dims({'z': [z_position]}, axis=-3)
+        variables = {'image': image}
+        # the transforms are the level's other data variables
+        variables.update({name: widen_xaffine_to_3d(dataset[name]) for name in dataset.data_vars if name != 'image'})
+        nodes[scale_key] = xr.Dataset(variables)
+    return DataTree.from_dict(nodes)
 
 
 def msim_is_2d(msim):
@@ -2617,9 +2632,8 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
             return None
         data = data[tuple([slice(None)] * len(nsdims)
                           + [slice(None, None, stride) for stride in strides])]
-        for index, repeat in enumerate(repeats):
-            if repeat > 1:
-                data = np.repeat(data, repeat, axis=len(nsdims) + index)
+        if any(repeat > 1 for repeat in repeats):
+            data = _enlarge_nearest(data, [1] * len(nsdims) + repeats)
         target, source = [slice(None)] * len(nsdims), [slice(None)] * len(nsdims)
         for index, dim in enumerate(sdims):
             start = starts[index]
@@ -2641,6 +2655,14 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     logging.info(f'{label}: {len(sims)} sources pasted into'
                  f' {"x".join(str(shape[dim]) for dim in sdims)}')
     return wrap_sims_as_msims([sim])[0]
+
+
+def _enlarge_nearest(data, repeats):
+    """`data` with each element repeated `repeats[axis]` times along each axis - np.repeat on every
+    axis at once, as one copy of a broadcast view: 5x faster for an overview image enlarged 8x."""
+    view = data[tuple(index for _ in data.shape for index in (slice(None), None))]
+    blocks = [size for pair in zip(data.shape, repeats) for size in pair]
+    return np.broadcast_to(view, blocks).reshape([size * repeat for size, repeat in zip(data.shape, repeats)])
 
 
 def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=None):
