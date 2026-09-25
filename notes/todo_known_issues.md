@@ -266,7 +266,14 @@ Progress:
   (pixels, spacing, origin, dims); fuse() fallback on the 2D sources identical to promoted.
   1530 sources: default budget 36.2s -> 16.1s, 1000x cap 33.6s -> 9.3s. Plugin, 153 sources:
   promote 1.8s gone, cap 0.6 -> 0.2s, same overview. Full suite 691 passed.
-- Next: re-measure the HPC memory and the refresh with the new files.
+- Pushed up to a858e3f.
+- Next (user, HPC, pyramid files): rebuild the container (docker-build-push.sh), git pull,
+  sbatch xpra-pull.sh, sbatch xpra-slurm.sh, new tab; pre-processing then orthogonal pair
+  registration. Check: no 'promote register_msims to 3D' step and the refresh well under the
+  earlier 47 min; rss over the overview (was 9.6 -> 232GB on single-level files); '#pairs'
+  within seconds and the first 'Pairs 128/' within minutes (was ~5h).
+- Then, depending on that run: the HPC memory if it still builds up; the refresh's remaining
+  steps (cap, overview per-source overhead); registration throughput (~7 pairs/s at 64 threads).
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),
