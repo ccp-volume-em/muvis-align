@@ -95,3 +95,45 @@ def test_make_msims_2d_still_converts_a_3d_msim():
 
     assert converted[0] is not msims[0]
     assert msim_is_2d(converted[0])
+
+
+def test_view_adjacency_graph_of_translated_sources_matches_multiview_stitchers():
+    """Translated boxes overlap exactly in their bounding boxes, so no linear program per pair:
+    the same nodes, stack_props, edges and overlaps - a touching pair and a distant one dropped."""
+    import dask
+    from multiview_stitcher import mv_graph
+    from muvis_align.image.util import build_view_adjacency_graph
+
+    msims = [make_msim((0, 0)), make_msim((0, 6)), make_msim((5, 3)), make_msim((0, 8)), make_msim((40, 40))]
+    pairs = [(0, 1), (0, 2), (1, 2), (0, 3), (0, 4), (1, 3)]
+
+    fast = build_view_adjacency_graph(msims, TRANSFORM_KEY, pairs, overlap_tolerance=0)
+    with dask.config.set(scheduler='threads'):
+        reference = mv_graph.build_view_adjacency_graph_from_msims(msims, transform_key=TRANSFORM_KEY, pairs=pairs,
+                                                                   overlap_tolerance=0)
+
+    assert set(fast.nodes) == set(reference.nodes)
+    assert {frozenset(edge) for edge in fast.edges} == {frozenset(edge) for edge in reference.edges}
+    assert frozenset((0, 3)) not in {frozenset(edge) for edge in fast.edges}   # touching only
+    for edge in reference.edges:
+        assert np.isclose(fast.edges[edge]['overlap'], reference.edges[edge]['overlap'])
+    for node in reference.nodes:
+        assert np.allclose(flatten(fast.nodes[node]['stack_props']), flatten(reference.nodes[node]['stack_props']))
+
+
+def test_view_adjacency_graph_hands_rotated_sources_to_multiview_stitcher():
+    from unittest.mock import patch
+    from multiview_stitcher import mv_graph, param_utils
+    from muvis_align.image.util import build_view_adjacency_graph
+
+    msims = [make_msim((0, 0)), make_msim((0, 6))]
+    sim = msi_utils.get_sim_from_msim(msims[1])
+    angle = np.radians(20)
+    matrix = np.array([[np.cos(angle), -np.sin(angle), 0], [np.sin(angle), np.cos(angle), 6], [0, 0, 1]])
+    si_utils.set_sim_affine(sim, param_utils.affine_to_xaffine(matrix), transform_key=TRANSFORM_KEY)
+    msims[1] = wrap_sims_as_msims([sim])[0]
+
+    with patch.object(mv_graph, 'build_view_adjacency_graph_from_msims', return_value=nx.Graph()) as exact:
+        build_view_adjacency_graph(msims, TRANSFORM_KEY, [(0, 1)])
+
+    exact.assert_called_once()

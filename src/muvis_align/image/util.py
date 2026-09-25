@@ -2643,6 +2643,45 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     return wrap_sims_as_msims([sim])[0]
 
 
+def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=None):
+    """mv_graph.build_view_adjacency_graph_from_msims() for known pairs: the same nodes and
+    'stack_props', and an edge with its 'overlap' for each pair that overlaps.
+
+    That solves a linear program per pair, 2h16 for 233k pairs on the HPC. Boxes aligned with the
+    axes - every source before registration, which only translates them - overlap exactly in
+    their bounding boxes' intersection, so all pairs are measured at once; any other box hands
+    the whole graph to multiview_stitcher as before.
+    """
+    sims = [msi_utils.get_sim_from_msim(msim) for msim in msims]
+    nsdims = si_utils.get_nonspatial_dims_from_sim(sims[0])
+    if len(nsdims):
+        sims = [si_utils.sim_sel_coords(sim, {nsdim: sim.coords[nsdim][0] for nsdim in nsdims})
+                for sim in sims]
+    stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in sims]
+    if overlap_tolerance is not None:
+        stack_props = [si_utils.extend_stack_props(props, overlap_tolerance) for props in stack_props]
+    vertices = [mv_graph.get_vertices_from_stack_props(props) for props in stack_props]
+    mins = np.array([points.min(axis=0) for points in vertices])
+    maxs = np.array([points.max(axis=0) for points in vertices])
+    axis_aligned = all(np.all(np.isclose(points, low) | np.isclose(points, high))
+                       for points, low, high in zip(vertices, mins, maxs))
+    if not axis_aligned:
+        return mv_graph.build_view_adjacency_graph_from_msims(
+            msims, transform_key=transform_key, pairs=pairs, overlap_tolerance=overlap_tolerance)
+
+    graph = nx.Graph()
+    graph.add_nodes_from(range(len(msims)))
+    nx.set_node_attributes(graph, dict(enumerate(stack_props)), name='stack_props')
+    pairs = np.asarray(pairs, dtype=int).reshape(-1, 2)
+    extents = np.minimum(maxs[pairs[:, 0]], maxs[pairs[:, 1]]) - np.maximum(mins[pairs[:, 0]], mins[pairs[:, 1]])
+    overlaps = np.prod(np.clip(extents, 0, None), axis=1)
+    # as there: only boxes sharing more than a face are neighbours
+    for (first, second), overlap in zip(pairs, overlaps):
+        if overlap > 0:
+            graph.add_edge(int(first), int(second), overlap=float(overlap))
+    return graph
+
+
 def build_pairs_graph(msims, pairs, transform_key, overlaps=None):
     """The view adjacency graph for a set of pairs that is already known.
 

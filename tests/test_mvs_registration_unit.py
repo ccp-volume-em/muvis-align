@@ -489,17 +489,18 @@ def test_register_pairs_default_pairing_hands_over_candidates_for_the_same_graph
     )
     reg.init_data()
     reg.preprocess(reg.msims)
-    original = mv_graph.build_view_adjacency_graph_from_msims
+    original = mvs_registration_module.build_view_adjacency_graph
     handed = []
 
-    def recording(msims, **kwargs):
-        handed.append(kwargs.get('pairs'))
-        return original(msims, **kwargs)
+    def recording(msims, transform_key, pairs, **kwargs):
+        handed.append(pairs)
+        return original(msims, transform_key, pairs, **kwargs)
 
-    with patch.object(mvs_registration_module.mv_graph, 'build_view_adjacency_graph_from_msims', recording):
+    with patch.object(mvs_registration_module, 'build_view_adjacency_graph', recording):
         reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'default'})
     with dask.config.set(scheduler='threads'):
-        own = original(reg.pair_msims, transform_key=reg.source_transform_key, overlap_tolerance=0)
+        own = mv_graph.build_view_adjacency_graph_from_msims(reg.pair_msims, transform_key=reg.source_transform_key,
+                                                             overlap_tolerance=0)
 
     assert handed and handed[0] is not None
     assert {frozenset(edge) for edge in reg.pairs_graph.edges} == {frozenset(edge) for edge in own.edges}

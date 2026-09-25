@@ -909,8 +909,9 @@ def get_pairs(positions, sizes):
     angles = []
     z_positions = [position['z'] for position in positions if 'z' in position]
     ordered_z = sorted(set(z_positions))
+    z_index = {z: index for index, z in enumerate(ordered_z)}
     is_mixed_3dstack = len(ordered_z) < len(z_positions)
-    for i, j in np.transpose(np.triu_indices(len(positions), 1)):
+    for i, j in _get_pairs_candidates(positions, sizes, is_mixed_3dstack, z_index):
         posi, posj = positions[i], positions[j]
         sizei, sizej = sizes[i], sizes[j]
         if is_mixed_3dstack:
@@ -918,7 +919,7 @@ def get_pairs(positions, sizes):
             distance = math.dist([posi[dim] for dim in 'xy'], [posj[dim] for dim in 'xy'])
             min_distance = max([size[dim] for size in [sizei, sizej] for dim in 'xy'])
             is_same_z = (posi['z'] == posj['z'])
-            is_close_z = abs(ordered_z.index(posi['z']) - ordered_z.index(posj['z'])) <= 1
+            is_close_z = abs(z_index[posi['z']] - z_index[posj['z']]) <= 1
             if not is_close_z:
                 # if not close, discard as pair
                 min_distance = 0
@@ -941,6 +942,35 @@ def get_pairs(positions, sizes):
                 angle -= 180
             angles.append(angle)
     return pairs, angles
+
+
+def _get_pairs_candidates(positions, sizes, is_mixed_3dstack, z_index):
+    """(i, j), i < j, of every pair get_pairs() could accept, in the order its full loop visits
+    them: each source's box of its own search distance, one section deep in z for a stack.
+    All pairs at 34k sources is 578M Python iterations (2.5 hours); the boxes leave a handful each.
+    """
+    from muvis_align.image.util import _sweep_candidate_pairs
+
+    if is_mixed_3dstack:
+        dims = ['x', 'y']
+        usable = (all({'x', 'y', 'z'} <= set(position) for position in positions)
+                  and all({'x', 'y'} <= set(size) for size in sizes))
+    else:
+        # the full loop pairs positions' values up in order, so every one must list the same dims
+        dims = list(positions[0]) if len(positions) else []
+        usable = all(list(position) == dims for position in positions)
+    if not usable:
+        return np.transpose(np.triu_indices(len(positions), 1))
+    centers = np.array([[position[dim] for dim in dims] for position in positions], dtype=float)
+    # a pair is only accepted closer than the larger of its two sizes, so within either box
+    reach = np.array([max(size[dim] for dim in dims) if is_mixed_3dstack else max(size.values())
+                      for size in sizes], dtype=float)[:, None]
+    mins, maxs = centers - reach, centers + reach
+    if is_mixed_3dstack:
+        # half a section each way: boxes of neighbouring sections touch, further ones do not
+        sections = np.array([[z_index[position['z']]] for position in positions], dtype=float)
+        mins, maxs = np.hstack([mins, sections - 0.5]), np.hstack([maxs, sections + 0.5])
+    return _sweep_candidate_pairs(mins, maxs)
 
 
 def retuple(chunks, shape):

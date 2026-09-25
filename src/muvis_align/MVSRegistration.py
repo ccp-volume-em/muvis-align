@@ -1324,11 +1324,15 @@ class MVSRegistration:
             pairs = [(index, index + 1) for index in range(len(register_msims) - 1)]
         elif 'ortho' in pairing:
             # position/size for pairing distance must match self.positions 1:1 (every source,
-            # never a preprocessed/filtered register_msims subset) - self.msims (always the full,
-            # untouched per-source pyramid) is exactly that, no sims needed for this metadata
-            origins = np.array([get_sim_position_final(msi_utils.get_sim_from_msim(msim, scale='scale0'), position, get_center=True)
-                                for msim, position in zip(self.msims, self.positions)])
-            sizes = [get_sim_physical_size(get_msim_image0(msim)) for msim in self.msims]
+            # never a preprocessed/filtered register_msims subset). From each source's metadata, as
+            # the shapes are: the same geometry as self.msims' finest level, which cost 14.5 minutes
+            # to build at 34k sources just to be read here
+            shape_sims = [build_source_shape_sim(source, self._msim_output_order, position, transform,
+                                                 self.source_transform_key, z_scale=self._msim_z_scale)
+                          for source, position, transform in zip(self.sources, self.positions, self._msim_transforms)]
+            origins = np.array([get_sim_position_final(sim, position, get_center=True)
+                                for sim, position in zip(shape_sims, self.positions)])
+            sizes = [get_sim_physical_size(sim) for sim in shape_sims]
             pairs, _ = get_pairs(origins, sizes)
             logging.info(f'#pairs: {len(pairs)}')
             #for pair in pairs:
@@ -1401,12 +1405,8 @@ class MVSRegistration:
                 # one's diameter: with overview images among tiles, nearly every pair of 34k sources
                 graph_pairs = (pairs if pairs is not None
                                else find_candidate_overlap_pairs(msims_reg, self.source_transform_key))
-                g_reg = mv_graph.build_view_adjacency_graph_from_msims(
-                    msims_reg,
-                    transform_key=self.source_transform_key,
-                    pairs=graph_pairs,
-                    overlap_tolerance=overlap_tolerance,
-                )
+                g_reg = build_view_adjacency_graph(msims_reg, self.source_transform_key, graph_pairs,
+                                                   overlap_tolerance=overlap_tolerance)
 
                 g_reg_computed = g_reg.copy()
                 workers = n_parallel_pairwise_regs or default_pair_workers

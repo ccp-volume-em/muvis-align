@@ -260,3 +260,80 @@ def test_rolling_map_raises_and_skips_what_was_still_queued():
     with pytest.raises(ValueError, match='pair failed'):
         list(rolling_map(work, range(100), workers=2))
     assert len(started) < 10
+
+
+def _get_pairs_every_pair(positions, sizes):
+    """get_pairs() as it was, testing every pair - the reference its candidates must reproduce."""
+    import math
+    pairs, angles = [], []
+    z_positions = [position['z'] for position in positions if 'z' in position]
+    ordered_z = sorted(set(z_positions))
+    is_mixed_3dstack = len(ordered_z) < len(z_positions)
+    for i, j in np.transpose(np.triu_indices(len(positions), 1)):
+        posi, posj, sizei, sizej = positions[i], positions[j], sizes[i], sizes[j]
+        if is_mixed_3dstack:
+            distance = math.dist([posi[dim] for dim in 'xy'], [posj[dim] for dim in 'xy'])
+            min_distance = max([size[dim] for size in [sizei, sizej] for dim in 'xy'])
+            if abs(ordered_z.index(posi['z']) - ordered_z.index(posj['z'])) > 1:
+                min_distance = 0
+            elif posi['z'] != posj['z']:
+                min_distance *= 0.8
+        else:
+            distance = math.dist(posi.values(), posj.values())
+            min_distance = max(list(sizei.values()) + list(sizej.values()))
+        if distance < min_distance:
+            pairs.append((int(i), int(j)))
+            vector = np.array(list(posi.values())) - np.array(list(posj.values()))
+            angle = math.degrees(math.atan2(vector[1], vector[0]))
+            if distance < min(list(sizei.values()) + list(sizej.values())):
+                angle += 90
+            while angle < -90:
+                angle += 180
+            while angle > 90:
+                angle -= 180
+            angles.append(angle)
+    return pairs, angles
+
+
+def _tile_stack(sections, rows=4, columns=5, with_overview=True, seed=0):
+    """Overlapping tiles jittered off a grid in several sections, each with a much larger overview."""
+    rng = np.random.default_rng(seed)
+    positions, sizes = [], []
+    for section in range(sections):
+        for row in range(rows):
+            for column in range(columns):
+                positions.append({'y': row * 90 + rng.uniform(-8, 8), 'x': column * 90 + rng.uniform(-8, 8),
+                                  'z': section * 0.05})
+                sizes.append({'y': 100.0, 'x': 120.0})
+        if with_overview:
+            positions.append({'y': 150.0, 'x': 200.0, 'z': section * 0.05})
+            sizes.append({'y': 900.0, 'x': 1100.0})
+    return positions, sizes
+
+
+@pytest.mark.parametrize('positions, sizes', [
+    _tile_stack(sections=5),
+    _tile_stack(sections=1, with_overview=False),
+    # every z different: not a mixed stack, so distances are over all dims
+    ([{'y': y * 90.0, 'x': x * 90.0, 'z': float(y * 7 + x)} for y in range(4) for x in range(7)],
+     [{'y': 100.0, 'x': 100.0}] * 28),
+    # 2D, no z at all
+    ([{'y': y * 95.0, 'x': x * 80.0} for y in range(5) for x in range(6)], [{'y': 100.0, 'x': 110.0}] * 30),
+])
+def test_get_pairs_matches_testing_every_pair(positions, sizes):
+    from muvis_align.util import get_pairs
+
+    assert get_pairs(positions, sizes) == _get_pairs_every_pair(positions, sizes)
+    assert get_pairs(positions, sizes)[0]  # the cases do have pairs
+
+
+def test_get_pairs_scales_with_neighbours_not_all_pairs():
+    import time
+    from muvis_align.util import get_pairs
+
+    positions, sizes = _tile_stack(sections=400)
+    start = time.time()
+    pairs, _ = get_pairs(positions, sizes)
+    # 8400 sources: all pairs would be 35M iterations, several minutes
+    assert time.time() - start < 30
+    assert len(pairs) > 8400

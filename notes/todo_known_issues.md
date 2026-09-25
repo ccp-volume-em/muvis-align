@@ -200,11 +200,29 @@ Progress:
 - Fixed: default pairing hands multiview_stitcher the bounding-box sweep's candidates
   (find_candidate_overlap_pairs) instead. data_400: same edges with and without the overview
   (overlap values within 2.8e-16), graph build 13.2s -> 1.1s with it; register_pairs results
-  identical on all 179 pairs, 36.5s -> 28.9s. At 34k: ~115k candidates instead of ~1.2 billion.
+  identical on all 179 pairs, 36.5s -> 28.9s. Correction: at 34k it is not ~115k candidates -
+  pre-processed sources are 2D, so default pairs everything overlapping in x/y across all
+  sections (3 sections: 1764 vs orthogonal's 831), tens of millions at 1081 sections. Default is
+  the wrong pairing for a multi-section stack either way; orthogonal is the right one.
   Pushed as cddd7fe.
-- Next (user): rebuild the container, HPC run: pre-processing (rss over the overview, was
-  9.6 -> 232GB, with the synchronous paste), then pair registration (default now starts pairs
-  within minutes; orthogonal as before) - the 'Pairs n/N' lines, 'Register pairs' cores, metrics.
+- HPC run 3 (dd2e406, orthogonal): refresh after pre-processing 49 min (overview 32, 3D
+  promote 9.3, preview cap 5.3), rss 232GB again. Registration: Build msims again 14.5 min,
+  get_pairs 2h32 (#pairs 233338), pair graph (linprog per pair) 2h16, then 229725 pairs at ~7/s
+  (~9h), rss flat ~237GB. Pair count expected (user: ~300 a slice x ~1000 slices); per section
+  on data_400 127 within + 233 to the next, 41% overview-tile.
+- Done (registration setup), 3-section data: get_pairs identical (847 pairs), HPC-size synthetic
+  (33.5k sources, 1081 sections) 1.9s; pair graph identical (edges, overlaps within 3e-16, node
+  stack_props), 4.5s -> 0.3s; orthogonal geometry from metadata identical, no msims build;
+  register_pairs orthogonal identical on all 831 pairs. Expected on the HPC: ~5h of setup -> minutes.
+- Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
+  project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
+  1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),
+     same rules vectorised - identical pairs and angles.
+  2. pair graph: overlaps from exact AABB intersection when all transforms are translations,
+     else multiview_stitcher as now - identical edges and overlaps.
+  3. orthogonal positions/sizes from source metadata instead of building self.msims.
+- The user changed register_pairs' pairing lookup (drops params['registration']['pairing']):
+  theirs, uncommitted - leave it, commit only my hunks.
 - Next (user): rebuild the container (docker-build-push.sh), on the HPC git pull, sbatch
   xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, run pre-processing, compare rss
   over the overview (previous: 9.6 -> 232GB). If it still grows: grep -E 'RssAnon|RssFile'
@@ -220,11 +238,6 @@ Progress:
   after ~10 min. The bar's weights misjudge 34k sources: shapes and copies fast and weighted
   generously (27% at 1 min), then 3D promote (9 min) and preview cap (5 min) each report once.
   Fix later: per-source progress (and speed) in make_msims_3d and reduce_msims_to_fused_size.
-- Next (user, on the HPC): git pull (xpra-slurm.sh: screen settings, LOG_LIVE_BUFFERS=1),
-  sbatch xpra-pull.sh, sbatch xpra-slurm.sh, connect in a new tab, open the project, run
-  pre-processing, send the log - the lines to read are 'Overview (... images): n/N pasted' and
-  'Overview (... images) done'. Then: fix what holds the tiles, and only after that test pair
-  registration on the HPC.
 
 ## TODO
 
