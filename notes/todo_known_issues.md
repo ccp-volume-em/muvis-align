@@ -227,6 +227,18 @@ Progress:
     read contiguous uncompressed TIFF levels through a memmap-backed array so a strided or
     cropped read touches only the pages it needs - overview and registration crops alike.
     Core read path, so not done without asking.
+  - Tried and reverted (user asked to test): every read reads the whole file - one level, one
+    strip, one zarr chunk, and the scale-2 level is a strided view of it. Previous readers
+    (ngff-zarr, and da.from_zarr(page.aszarr()) before it) did the same.
+    - memmap-backed levels (as tifffile.memmap): identical pixels, but overview 26.3 -> 38.5s on
+      Windows, 96.9 -> 388.7s in the Linux container over a mounted folder (a page fault a round
+      trip). Not usable for NFS.
+    - explicit row reads: 6-9x faster than whole reads when called directly, but in the pipeline
+      the overview got slower (24.7 -> 56.8s): dask does not push the slices down to the read -
+      each 1024-chunk asks for all its rows (6912 rows for a 2304-row tile, whole rows per x-chunk).
+  - So partial reads only pay off if the overview reads the files itself: sampled rows of each
+    uncompressed source straight from its file, several sources at a time, falling back to the
+    dask path otherwise. Not done - for the user to decide.
 - Was: registration setup, tested locally on the 3-section dataset (data_399-401, 153 sources;
   project yml in the meatballs folder, resources/params_EM04652_02_slice017.yml):
   1. get_pairs: sweep candidates (boxes of each source's search distance, one section deep in z),
