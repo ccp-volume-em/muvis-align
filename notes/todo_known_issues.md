@@ -330,6 +330,13 @@ Progress:
   generously (27% at 1 min), then 3D promote (9 min) and preview cap (5 min) each report once.
   Fix later: per-source progress (and speed) in make_msims_3d and reduce_msims_to_fused_size.
 
+- Done (user request): pre_processing 'scale' and input_output 'preview_scale' take a pixel size
+  with unit ('10um', '40nm') as well as a factor: text fields in the template, parse_scale()
+  where they are read (preprocess, ensure_msims, msims_build_pending, the view's and
+  create_preview's preview_scale, get_level_from_scale). A factor is relative to each source's
+  own pixel size - preview 16 gave overview images 3.986um and tiles 0.160um - a pixel size is
+  one target for all. Plugin runs with '0.04um'/'1um' clean; full suite 715 passed.
+
 ## TODO
 
 - [ ] Other computes over many similar per-source chains (fusion, overview, metrics outside

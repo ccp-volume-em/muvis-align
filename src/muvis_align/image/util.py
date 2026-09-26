@@ -836,7 +836,8 @@ def calc_pyramid(xyzct: tuple, npyramid_add: int = 0, pyramid_downsample: float 
 
 
 def get_level_from_scale(source, target_scale=1):
-    # Only downscaling
+    # Only downscaling. A factor, possibly as text ('2'), or a pixel size with its unit ('10um')
+    target_scale = parse_scale(target_scale)
     if isinstance(target_scale, dict):
         # dict of desired pixel size
         target_pixel_size = target_scale
@@ -844,8 +845,7 @@ def get_level_from_scale(source, target_scale=1):
                         for dim, source_pixel_size in source.get_pixel_size().items()}
     elif isinstance(target_scale, str):
         # target pixel size with unit
-        index = target_scale.find(next(filter(str.isalpha, target_scale)))
-        pixel_size = convert_to_um(float(target_scale[:index]), target_scale[index:])
+        pixel_size = pixel_size_to_um(target_scale)
         target_pixel_size = {dim: pixel_size for dim in source.get_pixel_size()}
         target_scale = {dim: pixel_size / source_pixel_size
                         for dim, source_pixel_size in source.get_pixel_size().items()}

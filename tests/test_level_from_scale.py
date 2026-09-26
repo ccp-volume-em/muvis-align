@@ -55,3 +55,22 @@ def test_single_level_source_always_selects_level_zero():
     source = make_source([1])
 
     assert get_level_from_scale(source, 16)[0] == 0
+
+
+def test_a_factor_as_text_selects_the_same_level_as_the_number():
+    """A text field hands a factor over as text."""
+    source = make_source([1, 2, 4, 8, 16])
+
+    assert [get_level_from_scale(source, str(target))[0] for target in (1, 2, 6, 16)] == \
+        [get_level_from_scale(source, target)[0] for target in (1, 2, 6, 16)]
+
+
+def test_a_pixel_size_selects_the_level_nearest_it_without_going_coarser():
+    """0.1um pixels: 0.4um is the 4x level exactly, 0.6um the 4x (never the 8x), 1600nm the 16x."""
+    source = make_source([1, 2, 4, 8, 16])
+
+    assert get_level_from_scale(source, '0.4um')[0] == 2
+    assert get_level_from_scale(source, '0.6 um')[0] == 2
+    assert get_level_from_scale(source, '1600nm')[0] == 4
+    level, _, pixel_size = get_level_from_scale(source, '0.4um')
+    assert pixel_size['x'] == pixel_size['y'] == 0.4

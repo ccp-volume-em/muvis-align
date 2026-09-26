@@ -280,8 +280,10 @@ class TestNapariInterfaceRegistration:
         preprocessing = config_data.get('pre_processing', {})
         
         assert 'scale' in preprocessing
-        assert isinstance(preprocessing['scale'], (int, float))
-        assert preprocessing['scale'] > 0
+        # a factor (a number, or its text as a text field saves it) or a pixel size such as '10um'
+        from muvis_align.util import parse_scale, pixel_size_to_um
+        scale = parse_scale(preprocessing['scale'])
+        assert scale > 0 if isinstance(scale, (int, float)) else pixel_size_to_um(scale) > 0
 
     @patch('muvis_align.ui.Interface.QMessageBox.question')
     def test_interface_pair_registration_mock(

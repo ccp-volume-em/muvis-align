@@ -38,7 +38,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, release_memory
+    resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale
 
 
 class _ProgressBridge(QObject):
@@ -937,7 +937,8 @@ class Interface:
             # the graph for the largest levels of the combined output, when only its coarsest
             # pixels are shown until the user zooms in. Reduce to the same coarse sub-pyramid
             # create_preview() uses for its own exported preview.
-            preview_scale = self.params['input_output'].get('preview_scale', default_interactive_preview_scale)
+            preview_scale = parse_scale(self.params['input_output'].get('preview_scale'),
+                                        default=default_interactive_preview_scale)
             with phase(1 / 12, total=1) as pbar, \
                  Timer('_create_napari_data: build view_msims', verbose=self._timing_verbose()):
                 view_msims = self.view_msims

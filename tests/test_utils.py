@@ -337,3 +337,28 @@ def test_get_pairs_scales_with_neighbours_not_all_pairs():
     # 8400 sources: all pairs would be 35M iterations, several minutes
     assert time.time() - start < 30
     assert len(pairs) > 8400
+
+
+@pytest.mark.parametrize('value, expected', [
+    (2, 2), (2.5, 2.5), ('2', 2), (' 16 ', 16), ('0.5', 0.5), (None, 1), ('', 1),
+    ('10um', '10um'), (' 0.5 mm ', '0.5 mm'), ('250nm', '250nm'), ('1e-3mm', '1e-3mm'),
+])
+def test_parse_scale_takes_a_factor_or_a_pixel_size(value, expected):
+    from muvis_align.util import parse_scale
+
+    assert parse_scale(value) == expected
+
+
+@pytest.mark.parametrize('text, um', [('10um', 10), ('0.5 mm', 500), ('250nm', 0.25), ('1e-3mm', 1), ('2µm', 2)])
+def test_pixel_size_to_um(text, um):
+    from muvis_align.util import pixel_size_to_um
+
+    assert pixel_size_to_um(text) == pytest.approx(um)
+
+
+@pytest.mark.parametrize('value', ['ten', '10 parsecs', 'um10'])
+def test_parse_scale_rejects_what_is_neither(value):
+    from muvis_align.util import parse_scale
+
+    with pytest.raises(ValueError, match='neither a downscale factor nor a pixel size'):
+        parse_scale(value)

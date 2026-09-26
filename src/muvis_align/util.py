@@ -663,6 +663,38 @@ def convert_to_um(value, unit):
     return value * factor
 
 
+_pixel_size_pattern = re.compile(r'([-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?)\s*(\S+)')
+
+
+def pixel_size_to_um(text):
+    """A pixel size written with its unit ('10um', '0.5 mm', '250nm') in um, or None if it is not one."""
+    match = _pixel_size_pattern.fullmatch(text.strip())
+    if match is None:
+        return None
+    unit = match.group(2)
+    if unit not in um_conversions and unit.lower() not in um_conversions:
+        return None
+    return convert_to_um(float(match.group(1)), unit)
+
+
+def parse_scale(value, default=1):
+    """A downscale setting as get_level_from_scale() takes it: a factor - a number, or a number as the
+    text a text field gives ('2') - or a pixel size with its unit ('10um'), kept as text. Blank is
+    `default`; other text is an error naming the units a pixel size can have."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    if not isinstance(value, str):
+        return value
+    try:
+        number = float(value)
+    except ValueError:
+        if pixel_size_to_um(value) is None:
+            raise ValueError(f'{value!r} is neither a downscale factor nor a pixel size with a unit'
+                             f' ({", ".join(sorted(set(um_conversions)))})') from None
+        return value.strip()
+    return int(number) if number.is_integer() else number
+
+
 def convert_rational_value(value) -> float:
     if value is not None and isinstance(value, tuple):
         if value[0] == value[1]:

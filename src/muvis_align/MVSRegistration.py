@@ -172,6 +172,8 @@ class MVSRegistration:
         finer levels the caller is about to discard anyway. Those are cached per scale, never
         as self.msims, which stays the full-resolution pyramid everything else reads.
         """
+        # a factor as text ('2') or a pixel size ('10um'): one cache entry however it was written
+        target_scale = parse_scale(target_scale, default=None)
         key = str(target_scale)
         if target_scale and key not in self._scaled_msims:
             from_levels = [get_level_from_scale(source, target_scale)[0] for source in self.sources]
@@ -195,6 +197,7 @@ class MVSRegistration:
         stops at the end of the phases that did run - pre-processing over already-built msims
         finished at half a bar, with a time estimate to match.
         """
+        target_scale = parse_scale(target_scale, default=None)
         key = str(target_scale)
         if key in self._scaled_msims:
             return False
@@ -1025,6 +1028,8 @@ class MVSRegistration:
                             f' {", ".join(sorted(str(key) for key in kwargs))}')
 
         do_normalisation = normalisation_enabled(normalisation)
+        # a factor, as a number or the text of a text field, or a pixel size with its unit ('10um')
+        scale = parse_scale(scale, default=None)
 
         def count_progress_steps():
             n_steps = 0
@@ -1887,7 +1892,7 @@ class MVSRegistration:
 
     def create_preview(self, output_filename=None, nom_msims=None, transform_key=None):
         output_params = self.params_general['output']
-        preview_scale = output_params.get('preview_scale', 16)
+        preview_scale = parse_scale(output_params.get('preview_scale'), default=16)
         is_stack = self.is_stack
         z_scale = get_metadata_z_scale(self.extra_metadata)
 
