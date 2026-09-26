@@ -362,7 +362,7 @@ Progress:
   25.9 -> 17.7s (18.7 -> 13.3ms cpu a source). Plugin pre-processing then convert clean; the
   converted stores keep all 5 levels. The 2D zarr configs (params_test_2d2, project2) now read
   data/S*/*.zarr, since data/*/*.zarr also caught data/3d; the config test accepts every method
-  in the project template (phase_correlation included). Full suite 750 passed.
+  in the project template (phase_correlation included). Full suite 750 passed. Pushed.
 
 ## TODO
 
