@@ -241,7 +241,8 @@ def split_path(path: str) -> list:
 
 def get_filetitle(filename: str) -> str:
     filebase = os.path.basename(filename)
-    title = os.path.splitext(filebase)[0].rstrip('.ome')
+    # removesuffix, not rstrip: rstrip('.ome') strips any trailing '.', 'o', 'm' or 'e'
+    title = os.path.splitext(filebase)[0].removesuffix('.ome')
     return title
 
 

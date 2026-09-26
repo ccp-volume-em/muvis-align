@@ -6,7 +6,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map
+    timed_module_functions, rolling_map, get_filetitle
 
 
 @pytest.mark.parametrize(
@@ -362,3 +362,12 @@ def test_parse_scale_rejects_what_is_neither(value):
 
     with pytest.raises(ValueError, match='neither a downscale factor nor a pixel size'):
         parse_scale(value)
+
+
+@pytest.mark.parametrize('filename, expected', [
+    ('data/slide_one.ome.tiff', 'slide_one'),
+    ('data/tile_home.tif', 'tile_home'),
+    ('data/scan.ome.zarr', 'scan'),
+])
+def test_get_filetitle_strips_only_the_ome_suffix(filename, expected):
+    assert get_filetitle(filename) == expected
