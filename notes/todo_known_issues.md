@@ -337,6 +337,12 @@ Progress:
   own pixel size - preview 16 gave overview images 3.986um and tiles 0.160um - a pixel size is
   one target for all. Plugin runs with '0.04um'/'1um' clean; full suite 715 passed.
 
+- Done (user request): convert writes the pre-processed (scaled) register_msims, not the
+  full-resolution self.reg.msims, running pre-processing first if needed (f222355). Outputs are
+  named `<input file title>.ome.zarr`; written pyramids pad down to min_length (128) instead of
+  default_chunk_size (66e5445); get_filetitle strips only '.ome' - rstrip cut 'slide_one' to
+  'slide_on' (9ba0aa8). Targeted tests only (125 passed); no real conversion run yet.
+
 ## TODO
 
 - [ ] Other computes over many similar per-source chains can hit the same dask fused-key
@@ -352,3 +358,6 @@ Progress:
       refresh (a858e3f), 2x faster elsewhere (25ff85a).
 - [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
       in with the pyramid files would also be single-level (slower pre-processing and overview).
+- [ ] Run a real convert with a pre-processing scale set: check output level-0 size and levels
+      down to ~128px. Also run test_unique_file_labels / test_mvs_registration_unit /
+      test_napari_interface_registration against the get_filetitle fix (not run yet).
