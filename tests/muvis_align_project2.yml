@@ -5,7 +5,7 @@ fusion:
   tile_size: 1024,1024
 input_output:
   coordinate_system: source_metadata
-  input_path: data/*/*.zarr
+  input_path: data/S*/*.zarr
   metadata_table: []
   output_path: output2
   overwrite: true

@@ -66,6 +66,15 @@ def get_project_configs():
     return configs
 
 
+def template_options(name):
+    """The dropdown values the plugin's project template offers for a parameter."""
+    template_path = Path(__file__).parent.parent / 'src' / 'muvis_align' / 'ui' / 'project_template.yaml'
+    with open(template_path, 'r') as file:
+        template = yaml.safe_load(file)
+    parameter = next(parameter for parameter in template['parameters'] if parameter['name'] == name)
+    return [option['value'] for option in parameter['options']]
+
+
 @pytest.fixture(params=get_project_configs(), ids=lambda p: p.name)
 def project_config(request):
     """Fixture that provides path to each discovered project configuration file."""
@@ -251,7 +260,7 @@ class TestNapariInterfaceRegistration:
         """Validate registration parameters in config."""
         registration = config_data['registration']
         
-        assert registration['method'] in ['sift', 'orb', 'akaze']
+        assert registration['method'] in template_options('method')
         assert registration['pairing'] in ['orthogonal', 'all']
         assert registration['transform_type'] in ['rigid', 'affine']
         assert registration['operation'] == 'register'

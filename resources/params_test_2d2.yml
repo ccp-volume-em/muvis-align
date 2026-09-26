@@ -8,7 +8,7 @@ general:
 operations:
   - operation: register
     input:
-      path: data/*/*.zarr
+      path: data/S*/*.zarr
       source_metadata: source
       extra_metadata: {scale: {z: 0.1}}
     registration:
