@@ -343,6 +343,18 @@ Progress:
   default_chunk_size (66e5445); get_filetitle strips only '.ome' - rstrip cut 'slide_one' to
   'slide_on' (9ba0aa8). Targeted tests only (125 passed); no real conversion run yet.
 
+- Measured why pre-processing got slower on the HPC (1530 sources = hard links to the 153):
+  1. Viewer during the build, Linux container + Xvfb (software GL, as xpra), 64 threads: headless
+     25.9s; plugin with the shapes layer hidden 31.1s (process cpu 46.6s, build 25.0s); shown
+     35.3s (54.3s, 28.0s). The plugin adds 20-36%; repaints are ~4s of it. Not the main cause.
+  2. Build threads (headless, Windows): 8-64 threads 26.1-26.5s, 192 threads 28.8s - always
+     ~1.1 cores (GIL-bound Python). Linux 64 vs 16: 25.9 vs 25.4s. Fewer threads help ~2-10%.
+  3. Levels: registration uses only the finest pre-processed level (all 831 pairs at scale0,
+     no further binning). Build cost 1/2/3/4 levels a source: 9.2/11.6/15.7/18.5ms cpu -
+     ~6ms fixed + ~3ms a level. Building finest + coarsest only (2 levels) would save ~37%.
+  HPC: 34k x ~45ms = ~25 min on one core, as measured. The cost is the per-level xarray
+  construction, single-threaded; neither threads nor repaints are the lever - fewer levels is.
+
 ## TODO
 
 - [ ] Other computes over many similar per-source chains can hit the same dask fused-key
