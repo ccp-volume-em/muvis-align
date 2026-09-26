@@ -355,6 +355,18 @@ Progress:
   HPC: 34k x ~45ms = ~25 min on one core, as measured. The cost is the per-level xarray
   construction, single-threaded; neither threads nor repaints are the lever - fewer levels is.
 
+- Done (user request): pre-processing builds only each source's finest and coarsest level
+  (ends_only; registration reads the finest, the preview cap the coarsest), build threads capped
+  at 32, convert builds the full pyramid. Local (153 sources): finest/coarsest geometry, overviews
+  (default, 20x, 1000x budgets) and all 831 pair registrations identical; build 1530 sources
+  25.9 -> 17.7s (18.7 -> 13.3ms cpu a source). Plugin pre-processing then convert clean; the
+  converted stores keep all 5 levels. Full suite: 6 failures, none from this change - they fail
+  on a clean HEAD too:
+  - params_test_2d2.yml (5 tests): its input `data/*/*.zarr` now also matches the 3D stores
+    added in data/3d (00e087e); passed before it.
+  - test_registration_params_validation[muvis_align_project3d.yml]: method phase_correlation is
+    not in the accepted list (sift, orb, akaze).
+
 ## TODO
 
 - [ ] Other computes over many similar per-source chains can hit the same dask fused-key
@@ -365,7 +377,7 @@ Progress:
       fusion size, adding and refreshing shapes) per-source or per-batch progress. Promoting to 3D
       no longer happens in the refresh.
 - [ ] Speed up the remaining slow per-source phases, all xarray object construction: building the
-      msims in pre-processing (~22 min for 34k sources with 4 stored levels each, ~4ms a level)
+      msims in pre-processing (~22 min for 34k sources; now 2 levels a source, ~30% less)
       and the preview size cap (3.4 min on the HPC). Promoting to 3D: done - removed from the
       refresh (a858e3f), 2x faster elsewhere (25ff85a).
 - [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
