@@ -84,6 +84,4 @@ venv/
 **/_version.py
 
 /log
-/output
-/output_zarr
-/output_subset
+*/output*
