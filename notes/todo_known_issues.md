@@ -339,11 +339,16 @@ Progress:
 
 ## TODO
 
-- [ ] Other computes over many similar per-source chains (fusion, overview, metrics outside
-      register_pairs) can hit the same dask fused-key collision - check, or switch linear fusion
-      off process-wide. Worth reporting upstream to dask.
-- [ ] Keep the refresh view bar moving: give the long single-step phases (promoting to 3D,
-      capping the preview fusion size, adding and refreshing shapes) per-source or per-batch
-      progress.
-- [ ] Speed up the slow single-step phases themselves: promoting 34k msims to 3D (8.9 min) and
-      the preview size estimate (5.2 min) are both pure metadata/object construction.
+- [ ] Other computes over many similar per-source chains can hit the same dask fused-key
+      collision: fusion and the global metrics - check, or switch linear fusion off
+      process-wide. (Pair registration and pair metrics run with it off; the overview computes
+      one source at a time.) Worth reporting upstream to dask.
+- [ ] Keep the refresh view bar moving: give the long single-step phases (capping the preview
+      fusion size, adding and refreshing shapes) per-source or per-batch progress. Promoting to 3D
+      no longer happens in the refresh.
+- [ ] Speed up the remaining slow per-source phases, all xarray object construction: building the
+      msims in pre-processing (~22 min for 34k sources with 4 stored levels each, ~4ms a level)
+      and the preview size cap (3.4 min on the HPC). Promoting to 3D: done - removed from the
+      refresh (a858e3f), 2x faster elsewhere (25ff85a).
+- [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
+      in with the pyramid files would also be single-level (slower pre-processing and overview).
