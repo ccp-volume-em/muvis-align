@@ -38,7 +38,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale
+    resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle
 
 
 class _ProgressBridge(QObject):
@@ -1642,29 +1642,20 @@ class Interface:
         operation = self.params['registration']['operation']
         output_folder = operation_to_past_participle(operation)
         ome_version = self.params['fusion']['ome_version']
-        # source build and conversion are two phases of one operation, so they share one bar
-        with self._operation_progress('Converting', phases=2) as progress_factory, \
+        # self.reg.msims stays at source resolution; the scaled pyramid is register_msims
+        if not self.reg.register_msims:
+            if not self.run_pre_processing():
+                return False
+        msims = self.reg.register_msims
+        # foreground filtering may drop sources, so labels/positions follow register_indices
+        labels = [get_filetitle(self.reg.filenames[index]) for index in self.reg.register_indices]
+        positions = [self.reg.positions[index] for index in self.reg.register_indices]
+        with self._operation_progress('Converting') as progress_factory, \
              Timer('convert', verbose=self._timing_verbose()):
-            # see run_pre_processing() - builds msims with its own progress reporting instead of
-            # silently as a side effect of the save loop below
-            msims = self._run_off_thread(
-                lambda worker_factory: self.reg.ensure_msims(progress_factory=worker_factory),
-                progress_factory)
-            # not MVSRegistration.fuse(): even its 'compose' method builds one shared output
-            # canvas across every source first, and is_channel_overlay would still combine them
-            # into one multichannel image wherever several channels are configured. Each source
-            # is written out on its own instead, keeping its native pyramid levels exactly
-            # (save_native_levels()), never fused or resampled.
-            #
-            # Sequential, not a thread pool: zarr's async store internals aren't safe to invoke
-            # concurrently from threads each running their own event loop (a Windows
-            # PermissionError racing on zarr.json), and each write already parallelises its own
-            # computation across every core. The per-source count is meaningful here, unlike
-            # NapariDaskProgress's per-task one, which resets every iteration.
+            # not fuse(): it would build one shared canvas; each source keeps its native levels
+            # sequential: concurrent zarr writes race on zarr.json (Windows PermissionError)
             with progress_factory(total=len(msims), desc='Converting') as pbar:
-                # file_labels are already disambiguated; get_filetitle() alone is not, so two
-                # sources differing only by parent directory would overwrite each other's output
-                for label, position, msim in zip(self.reg.file_labels, self.reg.positions, msims):
+                for label, position, msim in zip(labels, positions, msims):
                     output_filename = f'{output_folder}/{label}'
                     self.reg.save_native_levels(output_filename, msim, position=position,
                                                 ome_version=ome_version)
