@@ -288,12 +288,12 @@ def test_get_msim_caches_by_output_order_and_start_level():
     msim_2 = source.get_msim('yx')
 
     assert msim_1 is msim_2
-    assert list(source._redimensioned_msims.keys()) == [('yx', 0)]
+    assert list(source._redimensioned_msims.keys()) == [('yx', 0, False)]
 
     # a coarser start is a different pyramid, so it gets its own entry rather than the
     # full-resolution one that happens to share an output_order
     source.get_msim('yx', from_level=1)
-    assert sorted(source._redimensioned_msims) == [('yx', 0), ('yx', 1)]
+    assert sorted(source._redimensioned_msims) == [('yx', 0, False), ('yx', 1, False)]
 
     image0 = msi_utils.get_sim_from_msim(msim_1, scale='scale0')
     assert image0.dims == ('t', 'c', 'y', 'x')

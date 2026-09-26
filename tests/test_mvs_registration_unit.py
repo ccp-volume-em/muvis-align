@@ -689,7 +689,7 @@ def test_ensure_msims_builds_each_scale_once_and_keeps_the_full_pyramid_shared()
 
     builds = []
 
-    def record_build(progress_factory=None, from_levels=None, store=True, weight=1):
+    def record_build(progress_factory=None, from_levels=None, store=True, weight=1, **kwargs):
         builds.append((tuple(from_levels) if from_levels else None, store))
         msims = [f'msim{index}' for index in range(len(registration.sources))]
         if store:

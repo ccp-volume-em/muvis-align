@@ -560,7 +560,7 @@ class Interface:
         return view_msims
 
     @catch_run_errors
-    def run_pre_processing(self, progress_factory=None):
+    def run_pre_processing(self, progress_factory=None, full_pyramid=False):
         params_features = self.params['pre_processing']
         # both phases below (per-source msim build, then pre-processing itself) report into the
         # one bar this opens - or into the caller's, when pre-processing is a phase of a larger
@@ -572,7 +572,10 @@ class Interface:
         # evenly put the end of the work at the halfway mark just the same. A step that computes
         # over the data (flat-field, normalisation, foreground) makes the rest real work again.
         build_weight = 2 if self.reg.has_eager_pre_processing(params_features) else 8
-        build_pending = self.reg.msims_build_pending(params_features.get('scale'))
+        # registration reads each source's finest level and the view's preview cap its coarsest,
+        # so only those are built (a quarter less); convert writes every level, so asks for them
+        ends_only = not full_pyramid
+        build_pending = self.reg.msims_build_pending(params_features.get('scale'), ends_only=ends_only)
         phases = build_weight + 1 if build_pending else 1
         with self._operation_progress('Pre-processing', progress_factory, phases=phases) as progress_factory, \
              Timer('pre_processing_process', verbose=self._timing_verbose()):
@@ -587,6 +590,7 @@ class Interface:
                     # select_msim_subpyramid_at_scale() drop them is most of this phase
                     msims = self.reg.ensure_msims(progress_factory=worker_factory,
                                                   target_scale=params_features.get('scale'),
+                                                  ends_only=ends_only,
                                                   weight=build_weight)
                 with Timer('run_pre_processing: preprocess', verbose=self._timing_verbose()):
                     return self.reg.preprocess(msims, progress_factory=worker_factory,
@@ -1642,10 +1646,10 @@ class Interface:
         operation = self.params['registration']['operation']
         output_folder = operation_to_past_participle(operation)
         ome_version = self.params['fusion']['ome_version']
-        # self.reg.msims stays at source resolution; the scaled pyramid is register_msims
-        if not self.reg.register_msims:
-            if not self.run_pre_processing():
-                return False
+        # self.reg.msims stays at source resolution; the scaled pyramid is register_msims, with
+        # every level (pre-processing otherwise keeps only the ends)
+        if not self.run_pre_processing(full_pyramid=True):
+            return False
         msims = self.reg.register_msims
         # foreground filtering may drop sources, so labels/positions follow register_indices
         labels = [get_filetitle(self.reg.filenames[index]) for index in self.reg.register_indices]

@@ -112,6 +112,9 @@ def _source_init_worker_ceiling(default=64):
 # MUVIS_SOURCE_INIT_WORKERS raises that ceiling, which a shared HPC filesystem needs - the
 # per-source open there is slower still, and more threads is the only way to overlap the wait.
 default_source_init_workers = min(_source_init_worker_ceiling(), _available_cpus * 8)
+# building sources' msims: GIL-bound xarray construction (one core whatever the count - 256 threads
+# only added contention) plus a header read that NFS makes slow, which 32 still overlap
+default_msim_build_workers = min(default_source_init_workers, 32)
 # zarr v3 routes its I/O through one process-wide thread pool (zarr.core.sync._get_executor()),
 # independent of the workers above. Unraised, reads stay bottlenecked on it however many of our
 # own threads are waiting to submit one - which is why OME-Zarr sources parallelized worse than

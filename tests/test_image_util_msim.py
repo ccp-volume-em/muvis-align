@@ -80,8 +80,8 @@ def make_pyramid_source(nlevels=4, size=1024, pixel_size=0.5):
         position={'y': 11.0, 'x': 23.0},
         scale_factors=[{'y': shapes[0][0] / s[0], 'x': shapes[0][1] / s[1]} for s in shapes],
         _redimensioned_msims={})
-    source.get_msim = lambda output_order, from_level=0: build_source_redimensioned_msim(
-        source, output_order, from_level=from_level)
+    source.get_msim = lambda output_order, from_level=0, ends_only=False: build_source_redimensioned_msim(
+        source, output_order, from_level=from_level, ends_only=ends_only)
     return source
 
 
@@ -167,3 +167,16 @@ def test_building_levels_from_raw_arrays_never_builds_the_source_msim():
     del source.msim
 
     build_source_msim(source, 'yx', {'y': 11.0, 'x': 23.0}, None, 'source_metadata')
+
+
+@pytest.mark.parametrize('from_level, nlevels', [(0, 4), (1, 4), (2, 4), (0, 2), (0, 1)])
+def test_ends_only_keeps_the_first_and_coarsest_levels_unchanged(from_level, nlevels):
+    """Pre-processing builds only what registration (the finest) and the preview cap (the
+    coarsest) read: those two levels exactly as the full pyramid has them, in order."""
+    geometry = ('yx', {'y': 11.0, 'x': 23.0}, None, 'source_metadata')
+    full = describe_levels(build_source_msim(make_pyramid_source(nlevels), *geometry, from_level=from_level))
+    ends = build_source_msim(make_pyramid_source(nlevels), *geometry, from_level=from_level, ends_only=True)
+
+    expected = full[:1] + full[-1:] if len(full) > 2 else full
+    assert describe_levels(ends) == expected
+    assert msi_utils.get_sorted_scale_keys(ends) == [f'scale{index}' for index in range(len(expected))]

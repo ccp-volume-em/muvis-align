@@ -163,7 +163,7 @@ class MVSRegistration:
         """One reporting phase of the caller's operation, or nothing to report into."""
         return progress_factory(total=total, desc=desc) if progress_factory is not None else nullcontext(None)
 
-    def ensure_msims(self, progress_factory=None, target_scale=None, weight=1):
+    def ensure_msims(self, progress_factory=None, target_scale=None, weight=1, ends_only=False):
         """The lazy build the msims property triggers, callable ahead of time with a
         progress_factory - lets a caller about to force this (e.g. run_pre_processing()) show
         per-source progress instead of it happening silently as a plain argument expression.
@@ -171,25 +171,33 @@ class MVSRegistration:
         `target_scale` builds each source's pyramid from the level that scale needs, skipping
         finer levels the caller is about to discard anyway. Those are cached per scale, never
         as self.msims, which stays the full-resolution pyramid everything else reads.
+        `ends_only` builds just each source's finest level at that scale and its coarsest (see
+        source_levels): what pre-processing's consumers read, at a quarter less building.
         """
         # a factor as text ('2') or a pixel size ('10um'): one cache entry however it was written
         target_scale = parse_scale(target_scale, default=None)
-        key = str(target_scale)
-        if target_scale and key not in self._scaled_msims:
-            from_levels = [get_level_from_scale(source, target_scale)[0] for source in self.sources]
+        key = self._scaled_msims_key(target_scale, ends_only)
+        if (target_scale or ends_only) and key not in self._scaled_msims:
+            from_levels = [get_level_from_scale(source, target_scale)[0] if target_scale else 0
+                           for source in self.sources]
             # nothing to skip (scale 1, or no source has a coarser level): the shared
-            # full-resolution build is this build, so take it rather than a private copy
-            if any(from_levels):
+            # full-resolution build is this build, so take it rather than a private copy -
+            # unless only the ends are wanted, which that shared build must not be cut down to
+            if any(from_levels) or ends_only:
                 self._scaled_msims[key] = self._build_msims(progress_factory=progress_factory,
                                                             from_levels=from_levels, store=False,
-                                                            weight=weight)
+                                                            weight=weight, ends_only=ends_only)
         if key in self._scaled_msims:
             return self._scaled_msims[key]
         if self._msims is None:
             self._build_msims(progress_factory=progress_factory, weight=weight)
         return self._msims
 
-    def msims_build_pending(self, target_scale=None):
+    @staticmethod
+    def _scaled_msims_key(target_scale, ends_only=False):
+        return f'{target_scale}:ends' if ends_only else str(target_scale)
+
+    def msims_build_pending(self, target_scale=None, ends_only=False):
         """Whether ensure_msims() would actually build - i.e. report a phase of its own.
 
         A caller sizes its bar by how many phases it expects (see Interface._operation_progress).
@@ -198,16 +206,18 @@ class MVSRegistration:
         finished at half a bar, with a time estimate to match.
         """
         target_scale = parse_scale(target_scale, default=None)
-        key = str(target_scale)
+        key = self._scaled_msims_key(target_scale, ends_only)
         if key in self._scaled_msims:
             return False
+        if ends_only:
+            return True
         if target_scale:
             from_levels = [get_level_from_scale(source, target_scale)[0] for source in self.sources]
             if any(from_levels):
                 return True
         return self._msims is None
 
-    def _build_msims(self, progress_factory=None, from_levels=None, store=True, weight=1):
+    def _build_msims(self, progress_factory=None, from_levels=None, store=True, weight=1, ends_only=False):
         progress_context = (
             progress_factory(total=len(self.sources), desc='Building sources', weight=weight)
             if progress_factory is not None
@@ -238,14 +248,15 @@ class MVSRegistration:
             msim = build_source_msim(self.sources[index], self._msim_output_order,
                                      self.positions[index], self._msim_transforms[index],
                                      self.source_transform_key, z_scale=self._msim_z_scale,
-                                     from_level=from_levels[index] if from_levels else 0)
+                                     from_level=from_levels[index] if from_levels else 0,
+                                     ends_only=ends_only)
             source_times.append(time.time() - source_start)
             source_cpu_times.append(time.thread_time() - cpu_start)
             return msim
 
         with progress_context as pbar:
             if nsources > 1:
-                max_workers = min(default_source_init_workers, nsources)
+                max_workers = min(default_msim_build_workers, nsources)
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = {executor.submit(build_msim, index): index
                               for index in range(nsources)}

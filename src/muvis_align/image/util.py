@@ -303,8 +303,17 @@ def build_missing_pyramid_levels(data, dimension_order, pixel_size, pyramid_down
     return datas, pixel_sizes
 
 
+def source_levels(source, from_level=0, ends_only=False):
+    """The native levels a msim built from `source` carries: every one from `from_level` on, or with
+    `ends_only` just that and the coarsest - all registration and the view's preview cap read, at
+    ~3ms of xarray construction a level (a quarter of pre-processing at 34k sources)."""
+    count = len(getattr(source, 'pixel_sizes', None) or getattr(source, 'data', None) or [None])
+    levels = list(range(from_level, count))
+    return levels[:1] + levels[-1:] if ends_only and len(levels) > 2 else levels
+
+
 def build_source_redimensioned_msim(source, output_order, chunk_size=default_chunk_size,
-                                    from_level=0):
+                                    from_level=0, ends_only=False):
     """Redimension `source.msim`'s own per-level 'image' DataArrays into `output_order` (lazy
     transpose/expand_dims), ensure the 'c'/'t' dims every sim needs, and rechunk any level still
     monolithic in x/y. Depends only on `source` and `output_order`, never on per-run geometry
@@ -323,7 +332,7 @@ def build_source_redimensioned_msim(source, output_order, chunk_size=default_chu
     # empty label list cannot be assigned to it
     c_coords = [channel.get('label', '') for channel in source.get_channels()] or None
     datasets = {}
-    for level, image in enumerate(_source_level_images(source, output_order, from_level)):
+    for level, image in enumerate(_source_level_images(source, output_order, source_levels(source, from_level, ends_only))):
         image = redimension_sim_data(image, source.dimension_order, output_order)
         image = ensure_spatial_image_dims(image, c_coords=c_coords)
         # every 'c', not just one ensure_spatial_image_dims added itself: a channel selected by
@@ -335,7 +344,7 @@ def build_source_redimensioned_msim(source, output_order, chunk_size=default_chu
     return DataTree.from_dict(datasets)
 
 
-def _source_level_images(source, output_order, from_level):
+def _source_level_images(source, output_order, levels):
     """One image per pyramid level, taken straight off the source's own arrays.
 
     Reading them out of source.msim instead costs a get_sim_from_array per level and a whole
@@ -348,19 +357,19 @@ def _source_level_images(source, output_order, from_level):
     """
     data = getattr(source, 'data', None)
     if not data:
-        scale_keys = msi_utils.get_sorted_scale_keys(source.msim)[from_level:]
-        return [source.msim[scale_key].ds['image'] for scale_key in scale_keys]
+        scale_keys = msi_utils.get_sorted_scale_keys(source.msim)
+        return [source.msim[scale_keys[level]].ds['image'] for level in levels]
 
     translation = dict(source.position)
     if translation:
         translation.setdefault('x', 0)
         translation.setdefault('y', 0)
     images = []
-    for level, array in enumerate(data[from_level:]):
-        image = xr.DataArray(array, dims=list(source.dimension_order))
+    for level in levels:
+        image = xr.DataArray(data[level], dims=list(source.dimension_order))
         # a spatial dim output_order drops keeps the coord get_sim_from_array gave it, as the
         # scalar its isel leaves behind - carry it over rather than silently dropping it
-        pixel_size = source.pixel_sizes[from_level + level]
+        pixel_size = source.pixel_sizes[level]
         dropped = {dim: translation.get(dim, 0) + np.arange(image.sizes[dim]) * pixel_size.get(dim, 1)
                    for dim in source.dimension_order
                    if dim in 'zyx' and dim not in output_order and dim in image.dims}
@@ -369,7 +378,7 @@ def _source_level_images(source, output_order, from_level):
 
 
 def build_source_msim(source, output_order, translation, transform, transform_key, z_scale=None,
-                      from_level=0):
+                      from_level=0, ends_only=False):
     """
     Build a new msim for `source` covering every real pyramid level, redimensioned to `output_order`
     and re-geometried with `translation` (intrinsic coords, per level) + `transform` (extrinsic affine,
@@ -378,7 +387,8 @@ def build_source_msim(source, output_order, translation, transform, transform_ke
     Does not mutate the cached msim - a fresh DataTree is built and returned.
 
     `from_level` starts the pyramid at that native level instead of the finest, renumbered from
-    scale0 - see build_source_redimensioned_msim().
+    scale0 - see build_source_redimensioned_msim(); `ends_only` keeps just it and the coarsest
+    (see source_levels).
     """
     if transform is None:
         spatial_dims = [dim for dim in output_order if dim in 'xyz']
@@ -393,15 +403,15 @@ def build_source_msim(source, output_order, translation, transform, transform_ke
         if 'y' not in translation_arg:
             translation_arg['y'] = 0
 
-    redimensioned_msim = source.get_msim(output_order, from_level=from_level)
+    redimensioned_msim = source.get_msim(output_order, from_level=from_level, ends_only=ends_only)
     scale_keys = msi_utils.get_sorted_scale_keys(redimensioned_msim)
     datasets = {}
-    for level, scale_key in enumerate(scale_keys):
+    for level, scale_key in zip(source_levels(source, from_level, ends_only), scale_keys):
         image = redimensioned_msim[scale_key].ds['image']
 
         # the source's own per-level metadata is still indexed by native level, not by where
         # this (possibly truncated) pyramid starts
-        pixel_size = dict(source.pixel_sizes[from_level + level])
+        pixel_size = dict(source.pixel_sizes[level])
         if 'z' in output_order and 'z' not in pixel_size:
             pixel_size['z'] = abs(z_scale) if z_scale else 1
         spatial_dims = si_utils.get_spatial_dims_from_sim(image)
