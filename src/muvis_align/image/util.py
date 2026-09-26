@@ -2139,9 +2139,9 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
 
         # only from here on is an actual sim needed - the exact test below is multiview_stitcher's
         sim1, sim2 = get_pair_sim(pair[0]), get_pair_sim(pair[1])
-        if force_2d:
-            # only sims actually promoted to a singleton 'z' (multi-section 2D data) need
-            # squeezing - a source that was never 3D in the first place already is 2D
+        # only singleton-z sims (promoted 2D sections) are squeezed; a real volume is intersected
+        # in 3D and its points projected to yx below
+        if force_2d and all(sim.sizes.get('z', 1) == 1 for sim in (sim1, sim2)):
             projected_sims = []
             for sim in (sim1, sim2):
                 if 'z' in sim.dims:

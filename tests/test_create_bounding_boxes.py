@@ -46,6 +46,28 @@ def test_create_overlap_shapes_projects_singleton_z_planes_to_2d():
     for shape, expected_z in zip(shapes, z_levels):
         np.testing.assert_allclose(np.asarray(shape)[:, 0], expected_z)
 
+
+def test_create_overlap_shapes_projects_3d_volumes_to_2d():
+    def make_sim(x):
+        return si_utils.get_sim_from_array(
+            np.zeros((4, 8, 8), dtype=np.uint8),
+            dims=list('zyx'),
+            scale={'z': 1, 'y': 1, 'x': 1},
+            translation={'z': 0, 'y': 0, 'x': x},
+            transform_key='source_metadata',
+        )
+
+    # explicit pairs take the exact intersection path, as after pair registration
+    shapes, pairs = create_overlap_shapes([make_sim(0), make_sim(4)], transform_key='source_metadata',
+                                          pairs=[(0, 1)], force_2d=True)
+
+    assert pairs == [(0, 1)]
+    shape = np.asarray(shapes[0])
+    assert shape.shape[1] == 2
+    np.testing.assert_allclose(shape.min(axis=0), [0, 4])
+    np.testing.assert_allclose(shape.max(axis=0), [7, 7])
+
+
 DATASETS = {
 '0': np.array([[-1.51072116e+03, 2.53402693e+00, 2.53957371e+02],
      [-3.29915106e+02, 8.18186929e+01, 1.34088300e+04],
