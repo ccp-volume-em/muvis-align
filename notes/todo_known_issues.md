@@ -360,12 +360,9 @@ Progress:
   at 32, convert builds the full pyramid. Local (153 sources): finest/coarsest geometry, overviews
   (default, 20x, 1000x budgets) and all 831 pair registrations identical; build 1530 sources
   25.9 -> 17.7s (18.7 -> 13.3ms cpu a source). Plugin pre-processing then convert clean; the
-  converted stores keep all 5 levels. Full suite: 6 failures, none from this change - they fail
-  on a clean HEAD too:
-  - params_test_2d2.yml (5 tests): its input `data/*/*.zarr` now also matches the 3D stores
-    added in data/3d (00e087e); passed before it.
-  - test_registration_params_validation[muvis_align_project3d.yml]: method phase_correlation is
-    not in the accepted list (sift, orb, akaze).
+  converted stores keep all 5 levels. The 2D zarr configs (params_test_2d2, project2) now read
+  data/S*/*.zarr, since data/*/*.zarr also caught data/3d; the config test accepts every method
+  in the project template (phase_correlation included). Full suite 750 passed.
 
 ## TODO
 
