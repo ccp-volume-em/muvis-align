@@ -97,8 +97,8 @@ def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
     given - no resampling - unlike save_ome_image()/to_multiscales(), which always derives
     every level but the first from one input via resampling.
 
-    Pads with additional coarser levels beyond the smallest given one, down to the same
-    "small enough to draw a zoomed-out overview from" threshold the reader side uses
+    Pads with additional coarser levels beyond the smallest given one, halving until the largest
+    spatial extent is at most min_length - at or below the reader side's own threshold
     (build_missing_pyramid_levels' min_size, i.e. default_chunk_size). Those extra levels are
     genuinely resampled (via ngff_zarr's own default downsampling method) since nothing at that
     resolution exists in the source to preserve.
@@ -140,7 +140,8 @@ def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
     smallest_data, smallest_pixel_size = levels[-1]
     smallest_ngff_image = to_ngff_image(smallest_data, dims=dim_order, scale=smallest_pixel_size,
                                         translation=translation, axes_units=axes_units)
-    extra_scale_factors = get_padding_scale_factors(smallest_data.shape, dim_order)
+    extra_scale_factors = get_padding_scale_factors(smallest_data.shape, dim_order,
+                                                    min_size=min_length)
     if extra_scale_factors:
         extra_multiscales = to_multiscales(smallest_ngff_image, scale_factors=extra_scale_factors,
                                            chunks=chunks)

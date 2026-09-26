@@ -51,6 +51,19 @@ def test_no_spatial_dims_is_a_no_op():
     assert get_padding_scale_factors((5,), 't') == []
 
 
+def test_written_store_is_padded_down_to_min_length(tmp_path):
+    # below default_chunk_size already (e.g. a scaled convert output), yet still gets a pyramid
+    data = np.zeros((512, 768), dtype=np.uint16)
+    path = str(tmp_path / 'small.ome.zarr')
+    save_ome_multiscale_levels(path, [(data, {'y': 1.0, 'x': 1.0})], 'yx', [],
+                               {'y': 0.0, 'x': 0.0}, min_length=128)
+
+    source = create_image_source(path)
+    sizes = [max(size for dim, size in zip(source.dimension_order, shape) if dim in 'xyz')
+             for shape in source.shapes]
+    assert sizes == [768, 384, 192, 96]
+
+
 def test_written_single_resolution_store_is_usable_at_a_coarse_preview_scale(tmp_path):
     # a source with one real resolution, as an external converter would write it
     data = np.zeros((4096, 4096), dtype=np.uint16)
