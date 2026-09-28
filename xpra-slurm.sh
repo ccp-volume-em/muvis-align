@@ -34,13 +34,15 @@ XPRA_PORT=9876                            # port on the compute node
 #              rgb   - lossless, only sensible on a fast LAN
 #
 #  MIN_QUALITY 1-100. Lower = more compression artefacts, lower latency.
-#              80 keeps text sharp; the browser client's own default is 10.
+#              The browser client sends its own (10), which xpra info shows
+#              overriding this; kept for other clients.
 #
 #  MIN_SPEED   1-100. Higher = prioritise responsiveness over image quality.
 #              70 favours interactivity; 30 favours fidelity.
 #
-#  Video downscaling is off (--video-scaling=0 below): the browser client caps
-#  video at 1024x768, so a window repainting often was sent at 1/3 size, blurred.
+#  Video is off (--video=no below): the browser client caps video at 1024x768,
+#  so the napari window was sent at 1/3 size, blurred - idle too, as its jpeg
+#  also went through the video path's scaling. The image has no video encoder.
 #
 #  NOTE: for critical visual assessment of tomograms, raise MIN_QUALITY to
 #  90-100 or use ENCODING=rgb, since lossy encoding can mask fine detail.
@@ -176,6 +178,7 @@ apptainer exec \
         --min-quality="${MIN_QUALITY}" \
         --min-speed="${MIN_SPEED}" \
         --video-scaling=0 \
+        --video=no \
         --dpi=96 \
         --sharing=no \
         --file-transfer=off \
