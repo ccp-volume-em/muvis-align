@@ -386,25 +386,6 @@ parameters:
     optional: True
     section_id: "registration"
     mode: "beginner"
-  - name: groupwise_resolution_method
-    type: dropdown
-    label: "Global method"
-    description: "Method for resolving the pairwise registrations into global positions. Robust linear: fast, for large projects (translation or rigid only). Global optimisation: iterative, slow for many tiles. Linear two-pass: fastest, less robust to bad pairs."
-    options:
-      - label: Global optimisation
-        value: "global_optimization"
-      - label: Robust linear
-        value: "robust_linear"
-      - label: Linear two-pass
-        value: "linear_two_pass"
-      - label: Shortest paths
-        value: "shortest_paths"
-    default: "global_optimization"
-    cli_tag: "--groupwise_resolution_method"
-    cli_order: 11
-    optional: True
-    section_id: "registration"
-    mode: "beginner"
   - name: reg_preview_image1
     type: dropdown
     label: "Registration preview image 1"
@@ -444,6 +425,25 @@ parameters:
     label: "Modify pair registration"
     description: "Modify pair registration"
     cli_order: 17
+    section_id: "registration"
+    mode: "beginner"
+  - name: groupwise_resolution_method
+    type: dropdown
+    label: "Global method"
+    description: "Method for resolving the pairwise registrations into global positions. Robust linear: fast, for large projects (translation or rigid only). Global optimisation: iterative, slow for many tiles. Linear two-pass: fastest, less robust to bad pairs."
+    options:
+      - label: Global optimisation
+        value: "global_optimization"
+      - label: Robust linear
+        value: "robust_linear"
+      - label: Linear two-pass
+        value: "linear_two_pass"
+      - label: Shortest paths
+        value: "shortest_paths"
+    default: "global_optimization"
+    cli_tag: "--groupwise_resolution_method"
+    cli_order: 18
+    optional: True
     section_id: "registration"
     mode: "beginner"
 
