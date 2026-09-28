@@ -211,3 +211,21 @@ def test_multi_image_ome_xml_parsing_stops_once_settled():
         assert metadata['scale'] == {'x': 0.5, 'y': 0.5}
         assert metadata['channel_names'] == ['ch0']
         assert metadata['position'] == {}
+
+
+def test_source_levels_pickle_and_read_the_same_pixels_after(tmp_path):
+    """Worker processes are sent a source's levels pickled: each must reopen its file and read what it read here."""
+    import pickle
+    path = str(tmp_path / 'pyr.tiff')
+    data = np.random.default_rng(0).integers(0, 1000, (1024, 1024), dtype=np.uint16)
+    with tifffile.TiffWriter(path) as writer:
+        writer.write(data, subifds=2, tile=(256, 256))
+        for level in (1, 2):
+            writer.write(data[::2 ** level, ::2 ** level], subfiletype=1, tile=(256, 256))
+    levels = create_image_source(path).data
+
+    unpickled = pickle.loads(pickle.dumps(levels))
+
+    assert len(unpickled) == 3
+    for level, copy in zip(levels, unpickled):
+        assert np.array_equal(np.asarray(copy), np.asarray(level))

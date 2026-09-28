@@ -185,6 +185,36 @@ def read_tiff_creator(filename):
         return extract_ome_image_metadata(tif.ome_metadata).get('creator', '')
 
 
+class PicklableTiffLevel:
+    """A TIFF pyramid level's zarr array that pickles as its file name and level, reopening the file
+    where it is unpickled: tifffile's store holds a lock, so worker processes could not be sent one."""
+
+    def __init__(self, filename, path, array=None):
+        self.filename, self.path, self._array = filename, path, array
+        self.shape, self.dtype, self.chunks = array.shape, array.dtype, array.chunks
+        self.ndim = len(self.shape)
+
+    @property
+    def array(self):
+        if self._array is None:
+            with tifffile.TiffFile(self.filename) as tif:
+                self._array = zarr.open_group(store=tif.aszarr(series=0, multiscales=True), mode='r')[self.path]
+        return self._array
+
+    def __getitem__(self, key):
+        return self.array[key]
+
+    def __reduce__(self):
+        return _unpickle_tiff_level, (self.filename, self.path, self.shape, self.dtype, self.chunks)
+
+
+def _unpickle_tiff_level(filename, path, shape, dtype, chunks):
+    level = PicklableTiffLevel.__new__(PicklableTiffLevel)
+    level.filename, level.path, level._array = filename, path, None
+    level.shape, level.dtype, level.chunks, level.ndim = shape, dtype, chunks, len(shape)
+    return level
+
+
 def read_tiff_level_arrays(filename):
     """One dask array per pyramid level of the file's first series, off tifffile's own zarr
     store. Returns None if it cannot be done faithfully, leaving the caller on ngff_zarr's path.
@@ -216,7 +246,7 @@ def read_tiff_level_arrays(filename):
             datasets = attributes['multiscales'][0]['datasets']
         except (KeyError, IndexError, TypeError):
             return None
-        arrays = [group[dataset['path']] for dataset in datasets]
+        arrays = [PicklableTiffLevel(filename, dataset['path'], group[dataset['path']]) for dataset in datasets]
         # tif is closed on the way out: tifffile's store reopens the file itself whenever a
         # chunk is actually read, so holding a file handle open per source (thousands of them in
         # a project) buys nothing
