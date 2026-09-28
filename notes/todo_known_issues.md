@@ -400,8 +400,21 @@ Progress:
     the reference view picked per component in one pass over the edges; check it at HPC size on a
     synthetic graph. Details and upstream candidates in notes/multiview_stitcher.md.
 
+- Done (user request): faster registration metrics. Local 153 sources, orthogonal, 831 pairs, 8 workers:
+  global metrics 3.1 min -> 43.5s (per registered pair instead of all 1764 overlapping pairs, in worker
+  processes), peak rss 6.5 -> 0.44GB, identical values; pair metrics 27.7 -> 27.2s (workers start-up
+  outweighs the gain at this size; the HPC's 3.8h is the case it is for). Found on the way: SSIM got the
+  registration channel as its channel axis (fixed); the overlap mode's linprog hangs/crashes from
+  changing pool threads (global metrics run in the calling thread without worker processes); an
+  unpickled TIFF level opened concurrently by dask threads read a closed file (the Windows CI failure,
+  locked). Details in notes/multiview_stitcher.md.
+
 ## TODO
 
+- [ ] Pairing method "split, 2D x/y first": register all x/y slices (or channels) in 2D first, then
+      stack / overlay the resulting sections.
+- [ ] Cancel buttons for all long operations - pre-processing, pair registration, global registration,
+      fusion - e.g. a Cancel button above/below each section's default Process button.
 - [ ] Other computes over many similar per-source chains can hit the same dask fused-key
       collision: fusion and the global metrics - check, or switch linear fusion off
       process-wide. (Pair registration and pair metrics run with it off; the overview computes

@@ -87,6 +87,20 @@ graph is connected (a reference outside a component sends that component back to
   OpenCV) run at one thread there. That changes floating-point summation order: 43 of 1764 pairs
   differ by up to 0.046um from registering with default native threading.
 
+## Registration metrics
+
+- `metrics.tile_pair_image_metrics` in its overlap mode (`query_transform_keys`, no `pairs_graph`)
+  measures every pair that overlaps under the base transform: 1764 pairs for 831 registered locally,
+  3.1 min and 6.5GB peak. muvis-align calls it per registered pair with only that pair's two msims
+  (43.5s, identical values), in worker processes when there are more pairs than workers.
+- The overlap mode computes each overlap with scipy's `linprog` (HiGHS). Called from changing pool
+  threads it hung and raised access violations after a pass or two; in the calling thread (or in a
+  worker process's own thread) it does not. So without worker processes the global metrics run one
+  pair at a time in the calling thread.
+- `faulthandler` on Windows also reports access violations that native code handles itself: a
+  "Windows fatal exception: access violation" line alone is not the failure - look for the hang or
+  exit that follows.
+
 ## dask
 
 - Linear fusion (`optimization.fuse.active`) can give two pairs' fused crop chains the same key
