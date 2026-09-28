@@ -29,23 +29,25 @@ XPRA_PORT=9876                            # port on the compute node
 #              fills the tab exactly; a tab larger than this is scaled instead,
 #              and then clicks land off target. 8192x4096 costs ~150MB, once.
 #
-#  ENCODING    h264  - best latency/bandwidth for GUI work (recommended)
-#              vp9   - better compression, more CPU
+#  ENCODING    auto  - let xpra pick per update (recommended: the image has no
+#                      h264 encoder, so h264 is ignored - xpra.log says so)
 #              rgb   - lossless, only sensible on a fast LAN
-#              auto  - let xpra decide
 #
 #  MIN_QUALITY 1-100. Lower = more compression artefacts, lower latency.
-#              50 is a good balance; use 80+ if judging image detail.
+#              80 keeps text sharp; the browser client's own default is 10.
 #
 #  MIN_SPEED   1-100. Higher = prioritise responsiveness over image quality.
 #              70 favours interactivity; 30 favours fidelity.
+#
+#  Video downscaling is off (--video-scaling=0 below): the browser client caps
+#  video at 1024x768, so a window repainting often was sent at 1/3 size, blurred.
 #
 #  NOTE: for critical visual assessment of tomograms, raise MIN_QUALITY to
 #  90-100 or use ENCODING=rgb, since lossy encoding can mask fine detail.
 # ---------------------------------------------------------------------------
 RESOLUTION="8192x4096"
-ENCODING="h264"
-MIN_QUALITY=50
+ENCODING="auto"
+MIN_QUALITY=80
 MIN_SPEED=70
 
 # ---------------------------------------------------------------------------
@@ -173,6 +175,7 @@ apptainer exec \
         --encoding="${ENCODING}" \
         --min-quality="${MIN_QUALITY}" \
         --min-speed="${MIN_SPEED}" \
+        --video-scaling=0 \
         --dpi=96 \
         --sharing=no \
         --file-transfer=off \
