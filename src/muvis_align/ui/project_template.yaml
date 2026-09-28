@@ -440,7 +440,7 @@ parameters:
         value: "linear_two_pass"
       - label: Shortest paths
         value: "shortest_paths"
-    default: "global_optimization"
+    default: "robust_linear"
     cli_tag: "--groupwise_resolution_method"
     cli_order: 18
     optional: True
