@@ -16,6 +16,7 @@ import time
 import napari
 from PIL import ImageGrab
 from qtpy.QtCore import QTimer
+from qtpy.QtWidgets import QMessageBox
 
 import muvis_align.ui.Interface as interface_module
 
@@ -54,6 +55,16 @@ def main():
         owner_name, _, attribute = name.rpartition('.')
         owner = getattr(interface_module, owner_name) if owner_name else interface_module
         setattr(owner, attribute, slowed(name, getattr(owner, attribute)))
+
+    # answer the plugin's confirmations and notices: a modal box would wait for a user who is not there
+    def answered(kind, reply):
+        def answer(_parent, title, text, *_args, **_kwargs):
+            logging.info(f'capture: {kind} {title!r}: {text!r} -> {reply}')
+            return reply
+        return staticmethod(answer)
+    for kind, reply in (('question', QMessageBox.Yes), ('information', QMessageBox.Ok),
+                        ('warning', QMessageBox.Ok), ('critical', QMessageBox.Ok)):
+        setattr(interface_module.QMessageBox, kind, answered(kind, reply))
 
     viewer = napari.Viewer()
     # fully on screen: the activity dialog sits at the window's bottom right
