@@ -52,7 +52,9 @@ Prototype, 10 rounds, local (median / p90 residual on all edges):
 `robust_linear`, scale = half the voxel diagonal, residuals reused from `linear_two_pass`): 6.5s,
 median 0.134um / p90 0.434um, as the prototype. Select it with the registration parameter
 `groupwise_resolution_method: robust_linear`; only 'translation' and 'rigid' (others fall back to
-global_optimization). Upstream candidate: a number of robust rounds as a `linear_two_pass`
+global_optimization). At HPC size (synthetic grid, 34040 tiles, 269374 edges with the local pairs'
+attributes, one component): reference view 0.4s, robust_linear 1283s (~2 min a round), peak rss
+3.5GB; the median residual settles by round 6-7 (0.809 -> 0.459 -> 0.445). Upstream candidate: a number of robust rounds as a `linear_two_pass`
 option, which would make the wrapper unnecessary.
 
 ### Reference view search is O(nodes x edges)
