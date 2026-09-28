@@ -35,6 +35,7 @@ from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
+from muvis_align.robust_resolution import ROBUST_LINEAR, find_reference_view
 from muvis_align.Timer import Timer
 from muvis_align.util import *
 
@@ -1564,10 +1565,15 @@ class MVSRegistration:
         ndims = si_utils.get_ndim_from_sim(get_msim_image0(pair_msims[0]))
 
         groupwise_resolution_method = params.get('groupwise_resolution_method', 'global_optimization')
+        transform_type = params.get('transform_type', 'affine')
+        if groupwise_resolution_method in (ROBUST_LINEAR, 'linear_two_pass') and transform_type not in ('translation', 'rigid'):
+            logging.warning(f'{groupwise_resolution_method} resolves translation or rigid only,'
+                            f' not {transform_type}: using global_optimization')
+            groupwise_resolution_method = 'global_optimization'
         groupwise_resolution_kwargs = {}
-        if groupwise_resolution_method == 'global_optimization':
-           groupwise_resolution_kwargs['transform'] = params.get('transform_type', 'affine')
-           # transform_type options include 'translation', 'rigid', 'affine', 'similarity'
+        if groupwise_resolution_method in ('global_optimization', ROBUST_LINEAR, 'linear_two_pass'):
+            # transform_type options include 'translation', 'rigid', 'affine', 'similarity'
+            groupwise_resolution_kwargs['transform'] = transform_type
 
         post_registration_quality_threshold = params.get('post_registration_quality_threshold')
         post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
@@ -1587,6 +1593,11 @@ class MVSRegistration:
                 threshold=post_registration_quality_threshold,
                 weight_key="quality",
             )
+
+        # multiview_stitcher's own search is O(nodes x edges) (hours at 34k); a reference outside a
+        # component would send that component back to it, so only a connected graph gets one
+        if g_reg_computed.number_of_nodes() > 2 and nx.is_connected(g_reg_computed):
+            groupwise_resolution_kwargs['reference_view'] = find_reference_view(g_reg_computed)
 
         # not a plain progress phase: the call below has nothing to report into one, so
         # GlobalOptProgress follows the optimiser's own log instead

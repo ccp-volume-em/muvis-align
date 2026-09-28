@@ -757,3 +757,24 @@ def test_register_pairs_in_worker_processes_matches_registering_in_this_process(
     for edge in here:
         assert np.array_equal(here[edge][1], in_workers[edge][1])
         assert here[edge][0] == in_workers[edge][0] or (np.isnan(here[edge][0]) and np.isnan(in_workers[edge][0]))
+
+
+def test_register_global_with_robust_linear_matches_global_optimization_on_consistent_pairs():
+    """The robust linear method is selectable by name; on a small, consistent grid it places the tiles
+    where global_optimization does."""
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
+             output_path='../../output/test_register_global_robust/')
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid'}
+    reg.register_pairs(reg.register_msims, params=params)
+
+    placed = {}
+    for method in ('global_optimization', 'robust_linear'):
+        results = reg.register_global(reg.pair_msims, params={**params, 'groupwise_resolution_method': method})
+        placed[method] = {index: np.asarray(mapping).squeeze() for index, mapping in results['mappings'].items()}
+
+    assert placed['robust_linear'].keys() == placed['global_optimization'].keys()
+    for index, mapping in placed['robust_linear'].items():
+        assert np.allclose(mapping, placed['global_optimization'][index], atol=0.05)
