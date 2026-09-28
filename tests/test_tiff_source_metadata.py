@@ -216,6 +216,7 @@ def test_multi_image_ome_xml_parsing_stops_once_settled():
 def test_source_levels_pickle_and_read_the_same_pixels_after(tmp_path):
     """Worker processes are sent a source's levels pickled: each must reopen its file and read what it read here."""
     import pickle
+    import dask
     path = str(tmp_path / 'pyr.tiff')
     data = np.random.default_rng(0).integers(0, 1000, (1024, 1024), dtype=np.uint16)
     with tifffile.TiffWriter(path) as writer:
@@ -223,9 +224,12 @@ def test_source_levels_pickle_and_read_the_same_pixels_after(tmp_path):
         for level in (1, 2):
             writer.write(data[::2 ** level, ::2 ** level], subfiletype=1, tile=(256, 256))
     levels = create_image_source(path).data
+    expected = [np.asarray(level) for level in levels]
 
-    unpickled = pickle.loads(pickle.dumps(levels))
-
-    assert len(unpickled) == 3
-    for level, copy in zip(levels, unpickled):
-        assert np.array_equal(np.asarray(copy), np.asarray(level))
+    # repeated on many threads: unpickled levels opened concurrently on their first reads once hit a closed file
+    for _ in range(30):
+        unpickled = pickle.loads(pickle.dumps(levels))
+        assert len(unpickled) == 3
+        with dask.config.set(scheduler='threads', num_workers=16):
+            for level, copy in zip(expected, unpickled):
+                assert np.array_equal(np.asarray(copy), level)

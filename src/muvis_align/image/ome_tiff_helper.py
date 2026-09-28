@@ -1,4 +1,5 @@
 import os
+import threading
 from xml.etree import ElementTree
 
 import dask.array as da
@@ -194,11 +195,18 @@ class PicklableTiffLevel:
         self.shape, self.dtype, self.chunks = array.shape, array.dtype, array.chunks
         self.ndim = len(self.shape)
 
+    _open_lock = threading.Lock()
+
     @property
     def array(self):
+        # locked: dask threads reading an unpickled level's first tiles at once opened it concurrently
+        # and read from a closed file
         if self._array is None:
-            with tifffile.TiffFile(self.filename) as tif:
-                self._array = zarr.open_group(store=tif.aszarr(series=0, multiscales=True), mode='r')[self.path]
+            with self._open_lock:
+                if self._array is None:
+                    with tifffile.TiffFile(self.filename) as tif:
+                        self._array = zarr.open_group(store=tif.aszarr(series=0, multiscales=True),
+                                                      mode='r')[self.path]
         return self._array
 
     def __getitem__(self, key):
