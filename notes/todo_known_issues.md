@@ -396,8 +396,9 @@ Progress:
   - Robust linear (IRLS: linear_two_pass re-solved with quality x Cauchy weight of each edge's
     residual, 10 rounds, ~23s): Cauchy scale 0.2um median 0.090 / p90 0.564, 0.35um 0.134 / 0.434,
     against global_optimization 0.117 / 0.503 - comparable fit, ~17x faster here.
-  - Next (to propose): an O(edges) reference node, and IRLS as a resolution method (scale from the
-    voxel diagonal, 0.7um here); check it at HPC size on a synthetic graph.
+  - Now (user agreed): the robust linear wrapper around linear_two_pass, registered as a method, with
+    the reference view picked per component in one pass over the edges; check it at HPC size on a
+    synthetic graph. Details and upstream candidates in notes/multiview_stitcher.md.
 
 ## TODO
 
