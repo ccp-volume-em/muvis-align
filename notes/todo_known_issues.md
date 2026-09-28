@@ -364,6 +364,41 @@ Progress:
   data/S*/*.zarr, since data/*/*.zarr also caught data/3d; the config test accepts every method
   in the project template (phase_correlation included). Full suite 750 passed. Pushed.
 
+- HPC run 3 (25085c2, 34k sources, 229725 pairs), from the log:
+  - Pre-processing 29.7 -> 16.0 min (build 27.6 -> 15.0 min with ends-only and 32 threads).
+  - Refresh after it 14.3 min: preview cap 3.7 min, overview paste 8.2 min (13.3 before), rss 13GB.
+  - Pair registration 19.0h: rss grows ~1.2MB a pair (18 -> 136GB by ~100k pairs) at 14s per 128
+    pairs, then plateaus at ~137GB and slows to 47s, later 100-160s per 128. At the early rate the
+    whole run would be ~7h. Process cpu 7x the pairs' own cpu (22.7 cores). Next: find what each
+    pair keeps (local, 831 pairs) and what burns the rest of the cpu.
+  - Pair metrics 3.8h, memory flat.
+  - Global registration (global_optimization): 4.8h before the first iteration, pass 1 ~2h
+    (323 iterations), then one edge removed a pass at ~3 min, max residual stuck at ~69.6: 146
+    passes in 10h. Local 153 sources: 967 passes 354s vs linear_two_pass 2.0s, positions within
+    median 0.55um (max 3.0um) of each other.
+
+- Done (user request): pair registration in worker processes (register_pairs: spawned, native pools at
+  1 thread, replaced every 1000 pairs; threads when a pair does not pickle). TIFF levels made picklable
+  (PicklableTiffLevel: tifffile's store holds an RLock). Local, 153 sources, 1764 pairs, 8 workers:
+  - Windows: threads 168.8s -> processes 111.7s; Linux container: 271.8s -> 99.7s, peak rss 3.1 -> 0.47GB.
+  - Results identical to threads with native pools at 1 thread; threads-only differs from that on 43
+    pairs by up to 0.046um (native threading's summation order), on Windows and Linux alike.
+  - Main process 5.6s cpu for 1764 pairs (3.4ms a pair): no longer a ceiling at 64 workers.
+  - Plugin (UI driver, 51 sources, 179 pairs, 24 processes): 14.3s, clean. The driver now answers
+    every QMessageBox itself (a run blocked on "Run pair registration?").
+- Doing (user request): speed up global registration. Found, local 153 sources / HPC log:
+  - 4.8h before the first HPC iteration: mv_graph.get_node_with_maximal_edge_weight_sum_from_graph
+    loops edges per node (O(nodes x edges)), on a subgraph view 1.2us a node-edge: ~2.7h here at HPC
+    size, ~2x that on the HPC's cores. linear_two_pass calls it too. Fix: an O(edges) version.
+  - global_optimization then removes one edge a pass (967 passes, 354-406s locally; 146 in 10h on the
+    HPC). linear_two_pass: 2.0s, but residuals worse (median 0.211 vs 0.117um on all edges): plain
+    least squares, pulled by bad pairs. Repeating it prunes to a spanning tree (worse).
+  - Robust linear (IRLS: linear_two_pass re-solved with quality x Cauchy weight of each edge's
+    residual, 10 rounds, ~23s): Cauchy scale 0.2um median 0.090 / p90 0.564, 0.35um 0.134 / 0.434,
+    against global_optimization 0.117 / 0.503 - comparable fit, ~17x faster here.
+  - Next (to propose): an O(edges) reference node, and IRLS as a resolution method (scale from the
+    voxel diagonal, 0.7um here); check it at HPC size on a synthetic graph.
+
 ## TODO
 
 - [ ] Other computes over many similar per-source chains can hit the same dask fused-key
