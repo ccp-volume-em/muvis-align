@@ -11,17 +11,19 @@ from sklearn.metrics import euclidean_distances
 from threadpoolctl import threadpool_limits
 from xarray import DataArray
 
-from muvis_align.constants import default_pair_workers, default_quality_key, default_transform_key
+from muvis_align.constants import (default_pair_worker_tasks, default_pair_workers, default_quality_key,
+                                   default_transform_key)
 from muvis_align.image.util import image_reshape, get_msim_transform_keys
-from muvis_align.util import apply_transform, release_memory, rolling_map
+from muvis_align.util import apply_transform, picklable, release_memory, rolling_map, worker_process_pool
 
 
-def create_metric_methods(metric_methods, msim, reg_channel=None):
+def create_metric_methods(metric_methods, msim):
     data_range = np.iinfo(msim["scale0/image"].dtype).max
     all_metric_funcs = {
         'ncc': multiview_stitcher.metrics.normalized_cross_correlation,
+        # the crops are single-channel: no channel axis
         'ssim': lambda im1, im2: structural_similarity(np.nan_to_num(im1), np.nan_to_num(im2),
-                                                       data_range=data_range, channel_axis=reg_channel),
+                                                       data_range=data_range),
         'onmi': lambda im1, im2: normalized_mutual_information(np.nan_to_num(im1), np.nan_to_num(im2)) - 1,
         'mse': lambda im1, im2: 1 / mean_squared_error(im1, im2),
     }
@@ -52,40 +54,73 @@ def _pair_metrics_compute(scheduler='threads'):
         yield
 
 
-def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
-                      n_parallel_pairs=None, progress_factory=None):
-    metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
-    workers = n_parallel_pairs or default_pair_workers
+def pair_image_metrics(msims, nodes, metric_methods, base_transform_key, query_transform_keys=None,
+                       pairs_graph=None, scheduler=None):
+    """tile_pair_image_metrics for one pair, given only its two msims (every call builds a sim for each msim
+    it is given), with its keys renumbered back to `nodes`. Module-level, so a worker process can run it.
+    `scheduler` None: the caller holds _pair_metrics_compute - never entered per call from many threads."""
+    metric_funcs = create_metric_methods(metric_methods, msims[0])
+    with (_pair_metrics_compute(scheduler) if scheduler is not None else nullcontext()):
+        if pairs_graph is not None:
+            result = multiview_stitcher.metrics.tile_pair_image_metrics(
+                msims, base_transform_key=base_transform_key, pairs_graph=pairs_graph, metric_funcs=metric_funcs)
+        else:
+            result = multiview_stitcher.metrics.tile_pair_image_metrics(
+                msims, base_transform_key=base_transform_key, query_transform_keys=query_transform_keys,
+                metric_funcs=metric_funcs)
+    for key in ('pairs', 'bboxes'):
+        result[key] = {(nodes[fixed], nodes[moving]): value for (fixed, moving), value in result.get(key, {}).items()}
+    return result
+
+
+def map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory=None, desc='Pair metrics',
+                     threaded=True):
+    """pair_image_metrics for each edge (a sorted node pair), one pair per worker process when its arguments
+    pickle - on threads they are GIL-bound - else one per thread; results in completion order.
+    `threaded` False: without worker processes, one pair at a time in the calling thread - the overlap mode's
+    linprog (HiGHS) hung and crashed when called from changing threads. Worker processes are unaffected."""
+    pool = None
+    if workers > 1 and len(edges) > workers and picklable(pair_arguments(edges[0])):
+        pool = worker_process_pool(workers, max_tasks_per_child=default_pair_worker_tasks)
+    elif not threaded:
+        workers = 1
 
     def pair_metrics(edge):
-        # only the pair's own msims: every call builds a sim for each msim it is given.
-        # Renumbered in order, so the lower index stays the fixed one
-        nodes = sorted(edge)
-        result = multiview_stitcher.metrics.tile_pair_image_metrics(
-            [msims[node] for node in nodes],
-            base_transform_key=base_transform_key,  # defines overlap region
-            pairs_graph=nx.relabel_nodes(pairs_graph.edge_subgraph([edge]).copy(),
-                                         {node: index for index, node in enumerate(nodes)}),
-            metric_funcs=metric_funcs,
-        )
-        for key in ('pairs', 'bboxes'):
-            result[key] = {(nodes[fixed], nodes[moving]): value
-                           for (fixed, moving), value in result.get(key, {}).items()}
-        return result
+        arguments = pair_arguments(edge)
+        if pool is None:
+            return pair_image_metrics(*arguments)
+        return pool.submit(pair_image_metrics, *arguments, scheduler='synchronous').result()
 
-    pair_results = []
-    progress = (progress_factory(total=pairs_graph.number_of_edges(), desc='Pair metrics')
-                if progress_factory is not None else nullcontext(None))
-    # one pair per thread, each its own compute, as in MVSRegistration.register_pairs
-    with progress as pbar, _pair_metrics_compute('synchronous' if workers > 1 else 'threads'):
-        for count, (edge, result) in enumerate(rolling_map(pair_metrics, list(pairs_graph.edges), workers),
-                                               start=1):
-            pair_results.append(result)
+    results = []
+    progress = (progress_factory(total=len(edges), desc=desc) if progress_factory is not None else nullcontext(None))
+    # on threads, set once here: BLAS thread limits changed from many threads at once crash the process
+    compute = (_pair_metrics_compute('synchronous' if workers > 1 else 'threads') if pool is None
+               else nullcontext())
+    completed = (rolling_map(pair_metrics, edges, workers) if pool is not None or threaded
+                 else ((edge, pair_metrics(edge)) for edge in edges))
+    with (pool if pool is not None else nullcontext()), compute, progress as pbar:
+        for count, (edge, result) in enumerate(completed, start=1):
+            results.append(result)
             if count % (2 * workers) == 0:
                 release_memory(generation=1)
             if pbar is not None:
                 pbar.update(1)
-    metric_results = merge_metric_results(pair_results)
+    return results
+
+
+def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
+                      n_parallel_pairs=None, progress_factory=None):
+    workers = n_parallel_pairs or default_pair_workers
+
+    def pair_arguments(edge):
+        # renumbered in order, so the lower index stays the fixed one
+        nodes = tuple(sorted(edge))
+        graph = nx.relabel_nodes(pairs_graph.edge_subgraph([edge]).copy(),
+                                 {node: index for index, node in enumerate(nodes)})
+        return [msims[node] for node in nodes], nodes, metric_methods, base_transform_key, None, graph
+
+    metric_results = merge_metric_results(
+        map_pair_metrics(msims, list(pairs_graph.edges), pair_arguments, workers, progress_factory))
 
     qualities = nx.get_edge_attributes(pairs_graph, default_quality_key)
 
@@ -132,32 +167,33 @@ def merge_metric_results(results):
 
 
 def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_methods, reg_channel=None,
-                        reg_results=None, n_parallel_pairs=None):
-    metric_funcs = create_metric_methods(metric_methods, msims[0], reg_channel=reg_channel)
-    with _pair_metrics_compute():
-        metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
-            msims,
-            base_transform_key=base_transform_key,  # defines overlap region
-            query_transform_keys=[
-                base_transform_key,
-                reg_transform_key
-            ],
-            metric_funcs=metric_funcs,
-            n_parallel_pairs=n_parallel_pairs
-        )
+                        reg_results=None, n_parallel_pairs=None, progress_factory=None):
+    query_transform_keys = [base_transform_key, reg_transform_key]
+    if reg_results is not None:
+        # only the registered pairs, each on its own: over all msims at once the overlap mode measures every
+        # overlapping pair (1764 for 831 registered, locally) and the rest would be dropped below
+        workers = n_parallel_pairs or default_pair_workers
+        edges = sorted({tuple(sorted(edge)) for edge in reg_results['pairwise_registration']['graph'].edges()})
+
+        def pair_arguments(edge):
+            return [msims[node] for node in edge], edge, metric_methods, base_transform_key, query_transform_keys
+
+        metric_results = merge_metric_results(
+            map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory, desc='Global metrics',
+                             threaded=False))
+    else:
+        metric_funcs = create_metric_methods(metric_methods, msims[0])
+        with _pair_metrics_compute():
+            metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
+                msims,
+                base_transform_key=base_transform_key,  # defines overlap region
+                query_transform_keys=query_transform_keys,
+                metric_funcs=metric_funcs,
+                n_parallel_pairs=n_parallel_pairs
+            )
 
     if reg_results is not None:
-        # tile_pair_image_metrics (Mode 1 above, no pairs_graph given) finds every pair whose
-        # x/y footprint overlaps under base_transform_key - for a multi-section stack sharing
-        # the same x/y footprint at every z, that's every same-position pair across every
-        # section at any z distance, not just the ones register_pairs() actually paired and
-        # registered (e.g. 'orthogonal' pairing restricts pairs to adjacent z, and even within
-        # one section excludes diagonal neighbors) - restrict the table back down to the real
-        # registration graph's edges, compared unordered since this mode's own edge direction
-        # need not match the registration graph's.
-        real_pairs = {frozenset(edge) for edge in reg_results['pairwise_registration']['graph'].edges()}
-        metric_results['pairs'] = {pair_key: value for pair_key, value in metric_results['pairs'].items()
-                                   if frozenset(pair_key) in real_pairs}
+        # the summary as the plain mean over the registered pairs
         for candidate_key, metric_values in metric_results['summary'].items():
             for metric_key in list(metric_values):
                 values = [value[candidate_key][metric_key] for value in metric_results['pairs'].values()

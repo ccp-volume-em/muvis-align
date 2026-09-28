@@ -98,3 +98,52 @@ def test_pair_metrics_one_call_a_pair_match_one_call_over_all(register_msims):
         # axis-aligned tiles: each pair's bbox area equals the overlap area the summary weights by
         assert result['summary']['transform']['ncc'] == pytest.approx(whole['summary']['transform']['ncc'])
         assert result['summary']['transform']['quality'] == 0.5
+
+
+def test_ssim_takes_the_crops_as_single_channel():
+    """The registration channel is a channel label or index, never an axis of the 2D crops SSIM gets."""
+    from skimage.metrics import structural_similarity
+    from muvis_align.metrics import create_metric_methods
+
+    msim = {'scale0/image': np.zeros((1,), dtype=np.uint16)}
+    rng = np.random.default_rng(0)
+    image1, image2 = rng.integers(0, 4000, (2, 50, 80)).astype(np.float32)
+
+    ssim = create_metric_methods(['ssim'], msim)['ssim']
+
+    assert ssim(image1, image2) == structural_similarity(image1, image2, data_range=np.iinfo(np.uint16).max)
+
+
+def test_global_metrics_measure_only_the_registered_pairs_as_the_overlap_mode_does(register_msims):
+    """Over all msims at once the overlap mode measures every overlapping pair; per registered pair, in
+    worker processes, the same values must come out for those pairs and no others."""
+    import multiview_stitcher.metrics
+    from multiview_stitcher import msi_utils
+    from unittest.mock import patch
+    import muvis_align.metrics as metrics_module
+    from muvis_align.metrics import calc_global_metrics, create_metric_methods
+
+    msims, transform_key = register_msims
+    for index, msim in enumerate(msims):
+        shift = param_utils.affine_to_xaffine(param_utils.affine_from_translation([0.0, 0.5 * index]))
+        msi_utils.set_affine_transform(msim, shift, transform_key='registered', base_transform_key=transform_key)
+    graph = nx.Graph()
+    for pair in [(0, 1), (0, 2), (2, 3)]:
+        graph.add_edge(*pair, quality=0.5)
+    reg_results = {'pairwise_registration': {'graph': graph, 'metrics': {'qualities': {edge: 0.5 for edge in graph.edges}}}}
+
+    whole = multiview_stitcher.metrics.tile_pair_image_metrics(
+        msims, base_transform_key=transform_key, query_transform_keys=[transform_key, 'registered'],
+        metric_funcs=create_metric_methods(['ncc'], msims[0]))
+    with patch.object(metrics_module, 'worker_process_pool', wraps=metrics_module.worker_process_pool) as pool:
+        result = calc_global_metrics(msims, transform_key, 'registered', ['ncc'], reg_results=reg_results,
+                                     n_parallel_pairs=2)
+
+    assert pool.called
+    whole_by_pair = {frozenset(pair): value for pair, value in whole['pairs'].items()}
+    assert len(whole_by_pair) > graph.number_of_edges()
+    assert {frozenset(pair) for pair in result['pairs']} == {frozenset(edge) for edge in graph.edges}
+    for pair, value in result['pairs'].items():
+        for key in (transform_key, 'registered'):
+            # workers run BLAS at one thread: summation order can move the last digit
+            assert np.isclose(value[key]['ncc'], whole_by_pair[frozenset(pair)][key]['ncc'], rtol=1e-9, atol=0)
