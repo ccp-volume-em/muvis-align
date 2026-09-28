@@ -91,6 +91,15 @@ def resolve_deferred_quality(pairwise_reg_func):
     return resolved
 
 
+def register_pair_in_worker(msims, graph, pairwise_reg_func, kwargs):
+    """compute_pairwise_registrations for one pair in a worker process, with its wall and CPU time."""
+    start, cpu_start = time.perf_counter(), time.thread_time()
+    with deferred_link_quality(), dask.config.set({'scheduler': 'synchronous', 'optimization.fuse.active': False}):
+        registered = compute_pairwise_registrations(
+            msims, graph, pairwise_reg_func=resolve_deferred_quality(pairwise_reg_func), **kwargs)
+    return registered, time.perf_counter() - start, time.thread_time() - cpu_start
+
+
 def resolve_registration_channel(msim, channel, chosen=None):
     """The 'c' label to register on in this msim, from `channel` as an index or a label. A label
     msim lacks - files that name their channel differently, even within one project - falls back
@@ -1448,16 +1457,26 @@ class MVSRegistration:
                 timed_reg_func = timed_calls(resolve_deferred_quality(pairwise_reg_func), pair_times,
                                              pair_cpu_times)
 
+                pair_kwargs = dict(transform_key=self.source_transform_key, overlap_tolerance=overlap_tolerance,
+                                   pairwise_reg_func_kwargs=pairwise_reg_func_kwargs, n_parallel_pairwise_regs=1)
+                edges = list(g_reg.edges)
+                pool = None
+                # worker processes when a pair can be sent to one (its sources' arrays, the method)
+                if (workers > 1 and len(edges) > workers
+                        and picklable(([msims_reg[node] for node in edges[0]], pairwise_reg_func))):
+                    pool = worker_process_pool(workers, max_tasks_per_child=default_pair_worker_tasks)
+
                 def register_edge(edge):
-                    return compute_pairwise_registrations(
-                        msims_reg,
-                        g_reg.edge_subgraph([edge]).copy(),
-                        transform_key=self.source_transform_key,
-                        overlap_tolerance=overlap_tolerance,
-                        pairwise_reg_func=timed_reg_func,
-                        pairwise_reg_func_kwargs=pairwise_reg_func_kwargs,
-                        n_parallel_pairwise_regs=1,
-                    )
+                    graph = g_reg.edge_subgraph([edge]).copy()
+                    if pool is None:
+                        return compute_pairwise_registrations(msims_reg, graph, pairwise_reg_func=timed_reg_func,
+                                                              **pair_kwargs)
+                    registered, wall_time, cpu_time = pool.submit(
+                        register_pair_in_worker, {node: msims_reg[node] for node in graph.nodes}, graph,
+                        pairwise_reg_func, pair_kwargs).result()
+                    pair_times.append(wall_time)
+                    pair_cpu_times.append(cpu_time)
+                    return registered
 
                 # phase correlation scores every candidate shift with these: their share of a pair's CPU
                 scoring = (timed_module_functions(registration, ['structural_similarity', 'link_quality_metric_func'])
@@ -1467,13 +1486,14 @@ class MVSRegistration:
                 # thread keeps the threads scheduler, so a single (e.g. 3D) pair still runs its tasks in parallel.
                 with self.progress_phase(progress_factory, total=g_reg.number_of_edges(),
                                          desc='Registering pairs') as pbar, \
-                        Timer(f'register {g_reg.number_of_edges()} pairs on {workers} threads',
-                              verbose=self.logging_time), \
+                        Timer(f'register {g_reg.number_of_edges()} pairs on {workers}'
+                              f' {"processes" if pool is not None else "threads"}', verbose=self.logging_time), \
+                        (pool if pool is not None else nullcontext()), \
                         scoring as scoring_cpu_times, deferred_link_quality(), \
                         dask.config.set(scheduler='synchronous' if workers > 1 else 'threads'):
                     log_start = time.time()
                     for count, (edge, pair_computed) in enumerate(
-                            rolling_map(register_edge, list(g_reg.edges), workers), start=1):
+                            rolling_map(register_edge, edges, workers), start=1):
                         g_reg_computed.edges[edge].update(pair_computed.edges[edge])
                         del pair_computed
                         if count % log_every == 0 or count == g_reg.number_of_edges():
@@ -1488,11 +1508,14 @@ class MVSRegistration:
                 if self.logging_time and pair_times:
                     logging.info(f'Register pairs: {len(pair_times)} pairs'
                                  f' {format_phase_timing(time.time() - phase_start, pair_times, pair_cpu_times,
-                                                         workers, time.process_time() - phase_cpu_start)}')
-                    logging.info('Pair scoring cpu: '
-                                 + ', '.join(f'{name} {sum(cpu_times):.1f}s ({len(cpu_times)} calls)'
-                                             for name, cpu_times in scoring_cpu_times.items())
-                                 + f' of {sum(pair_cpu_times):.1f}s in the pairs themselves')
+                                                         workers, time.process_time() - phase_cpu_start,
+                                                         processes=pool is not None)}')
+                    # scoring is timed in this process only
+                    if pool is None:
+                        logging.info('Pair scoring cpu: '
+                                     + ', '.join(f'{name} {sum(cpu_times):.1f}s ({len(cpu_times)} calls)'
+                                                 for name, cpu_times in scoring_cpu_times.items())
+                                     + f' of {sum(pair_cpu_times):.1f}s in the pairs themselves')
 
                 # ******* end MVS registration functions
 

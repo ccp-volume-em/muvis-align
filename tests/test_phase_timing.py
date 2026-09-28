@@ -66,3 +66,11 @@ def test_process_cpu_separates_this_phase_from_the_rest_of_the_process():
     contained = format_phase_timing(20.0, [1.0] * 16, [1.0] * 16, 16, process_cpu_time=17.0)
     assert 'process cpu 17.0s' in contained
     assert 'the rest is elsewhere in the process' not in contained
+
+
+def test_items_in_worker_processes_report_busy_workers_not_a_gil_verdict():
+    """Worker processes share no GIL: the items' cpu over the wall is how many were busy."""
+    line = format_phase_timing(100.0, [8.0] * 100, [6.0] * 100, 8, process_cpu_time=5.0, processes=True)
+
+    assert '6.0 of 8 busy' in line
+    assert CPU_BOUND not in line and IO_BOUND not in line

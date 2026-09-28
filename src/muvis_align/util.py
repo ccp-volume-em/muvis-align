@@ -1,5 +1,5 @@
 import ast
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from configparser import ConfigParser
 from contextlib import contextmanager
 import csv
@@ -12,7 +12,9 @@ import itertools
 import json
 import logging
 import math
+import multiprocessing
 import numpy as np
+import pickle
 import os.path
 import re
 import sys
@@ -535,7 +537,8 @@ um_conversions = {
 }
 
 
-def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None):
+def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None,
+                        processes=False):
     """One timing line for a threaded per-item phase, reported so it can actually be read.
 
     The obvious summary - wall time against the summed per-item time - cannot distinguish the
@@ -577,7 +580,10 @@ def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, proc
         if total_cpu > 0 and process_cpu_time > 2 * total_cpu:
             summary += (f' - only {total_cpu / process_cpu_time:.0%} of the process CPU is this'
                         f' phase: the rest is elsewhere in the process')
-    if total_cpu > 0:
+    if processes and total_cpu > 0 and wall_time > 0:
+        # no shared GIL: the items' cpu against the wall is how many of the workers were busy
+        summary += f' - items in worker processes, {total_cpu / wall_time:.1f} of {max_workers} busy'
+    elif total_cpu > 0:
         ratio = wall_time / total_cpu
         regime = ('CPU-bound: at the single-thread floor, more workers will not help'
                   if ratio < 1.3 else
@@ -600,6 +606,30 @@ def timed_calls(func, times, cpu_times):
             times.append(time.perf_counter() - start)
             cpu_times.append(time.thread_time() - cpu_start)
     return timed
+
+
+def single_threaded_worker():
+    """Worker process initializer: one thread per native pool, as the processes already use every core
+    between them - left at their defaults, each worker's pools spin on cores the others need."""
+    from threadpoolctl import threadpool_limits
+    cv.setNumThreads(1)
+    threadpool_limits(1)
+
+
+def picklable(value):
+    try:
+        pickle.dumps(value)
+        return True
+    except Exception as error:
+        logging.info(f'Not picklable ({type(error).__name__}: {error})')
+        return False
+
+
+def worker_process_pool(workers, max_tasks_per_child=None):
+    """Worker processes for GIL-bound per-item work. Spawned, never forked: forking a process running
+    Qt and dask threads can copy a lock another thread holds."""
+    return ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context('spawn'),
+                               initializer=single_threaded_worker, max_tasks_per_child=max_tasks_per_child)
 
 
 def rolling_map(func, items, workers):

@@ -1,3 +1,4 @@
+import glob
 import logging
 import numpy as np
 import pytest
@@ -425,8 +426,9 @@ def test_register_pairs_defers_link_quality_without_changing_results():
 
 
 def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
-    """Each pair is its own compute on a thread; results must not depend on how many threads. A
-    lone thread keeps the threads scheduler so a single pair still runs its tasks in parallel."""
+    """Each pair is its own compute on a thread (when a pair cannot go to a worker process); results must
+    not depend on how many threads. A lone thread keeps the threads scheduler so a single pair still runs
+    its tasks in parallel."""
     import dask
     import networkx as nx
     import muvis_align.MVSRegistration as mvs_registration_module
@@ -453,7 +455,7 @@ def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
             seen.append((g_reg.number_of_edges(), dask.config.get('scheduler', None)))
             return original(msims, g_reg, **kwargs)
 
-        with patch.object(mvs_registration_module, 'compute_pairwise_registrations', recording):
+        with patch.object(mvs_registration_module, 'compute_pairwise_registrations', recording),                 patch.object(mvs_registration_module, 'picklable', lambda value: False):
             reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
                                                            'n_parallel_pairwise_regs': threads})
         results = {edge: (float(np.asarray(quality).squeeze()),
@@ -717,3 +719,41 @@ def test_re_resolving_geometry_drops_the_per_scale_msims_too():
     registration.reset()
 
     assert registration._scaled_msims == {}
+
+
+def test_register_pairs_in_worker_processes_matches_registering_in_this_process():
+    """Pairs sent to worker processes (their sources pickled, reopened there) must register as they do
+    here - compared with one native thread here too, as the workers run: threading changes BLAS sums."""
+    import cv2
+    from threadpoolctl import threadpool_limits
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
+             output_path='../../output/test_register_pairs_processes/')
+    reg.init_data()
+    reg.preprocess(reg.msims)
+
+    def register(workers):
+        reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
+                                                       'n_parallel_pairwise_regs': workers})
+        return {edge: (float(np.asarray(reg.pairs_graph.edges[edge]['quality']).squeeze()),
+                       np.asarray(reg.pairs_graph.edges[edge]['transform'])) for edge in reg.pairs_graph.edges}
+
+    threads = cv2.getNumThreads()
+    try:
+        cv2.setNumThreads(1)
+        with threadpool_limits(1):
+            here = register(1)
+    finally:
+        cv2.setNumThreads(threads)
+    with patch.object(mvs_registration_module, 'worker_process_pool',
+                      wraps=mvs_registration_module.worker_process_pool) as pool:
+        in_workers = register(2)
+
+    assert pool.called
+    assert len(here) > 2
+    assert here.keys() == in_workers.keys()
+    for edge in here:
+        assert np.array_equal(here[edge][1], in_workers[edge][1])
+        assert here[edge][0] == in_workers[edge][0] or (np.isnan(here[edge][0]) and np.isnan(in_workers[edge][0]))
