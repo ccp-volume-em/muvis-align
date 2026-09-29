@@ -36,6 +36,8 @@ def main():
                         help='Interface-module name to delay, e.g. make_msims_3d or Interface.update_views')
     parser.add_argument('--delay', type=float, default=12)
     parser.add_argument('--interval', type=float, default=1)
+    parser.add_argument('--cancel-after', type=float, default=None,
+                        help='seconds into the action to press its (by then Cancel) Process button')
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     state = {'step': 'start', 't0': time.monotonic(), 'done': False}
@@ -91,6 +93,10 @@ def main():
         state['step'] = args.action
         state['t0'] = time.monotonic()
         threading.Thread(target=capture, daemon=True).start()
+        if args.cancel_after is not None:
+            # fired from the nested event loop the running operation keeps going, as a click would be
+            QTimer.singleShot(int(args.cancel_after * 1000),
+                              lambda: interface.process_or_cancel(lambda: logging.info('capture: nothing to cancel')))
         try:
             ACTIONS[args.action](interface)
         finally:
