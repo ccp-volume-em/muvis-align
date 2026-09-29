@@ -136,7 +136,7 @@ default_pair_workers = _available_cpus
 # pairs a registration worker process handles before it is replaced, handing back what it kept
 default_pair_worker_tasks = 1000
 # the longest side, in pixels, of a z-plane or channel fused to register it against the next ('split' pairing)
-default_split_group_size = 2048
+default_split_group_size = 1024
 # smoothing of a fused z-plane or channel before it is registered, in tile sizes: a pattern every tile repeats
 # (e.g. a grid) would otherwise match at a shift of that pattern
 split_smoothing = 1 / 25

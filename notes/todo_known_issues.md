@@ -457,6 +457,11 @@ Progress:
   consecutive-section NCC 0.19-0.39 vs orthogonal 0.02-0.16, old split 0.03-0.08. Stage 2 51s, peak 2.6GB.
   Open: sections only translate (no rotation between them); fusing a section ~9s (1081 on the HPC ~2.5h).
 
+- Done (user request): split stage 2 speed. Fusion was not the cost: 0.6s a section vs masked phase correlation
+  2.4s a pair at the 2048 px grid (the ~9s estimate divided a cold 51s plugin run by 6). Grid 2048 / 1024 /
+  512 px: stage 2 15.7 / 5.2 / 1.9s headless, shifts within 0.22 / 0.14um of 2048. User chose 1024: plugin
+  stage 2 17.3 -> 6.3s, peak 2.7 -> 1.2GB, consecutive-section NCC 0.17-0.40 (was 0.17-0.38).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
