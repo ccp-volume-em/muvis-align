@@ -81,8 +81,12 @@ def main():
         index = 0
         while not state['done']:
             seconds = time.monotonic() - state['t0']
-            ImageGrab.grab().save(os.path.join(
-                args.output_dir, f'{index:03d}_{seconds:05.1f}_{state["step"]}_dlg{dialog.isVisible()}.png'))
+            try:
+                ImageGrab.grab().save(os.path.join(
+                    args.output_dir, f'{index:03d}_{seconds:05.1f}_{state["step"]}_dlg{dialog.isVisible()}.png'))
+            except OSError as error:
+                # no screen to grab for a moment (locked, secure desktop): skip the frame, keep capturing
+                logging.info(f'capture: screen grab failed ({error})')
             index += 1
             time.sleep(args.interval)
 
