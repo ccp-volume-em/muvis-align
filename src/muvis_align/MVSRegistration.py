@@ -268,15 +268,12 @@ class MVSRegistration:
         with progress_context as pbar:
             if nsources > 1:
                 max_workers = min(default_msim_build_workers, nsources)
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(build_msim, index): index
-                              for index in range(nsources)}
-                    for future in as_completed(futures):
-                        # collected by index, so msims stays in source order however the futures
-                        # happen to complete - each one is paired with its own position/transform
-                        msims[futures[future]] = future.result()
-                        if pbar is not None:
-                            pbar.update(1)
+                # rolling: a cancel (raised by pbar.update) must not wait for every source already submitted.
+                # Collected by index, so msims stays in source order however the builds complete
+                for index, msim in rolling_map(build_msim, range(nsources), max_workers):
+                    msims[index] = msim
+                    if pbar is not None:
+                        pbar.update(1)
             elif nsources:
                 msims[0] = build_msim(0)
                 if pbar is not None:
@@ -668,14 +665,12 @@ class MVSRegistration:
             max_workers = 1
             if nfiles > 1:
                 max_workers = min(default_source_init_workers, nfiles - 1)
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(build_source, index, matrix_size): index
-                              for index in range(1, nfiles)}
-                    for future in as_completed(futures):
-                        index = futures[future]
-                        self.sources[index] = future.result()
-                        if pbar is not None:
-                            pbar.update(1)
+                # rolling: a cancel (raised by pbar.update) must not wait for every file already submitted
+                for index, source in rolling_map(lambda index: build_source(index, matrix_size),
+                                                 range(1, nfiles), max_workers):
+                    self.sources[index] = source
+                    if pbar is not None:
+                        pbar.update(1)
 
         if self.logging_time and file_times:
             logging.info(f'Init sources: {len(file_times)} files'

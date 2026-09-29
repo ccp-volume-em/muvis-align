@@ -1,5 +1,6 @@
 import glob
 import logging
+import time
 import numpy as np
 import pytest
 from pathlib import Path
@@ -778,3 +779,40 @@ def test_register_global_with_robust_linear_matches_global_optimization_on_consi
     assert placed['robust_linear'].keys() == placed['global_optimization'].keys()
     for index, mapping in placed['robust_linear'].items():
         assert np.allclose(mapping, placed['global_optimization'][index], atol=0.05)
+
+
+def test_a_cancel_stops_building_sources_without_building_the_rest():
+    """The build used to submit every source at once, so a cancel waited for all of them (34k on the HPC)."""
+    import threading
+    import muvis_align.MVSRegistration as mvs_registration_module
+    from muvis_align.util import OperationCancelled, cancellable, request_cancel
+
+    reg = MVSRegistration()
+    reg.sources = [SimpleNamespace() for _ in range(400)]
+    reg.positions = [{}] * 400
+    reg._msim_transforms = [None] * 400
+    reg._msim_output_order, reg._msim_z_scale, reg.source_transform_key = 'yx', None, 'source'
+    built = []
+
+    def slow_build(*args, **kwargs):
+        time.sleep(0.05)
+        built.append(1)
+        return 'msim'
+
+    class CancellingBar:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def update(self, n=1):
+            if len(built) >= 10:
+                request_cancel()
+            from muvis_align.util import raise_if_cancelled
+            raise_if_cancelled()
+
+    with cancellable(), patch.object(mvs_registration_module, 'build_source_msim', slow_build):
+        with pytest.raises(OperationCancelled):
+            reg._build_msims(progress_factory=lambda **kwargs: CancellingBar())
+    assert len(built) < 100
