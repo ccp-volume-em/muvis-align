@@ -1455,6 +1455,8 @@ class Interface:
             if not self.run_pre_processing(progress_factory=progress_factory):
                 return None
 
+        # the split pairing groups sources by it (z-planes or channels)
+        self.reg.registration_dimension = self.params.get('input_output', {}).get('registration_dimension')
         with self._operation_progress('Pair registration', progress_factory, phases=2) as factory:
             def register_pairs(worker_factory):
                 # the pairs, then their metrics, report per batch to the worker's factory - a dask
@@ -1485,6 +1487,7 @@ class Interface:
         # applying the transforms, the summary plots, storing them, and the metrics. Declaring how
         # many there are is what keeps the last of them from taking most of the bar each; the
         # optimisation claims 4 of these 8 units, being most of the run (66 of 86 minutes once)
+        self.reg.registration_dimension = self.params.get('input_output', {}).get('registration_dimension')
         with self._operation_progress('Global registration', progress_factory, phases=8) as factory:
             def register_global(worker_factory):
                 with NapariDaskProgress(progress_class=worker_factory, desc='Global registration'), \

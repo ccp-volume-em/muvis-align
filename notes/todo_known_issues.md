@@ -416,15 +416,19 @@ Progress:
     and does not wait for worker processes: pair registration stopped 0.21-0.64s after the cancel
     locally, nothing stored. Global registration restores the sources' transforms; fusion removes its
     partial output. Tested in the plugin with the UI driver (--cancel-after).
-  - Split pairing (user): new last pairing option, not default. Stage 1: x/y pair + global registration
-    within each z-plane (or channel). Stage 2: continue as registration_dimension says, with each
-    stitched plane/channel as one unit (fused at reduced resolution, registered as whole images).
-    Two stages of pair and global registration; every other pairing works as before.
+  - Split pairing: done. 'split' is the last pairing option. Stage 1: orthogonal pairs within each z-plane
+    (or channel, registration_dimension 'c'), pair and global registration as usual - the graph falls
+    apart into one component per group. Stage 2 (split_registration.register_groups, in register_global):
+    each group fused with its stage-1 transforms (longest side <= 2048 px), consecutive groups registered
+    as whole images, resolved (robust_linear for translation/rigid), each group's correction composed onto
+    its tiles. Local 2 planes x 4 tiles: stage 1 8 pairs, 0 across planes (orthogonal: 12, 4 across). A
+    known 2um shift of the second plane: split left 0.32um of it, orthogonal 1.56um (plane-to-plane
+    registration quality only 0.05 - different sections). Synthetic identical planes: recovered within
+    0.5px. Not yet run on the 5-section project (328 tiffs): stopped at 1.2GB free RAM.
 
 ## TODO
 
-- [ ] Pairing method "split, 2D x/y first": register all x/y slices (or channels) in 2D first, then
-      stack / overlay the resulting sections.
+- [x] Pairing method "split, 2D x/y first" (see In progress / done above).
 - [x] Cancel for all long operations: the Process button reads Cancel while one runs (f580800).
 - [ ] Other computes over many similar per-source chains can hit the same dask fused-key
       collision: fusion and the global metrics - check, or switch linear fusion off

@@ -36,6 +36,7 @@ from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, find_reference_view
+from muvis_align.split_registration import SPLIT, register_groups, split_groups, within_group_pairs
 from muvis_align.Timer import Timer
 from muvis_align.util import *
 
@@ -1366,7 +1367,7 @@ class MVSRegistration:
                 return si_utils.max_project_sim(level_sim, dim='z') if 'z' in level_sim.dims else level_sim
             register_msims = [map_msim_levels(msim, level_func) for msim in register_msims]
             pairs = [(index, index + 1) for index in range(len(register_msims) - 1)]
-        elif 'ortho' in pairing:
+        elif 'ortho' in pairing or SPLIT in pairing:
             # position/size for pairing distance must match self.positions 1:1 (every source,
             # never a preprocessed/filtered register_msims subset). From each source's metadata, as
             # the shapes are: the same geometry as self.msims' finest level, which cost 14.5 minutes
@@ -1378,6 +1379,9 @@ class MVSRegistration:
                                 for sim, position in zip(shape_sims, self.positions)])
             sizes = [get_sim_physical_size(sim) for sim in shape_sims]
             pairs, _ = get_pairs(origins, sizes)
+            if SPLIT in pairing:
+                # stage 1: each z-plane's (or channel's) tiles only; the groups are registered in register_global
+                pairs = within_group_pairs(pairs, self.split_groups())
             logging.info(f'#pairs: {len(pairs)}')
             #for pair in pairs:
             #    print(f'{self.file_labels[pair[0]]} - {self.file_labels[pair[1]]}')
@@ -1548,6 +1552,29 @@ class MVSRegistration:
             'metrics': metrics
         }
 
+    def split_groups(self, indices=None):
+        """Group index per source (of `indices`, renumbered from 0): z-planes, or channels for dimension 'c'."""
+        dimension = (getattr(self, 'registration_dimension', None)
+                     or getattr(self, 'register_params', {}).get('registration_dimension'))
+        groups = split_groups(self.positions, self.sources, dimension)
+        if indices is not None:
+            groups = [groups[index] for index in indices]
+            order = sorted(set(groups))
+            groups = [order.index(group) for group in groups]
+        return groups
+
+    def _register_split_groups(self, pair_msims, transforms, register_indices, params, progress_factory=None):
+        method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(
+            msi_utils.get_sim_from_msim(pair_msims[0], scale='scale0'), params=params)
+        transform_type = params.get('transform_type', 'rigid')
+        resolution_method = ROBUST_LINEAR if transform_type in ('translation', 'rigid') else 'global_optimization'
+        with self.progress_phase(progress_factory, total=1, desc='Registering z-planes / channels'), \
+                Timer('split: register groups', verbose=self.logging_time):
+            return register_groups(pair_msims, transforms, self.split_groups(list(register_indices)),
+                                   self.source_transform_key, pairwise_reg_func, pairwise_reg_func_kwargs,
+                                   resolution_method=resolution_method,
+                                   resolution_kwargs={'transform': transform_type})
+
     def register_global(self, pair_msims, register_indices=None, params=None,
                         pairs_graph=None, progress_factory=None):
         logging.info('Global registration...')
@@ -1613,6 +1640,9 @@ class MVSRegistration:
         transforms = [
             transforms_dict[iview] for iview in sorted(g_reg_computed.nodes())
         ]
+        if SPLIT in params.get('pairing', '').lower():
+            transforms = self._register_split_groups(pair_msims, transforms, register_indices, params,
+                                                     progress_factory=progress_factory)
 
         # the stages below are the last 20 minutes of an 86-minute run, and reported nothing
         with self.progress_phase(progress_factory, total=len(pair_msims),

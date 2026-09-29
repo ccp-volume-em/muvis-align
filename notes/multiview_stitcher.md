@@ -101,6 +101,16 @@ graph is connected (a reference outside a component sends that component back to
   "Windows fatal exception: access violation" line alone is not the failure - look for the hang or
   exit that follows.
 
+## Split pairing (muvis-align)
+
+Two stages with multiview-stitcher's own pieces: stage 1 is the usual pairwise + groupwise registration
+with pairs only within each z-plane or channel - `groupwise_resolution` resolves each connected
+component on its own, so each group is stitched independently. Stage 2 fuses each group
+(`fusion.fuse`, reduced resolution) and registers consecutive groups with the same pairwise function
+(`compute_pairwise_registrations`), then `groupwise_resolution` over the groups. Registration needs the
+fused groups channel-selected (no 'c' dim), as register_pairs' own msims are: with it, `transform_sim`
+failed ('affine matrix has wrong number of rows').
+
 ## dask
 
 - Linear fusion (`optimization.fuse.active`) can give two pairs' fused crop chains the same key
