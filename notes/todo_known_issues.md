@@ -426,6 +426,26 @@ Progress:
     registration quality only 0.05 - different sections). Synthetic identical planes: recovered within
     0.5px. Not yet run on the 5-section project (328 tiffs): stopped at 1.2GB free RAM.
 
+- Doing (user request): test split pairing (two-pass) and the cancel button in the plugin on a small
+  dataset (data_subset: 54 tiffs, 6 sections; scratchpad project copy, UI driver). Plan: split vs
+  orthogonal full registration; cancel partway through open, pre-processing, pair and global registration.
+  - Plugin runs clean (UI driver, new 'registration' action = registration_process): orthogonal 117 pairs
+    52s; split 72 pairs (within sections only), 6 groups / 5 group pairs, 1.9 min (group stage 1.1 min).
+    Within-section layouts identical to orthogonal (max 0.011um).
+  - But split stage 2 barely moves the sections: group pair shifts 0.01-0.06um (quality ~0.3; 0->1 1.7um at
+    quality 0.05). Consecutive-section NCC (mosaics at 0.064um): metadata 0.05-0.12, orthogonal 0.14-0.16
+    (except S000->S001 0.016), split 0.03-0.09. A brute NCC search on the fused groups puts the offsets at
+    3-11um (weak, broad peaks 0.09-0.23 vs 0.03-0.15 at zero). Likely: phase correlation of whole fused
+    sections locks on the shared zero-shift pattern (same tile layout, seams, shading in every section);
+    interior crop / high-pass do not fix it reliably. Option: stage 2 from the cross-section tile pairs,
+    resolved with each group moving as one (for the user to decide).
+  - Cancel in the plugin (UI driver --cancel-after, fresh outputs): pair registration (landed in pair metrics)
+    stopped 2s after, nothing saved; global registration in the split group stage 1.6s after, only the
+    finished pair_mappings.json kept; pre-processing 0.2s after. Opening a project: a cancel while reading
+    the sources escaped as an OperationCancelled traceback (input_output_process had no handler) - fixed:
+    "Cancelled" notice, sources read again on the next Process. A cancel in the view refresh's Qt-thread
+    steps (adding shapes) is not seen: they have no checkpoint and finish (harmless, the flag is cleared).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
