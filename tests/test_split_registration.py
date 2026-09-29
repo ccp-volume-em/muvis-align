@@ -30,7 +30,7 @@ def textured_msim(image, origin_x):
 def test_a_misplaced_plane_is_registered_back_onto_the_one_before(shift):
     """Two planes of the same content, the second placed `shift` too far in x: stage 2 must correct it."""
     rng = np.random.default_rng(0)
-    # structure at the scales the plane's band-pass keeps (tile / 25 to tile / 2), no background zeros
+    # structure coarser than the plane's smoothing (tile / 25), no background zeros
     image = (gaussian_filter(rng.random((200, 200)), 8) * 1000 + 100).astype(np.float32)
     msims = [textured_msim(image, 0.0), textured_msim(image, shift)]
     identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])

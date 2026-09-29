@@ -13,7 +13,7 @@ from multiview_stitcher.param_resolution import groupwise_resolution
 from scipy.ndimage import gaussian_filter, shift as shift_image
 from skimage.registration import phase_cross_correlation
 
-from muvis_align.constants import default_split_group_size, split_band_high, split_band_low
+from muvis_align.constants import default_split_group_size, split_smoothing
 from muvis_align.image.util import restore_msims_transform, snapshot_msims_transform
 from muvis_align.util import raise_if_cancelled
 
@@ -46,17 +46,15 @@ def _level_sim(msim, spacing):
     return chosen
 
 
-def band_pass_group(data, spacing, tile_size):
-    """The fused group without what every tile repeats (fixed pattern, shading), and its mask (inside its tiles):
-    left in, a tile's own pattern matches best at zero shift, whatever the content does."""
+def smooth_group(data, spacing, tile_size):
+    """The fused group smoothed past what every tile repeats, its background filled, and its mask (inside its
+    tiles)."""
     data = np.asarray(data, dtype=np.float32)
     mask = data > 0
     if not np.any(mask):
         return data, mask
     filled = np.where(mask, data, data[mask].mean())
-    band = (gaussian_filter(filled, tile_size * split_band_low / spacing)
-            - gaussian_filter(filled, tile_size * split_band_high / spacing))
-    return band, mask
+    return gaussian_filter(filled, tile_size * split_smoothing / spacing), mask
 
 
 def group_grid(msims, transform_key, max_size=default_split_group_size):
@@ -79,12 +77,12 @@ def group_grid(msims, transform_key, max_size=default_split_group_size):
 
 
 def fuse_group(msims, transform_key, grid, tile_size):
-    """One group's tiles fused under `transform_key` onto `grid`, band-passed: (image, mask)."""
+    """One group's tiles fused under `transform_key` onto `grid`, smoothed: (image, mask)."""
     spacing = grid['spacing']['y']
     sims = [_level_sim(msim, spacing) for msim in msims]
     with dask.config.set(scheduler='threads'):
         fused = fusion.fuse(sims, transform_key=transform_key, output_stack_properties=grid)
-        return band_pass_group(np.asarray(fused.data).squeeze(), spacing, tile_size)
+        return smooth_group(np.asarray(fused.data).squeeze(), spacing, tile_size)
 
 
 def masked_ncc(image1, mask1, image2, mask2, shift):

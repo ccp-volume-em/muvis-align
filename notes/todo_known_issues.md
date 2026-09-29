@@ -451,7 +451,8 @@ Progress:
   match instead. Why it found ~0 shift: every section shows the same tile grid pattern, shading and outline;
   mvs phase correlation then either locks on them or its SSIM disambiguation (union/intersection bbox, NaN
   corners as 0) prefers the zero candidate. Now: all groups fused on one common grid, band-passed (tile/25 to
-  tile/2, background filled), registered by skimage masked phase correlation (translation), NCC at the shift
+  tile/2, background filled; later only the tile/25 smoothing - the high-pass changed nothing, without the
+  smoothing 2 of 5 pairs lock on the tile grid pattern), registered by skimage masked phase correlation (translation), NCC at the shift
   as quality; two groups held at a time. data_subset: section pair NCC 0.52-0.92 (shifts up to 48um);
   consecutive-section NCC 0.19-0.39 vs orthogonal 0.02-0.16, old split 0.03-0.08. Stage 2 51s, peak 2.6GB.
   Open: sections only translate (no rotation between them); fusing a section ~9s (1081 on the HPC ~2.5h).
