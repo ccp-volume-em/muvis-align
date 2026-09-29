@@ -409,12 +409,23 @@ Progress:
   unpickled TIFF level opened concurrently by dask threads read a closed file (the Windows CI failure,
   locked). Details in notes/multiview_stitcher.md.
 
+- Doing (user request): the two new TODO items.
+  - Cancel: done (f580800). While an operation runs the Process buttons read Cancel (widgets disabled
+    as modify_pair_registration does); after a confirmation the operation stops at its next progress
+    step (pair, source, fusion chunk, robust round, global_optimization iteration via its log handler)
+    and does not wait for worker processes: pair registration stopped 0.21-0.64s after the cancel
+    locally, nothing stored. Global registration restores the sources' transforms; fusion removes its
+    partial output. Tested in the plugin with the UI driver (--cancel-after).
+  - Split pairing (user): new last pairing option, not default. Stage 1: x/y pair + global registration
+    within each z-plane (or channel). Stage 2: continue as registration_dimension says, with each
+    stitched plane/channel as one unit (fused at reduced resolution, registered as whole images).
+    Two stages of pair and global registration; every other pairing works as before.
+
 ## TODO
 
 - [ ] Pairing method "split, 2D x/y first": register all x/y slices (or channels) in 2D first, then
       stack / overlay the resulting sections.
-- [ ] Cancel buttons for all long operations - pre-processing, pair registration, global registration,
-      fusion - e.g. a Cancel button above/below each section's default Process button.
+- [x] Cancel for all long operations: the Process button reads Cancel while one runs (f580800).
 - [ ] Other computes over many similar per-source chains can hit the same dask fused-key
       collision: fusion and the global metrics - check, or switch linear fusion off
       process-wide. (Pair registration and pair metrics run with it off; the overview computes
