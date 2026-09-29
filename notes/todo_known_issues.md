@@ -446,16 +446,15 @@ Progress:
     "Cancelled" notice, sources read again on the next Process. A cancel in the view refresh's Qt-thread
     steps (adding shapes) is not seen: they have no checkpoint and finish (harmless, the flag is cleared).
 
-- Done (user agreed): split stage 2 from the cross-section tile pairs instead of fused whole sections.
-  register_pairs registers all orthogonal pairs for split; register_global resolves stage 1 on the pairs
-  within groups; stage 2 maps each cross pair into the stage-1 placement (T_b P T_a^-1, from the edge
-  convention p_a x ~ p_b P x), fits one transform per group pair to their bbox corners (quality x Cauchy
-  IRLS from a weighted-median shift, fit_transform for translation/rigid/similarity/affine), then resolves
-  the groups as before. Fused-group code and default_split_group_size removed.
-  data_subset (54 tiffs, plugin): 117 pairs (45 across), stage 2 0.2s (was 1.1 min); within-section layout
-  unchanged (2e-4um). Consecutive-section NCC: metadata 0.05-0.12, orthogonal 0.14-0.16, old split
-  0.03-0.08, new split 0.13-0.15 (S000->S001 ~0.02 for both orthogonal and split: bad pairs there).
-  Full suite 783 passed.
+- Split stage 2: the tile-pairs-across rework (484b7bf) was reverted - the point of split is matching a whole
+  section against the next (robust where tiles do not match closely, few pairs in z). Fixed the fused-section
+  match instead. Why it found ~0 shift: every section shows the same tile grid pattern, shading and outline;
+  mvs phase correlation then either locks on them or its SSIM disambiguation (union/intersection bbox, NaN
+  corners as 0) prefers the zero candidate. Now: all groups fused on one common grid, band-passed (tile/25 to
+  tile/2, background filled), registered by skimage masked phase correlation (translation), NCC at the shift
+  as quality; two groups held at a time. data_subset: section pair NCC 0.52-0.92 (shifts up to 48um);
+  consecutive-section NCC 0.19-0.39 vs orthogonal 0.02-0.16, old split 0.03-0.08. Stage 2 51s, peak 2.6GB.
+  Open: sections only translate (no rotation between them); fusing a section ~9s (1081 on the HPC ~2.5h).
 
 ## TODO
 
