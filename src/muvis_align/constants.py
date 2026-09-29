@@ -137,6 +137,10 @@ default_pair_workers = _available_cpus
 default_pair_worker_tasks = 1000
 # the longest side, in pixels, of a z-plane or channel fused to register it against the next ('split' pairing)
 default_split_group_size = 2048
+# band-pass of a fused z-plane or channel before it is registered, in tile sizes: finer than the low sigma is
+# each tile's fixed pattern, broader than the high sigma its shading - both would match at zero shift
+split_band_low = 1 / 25
+split_band_high = 1 / 2
 # What one output block of an *export* may span, where default_chunk_size (1024) is what a preview
 # wants: x/y chunks larger than the screen buy a preview nothing, while an export pays a fixed
 # cost (~0.5s measured) per block however small. Caps the block, does not overrule the budget -
