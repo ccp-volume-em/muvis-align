@@ -6,7 +6,7 @@ from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.qt.threading import create_worker
 from napari.utils import progress
-from napari.utils.notifications import show_warning
+from napari.utils.notifications import show_info, show_warning
 import networkx as nx
 import numpy as np
 import os.path
@@ -264,6 +264,13 @@ class Interface:
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
+        try:
+            self._input_output_process()
+        except OperationCancelled:
+            logging.info('input_output_process cancelled')
+            show_info('Cancelled')
+
+    def _input_output_process(self):
         # re-sync path widget display to the normalised value now, not live while typing
         self.update_input_output_path()
         params = self.params['input_output']
@@ -277,26 +284,13 @@ class Interface:
             # one bar for opening the project - reading the sources and loading any saved
             # registration. It finishes before the view work starts, which shows the one bar
             # after it (see _show_loaded_project(), _operation_progress())
-            with self._operation_progress('Initialising sources', phases=1) as factory:
-                ok = self.reg.init(input_path=eval_path(input_path),
-                                   output_path=output,
-                                   overwrite=params['overwrite'],
-                                   pairing=self.params['registration'].get('pairing', ''),
-                                   verbose=self.verbose)
-                if ok:
-                    # resuming a saved registration does far more here than a fresh open (see
-                    # _load_saved_progress) - reserve that room before reading the sources, the
-                    # one phase a fresh open has, sizes itself against the whole bar
-                    operation = self.params['registration'].get('operation', '')
-                    fused_name = operation_to_past_participle(operation) if operation else None
-                    if self.reg.has_saved_progress(fused_name, zarr_extension):
-                        factory.ensure_phases(4)
-                    # _show_loaded_project() below always ends by drawing the view, so drawing
-                    # here would only draw once with the not-yet-registered transform
-                    ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
-                    if ok:
-                        self.populate_image_selection()
-                        self._load_saved_progress(factory)
+            try:
+                ok = self._init_sources(input_path, output, params)
+            except OperationCancelled:
+                # sources read part-way are not kept: the next Process reads them again
+                self.need_source_reinit = True
+                self.reg.state = RegState.UNINIT
+                raise
             if ok:
                 self._show_loaded_project()
             else:
@@ -308,6 +302,29 @@ class Interface:
             self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
             self.update_metadata_source()
+
+    def _init_sources(self, input_path, output, params):
+        with self._operation_progress('Initialising sources', phases=1) as factory:
+            ok = self.reg.init(input_path=eval_path(input_path),
+                               output_path=output,
+                               overwrite=params['overwrite'],
+                               pairing=self.params['registration'].get('pairing', ''),
+                               verbose=self.verbose)
+            if ok:
+                # resuming a saved registration does far more here than a fresh open (see
+                # _load_saved_progress) - reserve that room before reading the sources, the
+                # one phase a fresh open has, sizes itself against the whole bar
+                operation = self.params['registration'].get('operation', '')
+                fused_name = operation_to_past_participle(operation) if operation else None
+                if self.reg.has_saved_progress(fused_name, zarr_extension):
+                    factory.ensure_phases(4)
+                # _show_loaded_project() below always ends by drawing the view, so drawing
+                # here would only draw once with the not-yet-registered transform
+                ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
+                if ok:
+                    self.populate_image_selection()
+                    self._load_saved_progress(factory)
+        return ok
 
     def _run_off_thread(self, work, progress_factory):
         """Run work(progress_factory) on a worker thread, and wait for it here.

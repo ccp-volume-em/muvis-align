@@ -729,6 +729,31 @@ def test_input_output_process_resolves_relative_paths_before_reg_init(
     )
 
 
+def test_input_output_process_cancelled_while_reading_sources_reads_them_again_next_time(
+    bare_interface, tmp_path, mocked_activity_contexts
+):
+    from muvis_align.util import OperationCancelled
+    bare_interface.viewer = MagicMock()
+    bare_interface.params_path = str(tmp_path / "project.yml")
+    bare_interface.params = {
+        "input_output": {"input_path": "data/input", "output_path": "results", "overwrite": True},
+        "registration": {"pairing": "orthogonal"},
+    }
+    bare_interface.reg.is_initialised.return_value = False
+    bare_interface.need_source_reinit = False
+    bare_interface.reg.init.return_value = True
+    bare_interface.update_metadata_source = MagicMock(side_effect=OperationCancelled('Cancelled'))
+    bare_interface._show_loaded_project = MagicMock()
+
+    with patch.object(interface_module, 'show_info') as show_info:
+        bare_interface.input_output_process()
+
+    show_info.assert_called_once_with('Cancelled')
+    bare_interface._show_loaded_project.assert_not_called()
+    assert bare_interface.need_source_reinit
+    assert bare_interface.reg.state is CanonicalRegState.UNINIT
+
+
 def test_get_all_widgets_excludes_widgets_on_disabled_tabs(bare_interface):
     """A widget on a currently disabled tab always reads .enabled == False, so if
     modify_pair_registration snapshotted and restored it via get_all_widgets, it would stay
