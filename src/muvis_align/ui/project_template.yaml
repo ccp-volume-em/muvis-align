@@ -259,7 +259,7 @@ parameters:
   - name: pairing
     type: dropdown
     label: "Pairing"
-    description: "Pairing method: use orthogonal to avoid diagonal / very small overlaps, use stack to pair consecutive views. Split: register each z-plane's (or channel's) tiles in x/y first, then move each plane/channel as one, by its tile pairs with the others. Default uses MVS default pairing method"
+    description: "Pairing method: use orthogonal to avoid diagonal / very small overlaps, use stack to pair consecutive views. Split: register each z-plane's (or channel's) tiles in x/y first, then the stitched planes/channels against each other. Default uses MVS default pairing method"
     options:
       - label: Default
         value: "default"
