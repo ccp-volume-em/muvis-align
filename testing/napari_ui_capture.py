@@ -24,6 +24,7 @@ ACTIONS = {
     'open': lambda interface: interface.input_output_process(),
     'pre_processing': lambda interface: interface.pre_processing_process(),
     'pair_registration': lambda interface: interface.pair_registration(),
+    'registration': lambda interface: interface.registration_process(),
 }
 
 
