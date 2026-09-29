@@ -446,6 +446,17 @@ Progress:
     "Cancelled" notice, sources read again on the next Process. A cancel in the view refresh's Qt-thread
     steps (adding shapes) is not seen: they have no checkpoint and finish (harmless, the flag is cleared).
 
+- Done (user agreed): split stage 2 from the cross-section tile pairs instead of fused whole sections.
+  register_pairs registers all orthogonal pairs for split; register_global resolves stage 1 on the pairs
+  within groups; stage 2 maps each cross pair into the stage-1 placement (T_b P T_a^-1, from the edge
+  convention p_a x ~ p_b P x), fits one transform per group pair to their bbox corners (quality x Cauchy
+  IRLS from a weighted-median shift, fit_transform for translation/rigid/similarity/affine), then resolves
+  the groups as before. Fused-group code and default_split_group_size removed.
+  data_subset (54 tiffs, plugin): 117 pairs (45 across), stage 2 0.2s (was 1.1 min); within-section layout
+  unchanged (2e-4um). Consecutive-section NCC: metadata 0.05-0.12, orthogonal 0.14-0.16, old split
+  0.03-0.08, new split 0.13-0.15 (S000->S001 ~0.02 for both orthogonal and split: bad pairs there).
+  Full suite 783 passed.
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
