@@ -750,7 +750,12 @@ class Interface:
         table.data[rowi, color_coli] = str(tuple(color))
 
     def populate_image_selection(self):
-        labels = self.reg.file_labels
+        labels = list(self.reg.file_labels)
+        positions = self.reg.positions
+        # the metadata and metrics tables' order
+        if len(positions) == len(labels):
+            labels = [labels[index] for index in sorted(range(len(labels)),
+                                                        key=lambda index: position_sort_key(positions[index]))]
         widget1 = self.param_widgets.get('registration.reg_preview_image1')
         widget1.set_value(labels[0], choices=labels)
 

@@ -2701,3 +2701,17 @@ def test_a_cancelled_fusion_removes_its_partial_output(bare_interface, monkeypat
 
     assert bare_interface.run_fusion() is None
     assert not partial.exists()
+
+
+def test_preview_image_lists_follow_the_tables_order(bare_interface):
+    """Sorted by position (z, y, x), as the metadata and metrics tables are, not by file order."""
+    image1_widget, image2_widget = MagicMock(), MagicMock()
+    bare_interface.param_widgets = {"registration.reg_preview_image1": image1_widget,
+                                    "registration.reg_preview_image2": image2_widget}
+    bare_interface.reg.file_labels = ["b", "a", "c"]
+    bare_interface.reg.positions = [{"z": 0, "y": 5, "x": 0}, {"z": 0, "y": 0, "x": 0}, {"z": 1, "y": 0, "x": 0}]
+
+    bare_interface.populate_image_selection()
+
+    image1_widget.set_value.assert_called_once_with("a", choices=["a", "b", "c"])
+    image2_widget.set_value.assert_called_once_with("b", choices=["a", "b", "c"])
