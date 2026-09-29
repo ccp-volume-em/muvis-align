@@ -462,6 +462,14 @@ Progress:
   512 px: stage 2 15.7 / 5.2 / 1.9s headless, shifts within 0.22 / 0.14um of 2048. User chose 1024: plugin
   stage 2 17.3 -> 6.3s, peak 2.7 -> 1.2GB, consecutive-section NCC 0.17-0.40 (was 0.17-0.38).
 
+- Done (user request): split vs orthogonal on the 5-section slides project (328 tiffs, 8x8 tiles a section, S001
+  72), plugin via the UI driver, 8 workers. Split: 575 pairs (28s), stage 2 14.4s, section pair NCC median 0.39
+  (min 0.16), 1.3 min in all. Orthogonal: 831 pairs (1.4 min), 2.2 min. Consecutive-section NCC (tiles at
+  0.256um, band-passed): metadata 0.123/0.117/0.116/0.113, split 0.744/0.172/0.136/0.133, orthogonal
+  0.639/0.112/0.093/0.102. S001->S004 stay low for both. The first split run's process did not exit after
+  closing (one core busy, 117 threads, 16 min; killed); a rerun exited normally. The driver now dumps all
+  stacks and exits if alive 2 min after closing.
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).

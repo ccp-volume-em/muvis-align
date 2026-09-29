@@ -8,6 +8,7 @@ screenshot every second from a background thread - Qt's own grab would stall wit
 Qt thread. Each file is named <index>_<seconds>_<step>_dlg<activity dialog visible>.png.
 """
 import argparse
+import faulthandler
 import logging
 import os
 import threading
@@ -108,6 +109,8 @@ def main():
             state['step'] = 'finished'
             time.sleep(2 * args.interval)
             state['done'] = True
+            # a scripted run must end: still alive two minutes after closing, show every thread's stack and exit
+            faulthandler.dump_traceback_later(120, exit=True)
             QTimer.singleShot(1000, viewer.close)
 
     QTimer.singleShot(3000, run)
