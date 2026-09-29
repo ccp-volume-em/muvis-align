@@ -371,3 +371,30 @@ def test_parse_scale_rejects_what_is_neither(value):
 ])
 def test_get_filetitle_strips_only_the_ome_suffix(filename, expected):
     assert get_filetitle(filename) == expected
+
+
+def test_rolling_map_stops_submitting_once_cancelled():
+    """A cancel stops the map at the next finished item; what was never submitted never runs."""
+    import pytest
+    from muvis_align.util import OperationCancelled, cancellable, request_cancel
+
+    started = []
+
+    def work(item):
+        started.append(item)
+        return item
+
+    with cancellable():
+        with pytest.raises(OperationCancelled):
+            for item, _ in rolling_map(work, range(100), workers=2):
+                if item == 3:
+                    request_cancel()
+    assert len(started) < 100
+
+
+def test_a_cancel_left_from_before_does_not_stop_the_next_operation():
+    from muvis_align.util import cancellable, raise_if_cancelled, request_cancel
+
+    request_cancel()
+    with cancellable():
+        raise_if_cancelled()

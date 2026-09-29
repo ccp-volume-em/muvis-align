@@ -5,6 +5,7 @@ Tests focus on the fix for dimension mismatch when 2D images have 3D transforms.
 """
 
 import numpy as np
+import pytest
 import xarray as xr
 from unittest.mock import MagicMock, patch
 
@@ -224,3 +225,35 @@ def test_draw_keypoints_matches_napari_splits_match_layers_by_inlier_state():
 
     assert len(non_inliers_data) == 1
     assert len(inliers_data) == 1
+
+
+def test_restoring_a_transform_snapshot_puts_back_the_previous_value_or_removes_a_new_one():
+    import glob
+    from multiview_stitcher import msi_utils, param_utils
+    from muvis_align.MVSRegistration import MVSRegistration
+    from muvis_align.image.util import get_msim_transform_keys, restore_msims_transform, snapshot_msims_transform
+
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr'))[:2],
+             output_path='../../output/test_transform_snapshot/')
+    reg.init_data()
+    msims = reg.msims
+
+    def shifted(shift):
+        return param_utils.affine_to_xaffine(param_utils.affine_from_translation([0.0, shift]))
+
+    def translation(msim):
+        return float(np.asarray(msi_utils.get_transform_from_msim(msim, transform_key='registered')).squeeze()[1, 2])
+
+    msi_utils.set_affine_transform(msims[0], shifted(1.0), transform_key='registered',
+                                   base_transform_key=reg.source_transform_key)
+    snapshot = snapshot_msims_transform(msims, 'registered')
+    for msim in msims:
+        msi_utils.set_affine_transform(msim, shifted(5.0), transform_key='registered',
+                                       base_transform_key=reg.source_transform_key)
+
+    restore_msims_transform(msims, 'registered', snapshot)
+
+    assert translation(msims[0]) == pytest.approx(1.0)
+    assert 'registered' in get_msim_transform_keys(msims[0])
+    assert 'registered' not in get_msim_transform_keys(msims[1])

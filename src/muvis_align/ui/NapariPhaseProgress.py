@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 
-from muvis_align.util import print_memory_usage
+from muvis_align.util import print_memory_usage, raise_if_cancelled
 
 
 def _paint_now():
@@ -242,7 +242,13 @@ class NapariPhaseProgress:
     # slice, so it keeps moving without ever claiming to have arrived
     undeclared_step_share = 0.25
 
+    def _check_cancelled(self):
+        # only a worker twin stops: the Qt side's own phases (building the view) are never left half done
+        if self.emit is not None:
+            raise_if_cancelled()
+
     def _begin_phase(self, total, desc=None, weight=1):
+        self._check_cancelled()
         remaining = self.ticks - self._position
         weight = max(float(weight), 1.0)
         if self.phases_left > weight:
@@ -254,6 +260,7 @@ class NapariPhaseProgress:
         return _PhaseSlice(start=self._position, span=span, total=total)
 
     def _advance_phase(self, phase_slice, n=1):
+        self._check_cancelled()
         phase_slice.done += n
         if phase_slice.total:
             fraction = min(phase_slice.done / phase_slice.total, 1.0)

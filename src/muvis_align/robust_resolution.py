@@ -7,6 +7,8 @@ import xarray as xr
 from multiview_stitcher.param_resolution import register_groupwise_resolution_method
 from multiview_stitcher.param_resolution.linear_two_pass import groupwise_resolution_linear_two_pass
 
+from muvis_align.util import raise_if_cancelled
+
 ROBUST_LINEAR = 'robust_linear'
 default_robust_rounds = 10
 
@@ -53,6 +55,7 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
     weights = dict.fromkeys(edges, 1.0)
     params, info = None, None
     for round_index in range(rounds):
+        raise_if_cancelled()
         for edge in edges:
             graph.edges[edge]['quality'] = qualities[edge] * weights[edge]
         # pruning off: every edge stays in, down-weighted instead

@@ -1472,9 +1472,9 @@ class MVSRegistration:
                     if pool is None:
                         return compute_pairwise_registrations(msims_reg, graph, pairwise_reg_func=timed_reg_func,
                                                               **pair_kwargs)
-                    registered, wall_time, cpu_time = pool.submit(
+                    registered, wall_time, cpu_time = result_unless_cancelled(pool.submit(
                         register_pair_in_worker, {node: msims_reg[node] for node in graph.nodes}, graph,
-                        pairwise_reg_func, pair_kwargs).result()
+                        pairwise_reg_func, pair_kwargs))
                     pair_times.append(wall_time)
                     pair_cpu_times.append(cpu_time)
                     return registered

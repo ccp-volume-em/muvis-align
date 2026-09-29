@@ -18,6 +18,7 @@ import pickle
 import os.path
 import re
 import sys
+import threading
 import time
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
@@ -608,6 +609,32 @@ def timed_calls(func, times, cpu_times):
     return timed
 
 
+class OperationCancelled(Exception):
+    """The user cancelled the running operation."""
+
+
+_cancel_requested = threading.Event()
+
+
+def request_cancel():
+    _cancel_requested.set()
+
+
+def raise_if_cancelled():
+    if _cancel_requested.is_set():
+        raise OperationCancelled('Cancelled')
+
+
+@contextmanager
+def cancellable():
+    """One operation's span: a cancel requested within it stops it; one left from before does not."""
+    _cancel_requested.clear()
+    try:
+        yield
+    finally:
+        _cancel_requested.clear()
+
+
 def single_threaded_worker():
     """Worker process initializer: one thread per native pool, as the processes already use every core
     between them - left at their defaults, each worker's pools spin on cores the others need."""
@@ -625,11 +652,27 @@ def picklable(value):
         return False
 
 
+class _WorkerProcessPool(ProcessPoolExecutor):
+    def __exit__(self, exc_type, exc_value, traceback):
+        # cancelled: not waited for - its workers finish their current item and exit on their own
+        if exc_type is not None and issubclass(exc_type, OperationCancelled):
+            self.shutdown(wait=False, cancel_futures=True)
+            return False
+        return super().__exit__(exc_type, exc_value, traceback)
+
+
 def worker_process_pool(workers, max_tasks_per_child=None):
     """Worker processes for GIL-bound per-item work. Spawned, never forked: forking a process running
     Qt and dask threads can copy a lock another thread holds."""
-    return ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context('spawn'),
-                               initializer=single_threaded_worker, max_tasks_per_child=max_tasks_per_child)
+    return _WorkerProcessPool(workers, mp_context=multiprocessing.get_context('spawn'),
+                              initializer=single_threaded_worker, max_tasks_per_child=max_tasks_per_child)
+
+
+def result_unless_cancelled(future, poll_seconds=0.5):
+    """future.result(), or OperationCancelled as soon as a cancel is requested while waiting for it."""
+    while not wait([future], timeout=poll_seconds).done:
+        raise_if_cancelled()
+    return future.result()
 
 
 def rolling_map(func, items, workers):
@@ -647,9 +690,11 @@ def rolling_map(func, items, workers):
         submit(2 * workers)
         try:
             while pending:
-                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                # woken twice a second even with nothing done, so a cancel need not wait for an item
+                done, _ = wait(pending, timeout=0.5, return_when=FIRST_COMPLETED)
                 for future in done:
                     yield pending.pop(future), future.result()
+                raise_if_cancelled()
                 submit(len(done))
         finally:
             # on an error or an early stop, leaving the pool would otherwise still run every queued item

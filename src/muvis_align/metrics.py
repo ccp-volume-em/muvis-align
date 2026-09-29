@@ -14,7 +14,8 @@ from xarray import DataArray
 from muvis_align.constants import (default_pair_worker_tasks, default_pair_workers, default_quality_key,
                                    default_transform_key)
 from muvis_align.image.util import image_reshape, get_msim_transform_keys
-from muvis_align.util import apply_transform, picklable, release_memory, rolling_map, worker_process_pool
+from muvis_align.util import (apply_transform, picklable, release_memory, result_unless_cancelled, rolling_map,
+                              worker_process_pool)
 
 
 def create_metric_methods(metric_methods, msim):
@@ -89,7 +90,7 @@ def map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory=Non
         arguments = pair_arguments(edge)
         if pool is None:
             return pair_image_metrics(*arguments)
-        return pool.submit(pair_image_metrics, *arguments, scheduler='synchronous').result()
+        return result_unless_cancelled(pool.submit(pair_image_metrics, *arguments, scheduler='synchronous'))
 
     results = []
     progress = (progress_factory(total=len(edges), desc=desc) if progress_factory is not None else nullcontext(None))

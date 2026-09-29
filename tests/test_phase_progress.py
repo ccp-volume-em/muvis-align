@@ -159,3 +159,22 @@ def test_a_finished_factory_starts_over_but_a_twin_keeps_its_state():
         # left readable on purpose: continue_from() reads it after the twin has exited
         assert twin._position > 0
         assert twin.phases_left < twin.phases
+
+
+def test_a_cancel_stops_work_reporting_off_thread_but_never_the_bar_itself():
+    """Worker twins raise at their next step once cancelled; the Qt side's own phases (building the view)
+    are never left half done."""
+    from muvis_align.util import OperationCancelled, cancellable, request_cancel
+
+    owner = make_factory(phases=2)
+    with cancellable(), owner:
+        twin = owner.worker_twin(owner.set_position)
+        twin.heartbeat_seconds = 0
+        with pytest.raises(OperationCancelled):
+            with twin:
+                with twin(total=10) as phase:
+                    phase.update(1)
+                    request_cancel()
+                    phase.update(1)
+        with owner(total=2) as phase:
+            phase.update(2)

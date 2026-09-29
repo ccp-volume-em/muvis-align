@@ -177,3 +177,17 @@ def test_upstream_still_logs_its_iterations():
     assert reached > 0, ('the optimiser reported no iteration this recognised:'
                          f' {ITERATION_MESSAGE!r} is no longer what it logs')
     assert reached < 100, 'the optimisation filled the whole bar on its own'
+
+
+def test_a_cancel_stops_global_optimization_at_its_next_logged_iteration():
+    """global_optimization is one blocking call; its own log call is where a cancel can reach it."""
+    import pytest
+    from multiview_stitcher.param_resolution import groupwise_resolution
+    from muvis_align.GlobalOptProgress import GlobalOptProgress
+    from muvis_align.util import OperationCancelled, cancellable, request_cancel
+    from tests.test_robust_resolution import grid_graph
+
+    with cancellable(), GlobalOptProgress(None, desc='Global registration'):
+        request_cancel()
+        with pytest.raises(OperationCancelled):
+            groupwise_resolution(grid_graph(outlier=(5, 6)), method='global_optimization', transform='translation')

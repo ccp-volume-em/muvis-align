@@ -16,6 +16,8 @@ residual - over a run this long, a falling residual is what separates slow from 
 import logging
 import time
 
+from muvis_align.util import raise_if_cancelled
+
 
 # upstream's own logger and messages, so they can change: everything here degrades to a single
 # phase that moves when the call returns, rather than failing, if they ever do
@@ -168,6 +170,8 @@ class _RecordListener(logging.Handler):
         self.progress = progress
 
     def emit(self, record):
+        # raised from inside the optimiser's own log call: the one way to stop that blocking call
+        raise_if_cancelled()
         try:
             if record.msg == ITERATION_MESSAGE and record.args:
                 max_residual = record.args[3] if len(record.args) > 3 else None

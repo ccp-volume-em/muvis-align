@@ -1493,8 +1493,8 @@ def mocked_activity_contexts(monkeypatch):
         interface_module, "NapariDaskProgress", lambda **_: nullcontext()
     )
     monkeypatch.setattr(
-        interface_module,
-        "TemporarilyDisabledWidgets",
+        CanonicalInterface,
+        "_operation_widgets",
         lambda _: nullcontext(),
     )
     monkeypatch.setattr(
@@ -1553,8 +1553,10 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
 
 
 def test_run_global_registration_persists_all_results(
-    bare_interface, mocked_activity_contexts
+    bare_interface, mocked_activity_contexts, monkeypatch
 ):
+    # the sources here are stand-ins with no transforms to snapshot
+    monkeypatch.setattr(interface_module, 'snapshot_msims_transform', lambda msims, key: None)
     bare_interface.viewer = MagicMock()
     bare_interface.params = {"registration": {"method": "phase"}}
     bare_interface.get_all_widgets = MagicMock(return_value={})
@@ -2370,9 +2372,9 @@ def test_only_one_operation_bar_at_a_time(bare_interface, monkeypatch):
     """Two bars must never be on screen together: an operation started while another is running
     reports into the running one, and leaves it the activity dock and the widget state."""
     dock = MagicMock()
-    widgets = MagicMock()
+    widgets = MagicMock(return_value=nullcontext())
     monkeypatch.setattr(interface_module, "VisibleActivityDock", dock)
-    monkeypatch.setattr(interface_module, "TemporarilyDisabledWidgets", widgets)
+    monkeypatch.setattr(bare_interface, "_operation_widgets", widgets)
     bare_interface.viewer = MagicMock()
 
     with bare_interface._operation_progress('Initialising sources') as outer:
@@ -2380,7 +2382,7 @@ def test_only_one_operation_bar_at_a_time(bare_interface, monkeypatch):
             assert inner is outer
 
     dock.assert_called_once_with(bare_interface.viewer)
-    widgets.assert_called_once_with(bare_interface.enable_plugin_widget)
+    widgets.assert_called_once_with()
     # ...and the next operation, once this one has finished, opens a bar of its own again
     assert bare_interface._running_operation is None
 
@@ -2637,3 +2639,65 @@ def test_preprocessed_preview_leaves_the_stored_register_msims_alone():
 
     for original, current in zip(before, stored_transforms()):
         np.testing.assert_array_equal(original, current)
+
+
+@pytest.mark.parametrize('running, reply, expect_process, expect_cancel', [
+    (False, None, True, False),
+    (True, QMessageBox.Yes, False, True),
+    (True, QMessageBox.No, False, False),
+])
+def test_process_button_runs_or_after_confirmation_cancels(bare_interface, monkeypatch, running, reply,
+                                                             expect_process, expect_cancel):
+    """While an operation runs the Process button reads Cancel: it asks first, and cancels only on yes."""
+    process = MagicMock()
+    cancelled = MagicMock()
+    monkeypatch.setattr(interface_module, 'request_cancel', cancelled)
+    monkeypatch.setattr(interface_module.QMessageBox, 'question', MagicMock(return_value=reply))
+    bare_interface._running_operation = SimpleNamespace(desc='Pair registration') if running else None
+
+    bare_interface.process_or_cancel(process)
+
+    assert process.called == expect_process
+    assert cancelled.called == expect_cancel
+
+
+def test_a_cancelled_global_registration_puts_back_the_sources_transforms(bare_interface, monkeypatch,
+                                                                           mocked_activity_contexts):
+    """It writes the registered transform onto the sources before its metrics: cancelled, they get back
+    what they had, and nothing is saved."""
+    from muvis_align.util import OperationCancelled
+
+    bare_interface.viewer = MagicMock()
+    bare_interface.params = {"registration": {"method": "phase"}}
+    bare_interface.reg.reg_transform_key = 'registered'
+    bare_interface.reg.pair_msims = ['pair-msim']
+    bare_interface.reg.msims = ['msim']
+    monkeypatch.setattr(interface_module, 'snapshot_msims_transform', lambda msims, key: f'snapshot of {msims}')
+    restored = []
+    monkeypatch.setattr(interface_module, 'restore_msims_transform',
+                        lambda msims, key, snapshot: restored.append((msims, key, snapshot)))
+    bare_interface.reg.register_global.side_effect = OperationCancelled('Cancelled')
+
+    assert bare_interface.run_global_registration() is None
+    assert restored == [(['pair-msim'], 'registered', "snapshot of ['pair-msim']"),
+                        (['msim'], 'registered', "snapshot of ['msim']")]
+    bare_interface.reg.save_mappings.assert_not_called()
+
+
+def test_a_cancelled_fusion_removes_its_partial_output(bare_interface, monkeypatch, mocked_activity_contexts,
+                                                        tmp_path):
+    from muvis_align.util import OperationCancelled
+
+    bare_interface.viewer = MagicMock()
+    bare_interface.params = {'registration': {'operation': 'register'},
+                             'fusion': {'tile_size': '', 'method': 'average', 'spacing': 'mean', 'ome_version': '0.5'},
+                             'input_output': {'registration_dimension': 'space'}}
+    bare_interface.reg.output = str(tmp_path) + '/'
+    partial = tmp_path / ('registered' + interface_module.zarr_extension)
+    partial.mkdir()
+    (partial / 'chunk').write_text('partial')
+    bare_interface.get_best_transform_key = MagicMock(return_value='registered')
+    bare_interface.reg.fuse.side_effect = OperationCancelled('Cancelled')
+
+    assert bare_interface.run_fusion() is None
+    assert not partial.exists()

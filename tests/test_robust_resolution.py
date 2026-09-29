@@ -63,3 +63,13 @@ def test_an_outlier_pair_pulls_the_fit_far_less_than_in_plain_least_squares():
 
     assert largest_shift(plain) > 3
     assert largest_shift(robust) < 0.1 * largest_shift(plain)
+
+
+def test_a_cancel_stops_the_robust_rounds():
+    import pytest
+    from muvis_align.util import OperationCancelled, cancellable, request_cancel
+
+    with cancellable():
+        request_cancel()
+        with pytest.raises(OperationCancelled):
+            groupwise_resolution(grid_graph(), method=ROBUST_LINEAR, transform='translation')

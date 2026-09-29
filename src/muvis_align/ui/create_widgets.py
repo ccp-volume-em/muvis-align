@@ -1,6 +1,7 @@
 # https://bilayers.org/understanding-config
 # https://forum.image.sc/t/napari-widgets-from-bilayers/119800
 
+import functools
 import logging
 from magicgui.widgets import Container, create_widget
 import os.path
@@ -148,7 +149,11 @@ def create_section_container(section_id, section_template, interface,
         widget = create_widget(name=full_name, label='Process', widget_type='PushButton')
         interface_function = interface.get_function(name)
         if interface_function is not None:
-            widget.clicked.connect(interface_function)
+            # while an operation runs the button reads Cancel (MainWidget.enable_plugin_widget)
+            if hasattr(interface, 'process_or_cancel'):
+                widget.clicked.connect(functools.partial(interface.process_or_cancel, interface_function))
+            else:
+                widget.clicked.connect(interface_function)
         interface.param_widgets[full_name] = ParamWidget(full_name, widget, interface)
         widgets.append(widget)
 

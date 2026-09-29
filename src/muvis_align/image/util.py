@@ -738,6 +738,23 @@ def get_msim_transform_keys(msim):
     return set(msim[scale_key].ds.data_vars.keys()) - {'image'}
 
 
+def snapshot_msims_transform(msims, transform_key):
+    """Each msim's `transform_key` per scale (None where unset), for restore_msims_transform()."""
+    return [{scale_key: (msim[scale_key].ds[transform_key] if transform_key in msim[scale_key].ds.data_vars
+                         else None)
+             for scale_key in msi_utils.get_sorted_scale_keys(msim)}
+            for msim in msims]
+
+
+def restore_msims_transform(msims, transform_key, snapshot):
+    for msim, saved in zip(msims, snapshot):
+        for scale_key, transform in saved.items():
+            dataset = msim[scale_key].to_dataset().drop_vars([transform_key], errors='ignore')
+            if transform is not None:
+                dataset[transform_key] = transform
+            msim[scale_key].dataset = dataset
+
+
 def extract_sims_from_fused(result):
     """Extract a concrete sim (or list of sims) from a fuse() result, which is always msims: a
     single fused multiscale msim (DataTree), or, in 'compose' mode (no actual fusion), a list of

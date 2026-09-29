@@ -10,12 +10,13 @@ from napari.utils.notifications import show_warning
 import networkx as nx
 import numpy as np
 import os.path
+import shutil
 from xarray import DataTree
 from qtpy.QtCore import QEventLoop, QObject, QTimer, Qt, Signal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QMessageBox
 
-from muvis_align.constants import zarr_extension, default_transform_key, default_quality_key, \
+from muvis_align.constants import zarr_extension, tiff_extension, default_transform_key, default_quality_key, \
     default_interactive_preview_scale, default_preview_workers, default_chunk_size
 from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
 from muvis_align.MVSRegistration import MVSRegistration, RegState
@@ -24,6 +25,7 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
     draw_keypoints_matches_napari, get_transforms, copy_transforms_to_msims, \
     make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
+    snapshot_msims_transform, restore_msims_transform, \
     select_msim_subpyramid_at_scale, reduce_msims_to_fused_size, composite_msims_overview
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
@@ -34,9 +36,9 @@ from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
-from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors
+from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import print_dict_simple, set_dict_value, is_valid_value, \
+from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
     resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle
 
@@ -128,6 +130,7 @@ class Interface:
             return None
 
     def tab_changed(self, tab_label):
+        self.current_tab = tab_label
         if tab_label != 'registration' and self.view_mode == ViewMode.FEATURES:
             self._clear_napari_view(self.viewer)
             self.view_mode = None
@@ -389,15 +392,63 @@ class Interface:
             factory.ensure_phases(phases)
             yield factory
             return
-        with NapariPhaseProgress(progress_class=progress, desc=desc, phases=phases,
+        with cancellable(), \
+             NapariPhaseProgress(progress_class=progress, desc=desc, phases=phases,
                                  min_duration=0.1) as factory, \
-             TemporarilyDisabledWidgets(self.enable_plugin_widget), \
+             self._operation_widgets(), \
              VisibleActivityDock(self.viewer):
             self._running_operation = factory
             try:
                 yield factory
             finally:
                 self._running_operation = None
+
+    @contextmanager
+    def _operation_widgets(self):
+        """While an operation runs: every widget disabled but the Process buttons, which read Cancel, and
+        every tab but the current one - as modify_pair_registration does, states restored after."""
+        widgets = self.get_all_widgets() if getattr(self, 'param_widgets', None) else {}
+        process_buttons = [widgets.pop(name) for name in list(widgets) if name.endswith('_process')]
+        widget_state = TemporarilyDisabledWidgets()
+        widget_state.disable(widgets)
+        tab_states = {}
+        current_tab = getattr(self, 'current_tab', None)
+        enable_tab, is_tab_enabled = getattr(self, 'enable_tab', None), getattr(self, 'is_tab_enabled', None)
+        if enable_tab and is_tab_enabled and current_tab is not None:
+            tab_states = {section_id: is_tab_enabled(section_id)
+                          for section_id in ['project'] + list(self.template.keys()) if section_id != current_tab}
+            for section_id in tab_states:
+                enable_tab(section_id, False)
+        for button in process_buttons:
+            button.text = 'Cancel'
+        flush_paint_events()
+        try:
+            yield
+        finally:
+            for button in process_buttons:
+                button.text = 'Process'
+            widget_state.restore()
+            for section_id, was_enabled in tab_states.items():
+                enable_tab(section_id, was_enabled)
+            flush_paint_events()
+
+    def process_or_cancel(self, process, *_):
+        """A section's Process button: runs `process`, or while an operation runs (the button then reads
+        Cancel), offers to cancel that one."""
+        running = getattr(self, '_running_operation', None)
+        if running is None:
+            process()
+        else:
+            self.cancel_operation(getattr(running, 'desc', None))
+
+    def cancel_operation(self, desc=None):
+        # the running operation stops at its next progress step, on its worker thread
+        reply = QMessageBox.question(None, 'muvis-align',
+                                     f'Cancel {desc or "the running operation"}? Its partial result is discarded.',
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            logging.info('Cancel requested')
+            request_cancel()
 
     def init_progress(self):
         # the two halves of opening a project, each its own bar, one after the other
@@ -1443,7 +1494,16 @@ class Interface:
                                                     params=self.params['registration'],
                                                     progress_factory=worker_factory)
 
-            results = self._run_off_thread(register_global, factory)
+            # it writes the registered transform onto the sources before its metrics run: a cancel
+            # there puts back what they had
+            key = self.reg.reg_transform_key
+            snapshots = [(msims, snapshot_msims_transform(msims, key)) for msims in (self.reg.pair_msims, self.reg.msims)]
+            try:
+                results = self._run_off_thread(register_global, factory)
+            except OperationCancelled:
+                for msims, snapshot in snapshots:
+                    restore_msims_transform(msims, key, snapshot)
+                raise
 
         self.reg.save_mappings(results['mappings'])
         self.reg.save_mappings_csv(results['mappings'])
@@ -1715,7 +1775,22 @@ class Interface:
                                       ome_version=self.params['fusion']['ome_version'])
                     return fused_image
 
-            return self._run_off_thread(fuse, factory)
+            try:
+                return self._run_off_thread(fuse, factory)
+            except OperationCancelled:
+                self._remove_output(output_filename)
+                raise
+
+    def _remove_output(self, output_filename):
+        # a cancelled export's partly written file or store; it was being overwritten anyway
+        for extension in (zarr_extension, tiff_extension):
+            path = self.reg.output + output_filename + extension
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            elif os.path.exists(path):
+                os.remove(path)
+            if os.path.exists(path):
+                logging.warning(f'Could not remove the cancelled output {path}')
 
 
     def fusion_process(self):

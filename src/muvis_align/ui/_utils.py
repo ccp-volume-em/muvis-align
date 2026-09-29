@@ -3,7 +3,9 @@
 import functools
 import logging
 
-from napari.utils.notifications import show_error
+from napari.utils.notifications import show_error, show_info
+
+from muvis_align.util import OperationCancelled
 
 
 def catch_run_errors(func):
@@ -16,6 +18,10 @@ def catch_run_errors(func):
     def wrapper(self, *args, **kwargs):
         try:
             return func(self, *args, **kwargs)
+        except OperationCancelled:
+            logging.info(f'{func.__name__} cancelled')
+            show_info('Cancelled')
+            return None
         except Exception as e:
             logging.exception(f'{func.__name__} failed')
             show_error(f'{func.__name__} failed: {e}')
