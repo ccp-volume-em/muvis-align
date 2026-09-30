@@ -627,6 +627,9 @@ Progress:
       msims in pre-processing (~22 min for 34k sources; now 2 levels a source, ~30% less)
       and the preview size cap (3.4 min on the HPC). Promoting to 3D: done - removed from the
       refresh (a858e3f), 2x faster elsewhere (25ff85a).
+- [ ] Lazy overview on single-level sources (raw SBEMimage tiles; the meatballs files are corrected pyramids, so
+      its timings are optimistic): each tile is read whole at full res and only then strided - read just the
+      strided rows instead (as the direct uncompressed-level reads do), and measure on a single-level set.
 - [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
       in with the pyramid files would also be single-level (slower pre-processing and overview).
 - [ ] Run a real convert with a pre-processing scale set: check output level-0 size and levels
