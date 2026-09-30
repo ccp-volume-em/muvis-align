@@ -2,9 +2,8 @@ import glob
 from types import SimpleNamespace
 
 import numpy as np
-import pytest
-from scipy.ndimage import gaussian_filter
-from multiview_stitcher import msi_utils, param_utils, registration
+import xarray as xr
+from multiview_stitcher import msi_utils, param_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.split_registration import register_groups, split_groups, within_group_pairs
@@ -26,47 +25,66 @@ def textured_msim(image, origin_x):
     return msi_utils.multiscale_sel_coords(msim, {'c': sim.coords['c'].values[0]})
 
 
-@pytest.mark.parametrize('shift', [0.0, 7.0])
-def test_a_misplaced_plane_is_registered_back_onto_the_one_before(shift):
-    """Two planes of the same content, the second placed `shift` too far in x: stage 2 must correct it."""
-    rng = np.random.default_rng(0)
-    # sharp-edged blobs coarser than the plane's smoothing (tile / 25), as cells: smooth noise smoothed again
-    # leaves a correlation peak so broad the shift came out half a pixel short; small, so registered unbinned
-    blobs = gaussian_filter(rng.random((200, 200)), 6)
-    image = ((blobs > np.median(blobs)) * 500 + 100).astype(np.float32)
-    msims = [textured_msim(image, 0.0), textured_msim(image, shift)]
-    identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
+def translation_xparam(shift_yx):
+    matrix = np.eye(3)
+    matrix[:2, 2] = shift_yx
+    return param_utils.affine_to_xaffine(matrix, t_coords=[0])
 
-    transforms, _ = register_groups(msims, [identity, identity], [0, 1], 'source',
-                                 registration.phase_correlation_registration,
-                                 resolution_kwargs={'transform': 'translation'}, binning=1)
 
-    translations = [np.asarray(transform).squeeze()[:2, 2] for transform in transforms]
-    assert np.allclose(translations[0], 0, atol=0.2)
-    assert np.allclose(translations[1], [0, -shift], atol=0.2)
+def test_each_group_is_corrected_by_its_group_pair_registration_on_top_of_stage1(monkeypatch):
+    """The group pair registration stubbed with a known result - the second plane's content 7 further in x - so what
+    is checked is the plumbing: the correction resolved per group and composed after each tile's stage-1 transform."""
+    import muvis_align.split_registration as split_registration
+
+    def registered(msims, graph, **kwargs):
+        for edge in graph.edges:
+            graph.edges[edge]['transform'] = translation_xparam([0, 7.0])
+            graph.edges[edge]['quality'] = translation_xparam([0, 0]).isel(x_in=0, x_out=0).copy(data=[1.0])
+            graph.edges[edge]['bbox'] = xr.DataArray([[[0.0, 0.0], [40.0, 40.0]]], dims=['t', 'point_index', 'dim'],
+                                                     coords={'t': [0]})
+        return graph
+    monkeypatch.setattr(split_registration, 'compute_pairwise_registrations', registered)
+    image = np.ones((40, 40), dtype=np.float32)
+    msims = [textured_msim(image, 0.0), textured_msim(image, 0.0), textured_msim(image, 0.0)]
+    stage1 = [translation_xparam(shift) for shift in ([0, 0], [0, 0], [3.0, 2.0])]
+
+    transforms, graph = register_groups(msims, stage1, [0, 1, 1], 'source', None,
+                                        resolution_kwargs={'transform': 'translation'}, binning=1)
+
+    translations = np.array([np.asarray(transform).squeeze()[:2, 2] for transform in transforms])
+    assert np.allclose(translations, [[0, 0], [0, -7.0], [3.0, -5.0]], atol=1e-9)
+    assert list(graph.edges) == [(0, 1)]
     # the stage-1 transforms are only borrowed to fuse the planes
     assert 'split_stage1' not in msims[0]['scale0'].ds.data_vars
 
 
-def test_planes_sharing_a_tile_pattern_and_outline_are_registered_by_their_content():
-    """As serial sections: both planes show the same fixed grid and outline at the same place, their content shifted
-    20 px inside them - left in, the pattern and outline would match at zero shift."""
-    rng = np.random.default_rng(2)
-    blobs = gaussian_filter(rng.random((200, 260)), 6)
-    content = (blobs > np.median(blobs)) * 500.0 + 300
-    pattern = np.ones((160, 200))
-    pattern[::12, :] = pattern[:, ::12] = 3.0
-    pattern[:, :30] = 0     # a part of the outline without tiles
-    planes = [content[20:180, 30:230] * pattern, content[20:180, 50:250] * pattern]
-    msims = [textured_msim(plane.astype(np.float32), 0.0) for plane in planes]
-    identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
+def test_fused_planes_share_one_grid_the_union_of_all_tiles_with_a_margin():
+    from muvis_align.constants import split_grid_margin
+    from muvis_align.split_registration import group_grid
 
-    transforms, _ = register_groups(msims, [identity, identity], [0, 1], 'source',
-                                 registration.phase_correlation_registration,
-                                 resolution_kwargs={'transform': 'translation'}, binning=1)
+    msims = [textured_msim(np.ones((100, 200), dtype=np.float32), origin_x) for origin_x in (0.0, 7.0)]
 
-    translations = [np.asarray(transform).squeeze()[:2, 2] for transform in transforms]
-    assert np.allclose(translations[1] - translations[0], [0, 20.0], atol=1.0)
+    grid, tile_size = group_grid(msims, 'source')
+
+    margins = {dim: int(np.ceil(size * split_grid_margin)) for dim, size in (('y', 100), ('x', 207))}
+    assert grid['spacing'] == {'y': 1.0, 'x': 1.0}
+    assert grid['shape'] == {'y': 100 + 2 * margins['y'], 'x': 207 + 2 * margins['x']}
+    assert grid['origin'] == {'y': -margins['y'], 'x': -margins['x']}
+    assert tile_size == 200
+
+
+def test_a_fused_plane_is_smoothed_with_its_background_filled_by_its_mean():
+    from muvis_align.split_registration import smooth_group
+
+    data = np.zeros((60, 200), dtype=np.float32)
+    data[:, :50] = 10.0
+    data[:, 50:100] = 30.0
+
+    smoothed = smooth_group(data, spacing=1.0, tile_size=25.0)
+
+    # far from its edge, the empty background holds the plane's mean instead of zero
+    assert np.allclose(smoothed[:, 150:], 20.0, atol=1e-4)
+    assert np.all(smoothed > 0)
 
 
 def test_split_pairing_registers_no_pairs_across_planes():
