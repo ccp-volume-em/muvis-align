@@ -566,6 +566,11 @@ Progress:
   errors <= 0.1 (was 0.1-0.5). Test image now sharp blobs, tolerance 0.2. Slides with sift: consecutive-section NCC
   0.67/0.77-0.80/0.735/0.73-0.76 over two runs, within SIFT's (RANSAC) run-to-run spread without the margin
   (0.67-0.72/0.78-0.81/0.76-0.78/0.76-0.77). Full suite 789 passed.
+- Tests no longer assert a registration's accuracy (user: non-deterministic expected performance is dangerous in
+  tests). Split: a stubbed group pair registration (known shift) checks the corrections and their composition on
+  stage 1 exactly; the plane grid (union + margin) and background fill are checked by value; the phase
+  correlation accuracy tests are gone. register_global's robust_linear test now checks the method is passed on
+  and every tile mapped, not that it lands within 0.05um of global_optimization.
 
 ## TODO
 
