@@ -609,6 +609,13 @@ Progress:
     SBEMimage's s00538, which varies and every file has), else by folder: SBEMimage keeps a folder per tile and
     all overviews in one, and in S000_000_001 the last number is a tile index. Meatballs: 50 data_399 tiles +
     the s00399 overview.
+  - Fixed (user report, meatballs): the overview drew smaller than its shapes outline - the 0.249um overview's
+    coarsest level (3.986um) pasted into a 0.32um plane repeated round(12.46)=12x, 983 of 1020um wide - and
+    ignored preview_scale (always the coarsest level, plane capped at 4096px). Now each plane pixel takes the
+    source pixel under its centre (any ratio, pixel edges as the outline's), the plane is at preview_scale, each
+    source read at its coarsest level no coarser than that, a plane capped by bytes (1GB / 9 planes kept).
+    Meatballs at 100nm: 10204x7653 plane, overview at level 0, tiles at level 3, built in 0.46s; its extent
+    matches the outline to a plane pixel.
   - Registration/fusion may stay slow on the big dataset (hours at 34k), not on a small one. Run only the
     targeted tests after each change (user).
 

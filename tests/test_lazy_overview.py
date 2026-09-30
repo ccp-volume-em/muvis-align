@@ -1,8 +1,10 @@
+from types import SimpleNamespace
+
 import numpy as np
 import tifffile
 from multiview_stitcher import msi_utils
 
-from muvis_align.image.lazy_overview import lazy_section_overview
+from muvis_align.image.lazy_overview import lazy_section_overview, _coarsest_level_within
 from muvis_align.MVSRegistration import MVSRegistration
 
 # z_y_x in the file name: z the section, y/x the tile in 64-pixel steps (1um pixels)
@@ -27,9 +29,10 @@ def registration(tmp_path, rotation=None, channels=1):
     return reg
 
 
-def overview(reg):
+def overview(reg, preview_scale=1, **kwargs):
     return lazy_section_overview(reg.sources, reg.positions, reg._msim_transforms, reg._msim_output_order,
-                                 reg.source_transform_key, z_scale=reg._msim_z_scale)
+                                 reg.source_transform_key, z_scale=reg._msim_z_scale, preview_scale=preview_scale,
+                                 **kwargs)
 
 
 def test_each_tile_is_pasted_where_it_sits_in_its_own_section(tmp_path):
@@ -79,3 +82,30 @@ def test_rotated_or_multichannel_sources_get_no_lazy_overview(tmp_path):
 
     assert overview(registration(tmp_path / 'rotated', rotation=30)) is None
     assert overview(registration(tmp_path / 'channels', channels=2)) is None
+
+
+def test_a_tile_fills_its_own_extent_at_a_pixel_size_not_a_whole_ratio_of_its_own(tmp_path):
+    sim = msi_utils.get_sim_from_msim(overview(registration(tmp_path), preview_scale='0.4um'))
+    row = np.asarray(sim.data).squeeze()[0, 0]
+    centres = np.asarray(sim.coords['x'])
+
+    # 1um pixels centred at 0..63 (the next tile from 64): its pixels' edges at -0.5 and 63.5
+    assert float(centres[1] - centres[0]) == 0.4
+    assert np.all(row[(centres >= -0.5) & (centres < 63.5)] == 10)
+    assert np.all(row[(centres >= 63.5) & (centres < 127.5)] == 20)
+
+
+def test_the_plane_takes_the_preview_scale_as_a_factor_coarsened_to_fit_its_byte_budget(tmp_path):
+    reg = registration(tmp_path)
+
+    assert float(np.diff(msi_utils.get_sim_from_msim(overview(reg, preview_scale=4)).coords['x'][:2])[0]) == 4
+    capped = msi_utils.get_sim_from_msim(overview(reg, preview_scale=1, max_plane_bytes=40 * 40))
+    assert float(np.diff(capped.coords['x'][:2])[0]) == 4
+
+
+def test_each_source_is_read_at_its_coarsest_level_no_coarser_than_the_plane():
+    source = SimpleNamespace(pixel_sizes=[{'y': 1, 'x': 1}, {'y': 2, 'x': 2}, {'y': 4, 'x': 4}])
+
+    assert _coarsest_level_within(source, {'y': 3, 'x': 3}) == 1
+    assert _coarsest_level_within(source, {'y': 4, 'x': 4}) == 2
+    assert _coarsest_level_within(source, {'y': 0.5, 'x': 0.5}) == 0

@@ -917,6 +917,7 @@ class Interface:
             return None
         return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, reg.source_transform_key,
                                      z_scale=getattr(reg, '_msim_z_scale', None),
+                                     preview_scale=self.params['input_output'].get('preview_scale'),
                                      label=f'Overview ({len(reg.sources)} images)')
 
     def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,

@@ -1,5 +1,5 @@
 """An overview of the raw sources, one plane per section, each built only when it is viewed: the plane's own tiles
-read at their coarsest level and pasted at their position. Opening a large project then shows image data as soon as
+read at the coarsest level no coarser than the plane and pasted at their position. Opening a large project then shows image data as soon as
 the shapes, instead of pasting every source (minutes at 34k) before showing any."""
 import logging
 import threading
@@ -12,19 +12,21 @@ import numpy as np
 from multiview_stitcher import mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 
+from muvis_align.constants import default_interactive_preview_scale
 from muvis_align.image.util import build_source_stack_props, wrap_sims_as_msims
+from muvis_align.util import parse_scale, pixel_size_to_um
 
-# the longest side of a section's plane, in pixels
-default_plane_size = 4096
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
 default_plane_readers = 32
 # planes kept once built, the least recently viewed dropped first: all 1081 of a 34k-source stack would be ~17GB
 default_planes_max_bytes = 1_000_000_000
 # sections on either side of a viewed one built in the background, so scrolling finds them ready
 default_prefetch_radius = 4
+# a plane coarsened until it fits, so a viewed section and its prefetched neighbours stay within the budget
+default_plane_max_bytes = default_planes_max_bytes // (2 * default_prefetch_radius + 1)
 
 
-def _coarsest_level_data(source, level):
+def _level_data(source, level):
     """The source's level as its own raw array (no msim built) when it has one, else its msim's."""
     data = source.data
     if data and level < len(data):
@@ -92,70 +94,93 @@ class SectionPlanes:
 
         def read(entry):
             with dask.config.set(scheduler='synchronous'):
-                return np.squeeze(np.asarray(_coarsest_level_data(entry['source'], entry['level'])))
+                return np.squeeze(np.asarray(_level_data(entry['source'], entry['level'])))
 
         with ThreadPoolExecutor(max_workers=max(1, min(self.workers, len(entries)))) as executor:
             datas = list(executor.map(read, entries))
         # in source order, as the pasted overview did: a later source covers an earlier one
         for entry, data in zip(entries, datas):
-            _paste(plane, data, entry['start'], entry['stride'], entry['repeat'])
+            _paste(plane, data, entry['edge'], entry['spacing'], self.spacing)
         return plane
 
 
-def _paste(plane, data, start, stride, repeat):
-    data = data[::stride[0], ::stride[1]]
-    if repeat != (1, 1):
-        data = np.repeat(np.repeat(data, repeat[0], axis=0), repeat[1], axis=1)
-    target, source = [], []
-    for axis in range(2):
-        stop = min(start[axis] + data.shape[axis], plane.shape[axis])
-        source.append(slice(max(-start[axis], 0), max(stop - start[axis], 0)))
-        target.append(slice(max(start[axis], 0), max(stop, 0)))
-    if all(piece.stop > piece.start for piece in target):
-        plane[tuple(target)] = data[tuple(source)]
+def _source_indices(count, plane_spacing, edge, spacing, size):
+    """The first plane pixel a source covers and, from there on, the source pixel under each plane pixel's centre."""
+    first = max(int(np.ceil(edge / plane_spacing - 1e-9)), 0)
+    centres = np.arange(first, count) * plane_spacing
+    indices = np.floor((centres - edge) / spacing + 1e-9).astype(int)
+    return first, indices[indices < size]
+
+
+def _paste(plane, data, edge, spacing, plane_spacing):
+    """`data` nearest-neighbour sampled onto the plane: its first pixel's outer edge at `edge` (plane units from the
+    plane's first pixel centre), any ratio of its spacing to the plane's."""
+    first_row, rows = _source_indices(plane.shape[0], plane_spacing['y'], edge[0], spacing[0], data.shape[0])
+    first_col, cols = _source_indices(plane.shape[1], plane_spacing['x'], edge[1], spacing[1], data.shape[1])
+    if len(rows) and len(cols):
+        plane[first_row:first_row + len(rows), first_col:first_col + len(cols)] = data[np.ix_(rows, cols)]
+
+
+def _plane_spacing(preview_scale, level0_spacing):
+    """The plane's pixel size: `preview_scale` as a pixel size with its unit, else as a factor of the sources' own."""
+    scale = parse_scale(preview_scale, default=default_interactive_preview_scale)
+    if isinstance(scale, str):
+        return {dim: pixel_size_to_um(scale) for dim in 'yx'}
+    return {dim: level0_spacing[dim] * scale for dim in 'yx'}
+
+
+def _coarsest_level_within(source, spacing):
+    """The source's coarsest level no coarser than `spacing`, else its finest."""
+    best = 0
+    for level, pixel_size in enumerate(source.pixel_sizes):
+        if all(pixel_size.get(dim, 0) <= spacing[dim] * (1 + 1e-6) for dim in 'yx'):
+            best = level
+    return best
 
 
 def lazy_section_overview(sources, translations, transforms, output_order, transform_key, z_scale=None,
-                          max_plane_size=default_plane_size, label='Overview'):
-    """The overview msim (z, y, x) of 2D, single-channel sources at one or more z, each z-plane computed on demand;
-    None for anything it cannot place faithfully (a rotated transform, a 3D or multichannel source)."""
+                          preview_scale=default_interactive_preview_scale, max_plane_bytes=default_plane_max_bytes,
+                          label='Overview'):
+    """The overview msim (z, y, x) of 2D, single-channel sources at one or more z, each z-plane computed on demand at
+    `preview_scale`; None for anything it cannot place faithfully (a rotated transform, a 3D or multichannel source)."""
     if not sources or any(source.get_nchannels() > 1 or source.get_size().get('z', 1) > 1 for source in sources):
         return None
     geometry = []
     for source, translation, transform in zip(sources, translations, transforms):
-        level = len(source.shapes) - 1
         props = build_source_stack_props(source, output_order, translation, transform, transform_key,
-                                         z_scale=z_scale, level=level, promote_z=True)
+                                         z_scale=z_scale, promote_z=True)
         affine = np.asarray(props['transform'].squeeze()) if 'transform' in props else np.eye(4)
         if not np.allclose(affine[:-1, :-1], np.eye(affine.shape[0] - 1), atol=1e-6):
             logging.info(f'{label}: source transforms are not translations only - no lazy overview')
             return None
         vertices = mv_graph.get_vertices_from_stack_props(props)
-        geometry.append((source, level, props, vertices.min(axis=0), vertices.max(axis=0)))
+        geometry.append((source, props, vertices.min(axis=0), vertices.max(axis=0)))
 
     dims = ['z', 'y', 'x']
     lower = np.min([low for *_, low, _ in geometry], axis=0)
     upper = np.max([high for *_, high in geometry], axis=0)
-    spacing = {dim: float(np.median([props['spacing'][dim] for _, _, props, _, _ in geometry])) for dim in 'yx'}
-    shape = {dim: int(np.ceil((upper[axis] - lower[axis]) / spacing[dim])) + 1
-             for axis, dim in enumerate(dims) if dim != 'z'}
-    while max(shape.values()) > max_plane_size:
-        for dim in 'yx':
-            spacing[dim] *= 2
-            shape[dim] = max(int(np.ceil(shape[dim] / 2)), 1)
+    level0_spacing = {dim: float(np.median([props['spacing'][dim] for _, props, _, _ in geometry])) for dim in 'yx'}
+    spacing = _plane_spacing(preview_scale, level0_spacing)
+    itemsize = np.dtype(sources[0].dtype).itemsize
+
+    def plane_shape_at(spacing):
+        return {dim: int(np.ceil((upper[axis] - lower[axis]) / spacing[dim])) + 1
+                for axis, dim in enumerate(dims) if dim != 'z'}
+
+    shape = plane_shape_at(spacing)
+    while shape['y'] * shape['x'] * itemsize > max_plane_bytes:
+        spacing = {dim: value * 2 for dim, value in spacing.items()}
+        shape = plane_shape_at(spacing)
 
     z_values = sorted({round(float(low[0]), 9) for *_, low, _ in geometry})
     entries = {}
-    for source, level, props, low, _ in geometry:
-        start, stride, repeat = [], [], []
-        for axis, dim in ((1, 'y'), (2, 'x')):
-            factor = spacing[dim] / props['spacing'][dim]
-            stride.append(max(int(round(factor)), 1) if factor >= 1 else 1)
-            repeat.append(max(int(round(1 / factor)), 1) if factor < 1 else 1)
-            start.append(int(round((low[axis] - lower[axis]) / spacing[dim])))
+    for source, props, low, _ in geometry:
+        level = _coarsest_level_within(source, spacing)
+        level_spacing = [float(source.pixel_sizes[level].get(dim, props['spacing'][dim])) for dim in 'yx']
+        # vertices are pixel centres: the outer edge is half a level-0 pixel before the first
+        edge = tuple(float(low[axis] - lower[axis] - props['spacing'][dim] / 2) for axis, dim in ((1, 'y'), (2, 'x')))
         entries.setdefault(z_values.index(round(float(low[0]), 9)), []).append(
-            {'source': source, 'level': level, 'start': tuple(start), 'stride': tuple(stride),
-             'repeat': tuple(repeat)})
+            {'source': source, 'level': level, 'edge': edge, 'spacing': tuple(level_spacing)})
 
     dtype = sources[0].dtype
     planes = SectionPlanes(entries, shape, spacing, {'y': lower[1], 'x': lower[2]}, dtype, len(z_values))
@@ -167,8 +192,8 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
                                       scale={'z': z_spacing, 'y': spacing['y'], 'x': spacing['x']},
                                       translation={'z': z_values[0], 'y': float(lower[1]), 'x': float(lower[2])},
                                       transform_key=transform_key)
-    logging.info(f'{label}: {len(sources)} sources in {len(z_values)} sections of {shape["y"]}x{shape["x"]},'
-                 f' each built when viewed')
+    logging.info(f'{label}: {len(sources)} sources in {len(z_values)} sections of {shape["y"]}x{shape["x"]}'
+                 f' at {spacing["x"]:.4g}um, each built when viewed')
     msim = wrap_sims_as_msims([sim])[0]
     msim.attrs['section_planes'] = planes
     return msim
