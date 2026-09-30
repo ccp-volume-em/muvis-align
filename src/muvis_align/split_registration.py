@@ -2,6 +2,7 @@
 pair and global registration, with pairs only within a group - then the stitched groups against each other as
 whole images, consecutive groups paired, as registration_dimension says: stacked planes or overlaid channels."""
 import logging
+import os
 
 import dask
 import networkx as nx
@@ -31,6 +32,15 @@ def split_groups(positions, sources, dimension=None):
         keys = [round(float(position.get('z', 0.0)), 9) for position in positions]
     order = sorted(set(keys))
     return [order.index(key) for key in keys]
+
+
+def group_label(labels, separators='_- '):
+    """The labels' common prefix up to a separator: 'S000' for 'S000_000_000' ... 'S000_007_007' (not 'S000_00')."""
+    prefix = os.path.commonprefix(list(labels))
+    if any(len(label) > len(prefix) and label[len(prefix)] not in separators for label in labels):
+        cut = max(prefix.rfind(separator) for separator in separators)
+        prefix = prefix[:cut + 1] if cut >= 0 else ''
+    return prefix.rstrip(separators)
 
 
 def within_group_pairs(pairs, groups):
@@ -108,10 +118,11 @@ def register_group_pair(msim1, msim2, index1, pairwise_reg_func, pairwise_reg_fu
 def register_groups(msims, transforms, groups, base_transform_key, pairwise_reg_func, pairwise_reg_func_kwargs=None,
                     resolution_method='robust_linear', resolution_kwargs=None, binning=default_split_binning):
     """Stage 2: `transforms` (stage 1's, relative to `base_transform_key`) with each group's own correction
-    composed on - from its fused image registered against the next group's and resolved over all groups."""
+    composed on - from its fused image registered against the next group's and resolved over all groups - and the
+    graph of those group pairs."""
     ngroups = max(groups) + 1
     if ngroups < 2:
-        return transforms
+        return transforms, nx.Graph()
     snapshot = snapshot_msims_transform(msims, STAGE1_KEY)
     graph = nx.Graph()
     try:
@@ -135,4 +146,5 @@ def register_groups(msims, transforms, groups, base_transform_key, pairwise_reg_
     logging.info(f'Split registration: {ngroups} groups, {graph.number_of_edges()} group pairs registered')
     group_params, _ = groupwise_resolution(graph, method=resolution_method, **(resolution_kwargs or {}))
     # each group's correction acts in world space, after the stage-1 transform
-    return [param_utils.matmul_xparams(group_params[group], transform) for transform, group in zip(transforms, groups)]
+    return ([param_utils.matmul_xparams(group_params[group], transform) for transform, group in zip(transforms, groups)],
+            graph)

@@ -1405,18 +1405,19 @@ class Interface:
                                          key=lambda i: position_sort_key(self.reg.positions[i])))}
             pairs_metrics = dict(sorted(pairs_metrics.items(),
                                         key=lambda item: (file_rank[item[0][0]], file_rank[item[0][1]])))
-        metrics = pairs_metrics
-        if metrics:
-            for pair_key_indices, pair_value in metrics.items():
-                pair_key = self.reg.file_labels[pair_key_indices[0]] + ' - ' + self.reg.file_labels[pair_key_indices[1]]
-                if pair_key not in item_keys:
-                    item_keys.append(pair_key)
-                for transform_key, transform_value in pair_value.items():
-                    if transform_key not in transform_keys:
-                        transform_keys.append(transform_key)
-                    for metric_key, metric_value in transform_value.items():
-                        if metric_value is not None and metric_key not in metric_keys:
-                            metric_keys.append(metric_key)
+        # split pairing's group (e.g. section) pairs as rows after the tile pairs, keyed by their labels
+        row_metrics = {self.reg.file_labels[indices[0]] + ' - ' + self.reg.file_labels[indices[1]]: value
+                       for indices, value in (pairs_metrics or {}).items()}
+        row_metrics |= {' - '.join(labels): value for labels, value in metrics_dict.get('group_pairs', {}).items()}
+        for pair_key, pair_value in row_metrics.items():
+            if pair_key not in item_keys:
+                item_keys.append(pair_key)
+            for transform_key, transform_value in pair_value.items():
+                if transform_key not in transform_keys:
+                    transform_keys.append(transform_key)
+                for metric_key, metric_value in transform_value.items():
+                    if metric_value is not None and metric_key not in metric_keys:
+                        metric_keys.append(metric_key)
 
         transform_keys = [transform_key.split('_')[0] for transform_key in transform_keys]
         is_metric_cols = (len(transform_keys) <= 1 and len(metric_keys) >= 1)
@@ -1436,14 +1437,13 @@ class Interface:
                     if metric_value is not None:
                         col_index = metric_index if is_metric_cols else transform_index
                         metrics_table[0][col_index] = metric_value
-        metrics = pairs_metrics
-        if metrics:
-            for pair_index, pair_value in enumerate(metrics.values()):
-                for transform_index, transform_value in enumerate(pair_value.values()):
-                    for metric_index, metric_value in enumerate(transform_value.values()):
-                        if metric_value is not None:
-                            col_index = metric_index if is_metric_cols else transform_index
-                            metrics_table[pair_index + item_offset][col_index] = metric_value
+        for pair_index, pair_value in enumerate(row_metrics.values()):
+            for transform_key, transform_value in pair_value.items():
+                for metric_key, metric_value in transform_value.items():
+                    if metric_value is not None:
+                        col_index = (metric_keys.index(metric_key) if is_metric_cols
+                                     else transform_keys.index(transform_key.split('_')[0]))
+                        metrics_table[pair_index + item_offset][col_index] = metric_value
 
         table_widget = self.param_widgets.get('registration.metrics_table')
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
@@ -1530,6 +1530,7 @@ class Interface:
                     restore_msims_transform(msims, key, snapshot)
                 raise
 
+        self.reg.save_group_pair_mappings()
         self.reg.save_mappings(results['mappings'])
         self.reg.save_mappings_csv(results['mappings'])
         self.reg.save_metrics(results['metrics'])

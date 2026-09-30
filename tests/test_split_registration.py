@@ -35,7 +35,7 @@ def test_a_misplaced_plane_is_registered_back_onto_the_one_before(shift):
     msims = [textured_msim(image, 0.0), textured_msim(image, shift)]
     identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
 
-    transforms = register_groups(msims, [identity, identity], [0, 1], 'source',
+    transforms, _ = register_groups(msims, [identity, identity], [0, 1], 'source',
                                  registration.phase_correlation_registration,
                                  resolution_kwargs={'transform': 'translation'}, binning=1)
 
@@ -59,7 +59,7 @@ def test_planes_sharing_a_tile_pattern_and_outline_are_registered_by_their_conte
     msims = [textured_msim(plane.astype(np.float32), 0.0) for plane in planes]
     identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
 
-    transforms = register_groups(msims, [identity, identity], [0, 1], 'source',
+    transforms, _ = register_groups(msims, [identity, identity], [0, 1], 'source',
                                  registration.phase_correlation_registration,
                                  resolution_kwargs={'transform': 'translation'}, binning=1)
 
@@ -104,3 +104,42 @@ def test_group_pairs_are_registered_binned_by_multiview_stitcher(monkeypatch):
     split_registration.register_group_pair(msims[0], msims[1], 0, None, binning=4)
 
     assert seen['registration_binning'] == {'y': 4, 'x': 4}
+
+
+def test_a_group_is_labelled_by_its_sources_common_prefix_up_to_a_separator():
+    from muvis_align.split_registration import group_label
+
+    assert group_label(['S000_000_000', 'S000_007_007', 'S000_003_001']) == 'S000'
+    assert group_label(['S000_000_000']) == 'S000_000_000'
+    assert group_label(['tile1', 'tile2']) == ''
+
+
+def test_split_group_pairs_are_saved_with_the_tile_pairs_and_restored_apart_from_them(tmp_path):
+    import json
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    def open_registration():
+        reg = MVSRegistration()
+        reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
+                 output_path=tmp_path.as_posix() + '/')
+        reg.init_data()
+        return reg
+
+    reg = open_registration()
+    reg.preprocess(reg.msims)
+    params = {'method': 'phase_correlation', 'pairing': 'split', 'transform_type': 'translation', 'metrics': [],
+              'n_parallel_pairwise_regs': 1}
+    reg.register(reg.register_msims, params=params)
+
+    saved = json.load(open(reg.output + 'pair_mappings.json'))
+    group_entries = {key: value for key, value in saved.items() if value.get('kind') == 'split_group'}
+    assert list(group_entries) == [json.dumps(['S000', 'S001'])]
+    assert {'mapping', 'quality'} <= set(group_entries[json.dumps(['S000', 'S001'])])
+    assert len(saved) - len(group_entries) == reg.pairs_graph.number_of_edges()
+
+    resumed = open_registration()
+    resumed.init_progress('registered', 'ome.zarr')
+    # the labels match files under S000/ and S001/ - they must not come back as tile pairs
+    assert resumed.pairs_graph.number_of_edges() == reg.pairs_graph.number_of_edges()
+    assert list(resumed.group_pairs) == [('S000', 'S001')]
+    assert ('S000', 'S001') in resumed.metrics['group_pairs']

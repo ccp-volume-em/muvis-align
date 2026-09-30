@@ -161,6 +161,8 @@ default_preview_max_bytes = 4 * 1024 ** 3
 
 prereg_mappings_name = 'prereg_mappings.csv'
 default_pair_mappings_name = 'pair_mappings.json'
+# the 'kind' of a split pairing group pair (e.g. section to section) in the pair mappings file, next to the tile pairs
+split_group_pair_kind = 'split_group'
 default_mappings_name = 'mappings.json'
 default_mappings_tabular_name = 'mappings.csv'
 original_positions_name = 'positions_original.pdf'

@@ -2740,3 +2740,20 @@ def test_preview_image_lists_follow_the_tables_order(bare_interface):
 
     image1_widget.set_value.assert_called_once_with("a", choices=["a", "b", "c"])
     image2_widget.set_value.assert_called_once_with("b", choices=["a", "b", "c"])
+
+
+def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interface):
+    bare_interface.reg.file_labels = ['S000_000', 'S000_001']
+    bare_interface.reg.positions = [{'y': 0, 'x': 0}, {'y': 0, 'x': 1}]
+    table = MagicMock()
+    bare_interface.param_widgets = {'registration.metrics_table': table}
+    metrics = {'summary': {'registered': {'quality': 0.5, 'ncc': 0.4}},
+               'pairs': {(0, 1): {'registered': {'quality': 0.9, 'ncc': 0.8}}},
+               'group_pairs': {('S000', 'S001'): {'registered': {'quality': 0.3}}}}
+
+    bare_interface.populate_metrics_table(metrics)
+
+    values, rows, columns = table.set_value.call_args[0][0]
+    assert rows == ['summary', 'S000_000 - S000_001', 'S000 - S001']
+    assert columns == ['quality', 'ncc']
+    assert values[2] == [0.3, None]

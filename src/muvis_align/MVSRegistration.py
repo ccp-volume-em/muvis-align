@@ -36,7 +36,7 @@ from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, find_reference_view
-from muvis_align.split_registration import SPLIT, register_groups, split_groups, within_group_pairs
+from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
 from muvis_align.Timer import Timer
 from muvis_align.util import *
 
@@ -298,6 +298,7 @@ class MVSRegistration:
         self._scaled_msims = {}
         self.sources = []
         self.metrics = {}
+        self.group_pairs = {}
         self.register_indices = None
         self.output_params = {}
 
@@ -887,6 +888,7 @@ class MVSRegistration:
         self.check_progress(output_filename, output_format)
 
         load_pairs = self.is_pairs_registered() and os.path.exists(pair_mappings_filename)
+        self.group_pairs = {}
         if load_pairs or self.is_global_registered():
             # both branches below read self.msims, whose lazy build is the single most expensive
             # thing resuming a saved project does (~15s for 328 sources) - build it here, through
@@ -903,14 +905,19 @@ class MVSRegistration:
             indexed_bboxes = {}
             for key, value in pairs.items():
                 key1, key2 = json.loads(key)
-                index1, index2 = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
-                if index1 is not None and index2 is not None:
-                    indexed_key = index1, index2
-                    indexed_pair_transforms[indexed_key] = (
-                        param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
-                    indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
-                    if 'bbox' in value:
-                        indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+                if value.get('kind') == split_group_pair_kind:
+                    # a label such as 'S000' would also match a file under S000/ as a tile pair
+                    self.group_pairs[(key1, key2)] = {item: data for item, data in value.items() if item != 'kind'}
+                else:
+                    index1 = find_file_list_index(self.filenames, key1)
+                    index2 = find_file_list_index(self.filenames, key2)
+                    if index1 is not None and index2 is not None:
+                        indexed_key = index1, index2
+                        indexed_pair_transforms[indexed_key] = (
+                            param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
+                        indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
+                        if 'bbox' in value:
+                            indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
             # neither of the two steps left is per-source-divisible (a whole-set redimension and
             # one graph build over every pair), but together they are seconds to tens of seconds
             # for a few hundred sources - count them rather than letting them run silently
@@ -993,6 +1000,8 @@ class MVSRegistration:
                                                                       if default_quality_key in value])}},
                     'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
                 }
+        if self.group_pairs and self.metrics:
+            self.metrics['group_pairs'] = self.group_pair_metrics()
 
     def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):
         # accepts either sims or msims (each msim's scale0 sim is used) - only position/size
@@ -1319,6 +1328,7 @@ class MVSRegistration:
         bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
         self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
         results = self.register_global(self.pair_msims, register_indices=register_indices, params=params)
+        self.save_group_pair_mappings()
         self.save_mappings(results['mappings'])
         self.save_metrics(results['metrics'])
         return results
@@ -1558,6 +1568,21 @@ class MVSRegistration:
             groups = [order.index(group) for group in groups]
         return groups
 
+    def split_group_labels(self, indices):
+        """A label per group of split_groups(indices): its sources' common label prefix (e.g. 'S000'), else its
+        z-position or channel."""
+        groups = self.split_groups(indices)
+        labels = []
+        for group in range(max(groups) + 1):
+            members = [index for index, member_group in zip(indices, groups) if member_group == group]
+            label = group_label([self.file_labels[index] for index in members])
+            if not label:
+                channel = (self.sources[members[0]].get_channels() or [{}])[0].get('label')
+                is_channel = (getattr(self, 'registration_dimension', None) == 'c')
+                label = str(channel) if is_channel else f"z {self.positions[members[0]].get('z', 0)}"
+            labels.append(label)
+        return labels
+
     def _register_split_groups(self, pair_msims, transforms, register_indices, params, progress_factory=None):
         method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(
             msi_utils.get_sim_from_msim(pair_msims[0], scale='scale0'), params=params)
@@ -1567,10 +1592,20 @@ class MVSRegistration:
         binning = max(int(float(binning)), 1) if is_valid_value(binning) else default_split_binning
         with self.progress_phase(progress_factory, total=1, desc='Registering z-planes / channels'), \
                 Timer('split: register groups', verbose=self.logging_time):
-            return register_groups(pair_msims, transforms, self.split_groups(list(register_indices)),
-                                   self.source_transform_key, pairwise_reg_func, pairwise_reg_func_kwargs,
-                                   resolution_method=resolution_method,
-                                   resolution_kwargs={'transform': transform_type}, binning=binning)
+            transforms, group_graph = register_groups(
+                pair_msims, transforms, self.split_groups(list(register_indices)), self.source_transform_key,
+                pairwise_reg_func, pairwise_reg_func_kwargs, resolution_method=resolution_method,
+                resolution_kwargs={'transform': transform_type}, binning=binning)
+        labels = self.split_group_labels(list(register_indices))
+        self.group_pairs = {}
+        for group1, group2 in group_graph.edges:
+            data = group_graph.edges[group1, group2]
+            entry = {'mapping': np.array(data[default_transform_key].sel(t=0)).tolist(),
+                     default_quality_key: float(quality_to_scalar(data[default_quality_key]))}
+            if 'bbox' in data:
+                entry['bbox'] = np.array(data['bbox'].sel(t=0)).tolist()
+            self.group_pairs[(labels[group1], labels[group2])] = entry
+        return transforms
 
     def register_global(self, pair_msims, register_indices=None, params=None,
                         pairs_graph=None, progress_factory=None):
@@ -1736,6 +1771,8 @@ class MVSRegistration:
                                           reg_results=reg_result,
                                           n_parallel_pairs=n_parallel_pairwise_regs)
 
+        if self.group_pairs:
+            metrics['group_pairs'] = self.group_pair_metrics()
         self.metrics = metrics
         self.state = RegState.GLOBAL_REG
         return {'reg_result': reg_result,
@@ -1927,6 +1964,21 @@ class MVSRegistration:
                 output_mappings[label_key][default_quality_key] = float(quality)
             if keys in bboxes:
                 output_mappings[label_key]['bbox'] = bboxes[keys]
+        export_json(pair_mappings_filename, output_mappings)
+
+    def group_pair_metrics(self):
+        return {labels: {self.reg_transform_key: {default_quality_key: entry[default_quality_key]}}
+                for labels, entry in self.group_pairs.items()}
+
+    def save_group_pair_mappings(self):
+        """Split pairing's group (e.g. section) pairs added to the pair mappings file, keyed by their labels and marked
+        by kind, replacing those of an earlier run."""
+        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
+        output_mappings = import_json(pair_mappings_filename) if os.path.exists(pair_mappings_filename) else {}
+        output_mappings = {key: value for key, value in output_mappings.items()
+                           if value.get('kind') != split_group_pair_kind}
+        for labels, entry in self.group_pairs.items():
+            output_mappings[json.dumps(list(labels))] = {'kind': split_group_pair_kind} | entry
         export_json(pair_mappings_filename, output_mappings)
 
     def save_mappings(self, mappings):
