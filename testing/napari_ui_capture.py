@@ -8,9 +8,11 @@ screenshot every second from a background thread - Qt's own grab would stall wit
 Qt thread. Each file is named <index>_<seconds>_<step>_dlg<activity dialog visible>.png.
 """
 import argparse
+import ctypes
 import faulthandler
 import logging
 import os
+import sys
 import threading
 import time
 
@@ -109,12 +111,23 @@ def main():
             state['step'] = 'finished'
             time.sleep(2 * args.interval)
             state['done'] = True
-            # a scripted run must end: still alive two minutes after closing, show every thread's stack and exit
-            faulthandler.dump_traceback_later(120, exit=True)
+            # still alive two minutes after closing: show every thread's stack
+            faulthandler.dump_traceback_later(120)
             QTimer.singleShot(1000, viewer.close)
 
     QTimer.singleShot(3000, run)
     napari.run()
+    # ended here, not by the interpreter: its shutdown has hung in native code after napari closed (on Windows
+    # even os._exit, which still runs the libraries' detach code - TerminateProcess does not)
+    logging.shutdown()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if sys.platform == 'win32':
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+        kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        kernel32.TerminateProcess(kernel32.GetCurrentProcess(), 0)
+    os._exit(0)
 
 
 if __name__ == '__main__':
