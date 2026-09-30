@@ -28,6 +28,7 @@ ACTIONS = {
     'pre_processing': lambda interface: interface.pre_processing_process(),
     'pair_registration': lambda interface: interface.pair_registration(),
     'registration': lambda interface: interface.registration_process(),
+    'fusion': lambda interface: interface.fusion_process(),
 }
 
 
