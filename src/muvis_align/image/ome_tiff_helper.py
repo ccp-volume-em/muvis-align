@@ -205,8 +205,9 @@ class PicklableTiffLevel:
             with self._open_lock:
                 if self._array is None:
                     with tifffile.TiffFile(self.filename) as tif:
-                        self._array = zarr.open_group(store=tif.aszarr(series=0, multiscales=True),
-                                                      mode='r')[self.path]
+                        array = zarr.open_group(store=tif.aszarr(series=0, multiscales=True), mode='r')[self.path]
+                    # published once the file is closed: a thread reading it before would keep a handle about to close
+                    self._array = array
         return self._array
 
     def __getitem__(self, key):

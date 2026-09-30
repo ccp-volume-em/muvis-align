@@ -233,3 +233,29 @@ def test_source_levels_pickle_and_read_the_same_pixels_after(tmp_path):
         with dask.config.set(scheduler='threads', num_workers=16):
             for level, copy in zip(expected, unpickled):
                 assert np.array_equal(np.asarray(copy), level)
+
+
+def test_an_unpickled_level_is_not_read_before_its_opening_file_is_closed(tmp_path, monkeypatch):
+    """A thread reading the level while another was opening it once kept the opener's file handle, closed right
+    after: every later read failed with 'I/O operation on closed file'."""
+    import threading
+    from muvis_align.image.ome_tiff_helper import _unpickle_tiff_level
+    path = str(tmp_path / 'tiles.tiff')
+    data = np.random.default_rng(1).integers(0, 1000, (512, 512), dtype=np.uint16)
+    tifffile.imwrite(path, data, tile=(256, 256))
+    level = _unpickle_tiff_level(path, '0', data.shape, data.dtype, (256, 256))
+    read_meanwhile = threading.Event()
+    reader = threading.Thread(target=lambda: (level[0:256, 0:256], read_meanwhile.set()))
+    original_exit = tifffile.TiffFile.__exit__
+
+    def exit_after_a_read_elsewhere(tif, *args):
+        # the opener about to close its file, another thread reading the level (it waits, once fixed)
+        monkeypatch.setattr(tifffile.TiffFile, '__exit__', original_exit)
+        reader.start()
+        read_meanwhile.wait(0.5)
+        return original_exit(tif, *args)
+
+    monkeypatch.setattr(tifffile.TiffFile, '__exit__', exit_after_a_read_elsewhere)
+    assert np.array_equal(level[256:512, 256:512], data[256:512, 256:512])
+    reader.join(10)
+    assert np.array_equal(level[:, :], data)
