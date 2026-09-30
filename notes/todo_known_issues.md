@@ -587,6 +587,20 @@ Progress:
   Default pairing is the wrong choice for a stack. Added (user request): pair and global registration log their
   settings, default pairing its '#candidate pairs'. No warning before building the graph (user: not wanted).
 
+- Doing (user request, branch phased-source-init): image data on screen within seconds of opening a large
+  project, before pre-processing (raw sources, not pre-processed ones). Agreed direction: sources initialised in
+  phases (as msims already are, later), shapes still from the sources; a lazy per-section overview (raw coarsest
+  stored level, direct reads, numpy paste) shown for the viewed section and filled in the background.
+  - Found: the test project (meatballs, 153 files, SBEMimage) and the HPC one take positions/scale from each file
+    (OME), so a template can't stand in for sources; init is 2.9ms a file locally, ~1.4s a file on the HPC's NFS.
+  - Done, step 1: image/lazy_overview.py - one plane per section, built when viewed from each tile's coarsest
+    level (source.data, no msim) pasted at build_source_stack_props' placement; update_views uses it whenever the
+    view is at the source positions (opening, after pre-processing), else the fused path as before. Meatballs
+    in the plugin: opening shows images with the shapes (lazy 0.1s, adding 1.0s); after pre-processing the
+    refresh has no size cap/overview step (HPC: 3.5 + 11.8 min). tests/test_lazy_overview.py.
+  - Next: fill the other sections in the background (sampled order); initialise the viewed section's sources
+    first and the rest in the background, the shapes growing. Registration/fusion may stay slow (hours at 34k).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).

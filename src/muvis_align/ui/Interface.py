@@ -36,6 +36,7 @@ from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
+from muvis_align.image.lazy_overview import lazy_section_overview
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
@@ -849,10 +850,13 @@ class Interface:
                         weight=shapes_weight),
                     factory)
 
-            # only shapes before pre-processing has run: the fused preview needs every source's
-            # real msim built, and deferring that keeps it off the initial project load
+            # at the sources' own positions, each section built only when viewed: image data as soon as the shapes
             data = None
-            if show_images:
+            if transform_key == self.reg.source_transform_key:
+                with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
+                    data = self._run_off_thread(lambda worker_factory: self._create_lazy_overview(), factory)
+            # otherwise the fused preview, which needs every source's real msim built: not on opening a project
+            if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
                     # must not (see _run_off_thread()). The worker's factory goes all the way in,
@@ -865,16 +869,15 @@ class Interface:
             # cleared only once the new data is ready: an empty viewer shows the welcome screen,
             # which hides the activity dialog - for 44 minutes on a 34k-source project
             self._clear_napari_view(self.viewer)
-            if show_images:
-                if data is not None:
-                    with factory(total=1) as pbar, \
-                         Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
-                        # cheap=True: this is the general overview, not the accurate fusion-tab
-                        # preview (preview_fusion()) or the real exported result (fusion_process())
-                        # - a naive contrast guess is fine here, see _napari_view_add_fused_data()
-                        self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data',
-                                                         cheap=True)
-                        pbar.update(1)
+            if data is not None:
+                with factory(total=1) as pbar, \
+                     Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
+                    # cheap=True: this is the general overview, not the accurate fusion-tab
+                    # preview (preview_fusion()) or the real exported result (fusion_process())
+                    # - a naive contrast guess is fine here, see _napari_view_add_fused_data()
+                    self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data',
+                                                     cheap=True)
+                    pbar.update(1)
 
             with factory(total=1) as pbar, \
                  Timer('update_views: add shapes to viewer', verbose=self._timing_verbose()):
@@ -886,6 +889,15 @@ class Interface:
                 self._refresh_overview_shapes(transform_key, shapes, refs, labels, face_colors, is_3d=is_3d)
                 pbar.update(1)
         self.view_mode = ViewMode.OVERVIEW
+
+    def _create_lazy_overview(self):
+        reg = self.reg
+        transforms, output_order = getattr(reg, '_msim_transforms', None), getattr(reg, '_msim_output_order', None)
+        if transforms is None or output_order is None:
+            return None
+        return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, reg.source_transform_key,
+                                     z_scale=getattr(reg, '_msim_z_scale', None),
+                                     label=f'Overview ({len(reg.sources)} images)')
 
     def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
                                  face_colors=None, is_3d=None):
