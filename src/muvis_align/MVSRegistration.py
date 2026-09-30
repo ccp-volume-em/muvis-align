@@ -598,11 +598,16 @@ class MVSRegistration:
         return True
 
     def first_section_indices(self):
-        """The files of the first folder when the files span several (a folder a section), else None."""
-        folders = [Path(filename).parent for filename in self.filenames]
-        if len(set(folders)) < 2:
-            return None
-        return [index for index, folder in enumerate(folders) if folder == folders[0]]
+        """The files sharing the first file's section number (a label as S000 or SBEMimage's s00538), else its folder;
+        None if neither tells sections apart."""
+        # tile and slice indices look alike in a name: only the label tells them apart
+        labelled = [find_labelled_numbers(Path(filename).name) for filename in self.filenames]
+        candidates = [[numbers.get(label) for numbers in labelled] for label in section_number_labels]
+        candidates.append([Path(filename).parent for filename in self.filenames])
+        for keys in candidates:
+            if None not in keys and len(set(keys)) > 1:
+                return [index for index, key in enumerate(keys) if key == keys[0]]
+        return None
 
     def section_registration(self, indices):
         """A registration of only the files at `indices`, labelled as here: to show them before the rest are read."""

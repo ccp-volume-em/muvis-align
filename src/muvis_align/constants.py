@@ -172,6 +172,9 @@ original_positions_name = 'positions_original.pdf'
 registered_positions_name = 'positions_registered.pdf'
 metrics_name = 'metrics.json'
 
+# file name labels of a section's number, most specific first ('S000', SBEMimage's 's00538')
+section_number_labels = ('section', 'slice', 's', 'z')
+
 default_transform_key = 'transform'
 default_quality_key = 'quality'
 

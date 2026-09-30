@@ -289,6 +289,11 @@ def find_all_numbers(text: str) -> list:
     return list(map(int, re.findall(r'\d+', text)))
 
 
+def find_labelled_numbers(text: str) -> dict:
+    """Each number led by letters, by its lower-case label: 'x_s00399_ov0' -> {'s': 399, 'ov': 0}."""
+    return {label.lower(): int(number) for label, number in re.findall(r'([A-Za-z]+)(\d+)', text)}
+
+
 def split_path_parts(text: str) -> list:
     return [part for part in
             text.replace('/', '_').replace('\\', '_').replace('.', '_').replace('-', '_').split('_')

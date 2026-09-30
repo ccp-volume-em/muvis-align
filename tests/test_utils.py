@@ -6,7 +6,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map, get_filetitle
+    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers
 
 
 @pytest.mark.parametrize(
@@ -398,3 +398,9 @@ def test_a_cancel_left_from_before_does_not_stop_the_next_operation():
     request_cancel()
     with cancellable():
         raise_if_cancelled()
+
+
+def test_labelled_numbers_are_keyed_by_their_lower_case_label_and_unlabelled_ones_left_out():
+    assert find_labelled_numbers('EM04652-02_slice17_r0005_t0002_s00399.ome.tif') == \
+        {'em': 4652, 'slice': 17, 'r': 5, 't': 2, 's': 399}
+    assert find_labelled_numbers('S000_000_001.ome.zarr') == {'s': 0}

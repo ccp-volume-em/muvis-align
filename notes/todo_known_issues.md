@@ -605,6 +605,10 @@ Progress:
     section_registration and drawn, reporting to no bar (SilentProgress, still stops on a cancel); then every
     source is read as before under the one 'Initialising sources' bar with the viewer usable, and the full view
     replaces the section's. Meatballs: first section on screen 2.2s after starting, full view 4s later.
+  - Done: the first section is found by a labelled number in the file names (section/slice/s/z, as S000 or
+    SBEMimage's s00538, which varies and every file has), else by folder: SBEMimage keeps a folder per tile and
+    all overviews in one, and in S000_000_001 the last number is a tile index. Meatballs: 50 data_399 tiles +
+    the s00399 overview.
   - Registration/fusion may stay slow on the big dataset (hours at 34k), not on a small one. Run only the
     targeted tests after each change (user).
 

@@ -882,3 +882,21 @@ def test_files_in_one_folder_have_no_first_section_to_show_before_the_rest(tmp_p
              output_path=tmp_path.as_posix() + '/')
 
     assert reg.first_section_indices() is None
+
+
+@pytest.mark.parametrize('filenames, expected', [
+    # SBEMimage: a folder per tile, the overviews of every slice in one folder
+    (['ov/ov000/x_ov000_s00538.tif', 'ov/ov000/x_ov000_s00539.tif',
+      'tiles/g0000/t0000/x_g0000_t0000_s00538.tif', 'tiles/g0000/t0000/x_g0000_t0000_s00539.tif',
+      'tiles/g0000/t0001/x_g0000_t0001_s00538.tif', 'tiles/g0000/t0001/x_g0000_t0001_s00539.tif'], [0, 2, 4]),
+    # the last number is a tile index here, the section is the labelled one
+    (['S000/S000_000_000.ome.zarr', 'S000/S000_000_001.ome.zarr',
+      'S001/S001_000_000.ome.zarr', 'S001/S001_000_001.ome.zarr'], [0, 1]),
+    (['a/tile_0.tif', 'a/tile_1.tif', 'b/tile_0.tif'], [0, 1]),
+    (['a/S000_0.tif', 'a/S000_1.tif'], None),
+])
+def test_the_first_section_is_found_by_the_labelled_section_number_else_the_folder(filenames, expected):
+    reg = MVSRegistration()
+    reg.filenames = filenames
+
+    assert reg.first_section_indices() == expected
