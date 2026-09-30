@@ -1349,6 +1349,10 @@ class MVSRegistration:
         # blank or 0 is automatic; a widget can hand the number over as a string or a float
         n_parallel_pairwise_regs = (int(float(n_parallel_pairwise_regs))
                                     if is_valid_value(n_parallel_pairwise_regs) else None) or None
+        logging.info(f"Pair registration settings: pairing {pairing or 'default'}, method {params.get('method')},"
+                     f" transform {params.get('transform_type')}, channel {params.get('channel')},"
+                     f" workers {n_parallel_pairwise_regs or f'automatic ({default_pair_workers})'},"
+                     f" registration dimension {getattr(self, 'registration_dimension', None) or 'space'}")
 
         # the caller's params win over whatever init() was given - in the plugin the dropdown
         # can change between initialising the sources and registering
@@ -1459,6 +1463,8 @@ class MVSRegistration:
                 # one's diameter: with overview images among tiles, nearly every pair of 34k sources
                 graph_pairs = (pairs if pairs is not None
                                else find_candidate_overlap_pairs(msims_reg, self.source_transform_key))
+                if pairs is None:
+                    logging.info(f'#candidate pairs: {len(graph_pairs)}')
                 raise_if_cancelled()
                 g_reg = build_view_adjacency_graph(msims_reg, self.source_transform_key, graph_pairs,
                                                    overlap_tolerance=overlap_tolerance)
@@ -1633,6 +1639,11 @@ class MVSRegistration:
             logging.warning(f'{groupwise_resolution_method} resolves translation or rigid only,'
                             f' not {transform_type}: using global_optimization')
             groupwise_resolution_method = 'global_optimization'
+        split_settings = ''
+        if SPLIT in params.get('pairing', '').lower():
+            split_settings = f", split binning {params.get('split_binning') or default_split_binning}"
+        logging.info(f'Global registration settings: resolution {groupwise_resolution_method},'
+                     f' transform {transform_type}{split_settings}')
         groupwise_resolution_kwargs = {}
         if groupwise_resolution_method in ('global_optimization', ROBUST_LINEAR, 'linear_two_pass'):
             # transform_type options include 'translation', 'rigid', 'affine', 'similarity'
