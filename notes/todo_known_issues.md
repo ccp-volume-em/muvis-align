@@ -491,6 +491,15 @@ Progress:
   the lock read before the file closed and tifffile kept that handle as open for good (c4e14c5, with a
   deterministic test that fails on the old code).
 
+- Done (user request): split stage 2 fuses each section at the pre-processed pixel size (the msims' scale0), not
+  a grid capped at 1024 px (default_split_group_size removed). Registering whole sections at that size was too
+  costly: MVS bins only above 400^3 = 64M pixels, so a 6051x6801 px slides section (0.032um) was registered
+  unbinned - phase_correlation 90s, 5.9GB a pair (and identity for S000->S001), sift over 10GB (the plugin run
+  hit 16.6GB). User chose MVS's registration_binning: new registration setting split_binning (blank = 8),
+  passed to compute_pairwise_registrations for the section pairs. Slides, sift rigid: 2.3 min in all, stage 2
+  44.5s (22.6s at 1024 px - fusion at 0.032um is ~6.5s a section), peak 2.0GB; consecutive-section NCC
+  0.673/0.799/0.781/0.766 (1024 px: 0.696/0.806/0.772/0.762).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
