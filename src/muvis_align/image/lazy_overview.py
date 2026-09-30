@@ -3,6 +3,7 @@ read at their coarsest level and pasted at their position. Opening a large proje
 the shapes, instead of pasting every source (minutes at 34k) before showing any."""
 import logging
 import threading
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 import dask
@@ -17,6 +18,10 @@ from muvis_align.image.util import build_source_stack_props, wrap_sims_as_msims
 default_plane_size = 4096
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
 default_plane_readers = 32
+# planes kept once built, the least recently viewed dropped first: all 1081 of a 34k-source stack would be ~17GB
+default_planes_max_bytes = 1_000_000_000
+# sections on either side of a viewed one built in the background, so scrolling finds them ready
+default_prefetch_radius = 4
 
 
 def _coarsest_level_data(source, level):
@@ -28,21 +33,57 @@ def _coarsest_level_data(source, level):
 
 
 class SectionPlanes:
-    """The planes of a sectioned overview, each built on first request and kept."""
+    """The planes of a sectioned overview, each built on first request and kept within a memory budget, the sections
+    around a requested one built in the background."""
 
-    def __init__(self, entries, shape, spacing, origin, dtype, workers=default_plane_readers):
+    def __init__(self, entries, shape, spacing, origin, dtype, nplanes, workers=default_plane_readers,
+                 max_bytes=default_planes_max_bytes, prefetch_radius=default_prefetch_radius):
         self.entries, self.shape, self.spacing, self.origin, self.dtype = entries, shape, spacing, origin, dtype
-        self.workers = workers
-        self._planes = {}
+        self.nplanes, self.workers, self.prefetch_radius = nplanes, workers, prefetch_radius
+        plane_bytes = shape['y'] * shape['x'] * np.dtype(dtype).itemsize
+        self.max_planes = max(2 * prefetch_radius + 1, int(max_bytes // max(plane_bytes, 1)))
+        self._planes = OrderedDict()
+        self._building = {}
         self._lock = threading.Lock()
+        self._background = ThreadPoolExecutor(max_workers=1)
 
-    def plane(self, index):
+    def plane(self, index, prefetch=True):
+        plane = self._get(index)
+        if prefetch:
+            for offset in range(1, self.prefetch_radius + 1):
+                for neighbour in (index + offset, index - offset):
+                    if 0 <= neighbour < self.nplanes:
+                        self._background.submit(self._get, neighbour)
+        return plane
+
+    def _get(self, index):
         with self._lock:
-            plane = self._planes.get(index)
-        if plane is None:
+            if index in self._planes:
+                self._planes.move_to_end(index)
+                return self._planes[index]
+            # a plane asked for while another thread builds it waits for that build
+            event = self._building.get(index)
+            if event is None:
+                self._building[index] = event = threading.Event()
+                owner = True
+            else:
+                owner = False
+        if not owner:
+            event.wait()
+            with self._lock:
+                if index in self._planes:
+                    return self._planes[index]
+            return self._get(index)
+        try:
             plane = self._build(index)
             with self._lock:
-                self._planes.setdefault(index, plane)
+                self._planes[index] = plane
+                while len(self._planes) > self.max_planes:
+                    self._planes.popitem(last=False)
+        finally:
+            with self._lock:
+                self._building.pop(index, None)
+            event.set()
         return plane
 
     def _build(self, index):
@@ -117,7 +158,7 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
              'repeat': tuple(repeat)})
 
     dtype = sources[0].dtype
-    planes = SectionPlanes(entries, shape, spacing, {'y': lower[1], 'x': lower[2]}, dtype)
+    planes = SectionPlanes(entries, shape, spacing, {'y': lower[1], 'x': lower[2]}, dtype, len(z_values))
     plane_shape = (shape['y'], shape['x'])
     stacked = da.stack([da.from_delayed(dask.delayed(planes.plane)(index), plane_shape, dtype=dtype)
                         for index in range(len(z_values))])

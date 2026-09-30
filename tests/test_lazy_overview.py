@@ -45,14 +45,31 @@ def test_each_tile_is_pasted_where_it_sits_in_its_own_section(tmp_path):
 
 
 def test_a_section_is_built_only_when_it_is_asked_for_and_once(tmp_path):
-    msim = overview(registration(tmp_path))
-    planes = msim.attrs['section_planes']
-    data = msi_utils.get_sim_from_msim(msim).data.squeeze()
+    planes = overview(registration(tmp_path)).attrs['section_planes']
 
-    assert planes._planes == {}
-    first = np.asarray(data[1])
+    assert list(planes._planes) == []
+    first = planes.plane(1, prefetch=False)
     assert list(planes._planes) == [1]
-    assert np.asarray(data[1]) is not first and np.array_equal(np.asarray(data[1]), first)
+    assert planes.plane(1, prefetch=False) is first
+
+
+def test_the_sections_around_a_viewed_one_are_built_in_the_background(tmp_path):
+    planes = overview(registration(tmp_path)).attrs['section_planes']
+    planes.prefetch_radius = 1
+
+    planes.plane(0)
+    planes._background.submit(lambda: None).result()
+
+    assert sorted(planes._planes) == [0, 1]
+
+
+def test_kept_sections_stay_within_their_budget_the_least_recently_viewed_dropped(tmp_path):
+    planes = overview(registration(tmp_path)).attrs['section_planes']
+    planes.max_planes = 1
+
+    planes.plane(0, prefetch=False)
+    planes.plane(1, prefetch=False)
+
     assert list(planes._planes) == [1]
 
 
