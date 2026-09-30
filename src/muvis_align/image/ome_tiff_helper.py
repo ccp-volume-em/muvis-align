@@ -186,12 +186,28 @@ def read_tiff_creator(filename):
         return extract_ome_image_metadata(tif.ome_metadata).get('creator', '')
 
 
+def contiguous_layout(page, shape):
+    """(file offset, byte order) of a level stored as one uncompressed run of rows in C order, as its array has
+    them (`shape`), or None: only then can a slice be read as a byte range of the file."""
+    is_plain = (page.compression == 1 and page.predictor == 1 and page.fillorder == 1 and not page.is_tiled
+                and page.planarconfig == 1 and page.bitspersample == 8 * np.dtype(page.dtype).itemsize)
+    offsets, counts = page.dataoffsets, page.databytecounts
+    runs_on = all(offset + count == next_offset for offset, count, next_offset in zip(offsets, counts, offsets[1:]))
+    if not (is_plain and runs_on and tuple(page.shape) == tuple(shape)
+            and sum(counts) == int(np.prod(shape)) * np.dtype(page.dtype).itemsize):
+        return None
+    return int(offsets[0]), page.parent.byteorder
+
+
 class PicklableTiffLevel:
     """A TIFF pyramid level's zarr array that pickles as its file name and level, reopening the file
-    where it is unpickled: tifffile's store holds a lock, so worker processes could not be sent one."""
+    where it is unpickled: tifffile's store holds a lock, so worker processes could not be sent one.
 
-    def __init__(self, filename, path, array=None):
-        self.filename, self.path, self._array = filename, path, array
+    A level stored as one uncompressed run of rows is read as the byte range of the rows asked for, in the
+    calling thread: through zarr every read of the process runs on zarr's one event-loop thread."""
+
+    def __init__(self, filename, path, array=None, layout=None):
+        self.filename, self.path, self._array, self.layout = filename, path, array, layout
         self.shape, self.dtype, self.chunks = array.shape, array.dtype, array.chunks
         self.ndim = len(self.shape)
 
@@ -211,15 +227,40 @@ class PicklableTiffLevel:
         return self._array
 
     def __getitem__(self, key):
-        return self.array[key]
+        if self.layout is None:
+            return self.array[key]
+        key = key if isinstance(key, tuple) else (key,)
+        first = key[0] if key else slice(None)
+        if isinstance(first, (int, np.integer)):
+            rows = slice(int(first) % self.shape[0], int(first) % self.shape[0] + 1)
+            rest = (0,) + key[1:]
+        elif isinstance(first, slice) and first.step in (None, 1):
+            rows = slice(*first.indices(self.shape[0])[:2])
+            rest = (slice(None),) + key[1:]
+        else:
+            rows = slice(0, self.shape[0])
+            rest = key
+        return self._read_rows(rows)[rest]
+
+    def _read_rows(self, rows):
+        offset, byteorder = self.layout
+        row_shape = self.shape[1:]
+        dtype = np.dtype(self.dtype).newbyteorder(byteorder)
+        count = max(rows.stop - rows.start, 0)
+        data = np.empty((count,) + tuple(row_shape), dtype=dtype)
+        with open(self.filename, 'rb') as file:
+            file.seek(offset + rows.start * int(np.prod(row_shape)) * dtype.itemsize)
+            if file.readinto(memoryview(data).cast('B')) != data.nbytes:
+                raise OSError(f'{self.filename}: fewer bytes than level {self.path} holds')
+        return data.astype(self.dtype, copy=False)
 
     def __reduce__(self):
-        return _unpickle_tiff_level, (self.filename, self.path, self.shape, self.dtype, self.chunks)
+        return _unpickle_tiff_level, (self.filename, self.path, self.shape, self.dtype, self.chunks, self.layout)
 
 
-def _unpickle_tiff_level(filename, path, shape, dtype, chunks):
+def _unpickle_tiff_level(filename, path, shape, dtype, chunks, layout=None):
     level = PicklableTiffLevel.__new__(PicklableTiffLevel)
-    level.filename, level.path, level._array = filename, path, None
+    level.filename, level.path, level._array, level.layout = filename, path, None, layout
     level.shape, level.dtype, level.chunks, level.ndim = shape, dtype, chunks, len(shape)
     return level
 
@@ -255,7 +296,12 @@ def read_tiff_level_arrays(filename):
             datasets = attributes['multiscales'][0]['datasets']
         except (KeyError, IndexError, TypeError):
             return None
-        arrays = [PicklableTiffLevel(filename, dataset['path'], group[dataset['path']]) for dataset in datasets]
+        arrays = []
+        for dataset in datasets:
+            array = group[dataset['path']]
+            page = series.levels[int(dataset['path'])].keyframe if dataset['path'].isdigit() else None
+            layout = contiguous_layout(page, array.shape) if page is not None else None
+            arrays.append(PicklableTiffLevel(filename, dataset['path'], array, layout))
         # tif is closed on the way out: tifffile's store reopens the file itself whenever a
         # chunk is actually read, so holding a file handle open per source (thousands of them in
         # a project) buys nothing

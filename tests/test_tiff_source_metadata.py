@@ -259,3 +259,45 @@ def test_an_unpickled_level_is_not_read_before_its_opening_file_is_closed(tmp_pa
     assert np.array_equal(level[256:512, 256:512], data[256:512, 256:512])
     reader.join(10)
     assert np.array_equal(level[:, :], data)
+
+
+def _level_wrappers(levels):
+    from muvis_align.image.ome_tiff_helper import PicklableTiffLevel
+    return [value for level in levels for layer in level.dask.layers.values()
+            for value in (layer.values() if hasattr(layer, 'values') else []) if isinstance(value, PicklableTiffLevel)]
+
+
+def test_uncompressed_strip_levels_are_read_as_their_rows_and_match_tifffile(tmp_path):
+    import pickle
+    from muvis_align.image.ome_tiff_helper import read_tiff_level_arrays
+    path = str(tmp_path / 'strips.tiff')
+    data = np.random.default_rng(2).integers(0, 60000, (300, 200), dtype=np.uint16)
+    with tifffile.TiffWriter(path) as writer:
+        writer.write(data, subifds=1, rowsperstrip=300)
+        writer.write(data[::2, ::2], subfiletype=1, rowsperstrip=150)
+
+    levels = read_tiff_level_arrays(path)
+    wrappers = _level_wrappers(levels)
+    with tifffile.TiffFile(path) as tif:
+        expected = [level.asarray() for level in tif.series[0].levels]
+
+    assert [wrapper.layout is not None for wrapper in wrappers] == [True, True]
+    for wrapper, reference in zip(wrappers, expected):
+        copy = pickle.loads(pickle.dumps(wrapper))
+        assert copy.layout == wrapper.layout
+        for key in [slice(None), (slice(10, 90), slice(5, 50)), 7, (slice(None, None, 3), 4), (-1,)]:
+            assert np.array_equal(copy[key], reference[key])
+    assert all(np.array_equal(np.asarray(level), reference) for level, reference in zip(levels, expected))
+
+
+@pytest.mark.parametrize('options', [{'compression': 'zlib'}, {'tile': (64, 64)}])
+def test_compressed_or_tiled_levels_are_read_through_zarr(tmp_path, options):
+    from muvis_align.image.ome_tiff_helper import read_tiff_level_arrays
+    path = str(tmp_path / 'other.tiff')
+    data = np.random.default_rng(3).integers(0, 1000, (128, 128), dtype=np.uint16)
+    tifffile.imwrite(path, data, **options)
+
+    levels = read_tiff_level_arrays(path)
+
+    assert [wrapper.layout for wrapper in _level_wrappers(levels)] == [None]
+    assert np.array_equal(np.asarray(levels[0]), data)
