@@ -4,7 +4,7 @@ import numpy as np
 import tifffile
 from multiview_stitcher import msi_utils
 
-from muvis_align.image.lazy_overview import lazy_section_overview, _coarsest_level_within
+from muvis_align.image.lazy_overview import lazy_section_overview, _coarsest_level_within, MsimLevels
 from muvis_align.MVSRegistration import MVSRegistration
 
 # z_y_x in the file name: z the section, y/x the tile in 64-pixel steps (1um pixels)
@@ -109,3 +109,28 @@ def test_each_source_is_read_at_its_coarsest_level_no_coarser_than_the_plane():
     assert _coarsest_level_within(source, {'y': 3, 'x': 3}) == 1
     assert _coarsest_level_within(source, {'y': 4, 'x': 4}) == 2
     assert _coarsest_level_within(source, {'y': 0.5, 'x': 0.5}) == 0
+
+
+def test_readers_give_the_pixels_at_the_sources_place_and_a_missing_one_is_left_empty(tmp_path):
+    reg = registration(tmp_path)
+    # half-resolution stand-ins for pre-processed sources, the second one filtered out
+    readers = [SimpleNamespace(pixel_sizes=[{'y': 2.0, 'x': 2.0}], dtype=np.uint8,
+                               level_data=lambda level, value=value: np.full((32, 32), value + 1, dtype=np.uint8))
+               for value in TILES.values()]
+    readers[1] = None
+
+    data = np.asarray(msi_utils.get_sim_from_msim(overview(reg, readers=readers)).data).squeeze()
+
+    assert np.all(data[0, :64, :64] == 11) and np.all(data[0, :64, 64:128] == 0)
+    assert np.all(data[0, 64:128, :64] == 31) and np.all(data[1, :64, :64] == 41)
+
+
+def test_a_pre_processed_msim_is_read_at_its_own_levels(tmp_path):
+    reg = registration(tmp_path)
+    msims, _, _ = reg.preprocess(reg.ensure_msims(), normalisation='individual')
+    sim = msi_utils.get_sim_from_msim(msims[0])
+
+    levels = MsimLevels(msims[0])
+
+    assert levels.pixel_sizes == [{'y': 1.0, 'x': 1.0}] and levels.dtype == sim.dtype
+    assert np.array_equal(np.asarray(levels.level_data(0)), np.asarray(sim.data))

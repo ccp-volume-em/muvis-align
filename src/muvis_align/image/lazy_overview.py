@@ -1,6 +1,6 @@
-"""An overview of the raw sources, one plane per section, each built only when it is viewed: the plane's own tiles
-read at the coarsest level no coarser than the plane and pasted at their position. Opening a large project then shows image data as soon as
-the shapes, instead of pasting every source (minutes at 34k) before showing any."""
+"""An overview of the sources (raw or pre-processed), one plane per section, each built only when it is viewed: the
+plane's own tiles read at the coarsest level no coarser than the plane and pasted at their position. Opening a large
+project then shows image data as soon as the shapes, instead of pasting every source (minutes at 34k) before any."""
 import logging
 import threading
 from collections import OrderedDict
@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import dask
 import dask.array as da
 import numpy as np
-from multiview_stitcher import mv_graph
+from multiview_stitcher import msi_utils, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_interactive_preview_scale
@@ -26,12 +26,29 @@ default_prefetch_radius = 4
 default_plane_max_bytes = default_planes_max_bytes // (2 * default_prefetch_radius + 1)
 
 
-def _level_data(source, level):
-    """The source's level as its own raw array (no msim built) when it has one, else its msim's."""
-    data = source.data
-    if data and level < len(data):
-        return data[level]
-    return source.get_level_data(level)
+class SourceLevels:
+    """A source's stored levels, read as its own raw arrays (no msim built) when it has them, else its msim's."""
+
+    def __init__(self, source):
+        self.source, self.pixel_sizes, self.dtype = source, source.pixel_sizes, source.dtype
+
+    def level_data(self, level):
+        data = self.source.data
+        if data and level < len(data):
+            return data[level]
+        return self.source.get_level_data(level)
+
+
+class MsimLevels:
+    """The levels of a (lazy) msim, as a pre-processed source: its pixels computed only for the level read."""
+
+    def __init__(self, msim):
+        self.sims = [msi_utils.get_sim_from_msim(msim, scale=key) for key in msi_utils.get_sorted_scale_keys(msim)]
+        self.pixel_sizes = [si_utils.get_spacing_from_sim(sim) for sim in self.sims]
+        self.dtype = self.sims[0].dtype
+
+    def level_data(self, level):
+        return self.sims[level].data
 
 
 class SectionPlanes:
@@ -94,7 +111,7 @@ class SectionPlanes:
 
         def read(entry):
             with dask.config.set(scheduler='synchronous'):
-                return np.squeeze(np.asarray(_level_data(entry['source'], entry['level'])))
+                return np.squeeze(np.asarray(entry['reader'].level_data(entry['level'])))
 
         with ThreadPoolExecutor(max_workers=max(1, min(self.workers, len(entries)))) as executor:
             datas = list(executor.map(read, entries))
@@ -129,10 +146,10 @@ def _plane_spacing(preview_scale, level0_spacing):
     return {dim: level0_spacing[dim] * scale for dim in 'yx'}
 
 
-def _coarsest_level_within(source, spacing):
-    """The source's coarsest level no coarser than `spacing`, else its finest."""
+def _coarsest_level_within(reader, spacing):
+    """The reader's coarsest level no coarser than `spacing`, else its finest."""
     best = 0
-    for level, pixel_size in enumerate(source.pixel_sizes):
+    for level, pixel_size in enumerate(reader.pixel_sizes):
         if all(pixel_size.get(dim, 0) <= spacing[dim] * (1 + 1e-6) for dim in 'yx'):
             best = level
     return best
@@ -140,13 +157,18 @@ def _coarsest_level_within(source, spacing):
 
 def lazy_section_overview(sources, translations, transforms, output_order, transform_key, z_scale=None,
                           preview_scale=default_interactive_preview_scale, max_plane_bytes=default_plane_max_bytes,
-                          label='Overview'):
+                          readers=None, label='Overview'):
     """The overview msim (z, y, x) of 2D, single-channel sources at one or more z, each z-plane computed on demand at
-    `preview_scale`; None for anything it cannot place faithfully (a rotated transform, a 3D or multichannel source)."""
+    `preview_scale`; None for anything it cannot place faithfully (a rotated transform, a 3D or multichannel source).
+    `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place."""
+    if readers is None:
+        readers = [SourceLevels(source) for source in sources]
+    if all(reader is None for reader in readers):
+        return None
     if not sources or any(source.get_nchannels() > 1 or source.get_size().get('z', 1) > 1 for source in sources):
         return None
     geometry = []
-    for source, translation, transform in zip(sources, translations, transforms):
+    for source, reader, translation, transform in zip(sources, readers, translations, transforms):
         props = build_source_stack_props(source, output_order, translation, transform, transform_key,
                                          z_scale=z_scale, promote_z=True)
         affine = np.asarray(props['transform'].squeeze()) if 'transform' in props else np.eye(4)
@@ -154,14 +176,15 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
             logging.info(f'{label}: source transforms are not translations only - no lazy overview')
             return None
         vertices = mv_graph.get_vertices_from_stack_props(props)
-        geometry.append((source, props, vertices.min(axis=0), vertices.max(axis=0)))
+        geometry.append((reader, props, vertices.min(axis=0), vertices.max(axis=0)))
 
     dims = ['z', 'y', 'x']
     lower = np.min([low for *_, low, _ in geometry], axis=0)
     upper = np.max([high for *_, high in geometry], axis=0)
     level0_spacing = {dim: float(np.median([props['spacing'][dim] for _, props, _, _ in geometry])) for dim in 'yx'}
     spacing = _plane_spacing(preview_scale, level0_spacing)
-    itemsize = np.dtype(sources[0].dtype).itemsize
+    dtype = next(reader.dtype for reader in readers if reader is not None)
+    itemsize = np.dtype(dtype).itemsize
 
     def plane_shape_at(spacing):
         return {dim: int(np.ceil((upper[axis] - lower[axis]) / spacing[dim])) + 1
@@ -174,15 +197,16 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
 
     z_values = sorted({round(float(low[0]), 9) for *_, low, _ in geometry})
     entries = {}
-    for source, props, low, _ in geometry:
-        level = _coarsest_level_within(source, spacing)
-        level_spacing = [float(source.pixel_sizes[level].get(dim, props['spacing'][dim])) for dim in 'yx']
-        # vertices are pixel centres: the outer edge is half a level-0 pixel before the first
-        edge = tuple(float(low[axis] - lower[axis] - props['spacing'][dim] / 2) for axis, dim in ((1, 'y'), (2, 'x')))
-        entries.setdefault(z_values.index(round(float(low[0]), 9)), []).append(
-            {'source': source, 'level': level, 'edge': edge, 'spacing': tuple(level_spacing)})
+    for reader, props, low, _ in geometry:
+        if reader is not None:
+            level = _coarsest_level_within(reader, spacing)
+            level_spacing = [float(reader.pixel_sizes[level].get(dim, props['spacing'][dim])) for dim in 'yx']
+            # vertices are pixel centres of the source's level 0: its outer edge is half a pixel before the first
+            edge = tuple(float(low[axis] - lower[axis] - props['spacing'][dim] / 2)
+                         for axis, dim in ((1, 'y'), (2, 'x')))
+            entries.setdefault(z_values.index(round(float(low[0]), 9)), []).append(
+                {'reader': reader, 'level': level, 'edge': edge, 'spacing': tuple(level_spacing)})
 
-    dtype = sources[0].dtype
     planes = SectionPlanes(entries, shape, spacing, {'y': lower[1], 'x': lower[2]}, dtype, len(z_values))
     plane_shape = (shape['y'], shape['x'])
     stacked = da.stack([da.from_delayed(dask.delayed(planes.plane)(index), plane_shape, dtype=dtype)

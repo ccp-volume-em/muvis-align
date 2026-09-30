@@ -616,6 +616,10 @@ Progress:
     source read at its coarsest level no coarser than that, a plane capped by bytes (1GB / 9 planes kept).
     Meatballs at 100nm: 10204x7653 plane, overview at level 0, tiles at level 3, built in 0.46s; its extent
     matches the outline to a plane pixel.
+  - Done (user request): after pre-processing the view showed the raw sources (the lazy overview ignored
+    show_preprocessed). Now the section planes keep the sources' geometry but read each one's register_msim (lazy
+    pyramid, MsimLevels) at the coarsest level no coarser than the plane; a source filtered out stays empty.
+    Meatballs, pre-processing scale 2, 100nm: tiles at 0.08um, overview at 0.498um, a plane in 0.25s.
   - Registration/fusion may stay slow on the big dataset (hours at 34k), not on a small one. Run only the
     targeted tests after each change (user).
 

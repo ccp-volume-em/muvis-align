@@ -36,7 +36,7 @@ from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress, SilentProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
-from muvis_align.image.lazy_overview import lazy_section_overview
+from muvis_align.image.lazy_overview import lazy_section_overview, MsimLevels
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
@@ -889,7 +889,8 @@ class Interface:
             data = None
             if transform_key == self.reg.source_transform_key:
                 with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
-                    data = self._run_off_thread(lambda worker_factory: self._create_lazy_overview(), factory)
+                    data = self._run_off_thread(
+                        lambda worker_factory: self._create_lazy_overview(show_preprocessed=show_preprocessed), factory)
             # otherwise the fused preview, which needs every source's real msim built: not on opening a project
             if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
@@ -925,15 +926,22 @@ class Interface:
                 pbar.update(1)
         self.view_mode = ViewMode.OVERVIEW
 
-    def _create_lazy_overview(self):
+    def _create_lazy_overview(self, show_preprocessed=False):
         reg = self.reg
         transforms, output_order = getattr(reg, '_msim_transforms', None), getattr(reg, '_msim_output_order', None)
         if transforms is None or output_order is None:
             return None
+        readers, label = None, 'Overview'
+        if show_preprocessed and reg.register_msims is not None:
+            # a source pre-processing dropped (filter_foreground) is left out, not shown raw
+            readers = [None] * len(reg.sources)
+            for index, msim in zip(reg.register_indices, reg.register_msims):
+                readers[index] = MsimLevels(msim)
+            label = 'Pre-processed overview'
         return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, reg.source_transform_key,
                                      z_scale=getattr(reg, '_msim_z_scale', None),
                                      preview_scale=self.params['input_output'].get('preview_scale'),
-                                     label=f'Overview ({len(reg.sources)} images)')
+                                     readers=readers, label=f'{label} ({len(reg.sources)} images)')
 
     def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
                                  face_colors=None, is_3d=None):
