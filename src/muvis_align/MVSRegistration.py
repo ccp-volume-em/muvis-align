@@ -34,6 +34,7 @@ from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
+from muvis_align.fusion_slabs import fuse_to_zarr_by_z_slabs
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
@@ -299,6 +300,7 @@ class MVSRegistration:
         self.sources = []
         self.metrics = {}
         self.group_pairs = {}
+        self.fuse_by_z_slabs = True
         self.register_indices = None
         self.output_params = {}
 
@@ -1938,16 +1940,23 @@ class MVSRegistration:
                 else:
                     zarr_options = None
                 with dask.config.set(scheduler='threads'):
-                    fused_image = fusion.fuse(
-                        msims,
-                        fusion_func=fuse_func,
-                        transform_key=transform_key,
-                        output_stack_properties=output_stack_properties,
-                        output_zarr_url=output_filename,
-                        zarr_options=zarr_options,
-                        output_chunksize=output_chunksize,
-                        batch_options=self._fusion_batch_options(saving_zarr)
-                    )
+                    if saving_zarr and self.fuse_by_z_slabs and num_z_positions > 1 and 'z' in output_chunksize:
+                        # a stack's block reaches only the z-planes at its depth: fused from all, it costs as many
+                        fused_image = fuse_to_zarr_by_z_slabs(
+                            msims, output_filename, transform_key, output_stack_properties, output_chunksize,
+                            fusion_func=fuse_func, zarr_options=zarr_options,
+                            batch_options=self._fusion_batch_options(saving_zarr))
+                    else:
+                        fused_image = fusion.fuse(
+                            msims,
+                            fusion_func=fuse_func,
+                            transform_key=transform_key,
+                            output_stack_properties=output_stack_properties,
+                            output_zarr_url=output_filename,
+                            zarr_options=zarr_options,
+                            output_chunksize=output_chunksize,
+                            batch_options=self._fusion_batch_options(saving_zarr)
+                        )
             else:
                 # 'compose' mode: no actual fusion, just return the per-source msims as-is
                 fused_image = msims

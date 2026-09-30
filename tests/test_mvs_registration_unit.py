@@ -816,3 +816,42 @@ def test_a_cancel_stops_building_sources_without_building_the_rest():
         with pytest.raises(OperationCancelled):
             reg._build_msims(progress_factory=lambda **kwargs: CancellingBar())
     assert len(built) < 100
+
+
+def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp_path):
+    """Each z-slab of blocks fused from only the sources reaching it, every pyramid level identical."""
+    import glob
+    from multiview_stitcher import msi_utils
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
+             output_path=tmp_path.as_posix() + '/')
+    reg.init_data()
+    fused = {}
+    for by_slabs in (False, True):
+        reg.fuse_by_z_slabs = by_slabs
+        fused[by_slabs], saved = reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key,
+                                          output_filename=f'fused_{by_slabs}', ome_version='0.5')
+        assert saved
+
+    for level in msi_utils.get_sorted_scale_keys(fused[False]):
+        assert np.array_equal(np.asarray(msi_utils.get_sim_from_msim(fused[False], scale=level).data),
+                              np.asarray(msi_utils.get_sim_from_msim(fused[True], scale=level).data))
+
+
+def test_a_z_slab_is_fused_from_only_the_planes_that_reach_it():
+    from multiview_stitcher import msi_utils, spatial_image_utils as si_utils
+    from muvis_align.fusion_slabs import slab_sources
+
+    def plane(z):
+        sim = si_utils.get_sim_from_array(np.ones((1, 8, 8), dtype=np.uint16), dims=['z', 'y', 'x'],
+                                          scale={'z': 1.0, 'y': 1.0, 'x': 1.0},
+                                          translation={'z': float(z), 'y': 0.0, 'x': 0.0}, transform_key='source')
+        return sim
+    sims = [plane(z) for z in (0, 0, 1, 2)]
+    properties = {'origin': {'z': 0.0, 'y': 0.0, 'x': 0.0}, 'spacing': {'z': 1.0, 'y': 1.0, 'x': 1.0},
+                  'shape': {'z': 3, 'y': 8, 'x': 8}}
+
+    assert slab_sources(sims, 'source', properties, z_chunk=1) == [[0, 1], [2], [3]]
+    assert slab_sources(sims, 'source', properties, z_chunk=2) == [[0, 1, 2], [3]]
