@@ -584,8 +584,8 @@ Progress:
   cancel; it was only seen when the pair loop started. Now checked per candidate block (_sweep_candidate_pairs,
   orthogonal pairing's get_pairs too), every 100k edges (build_view_adjacency_graph) and between register_pairs'
   setup steps. Still unchecked: a graph handed to multiview-stitcher (rotated boxes - not before registration).
-  Default pairing is the wrong choice for a stack; proposed to the user: log the registration settings and warn
-  before building a default-pairing graph on a multi-section stack.
+  Default pairing is the wrong choice for a stack. Added (user request): pair and global registration log their
+  settings, default pairing its '#candidate pairs'. No warning before building the graph (user: not wanted).
 
 ## TODO
 
