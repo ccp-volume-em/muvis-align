@@ -275,6 +275,16 @@ parameters:
     optional: True
     section_id: "registration"
     mode: "beginner"
+  - name: split_binning
+    type: integer
+    label: "Split binning"
+    description: "Split pairing: binning of the fused z-planes / channels when registering them against each other (1 = the pre-processed pixel size; blank = 8)"
+    default: 8
+    cli_tag: "--split_binning"
+    cli_order: 14
+    optional: True
+    section_id: "registration"
+    mode: "beginner"
   - name: transform_type
     type: dropdown
     label: "Transform type"

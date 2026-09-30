@@ -135,11 +135,12 @@ default_fusion_workers = _available_cpus
 default_pair_workers = _available_cpus
 # pairs a registration worker process handles before it is replaced, handing back what it kept
 default_pair_worker_tasks = 1000
-# the longest side, in pixels, of a z-plane or channel fused to register it against the next ('split' pairing)
-default_split_group_size = 1024
 # smoothing of a fused z-plane or channel before it is registered, in tile sizes: a pattern every tile repeats
 # (e.g. a grid) would otherwise match at a shift of that pattern
 split_smoothing = 1 / 25
+# binning of a fused z-plane or channel when registering it against the next, when the setting is blank; MVS's own
+# only starts above 400^3 pixels, so a whole 2D section would be registered at its full pre-processed size
+default_split_binning = 8
 # What one output block of an *export* may span, where default_chunk_size (1024) is what a preview
 # wants: x/y chunks larger than the screen buy a preview nothing, while an export pays a fixed
 # cost (~0.5s measured) per block however small. Caps the block, does not overrule the budget -

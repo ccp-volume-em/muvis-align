@@ -1563,12 +1563,14 @@ class MVSRegistration:
             msi_utils.get_sim_from_msim(pair_msims[0], scale='scale0'), params=params)
         transform_type = params.get('transform_type', 'rigid')
         resolution_method = ROBUST_LINEAR if transform_type in ('translation', 'rigid') else 'global_optimization'
+        binning = params.get('split_binning')
+        binning = max(int(float(binning)), 1) if is_valid_value(binning) else default_split_binning
         with self.progress_phase(progress_factory, total=1, desc='Registering z-planes / channels'), \
                 Timer('split: register groups', verbose=self.logging_time):
             return register_groups(pair_msims, transforms, self.split_groups(list(register_indices)),
                                    self.source_transform_key, pairwise_reg_func, pairwise_reg_func_kwargs,
                                    resolution_method=resolution_method,
-                                   resolution_kwargs={'transform': transform_type})
+                                   resolution_kwargs={'transform': transform_type}, binning=binning)
 
     def register_global(self, pair_msims, register_indices=None, params=None,
                         pairs_graph=None, progress_factory=None):

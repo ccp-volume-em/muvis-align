@@ -30,14 +30,14 @@ def textured_msim(image, origin_x):
 def test_a_misplaced_plane_is_registered_back_onto_the_one_before(shift):
     """Two planes of the same content, the second placed `shift` too far in x: stage 2 must correct it."""
     rng = np.random.default_rng(0)
-    # structure coarser than the plane's smoothing (tile / 25), no background zeros
+    # structure coarser than the plane's smoothing (tile / 25), no background zeros; small, so registered unbinned
     image = (gaussian_filter(rng.random((200, 200)), 8) * 1000 + 100).astype(np.float32)
     msims = [textured_msim(image, 0.0), textured_msim(image, shift)]
     identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
 
     transforms = register_groups(msims, [identity, identity], [0, 1], 'source',
                                  registration.phase_correlation_registration,
-                                 resolution_kwargs={'transform': 'translation'})
+                                 resolution_kwargs={'transform': 'translation'}, binning=1)
 
     translations = [np.asarray(transform).squeeze()[:2, 2] for transform in transforms]
     assert np.allclose(translations[0], 0, atol=0.5)
@@ -61,7 +61,7 @@ def test_planes_sharing_a_tile_pattern_and_outline_are_registered_by_their_conte
 
     transforms = register_groups(msims, [identity, identity], [0, 1], 'source',
                                  registration.phase_correlation_registration,
-                                 resolution_kwargs={'transform': 'translation'})
+                                 resolution_kwargs={'transform': 'translation'}, binning=1)
 
     translations = [np.asarray(transform).squeeze()[:2, 2] for transform in transforms]
     assert np.allclose(translations[1] - translations[0], [0, 20.0], atol=1.0)
@@ -85,3 +85,22 @@ def test_split_pairing_registers_no_pairs_across_planes():
 
     results = reg.register_global(reg.pair_msims, params=params)
     assert len(results['mappings']) == len(reg.pair_msims)
+
+
+def test_group_pairs_are_registered_binned_by_multiview_stitcher(monkeypatch):
+    import muvis_align.split_registration as split_registration
+    seen = {}
+
+    def compute(msims, graph, **kwargs):
+        seen.update(kwargs)
+        return graph
+    monkeypatch.setattr(split_registration, 'compute_pairwise_registrations', compute)
+    image = np.ones((64, 64), dtype=np.float32)
+    msims = [textured_msim(image, 0.0), textured_msim(image, 0.0)]
+    for msim in msims:
+        msi_utils.set_affine_transform(msim, param_utils.affine_to_xaffine(np.eye(3), t_coords=[0]),
+                                       transform_key=split_registration.GROUP_KEY, base_transform_key='source')
+
+    split_registration.register_group_pair(msims[0], msims[1], 0, None, binning=4)
+
+    assert seen['registration_binning'] == {'y': 4, 'x': 4}
