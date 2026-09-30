@@ -118,9 +118,22 @@ Ordered by impact at HPC scale.
 - **Suggestion:** build the plan (and the per-source transform checks, on plain numpy arrays) once per fusion and
   hand each block only the sources it meets.
 - **muvis-align:** for a stack, `fusion_slabs.fuse_to_zarr_by_z_slabs` fuses each z-slab of blocks from only the
-  sources that reach it (identical output; slides export ~31 -> ~9 min, ~1.5 -> ~4.3 cores).
+  sources that reach it, by multiview-stitcher's own rule, through `prepare_block_fusion(create_output=False)`
+  (identical output). Slides export ~31 -> ~9 min, ~1.5 -> ~4.3 cores, together with direct TIFF reads (see the
+  tifffile item below; ~15-20% of that).
 
-## 11. Smaller items
+## 11. Registration binning budget for 2D images
+
+- **Problem:** `registration.get_optimal_registration_binning` bins a pair only while it holds more than
+  `max_total_pixels_per_stack = 400**3` (64M) pixels. That budget suits 3D stacks; a 2D image of up to 64M pixels
+  is registered unbinned.
+- **Measured:** split pairing registers whole fused sections (6051x6801 px, 41M, at 0.032um): phase correlation 90s
+  and 5.9GB a pair, SIFT over 10GB a pair (a plugin run reached 16.6GB). Binned by 8: SIFT 2.3 min for the whole
+  slides registration, peak 2.0GB, the same section alignment.
+- **Suggestion:** a budget per dimensionality (e.g. 400**ndim, or a 2D default of the order of 1-4M pixels).
+- **muvis-align:** passes `registration_binning` for the section pairs, from the `split_binning` setting (default 8).
+
+## 12. Smaller items
 
 - **Scheduler for the overlap graph:** without a dask scheduler set, building the view adjacency graph computes
   overlaps with spawned processes; a script without a `__main__` guard then re-runs itself in each (>10GB). A
@@ -128,6 +141,15 @@ Ordered by impact at HPC scale.
 - **Registration function dispatch:** `dispatch_pairwise_reg_func` reads the function's signature to decide what to
   pass, so a wrapper without `functools.wraps` is called without `fixed_data`/`moving_data`. Worth documenting,
   or an explicit flag.
+
+## Related: tifffile and zarr, not multiview-stitcher
+
+tifffile's `ZarrTiffStore.get()` is blocking code (file read and decode) inside zarr 3's async store API, so it
+runs on zarr's one event-loop thread: every read through the store in a process is serialised there, however many
+threads ask. In the slides export, 52% of the fusion threads' samples were waiting in zarr's `sync()`. muvis-align
+reads a TIFF level stored as one uncompressed run of rows directly (`ome_tiff_helper.PicklableTiffLevel`, a seek and
+read of the rows asked for), other layouts still through the store. Worth raising with tifffile (e.g. running
+`get()` in a thread) or zarr.
 
 ## Related: dask, not multiview-stitcher
 
