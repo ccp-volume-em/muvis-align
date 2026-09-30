@@ -470,6 +470,27 @@ Progress:
   closing (one core busy, 117 threads, 16 min; killed); a rerun exited normally. The driver now dumps all
   stacks and exits if alive 2 min after closing.
 
+- Found (user request): why S001->S004 align poorly on the slides project. Each consecutive section of S001-S004
+  is rotated ~5.5-6 deg from the one before (the scan rotation in their metadata is identical, 6.2554 rad, so
+  the sections themselves are rotated on the ribbon); split stage 2 only translates. Search around split's
+  placement (0-15 deg, 0.25 deg steps, mosaics at 0.256um): S000->S001 best at 0 deg (0.757 vs 0.745 at
+  split); S001->S002 +5.5 deg 0.829 (vs 0.170), S002->S003 +5.8 deg 0.814 (vs 0.134), S003->S004 +6.0 deg
+  0.793 (vs 0.128) plus ~79um shift - the rotation also broke S004's shift. S000 is from another session
+  (2023-11-07, scan rotation 0.041 rad) but matches S001 without rotation. Fix: rotation in stage 2 (angle
+  search on a coarse grid, refined) - rejected by the user: rotation comes from the pair registration method
+  and transform type (MVS), nothing custom outside it.
+- Done (user request): split stage 2 back on the configured pair method via MVS compute_pairwise_registrations
+  and the transform type's resolution (own masked phase correlation removed); kept as input preparation: one
+  common grid, tile/25 smoothing, background filled with the mean. Consecutive-section NCC:
+  - slides, phase_correlation: 0.748/0.125/0.102/0.067 (translation-only method, the 6 deg rotations remain);
+    sift rigid: 0.696/0.806/0.772/0.762, 1.8 min in all.
+  - data_subset, phase_correlation: 0.03-0.08 (MVS disambiguation picks ~0 for its large shifts, up to 48um of a
+    76um section); sift rigid: 0.35/0.35/0.35/0.31/0.25 (masked PC gave 0.17-0.40, orthogonal 0.02-0.16).
+- Fixed: Windows CI py3.12 failure (test_source_levels_pickle_and_read_the_same_pixels_after, I/O operation on
+  closed file): PicklableTiffLevel.array set _array inside the TiffFile block, so a thread checking it without
+  the lock read before the file closed and tifffile kept that handle as open for good (c4e14c5, with a
+  deterministic test that fails on the old code).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
