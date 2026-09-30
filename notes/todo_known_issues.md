@@ -529,7 +529,7 @@ Progress:
   uncompressed 6400x6400 strip, decoded whole for each block that touches it. The plugin run is ~2x slower
   than headless and adds its ~3.5GB baseline (viewer). Asked the user what the earlier, faster fusion was.
 
-- Doing (user request): the ~1.5-core limit of the export fusion (slides, 24 cores). Plan: sample all threads'
+- Done (user request): the ~1.5-core limit of the export fusion (slides, 24 cores). Plan: sample all threads'
   stacks during the headless export (scratchpad fusion_rate.py) to see where they wait - tile reads (whole
   6400x6400 strips), a lock, resampling or zarr writes - then fix the dominant one and re-measure.
   - Found: 52% of fusion-thread samples waited in zarr's sync() - tile reads (tifffile's store get() is blocking
@@ -548,7 +548,8 @@ Progress:
     level: data/S* and data_subset with split's rotated transforms (6 planes, 24 blocks). Slides, 150s: 352 of
     1280 blocks (~9 min in all, was ~31), ~4.3 cores (was ~1.5), peak 8.3GB. A looser margin (one source voxel
     plus one output voxel) had pulled in the neighbouring planes: 102 blocks in 150s.
-  - Direct reads re-measured with slabs: 352 vs 304 blocks in 150s (+15-20%), peak 8.3 vs 6.9GB. Asked the user.
+  - Direct reads re-measured with slabs: 352 vs 304 blocks in 150s (+15-20%), peak 8.3 vs 6.9GB. User: commit
+    them. Full suite 789 passed.
 
 ## TODO
 
