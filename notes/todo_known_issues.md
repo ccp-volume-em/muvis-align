@@ -578,6 +578,15 @@ Progress:
   sandbox xpra-pull.sh builds stays. squashfuse on the compute nodes (admins, or a user build on PATH -
   untested) would let the SIF mount directly.
 
+- Fixed (user report, HPC 34k sources): a cancel during pair registration did nothing at first. The run (no
+  "#pairs" line: default pairing) sat at 0% for 5.5+ min with rss 10.9 -> 23.6GB, finding candidate pairs and
+  building the pair graph - tens of millions of candidates across all 1081 sections - and neither checked for a
+  cancel; it was only seen when the pair loop started. Now checked per candidate block (_sweep_candidate_pairs,
+  orthogonal pairing's get_pairs too), every 100k edges (build_view_adjacency_graph) and between register_pairs'
+  setup steps. Still unchecked: a graph handed to multiview-stitcher (rotated boxes - not before registration).
+  Default pairing is the wrong choice for a stack; proposed to the user: log the registration settings and warn
+  before building a default-pairing graph on a multi-section stack.
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
