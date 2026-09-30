@@ -30,8 +30,10 @@ def textured_msim(image, origin_x):
 def test_a_misplaced_plane_is_registered_back_onto_the_one_before(shift):
     """Two planes of the same content, the second placed `shift` too far in x: stage 2 must correct it."""
     rng = np.random.default_rng(0)
-    # structure coarser than the plane's smoothing (tile / 25), no background zeros; small, so registered unbinned
-    image = (gaussian_filter(rng.random((200, 200)), 8) * 1000 + 100).astype(np.float32)
+    # sharp-edged blobs coarser than the plane's smoothing (tile / 25), as cells: smooth noise smoothed again
+    # leaves a correlation peak so broad the shift came out half a pixel short; small, so registered unbinned
+    blobs = gaussian_filter(rng.random((200, 200)), 6)
+    image = ((blobs > np.median(blobs)) * 500 + 100).astype(np.float32)
     msims = [textured_msim(image, 0.0), textured_msim(image, shift)]
     identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
 
@@ -40,8 +42,8 @@ def test_a_misplaced_plane_is_registered_back_onto_the_one_before(shift):
                                  resolution_kwargs={'transform': 'translation'}, binning=1)
 
     translations = [np.asarray(transform).squeeze()[:2, 2] for transform in transforms]
-    assert np.allclose(translations[0], 0, atol=0.5)
-    assert np.allclose(translations[1], [0, -shift], atol=0.5)
+    assert np.allclose(translations[0], 0, atol=0.2)
+    assert np.allclose(translations[1], [0, -shift], atol=0.2)
     # the stage-1 transforms are only borrowed to fuse the planes
     assert 'split_stage1' not in msims[0]['scale0'].ds.data_vars
 

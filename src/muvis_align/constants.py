@@ -141,6 +141,9 @@ split_smoothing = 1 / 25
 # binning of a fused z-plane or channel when registering it against the next, when the setting is blank; MVS's own
 # only starts above 400^3 pixels, so a whole 2D section would be registered at its full pre-processed size
 default_split_binning = 8
+# margin around the fused z-planes' grid, a fraction of each side, filled as their background: registered by FFT the
+# grid wraps around, and content touching its edges pulled the shift found towards zero (~0.5 px of 7)
+split_grid_margin = 0.05
 # What one output block of an *export* may span, where default_chunk_size (1024) is what a preview
 # wants: x/y chunks larger than the screen buy a preview nothing, while an export pays a fixed
 # cost (~0.5s measured) per block however small. Caps the block, does not overrule the budget -

@@ -13,7 +13,7 @@ from multiview_stitcher.param_resolution import groupwise_resolution
 from multiview_stitcher.registration import compute_pairwise_registrations
 from scipy.ndimage import gaussian_filter
 
-from muvis_align.constants import default_split_binning, split_smoothing
+from muvis_align.constants import default_split_binning, split_grid_margin, split_smoothing
 from muvis_align.image.util import (build_view_adjacency_graph, restore_msims_transform,
                                     snapshot_msims_transform)
 from muvis_align.util import raise_if_cancelled
@@ -70,7 +70,8 @@ def smooth_group(data, spacing, tile_size):
 
 def group_grid(msims, transform_key):
     """The one y/x grid every group is fused onto - the union of all tiles at their finest (pre-processed) pixel
-    size - and the median tile size. On one grid two groups overlap in the whole frame, not a crop cut at an outline."""
+    size, with a margin - and the median tile size. On one grid two groups overlap in the whole frame, not a crop
+    cut at an outline."""
     finest = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in msims]
     stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in finest]
     lower = np.min([[props['origin'][dim] for dim in 'yx'] for props in stack_props], axis=0)
@@ -78,6 +79,8 @@ def group_grid(msims, transform_key):
                     for props in stack_props], axis=0)
     spacing = min(min(props['spacing'][dim] for dim in 'yx') for props in stack_props)
     shape = np.ceil((upper - lower) / spacing).astype(int)
+    margin = np.ceil(shape * split_grid_margin).astype(int)
+    lower, shape = lower - margin * spacing, shape + 2 * margin
     grid = {'origin': {dim: float(value) for dim, value in zip('yx', lower)},
             'spacing': {dim: spacing for dim in 'yx'},
             'shape': {dim: int(value) for dim, value in zip('yx', shape)}}
