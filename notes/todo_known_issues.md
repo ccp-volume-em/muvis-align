@@ -39,6 +39,14 @@ napari starts maximised. Tested in Chrome 154, maximised: buttons work. Costs ~1
 220MB vs 72MB), no CPU: only the current size is drawn and encoded.
 Side finding: xpra.org no longer serves xpra-html5 21 (stable or beta), so rebuilds get 19.
 
+### napari process not exiting after closing (seen in scripted runs)
+
+Twice in ~20 UI driver runs on the slides project the process stayed alive after napari closed, one core busy,
+119 threads: every Python thread had finished, the interpreter's native shutdown hung (faulthandler dump: one
+thread, no Python frame). A rerun exited normally. The driver now terminates itself after napari closes; a user
+closing napari might see the same lingering process. Not investigated further (needs native stacks, e.g.
+py-spy --native).
+
 ### Pair registration mixing up pairs' crops (fixed)
 
 dask's linear fusion renames a fused chain to a 115-char prefix plus 4 hex digits of `hash()`,
@@ -499,6 +507,18 @@ Progress:
   passed to compute_pairwise_registrations for the section pairs. Slides, sift rigid: 2.3 min in all, stage 2
   44.5s (22.6s at 1024 px - fusion at 0.032um is ~6.5s a section), peak 2.0GB; consecutive-section NCC
   0.673/0.799/0.781/0.766 (1024 px: 0.696/0.806/0.772/0.762).
+
+- Done (user request): split's group (section) pairs in pair_mappings.json and the metrics table. Saved after global
+  registration next to the tile pairs, keyed by group labels (["S000", "S001"]: the sources' common label
+  prefix cut at a separator, else the z-position or channel) with "kind": "split_group", mapping, quality and
+  bbox. The loader keeps them apart (find_file_list_index matches by substring: "S000" would match a file under
+  S000/) and restores them into metrics['group_pairs'], so the table shows them after reopening too. Table rows
+  "S000 - S001" after the tile pairs; cells now placed by metric name. Slides (sift rigid): 575 tile pairs + 4
+  section pairs, quality 0.28-0.32, rotations 0.085-0.094 (~5 deg). Tests 242 passed.
+- The UI driver hung again after napari closed (split, slides): the thread dump showed only a native thread (the
+  interpreter finished, native shutdown hung, one core busy), and faulthandler's exit hung as well (on Windows
+  _exit still runs DLL detach). The driver now ends itself with TerminateProcess (os._exit elsewhere) after
+  napari.run() returns. A user closing napari may hit the same - see Known issues.
 
 ## TODO
 
