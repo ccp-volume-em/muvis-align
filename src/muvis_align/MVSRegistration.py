@@ -1804,6 +1804,17 @@ class MVSRegistration:
 
         return {'batch_func': fuse_batch, 'n_batch': max_workers}
 
+    def is_channel_overlay(self, dimension=None, extra_metadata=None):
+        if extra_metadata is None:
+            extra_metadata = self.extra_metadata
+        channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
+        return bool((dimension and dimension == 'c') or len(channels) > 1)
+
+    def fuses_to_zarr(self, fusion_method=None, dimension=None, extra_metadata=None):
+        """Whether fuse() given an output filename writes the export itself; otherwise its caller saves the lazy
+        result it returns, which is where the work is then done."""
+        return not self.is_channel_overlay(dimension, extra_metadata) and 'compos' not in (fusion_method or '')
+
     def fuse(self, msims, fusion_method=None, output_spacing='mean', transform_key=None,
              dimension=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
@@ -1836,7 +1847,7 @@ class MVSRegistration:
             extra_metadata = self.extra_metadata
 
         channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
-        is_channel_overlay = ((dimension and dimension == 'c') or len(channels) > 1)
+        is_channel_overlay = self.is_channel_overlay(dimension, extra_metadata)
 
         if transform_key is None:
             transform_key = self.reg_transform_key

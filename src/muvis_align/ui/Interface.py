@@ -1770,7 +1770,11 @@ class Interface:
                 tile_size = int(tile_size)
         save_tile_size = tile_size or default_chunk_size
 
-        with self._operation_progress('Fusion', progress_factory, phases=2) as factory:
+        # written straight to zarr, the fusion is the whole export: a second phase would hold its bar at half
+        fuses_to_zarr = self.reg.fuses_to_zarr(self.params['fusion']['method'],
+                                               self.params['input_output']['registration_dimension'],
+                                               self.extra_metadata)
+        with self._operation_progress('Fusion', progress_factory, phases=1 if fuses_to_zarr else 2) as factory:
             def fuse(worker_factory):
                 # both the fusion and the write run on the worker thread, reporting to its own
                 # factory - see _run_off_thread()
