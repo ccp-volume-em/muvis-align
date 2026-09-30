@@ -641,6 +641,10 @@ Progress:
 - [ ] Lazy overview on single-level sources (the meatballs files are pyramids, so its timings are optimistic for
       single-level data): each tile is read whole at full res and only then strided - read just the
       strided rows instead (as the direct uncompressed-level reads do), and measure on a single-level set.
+- [ ] Registration preview for multiview-stitcher's built-in methods (e.g. phase correlation), which give only a
+      transform, no matched points: a wrapper used only for the preview that maps points on a regular grid over
+      the pair's overlap through the found transform, as the point pairs the preview's napari shape/point layers
+      are built from, to show the offsets.
 - [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
       in with the pyramid files would also be single-level (slower pre-processing and overview).
 - [ ] Run a real convert with a pre-processing scale set: check output level-0 size and levels
