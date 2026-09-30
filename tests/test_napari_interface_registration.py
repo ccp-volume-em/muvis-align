@@ -710,6 +710,7 @@ def test_input_output_process_resolves_relative_paths_before_reg_init(
     bare_interface.reg.is_initialised.return_value = False
     bare_interface.need_source_reinit = False
     bare_interface.reg.init.return_value = True
+    bare_interface.reg.first_section_indices.return_value = None
     bare_interface.update_metadata_source = MagicMock(return_value=True)
     bare_interface.populate_image_selection = MagicMock()
     bare_interface._load_saved_progress = MagicMock()
@@ -742,6 +743,7 @@ def test_input_output_process_cancelled_while_reading_sources_reads_them_again_n
     bare_interface.reg.is_initialised.return_value = False
     bare_interface.need_source_reinit = False
     bare_interface.reg.init.return_value = True
+    bare_interface.reg.first_section_indices.return_value = None
     bare_interface.update_metadata_source = MagicMock(side_effect=OperationCancelled('Cancelled'))
     bare_interface._show_loaded_project = MagicMock()
 

@@ -598,8 +598,15 @@ Progress:
     view is at the source positions (opening, after pre-processing), else the fused path as before. Meatballs
     in the plugin: opening shows images with the shapes (lazy 0.1s, adding 1.0s); after pre-processing the
     refresh has no size cap/overview step (HPC: 3.5 + 11.8 min). tests/test_lazy_overview.py.
-  - Next: fill the other sections in the background (sampled order); initialise the viewed section's sources
-    first and the rest in the background, the shapes growing. Registration/fusion may stay slow (hours at 34k).
+  - Done, step 2: built planes kept within 1GB (least recently viewed dropped; all 1081 at 34k would be ~17GB),
+    the 4 sections either side of a viewed one built in the background.
+  - Done, step 3 (user: first section only, one refresh at the end, one bar): on opening, the first folder's
+    files (first_section_indices; none when all files share a folder) are read into a display-only
+    section_registration and drawn, reporting to no bar (SilentProgress, still stops on a cancel); then every
+    source is read as before under the one 'Initialising sources' bar with the viewer usable, and the full view
+    replaces the section's. Meatballs: first section on screen 2.2s after starting, full view 4s later.
+  - Registration/fusion may stay slow on the big dataset (hours at 34k), not on a small one. Run only the
+    targeted tests after each change (user).
 
 ## TODO
 

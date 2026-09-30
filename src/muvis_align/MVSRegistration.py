@@ -597,6 +597,22 @@ class MVSRegistration:
 
         return True
 
+    def first_section_indices(self):
+        """The files of the first folder when the files span several (a folder a section), else None."""
+        folders = [Path(filename).parent for filename in self.filenames]
+        if len(set(folders)) < 2:
+            return None
+        return [index for index, folder in enumerate(folders) if folder == folders[0]]
+
+    def section_registration(self, indices):
+        """A registration of only the files at `indices`, labelled as here: to show them before the rest are read."""
+        section = MVSRegistration()
+        section.init(operation=self.operation, label=self.fileset_label,
+                     input_path=[self.filenames[index] for index in indices],
+                     input_labels=[self.file_labels[index] for index in indices], output_path=self.output,
+                     overwrite=False, pairing=self.pairing, verbose=self.verbose)
+        return section
+
     def init_sources(self, progress_factory=None):
         source_metadata0 = self.source_metadata
         source_metadata = {}

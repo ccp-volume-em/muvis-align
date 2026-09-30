@@ -860,3 +860,25 @@ def test_a_z_slab_is_fused_from_only_the_planes_that_reach_it():
 
     assert slab_sources(sims, 'source', properties, z_chunk=1) == [[0, 1], [2], [3]]
     assert slab_sources(sims, 'source', properties, z_chunk=2) == [[0, 1, 2], [3]]
+
+
+def test_the_first_section_is_the_first_folders_files_registered_as_the_whole_labels_them(tmp_path):
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
+             output_path=tmp_path.as_posix() + '/')
+
+    indices = reg.first_section_indices()
+    section = reg.section_registration(indices)
+
+    assert indices == [index for index, filename in enumerate(reg.filenames) if '/S000/' in filename]
+    assert section.filenames == [reg.filenames[index] for index in indices]
+    assert section.file_labels == [reg.file_labels[index] for index in indices]
+    assert section.output == reg.output
+
+
+def test_files_in_one_folder_have_no_first_section_to_show_before_the_rest(tmp_path):
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
+             output_path=tmp_path.as_posix() + '/')
+
+    assert reg.first_section_indices() is None

@@ -34,7 +34,7 @@ from muvis_align.Timer import Timer
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
 from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
-from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
+from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress, SilentProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.image.lazy_overview import lazy_section_overview
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events
@@ -319,6 +319,7 @@ class Interface:
                 fused_name = operation_to_past_participle(operation) if operation else None
                 if self.reg.has_saved_progress(fused_name, zarr_extension):
                     factory.ensure_phases(4)
+                self._show_first_section()
                 # _show_loaded_project() below always ends by drawing the view, so drawing
                 # here would only draw once with the not-yet-registered transform
                 ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
@@ -326,6 +327,25 @@ class Interface:
                     self.populate_image_selection()
                     self._load_saved_progress(factory)
         return ok
+
+    def _show_first_section(self):
+        """The first section's sources read and drawn before the rest: at 34k sources on a network filesystem, reading
+        them all takes minutes, while the viewer stays usable. The full view replaces it once they are all read."""
+        indices = self.reg.first_section_indices()
+        if indices is None:
+            return
+        section = self.reg.section_registration(indices)
+        # a second or two, left off the bar: sized for reading every source, its phases would take that share
+        silent = SilentProgress()
+        self._run_off_thread(
+            lambda worker_factory: section.init_data(source_metadata=self.source_metadata,
+                                                     progress_factory=worker_factory),
+            silent)
+        full, self.reg = self.reg, section
+        try:
+            self.update_views(show_images=False, progress_factory=silent)
+        finally:
+            self.reg = full
 
     def _run_off_thread(self, work, progress_factory):
         """Run work(progress_factory) on a worker thread, and wait for it here.
