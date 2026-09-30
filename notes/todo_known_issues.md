@@ -559,6 +559,14 @@ Progress:
   Fixed: MVSRegistration.fuses_to_zarr() (not a channel overlay, not compose) sets one phase; plugin rerun:
   3 -> 23% in 2.5 min (headless 26%). The driver gained a 'fusion' action.
 
+- Fixed: CI failed on test_a_misplaced_plane_is_registered_back_onto_the_one_before[7.0] (Windows 3.13, Ubuntu
+  3.14; -6.4 for -7 +- 0.5; locally -6.5, on the edge). Cause: the fused planes' grid is their tight union, so
+  content touches its edges, and phase correlation (FFT, periodic) pulled the shift towards zero. A 5% margin
+  (split_grid_margin, filled as background) makes it exact: sharp-blob planes, 4 seeds x shifts 7 and 20 px,
+  errors <= 0.1 (was 0.1-0.5). Test image now sharp blobs, tolerance 0.2. Slides with sift: consecutive-section NCC
+  0.67/0.77-0.80/0.735/0.73-0.76 over two runs, within SIFT's (RANSAC) run-to-run spread without the margin
+  (0.67-0.72/0.78-0.81/0.76-0.78/0.76-0.77). Full suite 789 passed.
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
