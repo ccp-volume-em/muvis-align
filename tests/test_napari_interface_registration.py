@@ -2759,3 +2759,14 @@ def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interfa
     assert rows == ['summary', 'S000_000 - S000_001', 'S000 - S001']
     assert columns == ['quality', 'ncc']
     assert values[2] == [0.3, None]
+
+
+def test_the_project_file_is_copied_into_the_output_folder_as_an_action_starts(bare_interface, tmp_path):
+    project = tmp_path / "project.yml"
+    project.write_text("input_output:\n  output_path: output\n")
+    bare_interface.params_path = str(project)
+    bare_interface.params = {"input_output": {"output_path": "output"}}
+
+    bare_interface.copy_params_to_output()
+
+    assert (tmp_path / "output" / "project.yml").read_text() == project.read_text()

@@ -172,6 +172,19 @@ class Interface:
     def write_params(self):
         write_params(self.params_path, self.params)
 
+    def copy_params_to_output(self):
+        """The project file as an action starts, next to its output: the settings the output was made with."""
+        params_path = getattr(self, 'params_path', None)
+        if not params_path or not os.path.exists(params_path):
+            return
+        output = resolve_to_project_dir(path_param_to_text(self.params['input_output'].get('output_path', '')),
+                                        self.get_project_dir())
+        os.makedirs(output, exist_ok=True)
+        target = os.path.join(output, os.path.basename(params_path))
+        if os.path.abspath(target) != os.path.abspath(params_path):
+            shutil.copyfile(params_path, target)
+            logging.info(f'Project settings copied to {target}')
+
     def change_param(self, param_name, value):
         keys = param_name.split('.')
         if keys[0] not in self.params:
@@ -265,6 +278,7 @@ class Interface:
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
+        self.copy_params_to_output()
         try:
             self._input_output_process()
         except OperationCancelled:
@@ -692,6 +706,7 @@ class Interface:
     def pre_processing_process(self):
         # pre-processing reports its own bar, then the view it leaves on screen reports a second
         # one of its own (update_views()) - the work and showing the result are two operations
+        self.copy_params_to_output()
         if not self.run_pre_processing():
             return
         self.update_views(show_preprocessed=True)
@@ -1680,6 +1695,7 @@ class Interface:
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
+        self.copy_params_to_output()
         if 'convert' in self.params['registration']['operation']:
             # convert: each source written out individually at its own source/metadata
             # position, no registration and no fusion/blending - never reaches the fusion tab
@@ -1857,6 +1873,7 @@ class Interface:
 
 
     def fusion_process(self):
+        self.copy_params_to_output()
         message = 'Fusion was already performed. ' if self.reg.is_fused() else ''
         message += 'Export fused data?'
         reply = QMessageBox.question(None, 'muvis-align', message,
