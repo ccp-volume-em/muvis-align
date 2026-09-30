@@ -121,6 +121,18 @@ def test_view_adjacency_graph_of_translated_sources_matches_multiview_stitchers(
         assert np.allclose(flatten(fast.nodes[node]['stack_props']), flatten(reference.nodes[node]['stack_props']))
 
 
+def test_a_cancel_stops_building_the_view_adjacency_graph():
+    import pytest
+    from muvis_align.image.util import build_view_adjacency_graph
+    from muvis_align.util import OperationCancelled, cancellable, request_cancel
+    msims = [make_msim((0, 0)), make_msim((0, 6))]
+
+    with cancellable():
+        request_cancel()
+        with pytest.raises(OperationCancelled):
+            build_view_adjacency_graph(msims, TRANSFORM_KEY, [(0, 1)], overlap_tolerance=0)
+
+
 def test_view_adjacency_graph_hands_rotated_sources_to_multiview_stitcher():
     from unittest.mock import patch
     from multiview_stitcher import mv_graph, param_utils

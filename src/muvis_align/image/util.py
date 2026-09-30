@@ -2021,6 +2021,8 @@ def _sweep_candidate_pairs(mins, maxs, chunk_candidates=4_000_000):
     blocks = []
     begin = 0
     while begin < n:
+        # at tens of millions of candidates (default pairing on a stack) this runs for minutes: a cancel stops it
+        raise_if_cancelled()
         # never fewer than one box: one whose own candidates exceed the budget still goes whole
         budget = (cumulative[begin - 1] if begin > 0 else 0) + chunk_candidates
         end = max(int(np.searchsorted(cumulative, budget, side='right')), begin + 1)
@@ -2767,7 +2769,9 @@ def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=No
     extents = np.minimum(maxs[pairs[:, 0]], maxs[pairs[:, 1]]) - np.maximum(mins[pairs[:, 0]], mins[pairs[:, 1]])
     overlaps = np.prod(np.clip(extents, 0, None), axis=1)
     # as there: only boxes sharing more than a face are neighbours
-    for (first, second), overlap in zip(pairs, overlaps):
+    for index, ((first, second), overlap) in enumerate(zip(pairs, overlaps)):
+        if index % 100_000 == 0:
+            raise_if_cancelled()
         if overlap > 0:
             graph.add_edge(int(first), int(second), overlap=float(overlap))
     return graph

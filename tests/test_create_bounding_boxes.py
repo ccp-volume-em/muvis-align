@@ -331,6 +331,17 @@ def test_sweep_candidate_pairs_handles_degenerate_and_empty_input():
                                   _all_pairs_overlaps(points, points))
 
 
+def test_a_cancel_stops_the_candidate_pair_sweep():
+    """At tens of millions of candidates (default pairing on a stack) the sweep runs for minutes: a cancel must stop it."""
+    from muvis_align.util import OperationCancelled, cancellable, request_cancel
+    mins, maxs = np.zeros((60, 3)), np.ones((60, 3))
+
+    with cancellable():
+        request_cancel()
+        with pytest.raises(OperationCancelled):
+            _sweep_candidate_pairs(mins, maxs, chunk_candidates=7)
+
+
 @pytest.mark.parametrize("seed", range(20))
 def test_axis_aligned_bb_vertices_match_minimal_bb(seed):
     """The fast path may skip the hull search, but not change a single corner of the answer."""

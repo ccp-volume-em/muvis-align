@@ -1459,8 +1459,10 @@ class MVSRegistration:
                 # one's diameter: with overview images among tiles, nearly every pair of 34k sources
                 graph_pairs = (pairs if pairs is not None
                                else find_candidate_overlap_pairs(msims_reg, self.source_transform_key))
+                raise_if_cancelled()
                 g_reg = build_view_adjacency_graph(msims_reg, self.source_transform_key, graph_pairs,
                                                    overlap_tolerance=overlap_tolerance)
+                raise_if_cancelled()
 
                 g_reg_computed = g_reg.copy()
                 workers = n_parallel_pairwise_regs or default_pair_workers
