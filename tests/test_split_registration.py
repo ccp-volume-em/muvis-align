@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 from scipy.ndimage import gaussian_filter
-from multiview_stitcher import msi_utils, param_utils
+from multiview_stitcher import msi_utils, param_utils, registration
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.split_registration import register_groups, split_groups, within_group_pairs
@@ -36,6 +36,7 @@ def test_a_misplaced_plane_is_registered_back_onto_the_one_before(shift):
     identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
 
     transforms = register_groups(msims, [identity, identity], [0, 1], 'source',
+                                 registration.phase_correlation_registration,
                                  resolution_kwargs={'transform': 'translation'})
 
     translations = [np.asarray(transform).squeeze()[:2, 2] for transform in transforms]
@@ -59,6 +60,7 @@ def test_planes_sharing_a_tile_pattern_and_outline_are_registered_by_their_conte
     identity = param_utils.affine_to_xaffine(np.eye(3), t_coords=[0])
 
     transforms = register_groups(msims, [identity, identity], [0, 1], 'source',
+                                 registration.phase_correlation_registration,
                                  resolution_kwargs={'transform': 'translation'})
 
     translations = [np.asarray(transform).squeeze()[:2, 2] for transform in transforms]
