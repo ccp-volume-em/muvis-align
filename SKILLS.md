@@ -10,6 +10,7 @@ Distilled from recurring feedback across sessions. Follow these when making chan
 ## Testing
 - For a small/localized fix, run only the targeted test file(s) for the area touched - not the full suite (10+ min).
 - Reserve full-suite runs for larger/riskier changes, or once before pushing a batch of combined fixes.
+- Never assert a registration's accuracy (an expected shift from phase correlation/SIFT, or how close two solvers' fits come): platform numerics and RANSAC vary, so such tests fail at random. Stub the registration result with a known transform and assert the code's handling of it exactly; check input preparation by value; compare two deterministic paths for identical output.
 - Don't create a new permanent test file per change - add tests to the existing file matching the module under test (e.g. `tests/test_utils.py` for `util.py`). Only give a feature its own test file when it's substantial/self-contained enough to warrant one.
 
 ## Running the napari UI without user input
