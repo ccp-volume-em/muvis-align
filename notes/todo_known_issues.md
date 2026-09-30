@@ -527,7 +527,7 @@ Progress:
   (~31 min), peak 5.9GB; the code before the picklable TIFF levels (2871766^) the same, 6.0GB. So no
   regression and the rotations are not the cost. Both use ~1.5 of 24 cores: every tile level is one
   uncompressed 6400x6400 strip, decoded whole for each block that touches it. The plugin run is ~2x slower
-  than headless and adds its ~3.5GB baseline (viewer). Asked the user what the earlier, faster fusion was.
+  than headless (later found: only its bar, see below) and adds its ~3.5GB baseline (viewer).
 
 - Done (user request): the ~1.5-core limit of the export fusion (slides, 24 cores). Plan: sample all threads'
   stacks during the headless export (scratchpad fusion_rate.py) to see where they wait - tile reads (whole
@@ -550,6 +550,14 @@ Progress:
     plus one output voxel) had pulled in the neighbouring planes: 102 blocks in 150s.
   - Direct reads re-measured with slabs: 352 vs 304 blocks in 150s (+15-20%), peak 8.3 vs 6.9GB. User: commit
     them. Full suite 789 passed.
+
+- Done (user request): the plugin's export fusion is not slower than headless - its bar was. run_fusion declared
+  phases=2 (the second a save an export written straight to zarr never runs), so the fusion blocks filled only
+  half the bar, and ETAs read off it doubled (the earlier "~72 min" was ~36). Same slides export, same
+  transforms, 150s: headless 328/1280 blocks (~11%/min), plugin bar 3 -> 14% (5.5%/min = ~11% of blocks/min),
+  both ~4.1 cores. The pyramid write after the blocks is ~4% of an export (factor 4: 3.8 of 105.9s).
+  Fixed: MVSRegistration.fuses_to_zarr() (not a channel overlay, not compose) sets one phase; plugin rerun:
+  3 -> 23% in 2.5 min (headless 26%). The driver gained a 'fusion' action.
 
 ## TODO
 
