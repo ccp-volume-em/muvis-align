@@ -572,6 +572,12 @@ Progress:
   correlation accuracy tests are gone. register_global's robust_linear test now checks the method is passed on
   and every tile mapped, not that it lands within 0.05um of global_optimization.
 
+- Checked (user, apptainer-check.sh, job 58856579, cn078): the HPC's Apptainer 1.4.2 is unprivileged (user namespace,
+  no setuid, kernel squashfs mounts not allowed) and has no squashfuse, so a SIF is unpacked into a temporary
+  sandbox in /tmp on every run: napari + muvis-align start 2m38s from the SIF, 10.5s from the sandbox. The
+  sandbox xpra-pull.sh builds stays. squashfuse on the compute nodes (admins, or a user build on PATH -
+  untested) would let the SIF mount directly.
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
