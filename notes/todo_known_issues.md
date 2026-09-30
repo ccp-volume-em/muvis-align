@@ -520,6 +520,36 @@ Progress:
   _exit still runs DLL detach). The driver now ends itself with TerminateProcess (os._exit elsewhere) after
   napari.run() returns. A user closing napari may hit the same - see Known issues.
 
+- Looked into (user report): fusion after split slow and memory-hungry locally. Plugin export: 5 x 60356 x 59181
+  px at 0.004um, 5% in 3.6 min (~72 min), peak 9.5GB, 1.5 cores (6.3 cpu-min in 4.1 min). Headless, same export
+  path (MVSRegistration.fuse to OME-Zarr), 150s each: orthogonal transforms 1200 blocks, 46.6s a batch of 24
+  (~38 min), peak 5.0GB; split transforms (sections rotated -5.4..+11.6 deg) 1280 blocks, 33-36s a batch
+  (~31 min), peak 5.9GB; the code before the picklable TIFF levels (2871766^) the same, 6.0GB. So no
+  regression and the rotations are not the cost. Both use ~1.5 of 24 cores: every tile level is one
+  uncompressed 6400x6400 strip, decoded whole for each block that touches it. The plugin run is ~2x slower
+  than headless and adds its ~3.5GB baseline (viewer). Asked the user what the earlier, faster fusion was.
+
+- Doing (user request): the ~1.5-core limit of the export fusion (slides, 24 cores). Plan: sample all threads'
+  stacks during the headless export (scratchpad fusion_rate.py) to see where they wait - tile reads (whole
+  6400x6400 strips), a lock, resampling or zarr writes - then fix the dominant one and re-measure.
+  - Found: 52% of fusion-thread samples waited in zarr's sync() - tile reads (tifffile's store get() is blocking
+    code run on zarr's one event-loop thread) and the output writes. Tried: PicklableTiffLevel reads a level stored
+    as one uncompressed run of rows directly (seek + readinto, calling thread; identical pixels): 35 -> 32s a
+    batch, 1.5 -> 1.8 cores, peak 5.9 -> 8.2GB. Not the main limit. Uncommitted.
+  - Main limit, single-thread cProfile (2.7s a block): multiview-stitcher's _fuse_chunk_to_zarr calls fuse() per
+    block, which rebuilds the fusion plan over all 328 sources - sim_sel_coords 328 calls a block (~1.1s),
+    _build_spatial_fusion_plan ~0.94s, _get_axis_aligned_translation_dims ~0.74s, ~4270 xarray .sel a block;
+    affine_transform ~2%. Python holding the GIL: 24 threads give ~1.5 cores. Cost per block grows with the total
+    source count (HPC: 34k sources, ~100x per block). User chose: fuse per z-plane.
+  - Done: fusion_slabs.fuse_to_zarr_by_z_slabs, used by MVSRegistration.fuse for a multi-z export to zarr
+    (fuse_by_z_slabs, on): each z-slab of blocks fused from only the sources that reach it, by multiview_stitcher's
+    own rule (box padded for interpolation unless z is grid-aligned), through prepare_block_fusion
+    (create_output=False attaching each slab to the one store) and its pyramid write. Identical output at every
+    level: data/S* and data_subset with split's rotated transforms (6 planes, 24 blocks). Slides, 150s: 352 of
+    1280 blocks (~9 min in all, was ~31), ~4.3 cores (was ~1.5), peak 8.3GB. A looser margin (one source voxel
+    plus one output voxel) had pulled in the neighbouring planes: 102 blocks in 150s.
+  - Direct reads re-measured with slabs: 352 vs 304 blocks in 150s (+15-20%), peak 8.3 vs 6.9GB. Asked the user.
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).

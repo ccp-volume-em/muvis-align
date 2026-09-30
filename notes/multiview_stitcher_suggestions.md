@@ -105,7 +105,22 @@ Ordered by impact at HPC scale.
 - **muvis-align:** calls it per registered pair with only that pair's two msims, in worker processes when there
   are more pairs than workers; without workers, one pair at a time in the calling thread.
 
-## 10. Smaller items
+## 10. Fusion: the plan once per fusion, not once per block
+
+- **Problem:** writing to zarr, `_fuse_chunk_to_zarr` calls `fuse()` for every output block with that block as
+  the output, so the fusion plan (`_build_spatial_fusion_plan`, `_get_axis_aligned_translation_dims`,
+  `_get_grid_aligned_translation_dims`, `sim_sel_coords`) is rebuilt over all sources each time, with xarray
+  `.sel` calls on every source's transform. The plan already maps each source to the chunks it meets.
+- **Measured (slides, 328 sources, 1280 blocks of 3840x3840 px, one block at a time):** 2.7s a block, of which
+  `sim_sel_coords` ~1.1s (328 calls), the plan ~0.94s, the axis-aligned check ~0.74s, ~4270 `.sel` calls;
+  `affine_transform` ~2%. That is Python holding the GIL: 24 threads reach ~1.5 cores. The cost per block grows
+  with the total source count, so at 34k sources a block would cost ~100x more.
+- **Suggestion:** build the plan (and the per-source transform checks, on plain numpy arrays) once per fusion and
+  hand each block only the sources it meets.
+- **muvis-align:** for a stack, `fusion_slabs.fuse_to_zarr_by_z_slabs` fuses each z-slab of blocks from only the
+  sources that reach it (identical output; slides export ~31 -> ~9 min, ~1.5 -> ~4.3 cores).
+
+## 11. Smaller items
 
 - **Scheduler for the overlap graph:** without a dask scheduler set, building the view adjacency graph computes
   overlaps with spawned processes; a script without a `__main__` guard then re-runs itself in each (>10GB). A
