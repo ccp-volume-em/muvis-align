@@ -3,6 +3,7 @@
 What muvis-align relies on, works around or would like changed in multiview-stitcher (checked
 against 0.1.62, the latest release; its main branch has the same resolution methods). Measurements
 are local (153 sources, 1764 pairs) or from the HPC run (34k sources, 229725 pairs) unless noted.
+The suggested changes, one by one: [multiview_stitcher_suggestions.md](multiview_stitcher_suggestions.md).
 
 ## Groupwise resolution (global registration)
 
