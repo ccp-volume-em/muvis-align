@@ -39,7 +39,7 @@ dependencies = [
     "tifffile>=2023.9.26",
     "zarr",
     "ome-zarr",
-    "ngff-zarr>=0.38.0,<0.46.0",
+    "ngff-zarr>=0.38.0,<0.48.0",
     "ome-zarr-models>=1.8.0rc2",
     "rocrate>=0.15.0",
     "matplotlib",
