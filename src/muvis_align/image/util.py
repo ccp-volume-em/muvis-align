@@ -1,3 +1,4 @@
+import functools
 import itertools
 import logging
 from math import ceil
@@ -463,17 +464,25 @@ def build_source_stack_props(source, output_order, translation, transform, trans
         translation_arg.setdefault('y', 0)
     origin = {dim: float(translation_arg.get(dim, 0)) for dim in spatial_order}
 
-    if transform is None:
-        xaffine = param_utils.identity_transform(len([dim for dim in output_order if dim in 'xyz']))
-    else:
-        xaffine = param_utils.affine_to_xaffine(transform)
-    if promote_z:
-        xaffine = widen_xaffine_to_3d(xaffine)
-
     stack_props = {'shape': shape, 'spacing': spacing, 'origin': origin}
     if transform_key is not None:
-        stack_props['transform'] = xaffine
+        if transform is None:
+            affine = np.eye(len([dim for dim in output_order if dim in 'xyz']) + 1)
+        else:
+            affine = np.asarray(transform)
+        if promote_z and affine.shape[-1] < 4:
+            # a 2D affine's y, x, 1 rows land on the last three of the 3D identity
+            widened = np.eye(4)
+            widened[-affine.shape[-1]:, -affine.shape[-1]:] = affine
+            affine = widened
+        stack_props['transform'] = _xaffine_template(affine.shape[-1]).copy(deep=False, data=affine)
     return stack_props
+
+
+@functools.lru_cache(maxsize=None)
+def _xaffine_template(size):
+    # building a DataArray's coords costs ~10x a shallow copy of one: once a source matters at 34k sources
+    return param_utils.identity_transform(size - 1)
 
 
 def build_source_shape_sim(source, output_order, translation, transform, transform_key, z_scale=None, level=0,
@@ -2383,8 +2392,7 @@ def promote_sim_to_3d(sim, z_position):
 
 def widen_xaffine_to_3d(transform):
     """A 2D affine widened into 3D, its own block embedded in a 3D identity - returned unchanged
-    if it is already 3D. Shared by promote_sim_to_3d() and build_source_stack_props(), so a
-    promoted sim and the stack properties derived without one carry the same transform.
+    if it is already 3D. build_source_stack_props() widens the same way, on the plain array.
 
     Placed by index into a plain numpy identity rather than by label into an xarray one: the
     label-based .loc assignment this replaces goes through xarray's alignment machinery, which
