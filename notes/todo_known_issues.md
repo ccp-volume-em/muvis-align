@@ -57,6 +57,21 @@ dask 2026.8.0.
 
 ## In progress
 
+Opening the 34k HPC project (log 2026-10-01): the first section shown was slice 0, which holds
+only an overview; and the open could be faster (first view 10s, sources read 3.6 min, refresh 2.6 min).
+Plan: first section = the first with more than one file; then profile the open's slow steps
+(init sources 42ms CPU a file at 7 cores, shape geometries 38s, lazy overview 54s, add shapes 28s).
+Progress (synthetic project in the scratchpad: 100 sections x 30 128px tiles + an overview each,
+OME positions with z per section - without z every section overlaps every other, 1.3M pairs):
+- Done (91d22d6): the first section shown is the first with more than one file.
+- Done (f2e2cfe): shape transforms from a shared xarray template - geometries 6.0s -> 0.7s,
+  lazy overview 7.7s -> 1.7s at 3100 sources (HPC estimate 38s -> ~4s, 54s -> ~12s).
+- Init sources: real data_400 tiles take 2.7ms CPU a file locally vs 42ms on the HPC, so it is the
+  network filesystem (~31 small reads a file by tifffile, 256 threads), not reproducible here.
+- Left: add shapes (28s) and refresh overview shapes (15s) on the Qt thread - napari Shapes layers
+  of 34k + 115k rectangles, twice (main viewer and overview widget); ~39s untimed after init_data
+  on the HPC (populate tables; ~1s here at 3100).
+
 Huge memory use on the HPC, where all tasks were effectively spawned at the same time instead of
 a bounded number running at once. Test project (local):
 `C:/Project/slides/EM04652-02_slice17_spaghettiandmeatballs2` (51 sources, 179 pairs).
