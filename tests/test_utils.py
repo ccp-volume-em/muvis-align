@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -404,3 +406,14 @@ def test_labelled_numbers_are_keyed_by_their_lower_case_label_and_unlabelled_one
     assert find_labelled_numbers('EM04652-02_slice17_r0005_t0002_s00399.ome.tif') == \
         {'em': 4652, 'slice': 17, 'r': 5, 't': 2, 's': 399}
     assert find_labelled_numbers('S000_000_001.ome.zarr') == {'s': 0}
+
+
+def test_a_native_crash_leaves_every_threads_stack_in_the_log(tmp_path):
+    log_filename = tmp_path / 'muvis-align.log'
+    code = ('import faulthandler; from muvis_align.logging import enable_fault_log;'
+            f' enable_fault_log({str(log_filename)!r}); faulthandler._sigsegv()')
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True)
+
+    assert result.returncode != 0
+    log = log_filename.read_text(encoding='utf-8', errors='replace')
+    assert 'Fatal Python error' in log and 'most recent call first' in log

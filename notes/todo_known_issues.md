@@ -47,6 +47,16 @@ thread, no Python frame). A rerun exited normally. The driver now terminates its
 closing napari might see the same lingering process. Not investigated further (needs native stacks, e.g.
 py-spy --native).
 
+### napari exits after pre-processing on the HPC (not reproduced)
+
+HPC run 2026-10-01 (34k sources, code at c8da3af): pre-processing finished (16 min), the refresh
+added the pre-processed lazy overview (1081 sections of 7337x8441 at 0.2um), and 1.5s after
+add_image napari was gone - no traceback, rss 11.7GB of 2TB. Likely a native crash in napari's
+first draw, which builds the viewed section from register_msims on 32 threads, while the prefetch
+builds its neighbours. Locally (data_400, 153 sources, 3 sections, Windows) it works.
+A fatal signal now appends every thread's stack to muvis-align.log (faulthandler): the next run
+shows where.
+
 ### Pair registration mixing up pairs' crops (fixed)
 
 dask's linear fusion renames a fused chain to a 115-char prefix plus 4 hex digits of `hash()`,
