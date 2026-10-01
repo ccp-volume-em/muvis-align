@@ -3,7 +3,6 @@
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager, nullcontext
-from collections import Counter
 import copy
 import dask
 import functools
@@ -599,18 +598,15 @@ class MVSRegistration:
         return True
 
     def first_section_indices(self):
-        """The files of the first section with more than one file (else the first section), sections told apart by
-        a section number label (as S000 or SBEMimage's s00538), else by folder; None if neither tells them apart."""
+        """The files sharing the first file's section number (a label as S000 or SBEMimage's s00538), else its folder;
+        None if neither tells sections apart."""
         # tile and slice indices look alike in a name: only the label tells them apart
         labelled = [find_labelled_numbers(Path(filename).name) for filename in self.filenames]
         candidates = [[numbers.get(label) for numbers in labelled] for label in section_number_labels]
         candidates.append([Path(filename).parent for filename in self.filenames])
         for keys in candidates:
             if None not in keys and len(set(keys)) > 1:
-                counts = Counter(keys)
-                # SBEMimage can take a slice's overview without tiles: an overview alone shows no tiles
-                first_key = next((key for key in keys if counts[key] > 1), keys[0])
-                return [index for index, key in enumerate(keys) if key == first_key]
+                return [index for index, key in enumerate(keys) if key == keys[0]]
         return None
 
     def section_registration(self, indices):

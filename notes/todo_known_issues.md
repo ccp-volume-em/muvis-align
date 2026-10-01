@@ -63,7 +63,7 @@ Plan: first section = the first with more than one file; then profile the open's
 (init sources 42ms CPU a file at 7 cores, shape geometries 38s, lazy overview 54s, add shapes 28s).
 Progress (synthetic project in the scratchpad: 100 sections x 30 128px tiles + an overview each,
 OME positions with z per section - without z every section overlaps every other, 1.3M pairs):
-- Done (91d22d6): the first section shown is the first with more than one file.
+- Reverted (91d22d6): the first section stays the first, even when it is a single file.
 - Done (f2e2cfe): shape transforms from a shared xarray template - geometries 6.0s -> 0.7s,
   lazy overview 7.7s -> 1.7s at 3100 sources (HPC estimate 38s -> ~4s, 54s -> ~12s).
 - Init sources: real data_400 tiles take 2.7ms CPU a file locally vs 42ms on the HPC, so it is the
