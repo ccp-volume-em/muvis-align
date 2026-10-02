@@ -91,6 +91,36 @@ crop - silently, or failing with `ValueError: inhomogeneous shape` in phase corr
 shapes differed. `register_pairs` now computes with `optimization.fuse.active` off. Still in
 dask 2026.8.0.
 
+### napari hangs on a registration preview (cause found: HiGHS worker teardown)
+
+Cause (cdb native stacks, WinDbg installed via winget): a HiGHS worker thread (scipy/optimize/_highspy/_core.pyd)
+exiting, spinning in its TLS callback inside LdrShutdownThread - holding the Windows loader lock, so no thread can
+start (the Qt thread waits in threading.Thread.start). HiGHS starts ~11 workers for each thread that calls linprog
+and tears them down when that thread exits; the preview calls linprog (multiview-stitcher's overlap tests) from
+napari's pooled worker threads, which change and expire. Fix: every HiGHS solve with threads=1
+(util.single_threaded_highs, wrapping scipy's _highs_wrapper at import) - no workers, nothing to tear down.
+Stress loop (120 previews, Ciqtek, phase corr/orb/sift): before, a hang after preview 20, feature layers up to 17s,
+whole preview up to 36.7s, rss 3.2GB; after, no hang or stray thread in 120, feature layers max 0.9s, preview max 7.0s,
+rss 1.8GB, threads 58-61 (was 70-85). The reported ~10s metrics-to-layers gap was the same cause: each teardown
+holds the loader lock, stalling every thread start. Full suite 861 passed.
+
+2026-10-02, Ciqtek, Windows: napari froze starting a preview. py-spy: the Qt thread in threading.Thread.start
+(the progress heartbeat) waiting for the new thread to start; a thread with no Python frames ('Thread 0',
+active+gil) holds the GIL and spins at one core. It started during the previous preview (which completed) and
+stayed. Reproduced once in the plugin (UI driver, Ciqtek, 5th of phase corr/orb/phase/orb/sift: +9 threads,
+one busy); not in 20 more plugin previews nor in 8 headless registrations on a worker thread. py-spy --native
+fails here ('The parameter is incorrect'); no Windows debugger installed, thread start addresses unreadable.
+Stress loops (plugin, Ciqtek, phase corr/orb/sift cycled; scratchpad repeat_preview.py + stress_watch.sh):
+- one fresh run: 15 extra threads, one busy after the very first (phase correlation) preview - so not sift-only
+  (may have been a pool spin-waiting; detection now = a new thread cannot start within 10s).
+- 39 previews without a hang, then preview 38's 'show feature layers' took 12.2s wall / 0.8s CPU with rss
+  1.1 -> 3.4GB (the reported ~10s gap between metrics and layers), and preview 39 aborted in that step:
+  'terminate called without an active exception' (libstdc++: a std::thread destroyed while joinable).
+  libstdc++ is static in scipy's mingw-built .pyd files (fft/ducc, ckdtree, HiGHS, ...) and OpenCV's ffmpeg plugin.
+Ruled out in isolation: napari layers alone (30 rounds of image + 10k points + 2.5k lines, ~0.5s, no growth),
+HiGHS/linprog and multiview-stitcher's overlap from 40 short-lived threads, 8 headless registrations.
+Next: native stacks of a hang (WinDbg/procdump - not installed), or bisect the plugin's preview steps.
+
 ## In progress
 
 Opening the 34k HPC project (log 2026-10-01): the first section shown was slice 0, which holds

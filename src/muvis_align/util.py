@@ -26,6 +26,29 @@ from sklearn.neighbors import KDTree
 from xarray import DataArray
 
 
+def single_threaded_highs():
+    """Run scipy's HiGHS (linprog, as multiview-stitcher's overlap tests use) on the calling thread alone."""
+    # HiGHS starts ~11 workers per calling thread and tears them down when it exits, which can deadlock on the
+    # Windows loader lock and freeze every thread start; these problems are tiny
+    try:
+        from scipy.optimize import _linprog_highs
+    except ImportError:
+        return
+    highs_wrapper = getattr(_linprog_highs, '_highs_wrapper', None)
+    if highs_wrapper is None or getattr(highs_wrapper, '_muvis_single_threaded', False):
+        return
+
+    def single_threaded(*args):
+        *arrays, options = args
+        return highs_wrapper(*arrays, dict(options, threads=1))
+
+    single_threaded._muvis_single_threaded = True
+    _linprog_highs._highs_wrapper = single_threaded
+
+
+single_threaded_highs()
+
+
 def get_default(x, default):
     return default if x is None else x
 
