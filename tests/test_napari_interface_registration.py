@@ -1450,6 +1450,7 @@ def test_update_napari_features_dispatches_all_layer_types(
     bare_interface, monkeypatch
 ):
     viewer = MagicMock()
+    viewer.layers.__len__.return_value = 1
     layers = [
         ("image", {"name": "image"}, "image"),
         ("points", {"name": "points"}, "points"),
@@ -2825,3 +2826,16 @@ def test_a_preview_of_two_images_that_do_not_overlap_warns_instead_of_failing(ba
     assert result is None
     show_warning.assert_called_once_with('S000_000_000 and S000_007_007 do not overlap: choose two images that do')
     show_error.assert_not_called()
+
+
+def test_replacing_the_main_view_clears_napari_dask_cache_but_the_overview_does_not(bare_interface):
+    bare_interface.viewer = MagicMock()
+    bare_interface.viewer.layers = [object()]
+    overview = MagicMock()
+    overview.layers = [object()]
+
+    with patch.object(interface_module, 'clear_napari_dask_cache') as clear_cache:
+        bare_interface._clear_napari_view(overview)
+        clear_cache.assert_not_called()
+        bare_interface._clear_napari_view(bare_interface.viewer)
+        clear_cache.assert_called_once_with()

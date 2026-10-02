@@ -38,7 +38,7 @@ from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress, SilentProgre
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.image.lazy_overview import lazy_section_overview, MsimLevels
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events, \
-    patch_multiscale_label_show, patch_shapes_text_coords
+    clear_napari_dask_cache, patch_multiscale_label_show, patch_shapes_text_coords
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
@@ -982,6 +982,8 @@ class Interface:
         # subsequently created Shapes and Points layers.
         if viewer is not None and len(viewer.layers) > 0:
             viewer.layers.clear()
+        if viewer is not None and viewer is getattr(self, 'viewer', None):
+            clear_napari_dask_cache()
 
     def _create_napari_shapes(self, transform_key, force_2d=False, progress_factory=None, weight=1):
         # `weight` is what the caller's bar allows this step, divided below between the
@@ -1341,7 +1343,7 @@ class Interface:
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
                                                matches, inliers, points_color='blue')
-        viewer.layers.clear()
+        self._clear_napari_view(viewer)
         for data, kwargs, layer_type in layers:
             if layer_type == "image":
                 viewer.add_image(data, **kwargs)
