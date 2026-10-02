@@ -47,7 +47,7 @@ thread, no Python frame). A rerun exited normally. The driver now terminates its
 closing napari might see the same lingering process. Not investigated further (needs native stacks, e.g.
 py-spy --native).
 
-### napari exits after pre-processing on the HPC (not reproduced)
+### napari exits after pre-processing on the HPC (Mesa 22.3 llvmpipe; fix pending an HPC run)
 
 HPC run 2026-10-01 (34k sources, code at c8da3af): pre-processing finished (16 min), the refresh
 added the pre-processed lazy overview (1081 sections of 7337x8441 at 0.2um), and 1.5s after
@@ -77,8 +77,11 @@ replacing the layer 8x, resizing 40x, a second canvas in a dock, the welcome scr
 or after running pre-processing headless in the same process.
 Side finding: each replaced 7653x10204 image layer keeps ~0.66GB (rss 1.35 -> 5.31GB over 8 in plain napari).
 Mesa 25.0.7 (bookworm-backports) does not crash: 2/2 with it installed at container start, and the image
-built with it (Dockerfile) passes the same plugin run. Next (user): docker-build-push.sh, xpra-pull.sh,
-pre-processing on the 34k project.
+built with it (Dockerfile, 43ac613) passes the same plugin run. Next (user): docker-build-push.sh,
+xpra-pull.sh, pre-processing on the 34k project. The root cause (which program is invalid) is not found.
+Not done: the ~0.66GB kept per replaced big image layer.
+Windows: faulthandler also reports access violations a driver raises and handles (Ciqtek preview: 5 dumps,
+run carried on), so the crash log is off on Windows (b8d59ba).
 
 ### Pair registration mixing up pairs' crops (fixed)
 
@@ -114,6 +117,8 @@ OME positions with z per section - without z every section overlaps every other,
   starts on the middle step: the full view jumped to 49 of 99 after section 0), and the slider is set
   to its z after the full view. Synthetic 100 sections: s00049 from the start; 9 sections with the
   last at z 2.0: s00004 throughout (napari's slider has a step per section, 0-8).
+- Left: napari's per-shape Python cost (~10s at 150k shapes, main viewer and overview widget alike), the
+  HPC open's ~39s untimed after init_data, and init sources over NFS (not reproducible locally).
 
 Huge memory use on the HPC, where all tasks were effectively spawned at the same time instead of
 a bounded number running at once. Test project (local):
@@ -680,6 +685,18 @@ Progress:
     Meatballs, pre-processing scale 2, 100nm: tiles at 0.08um, overview at 0.498um, a plane in 0.25s.
   - Registration/fusion may stay slow on the big dataset (hours at 34k), not on a small one. Run only the
     targeted tests after each change (user).
+
+## Done 2026-10-02 (besides the above)
+
+- Plain TIFFs: pixel size and stage position from vendor tags (napari-meta-tiff's _metadata.py copied as
+  image/tiff_metadata.py, ee05aeb); imagecodecs a dependency (7f3388f).
+- Source table shows 3 significant digits (8ace490); an invalid source metadata expression warns, and
+  warnings raised on a worker thread now reach napari's notifications (685d2c9, 9e41859).
+- napari private-access warnings muted around the activity dock only (9f0490a).
+- Exclusive fusion: earliest imaged (source order) view per pixel, one pass, works on 3D chunks (a1e5962).
+- scikit-image SIFT: keypoints sampled before descriptors, upsampling=1 (abd76a4, a0d3bb4) - Ciqtek
+  full-res preview pair 124s/6GB -> 22s/2GB. Preview shows its metrics before the feature layers (9be792f).
+- Windows tests: the crash log's open file blocked tmp cleanup (close_fault_log, 32c53be).
 
 ## TODO
 
