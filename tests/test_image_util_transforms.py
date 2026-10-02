@@ -268,7 +268,8 @@ def test_grid_point_pairs_follow_the_transform_from_fixed_to_moving():
     fixed, moving, matches, inliers = grid_point_pairs((60, 120), (60, 120), matrix, points_per_short_axis=6)
 
     np.testing.assert_array_equal(moving, fixed + [5, 10])
-    assert fixed[:, 0].min() == 5 and fixed[:, 1].min() == 5
+    step = np.diff(np.unique(fixed[:, 0]))[0]
+    np.testing.assert_allclose(fixed.min(axis=0), step / 2)
     assert np.all(moving <= [59, 119])
     np.testing.assert_array_equal(matches, np.column_stack([np.arange(len(fixed))] * 2))
     assert inliers.dtype == bool and inliers.all()
@@ -316,3 +317,14 @@ def test_preview_points_and_lines_scale_with_the_image_shown(side, point_size, l
 
     assert layers['keypoints']['size'] == point_size
     assert layers['matches_inliers']['edge_width'] == line_width
+
+
+def test_grid_point_pairs_put_more_points_across_a_long_narrow_overlap():
+    from muvis_align.image.util import grid_point_pairs
+
+    def points_across(shape):
+        fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
+        return len(np.unique(fixed[:, 1]))
+
+    assert points_across((400, 400)) == 3
+    assert points_across((1400, 400)) == 4

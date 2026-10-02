@@ -1112,7 +1112,9 @@ def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, points_per_short_
     ndim = len(fixed_shape)
     # spatial dims come last; on registered pairs the matrix takes fixed pixels to where they lie in the moving image
     matrix = np.asarray(affine_matrix, dtype=float)[-(ndim + 1):, -(ndim + 1):]
-    step = max(min(fixed_shape) / points_per_short_axis, 1)
+    # more across a long narrow overlap (a strip between tiles) than across a squarish one
+    aspect = max(fixed_shape) / max(min(fixed_shape), 1)
+    step = max(min(fixed_shape) / (points_per_short_axis * aspect ** 0.3), 1)
     axes = [np.arange(step / 2, size, step) for size in fixed_shape]
     fixed_points = np.stack(np.meshgrid(*axes, indexing='ij'), axis=-1).reshape(-1, ndim)
     homogeneous = np.column_stack([fixed_points, np.ones(len(fixed_points))])

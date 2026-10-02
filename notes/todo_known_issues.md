@@ -699,7 +699,7 @@ Progress:
 - Windows tests: the crash log's open file blocked tmp cleanup (close_fault_log, 32c53be).
 
 - Registration preview for built-in methods (phase correlation, elastix), which give a transform only:
-  a grid over the fixed overlap (~3 points along its short side) mapped through the transform into the
+  a grid over the fixed overlap (~3 points along its short side, more for a long narrow one: x aspect^0.3) mapped through the transform into the
   moving overlap, shown as point pairs (grid_point_pairs). On registered pairs the affine_matrix takes fixed
   crop pixels to the moving crop (10/10 meatballs pairs by brute-force shift search, and the pipeline's pair
   NCC improves with it, e.g. 0.08 -> 0.85); a synthetic scipy-shifted pair suggested the reverse - unexplained.
