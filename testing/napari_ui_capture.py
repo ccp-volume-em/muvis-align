@@ -18,7 +18,7 @@ import time
 
 import napari
 from PIL import ImageGrab
-from qtpy.QtCore import QTimer
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtWidgets import QMessageBox
 
 import muvis_align.ui.Interface as interface_module
@@ -78,6 +78,9 @@ def main():
     # fully on screen: the activity dialog sits at the window's bottom right
     viewer.window._qt_window.move(0, 0)
     viewer.window._qt_window.resize(1500, 950)
+    # on top of the IDE that started it, or the screenshots show the IDE
+    viewer.window._qt_window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+    viewer.window._qt_window.show()
     _, widget = viewer.window.add_plugin_dock_widget('muvis-align')
     interface = widget.interface
     dialog = viewer.window._qt_window._activity_dialog
