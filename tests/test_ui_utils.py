@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from muvis_align.ui._utils import VisibleActivityDock, catch_run_errors, patch_shapes_text_coords
+from muvis_align.ui._utils import VisibleActivityDock, catch_run_errors, patch_multiscale_label_show, patch_shapes_text_coords
 
 
 def test_catch_run_errors_returns_result_on_success():
@@ -99,3 +99,27 @@ def test_activity_dock_toggle_raises_no_private_access_warning():
             assert not qt_viewer.show_welcome_screen
     assert qt_viewer.show_welcome_screen
     assert toggles == [True, False]
+
+
+def test_the_multiscale_label_shows_only_once_the_layer_controls_hold_it(qtbot):
+    from qtpy.QtWidgets import QVBoxLayout, QWidget
+    from napari._qt.layer_controls.dynamic.widgets import qt_multiscale_level_control as control_module
+
+    patch_multiscale_label_show()
+    label_class = control_module.QtWrappedLabel
+    shown, hidden = label_class('resolution:'), label_class('resolution:')
+
+    shown.show()
+    hidden.hide()
+    assert not shown.isVisible()
+
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    layout = QVBoxLayout(parent)
+    layout.addWidget(shown)
+    layout.addWidget(hidden)
+    parent.show()
+    qtbot.waitExposed(parent)
+
+    assert shown.isVisible() and shown.parent() is parent
+    assert not hidden.isVisible()

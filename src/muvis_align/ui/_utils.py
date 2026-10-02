@@ -128,3 +128,32 @@ def patch_shapes_text_coords():
     view_text_coords._muvis_patched = True
     view_text_coords._muvis_original = original
     Shapes._view_text_coords = property(view_text_coords)
+
+
+def patch_multiscale_label_show():
+    """Keep napari's multiscale 'resolution:' label from showing before it has a parent: shown parentless, it is a
+    window of its own (under xpra a tiny one flashing up) until the layer controls take it."""
+    import importlib
+
+    # napari 0.9.2 has the control in both places, 0.9.0 only in dynamic
+    for module_name in ('napari._qt.layer_controls.dynamic.widgets.qt_multiscale_level_control',
+                        'napari._qt.layer_controls.widgets.qt_multiscale_level_control'):
+        try:
+            control_module = importlib.import_module(module_name)
+        except ImportError:
+            control_module = None
+        label_class = getattr(control_module, 'QtWrappedLabel', None)
+        if label_class is not None and not getattr(label_class, '_muvis_patched', False):
+            control_module.QtWrappedLabel = _parented_label_class(label_class)
+
+
+def _parented_label_class(label_class):
+    class ParentedLabel(label_class):
+        _muvis_patched = True
+
+        def setVisible(self, visible):
+            # a layout shows a not explicitly hidden child itself once it adds it
+            if not (visible and self.parent() is None):
+                super().setVisible(visible)
+
+    return ParentedLabel
