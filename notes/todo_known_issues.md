@@ -56,6 +56,9 @@ first draw, which builds the viewed section from register_msims on 32 threads, w
 builds its neighbours. Locally (data_400, 153 sources, 3 sections, Windows) it works.
 A fatal signal now appends every thread's stack to muvis-align.log (faulthandler): the next run
 shows where.
+Again 2026-10-02 (job 59049073, ea994fc, faulthandler in): pre-processing 17.6 min, lazy overview
+added, napari gone 1.4s after add_image, rss 11.4GB; the xpra log has no stack - the dump is in the
+project's output/muvis-align.log (asked the user for it, and sacct's State/ExitCode/MaxRSS).
 
 ### Pair registration mixing up pairs' crops (fixed)
 
