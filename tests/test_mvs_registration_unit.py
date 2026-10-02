@@ -862,12 +862,12 @@ def test_a_z_slab_is_fused_from_only_the_planes_that_reach_it():
     assert slab_sources(sims, 'source', properties, z_chunk=2) == [[0, 1, 2], [3]]
 
 
-def test_the_first_section_is_the_first_folders_files_registered_as_the_whole_labels_them(tmp_path):
+def test_the_middle_section_is_the_middle_folders_files_registered_as_the_whole_labels_them(tmp_path):
     reg = MVSRegistration()
     reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
              output_path=tmp_path.as_posix() + '/')
 
-    indices = reg.first_section_indices()
+    indices = reg.middle_section_indices()
     section = reg.section_registration(indices)
 
     assert indices == [index for index, filename in enumerate(reg.filenames) if '/S000/' in filename]
@@ -876,12 +876,12 @@ def test_the_first_section_is_the_first_folders_files_registered_as_the_whole_la
     assert section.output == reg.output
 
 
-def test_files_in_one_folder_have_no_first_section_to_show_before_the_rest(tmp_path):
+def test_files_in_one_folder_have_no_middle_section_to_show_before_the_rest(tmp_path):
     reg = MVSRegistration()
     reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
              output_path=tmp_path.as_posix() + '/')
 
-    assert reg.first_section_indices() is None
+    assert reg.middle_section_indices() is None
 
 
 @pytest.mark.parametrize('filenames, expected', [
@@ -894,9 +894,12 @@ def test_files_in_one_folder_have_no_first_section_to_show_before_the_rest(tmp_p
       'S001/S001_000_000.ome.zarr', 'S001/S001_000_001.ome.zarr'], [0, 1]),
     (['a/tile_0.tif', 'a/tile_1.tif', 'b/tile_0.tif'], [0, 1]),
     (['a/S000_0.tif', 'a/S000_1.tif'], None),
+    # the step napari's dims start on: sections sorted by number, int((n - 1) / 2)
+    (['S002_0.tif', 'S000_0.tif', 'S001_0.tif', 'S001_1.tif'], [2, 3]),
+    (['S010_0.tif', 'S003_0.tif', 'S007_0.tif', 'S004_0.tif'], [3]),
 ])
-def test_the_first_section_is_found_by_the_labelled_section_number_else_the_folder(filenames, expected):
+def test_the_middle_section_is_found_by_the_labelled_section_number_else_the_folder(filenames, expected):
     reg = MVSRegistration()
     reg.filenames = filenames
 
-    assert reg.first_section_indices() == expected
+    assert reg.middle_section_indices() == expected

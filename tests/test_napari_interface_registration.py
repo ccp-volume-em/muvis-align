@@ -710,7 +710,7 @@ def test_input_output_process_resolves_relative_paths_before_reg_init(
     bare_interface.reg.is_initialised.return_value = False
     bare_interface.need_source_reinit = False
     bare_interface.reg.init.return_value = True
-    bare_interface.reg.first_section_indices.return_value = None
+    bare_interface.reg.middle_section_indices.return_value = None
     bare_interface.update_metadata_source = MagicMock(return_value=True)
     bare_interface.populate_image_selection = MagicMock()
     bare_interface._load_saved_progress = MagicMock()
@@ -743,7 +743,7 @@ def test_input_output_process_cancelled_while_reading_sources_reads_them_again_n
     bare_interface.reg.is_initialised.return_value = False
     bare_interface.need_source_reinit = False
     bare_interface.reg.init.return_value = True
-    bare_interface.reg.first_section_indices.return_value = None
+    bare_interface.reg.middle_section_indices.return_value = None
     bare_interface.update_metadata_source = MagicMock(side_effect=OperationCancelled('Cancelled'))
     bare_interface._show_loaded_project = MagicMock()
 
@@ -2770,3 +2770,31 @@ def test_the_project_file_is_copied_into_the_output_folder_as_an_action_starts(b
     bare_interface.copy_params_to_output()
 
     assert (tmp_path / "output" / "project.yml").read_text() == project.read_text()
+
+
+def test_the_view_stays_on_the_section_shown_while_the_rest_were_read(bare_interface):
+    bare_interface.viewer = MagicMock()
+    bare_interface.viewer.dims.ndim = 3
+    bare_interface.reg.sources = [MagicMock()] * 3
+    bare_interface.reg.sources[0].get_size.return_value = {'y': 10, 'x': 10}
+    bare_interface.reg.positions = [{'z': 0.0}, {'z': 2.5}, {'z': 2.5}]
+    bare_interface._shown_section_indices = [1, 2]
+
+    bare_interface._go_to_shown_section()
+
+    bare_interface.viewer.dims.set_point.assert_called_once_with(0, 2.5)
+
+
+def test_the_view_is_left_where_napari_put_it_without_a_section_shown_or_for_z_stacks(bare_interface):
+    bare_interface.viewer = MagicMock()
+    bare_interface.viewer.dims.ndim = 3
+    bare_interface.reg.sources = [MagicMock()]
+    bare_interface.reg.sources[0].get_size.return_value = {'z': 5, 'y': 10, 'x': 10}
+    bare_interface.reg.positions = [{'z': 2.5}]
+
+    bare_interface._shown_section_indices = None
+    bare_interface._go_to_shown_section()
+    bare_interface._shown_section_indices = [0]
+    bare_interface._go_to_shown_section()
+
+    bare_interface.viewer.dims.set_point.assert_not_called()

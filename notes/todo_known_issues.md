@@ -87,8 +87,10 @@ OME positions with z per section - without z every section overlaps every other,
   coords. Only the main viewer has labels (overview widget has none). The other ~10s is napari's
   per-shape Python (polygon/rectangle init alike). Done: that property patched to read the list
   once (patch_shapes_text_coords, on Interface import; same coords). Synthetic 3100: add shapes 1.3 -> 0.9s.
-- User question: show the section napari will display first (it goes to the middle step when the
-  first layer is added, so the full view jumps to slice 49 of 99 after section 0 was shown).
+- Done (user request): the middle section by number is read and shown first, not the first (napari
+  starts on the middle step: the full view jumped to 49 of 99 after section 0), and the slider is set
+  to its z after the full view. Synthetic 100 sections: s00049 from the start; 9 sections with the
+  last at z 2.0: s00004 throughout (napari's slider has a step per section, 0-8).
 
 Huge memory use on the HPC, where all tasks were effectively spawned at the same time instead of
 a bounded number running at once. Test project (local):

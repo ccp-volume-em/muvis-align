@@ -312,6 +312,7 @@ class Interface:
                 raise
             if ok:
                 self._show_loaded_project()
+                self._go_to_shown_section()
             else:
                 show_warning('Invalid input or output')
                 self.reg.state = RegState.UNINIT
@@ -337,7 +338,7 @@ class Interface:
                 fused_name = operation_to_past_participle(operation) if operation else None
                 if self.reg.has_saved_progress(fused_name, zarr_extension):
                     factory.ensure_phases(4)
-                self._show_first_section()
+                self._show_middle_section()
                 # _show_loaded_project() below always ends by drawing the view, so drawing
                 # here would only draw once with the not-yet-registered transform
                 ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
@@ -346,10 +347,11 @@ class Interface:
                     self._load_saved_progress(factory)
         return ok
 
-    def _show_first_section(self):
-        """The first section's sources read and drawn before the rest: at 34k sources on a network filesystem, reading
+    def _show_middle_section(self):
+        """The middle section's sources read and drawn before the rest: at 34k sources on a network filesystem, reading
         them all takes minutes, while the viewer stays usable. The full view replaces it once they are all read."""
-        indices = self.reg.first_section_indices()
+        indices = self.reg.middle_section_indices()
+        self._shown_section_indices = indices
         if indices is None:
             return
         section = self.reg.section_registration(indices)
@@ -364,6 +366,16 @@ class Interface:
             self.update_views(show_images=False, progress_factory=silent)
         finally:
             self.reg = full
+
+    def _go_to_shown_section(self):
+        """Keep the section shown while the rest were read: napari's own start, the middle step of the z range, is a
+        different section unless they are evenly spaced."""
+        indices = getattr(self, '_shown_section_indices', None)
+        dims = self.viewer.dims
+        if indices and dims.ndim >= 3 and self.reg.sources[0].get_size().get('z', 0) <= 1:
+            z_position = self.reg.positions[indices[0]].get('z')
+            if z_position is not None:
+                dims.set_point(dims.ndim - 3, z_position)
 
     def _run_off_thread(self, work, progress_factory):
         """Run work(progress_factory) on a worker thread, and wait for it here.
