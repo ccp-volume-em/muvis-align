@@ -22,7 +22,7 @@ from muvis_align.file.project_yaml import read_params, get_template_params, writ
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
-    draw_keypoints_matches_napari, get_transforms, copy_transforms_to_msims, \
+    draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, \
     make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
     snapshot_msims_transform, restore_msims_transform, \
@@ -1459,6 +1459,10 @@ class Interface:
         moving_points = results.get('moving_points', [])
         matches = results.get('matches', [])
         inliers = results.get('inliers', [])
+        if len(fixed_points) == 0 and 'affine_matrix' in results:
+            # a method giving only a transform (phase correlation, elastix): a grid shows its offsets
+            fixed_points, moving_points, matches, inliers = grid_point_pairs(
+                np.shape(overlap1), np.shape(overlap2), results['affine_matrix'])
         self._napari_view_show_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
         self.view_mode = ViewMode.FEATURES
 

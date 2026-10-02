@@ -257,3 +257,32 @@ def test_restoring_a_transform_snapshot_puts_back_the_previous_value_or_removes_
     assert translation(msims[0]) == pytest.approx(1.0)
     assert 'registered' in get_msim_transform_keys(msims[0])
     assert 'registered' not in get_msim_transform_keys(msims[1])
+
+
+def test_grid_point_pairs_follow_the_transform_from_moving_to_fixed():
+    from muvis_align.image.util import grid_point_pairs
+
+    # moving (y, x) -> fixed (y - 5, x - 10): content at fixed p lies at p + (5, 10) in the moving image
+    matrix = np.array([[1, 0, -5], [0, 1, -10], [0, 0, 1]], dtype=float)
+
+    fixed, moving, matches, inliers = grid_point_pairs((60, 120), (60, 120), matrix, points_per_short_axis=6)
+
+    np.testing.assert_array_equal(moving, fixed + [5, 10])
+    assert fixed[:, 0].min() == 5 and fixed[:, 1].min() == 5
+    assert np.all(moving <= [59, 119])
+    np.testing.assert_array_equal(matches, np.column_stack([np.arange(len(fixed))] * 2))
+    assert inliers.dtype == bool and inliers.all()
+
+
+def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_drop_points_off_the_moving_image():
+    from muvis_align.image.util import grid_point_pairs
+
+    # (t, c, y, x) as multiview-stitcher gives it: spatial dims last
+    matrix = np.eye(5)
+    matrix[2:4, 4] = [-30, 0]
+
+    fixed, moving, _, _ = grid_point_pairs((60, 60), (40, 60), matrix, points_per_short_axis=6)
+
+    np.testing.assert_array_equal(moving, fixed + [30, 0])
+    assert np.all(moving[:, 0] <= 39)
+    assert len(fixed) == 6 * 1

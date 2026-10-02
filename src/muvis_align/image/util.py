@@ -1106,6 +1106,23 @@ def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers
     return fig, ax
 
 
+def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, points_per_short_axis=6):
+    """Points on a regular grid over the fixed image and where `affine_matrix` puts them in the moving image, as
+    (fixed points, moving points, matches, inliers): what a registration giving only a transform shows in a preview."""
+    ndim = len(fixed_shape)
+    # spatial dims come last; the matrix maps moving image coordinates to fixed ones
+    matrix = np.asarray(affine_matrix, dtype=float)[-(ndim + 1):, -(ndim + 1):]
+    step = max(min(fixed_shape) / points_per_short_axis, 1)
+    axes = [np.arange(step / 2, size, step) for size in fixed_shape]
+    fixed_points = np.stack(np.meshgrid(*axes, indexing='ij'), axis=-1).reshape(-1, ndim)
+    homogeneous = np.column_stack([fixed_points, np.ones(len(fixed_points))])
+    moving_points = (np.linalg.inv(matrix) @ homogeneous.T).T[:, :ndim]
+    inside = np.all((moving_points >= 0) & (moving_points <= np.asarray(moving_shape) - 1), axis=1)
+    fixed_points, moving_points = fixed_points[inside], moving_points[inside]
+    matches = np.column_stack([np.arange(len(fixed_points))] * 2)
+    return fixed_points, moving_points, matches, np.ones(len(fixed_points), dtype=bool)
+
+
 def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], inliers=[],
                                   points_color='black', match_color='red', inlier_color='lime'):
     def _as_points_array(points):

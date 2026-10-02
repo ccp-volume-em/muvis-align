@@ -698,6 +698,11 @@ Progress:
   full-res preview pair 124s/6GB -> 22s/2GB. Preview shows its metrics before the feature layers (9be792f).
 - Windows tests: the crash log's open file blocked tmp cleanup (close_fault_log, 32c53be).
 
+- Registration preview for built-in methods (phase correlation, elastix), which give a transform only:
+  a grid over the fixed overlap (~6 points along its short side) mapped through the transform into the
+  moving overlap, shown as point pairs (grid_point_pairs). multiview-stitcher's affine_matrix maps moving
+  image coordinates to fixed ones (phase correlation of a +5/+10 shift gives -5/-10).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
@@ -716,10 +721,6 @@ Progress:
 - [ ] Lazy overview on single-level sources (the meatballs files are pyramids, so its timings are optimistic for
       single-level data): each tile is read whole at full res and only then strided - read just the
       strided rows instead (as the direct uncompressed-level reads do), and measure on a single-level set.
-- [ ] Registration preview for multiview-stitcher's built-in methods (e.g. phase correlation), which give only a
-      transform, no matched points: a wrapper used only for the preview that maps points on a regular grid over
-      the pair's overlap through the found transform, as the point pairs the preview's napari shape/point layers
-      are built from, to show the offsets.
 - [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
       in with the pyramid files would also be single-level (slower pre-processing and overview).
 - [ ] Run a real convert with a pre-processing scale set: check output level-0 size and levels
