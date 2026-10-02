@@ -59,6 +59,23 @@ shows where.
 Again 2026-10-02 (job 59049073, ea994fc, faulthandler in): pre-processing 17.6 min, lazy overview
 added, napari gone 1.4s after add_image, rss 11.4GB; the xpra log has no stack - the dump is in the
 project's output/muvis-align.log (asked the user for it, and sacct's State/ExitCode/MaxRSS).
+Its dump: SIGSEGV on the Qt thread in vispy glDrawArrays (llvmpipe), the first draw after add_image
+(our bar's setValue runs processEvents); a prefetch thread was in lazy_overview._paste.
+Reproduced locally: Linux container (muvis-align-xpra1, Xvfb, llvmpipe), UI driver pre_processing on
+the meatballs data (scratchpad linux_meatballs/run.sh) - segfault 1s after adding the pre-processed
+overview (3 sections of 7653x10204); the raw overview of the same size before it draws fine. Not
+reproduced by napari alone with a 7337x8441 uint8 image, nor a lazy 1081-plane stack with background
+builds, at 24/32/64 llvmpipe threads.
+Native stack (gdb + libgl1-mesa-dri-dbgsym 22.3.6-1+deb12u2): llvmpipe_draw_vbo -> llvmpipe_update_derived ->
+draw_find_shader_output with info=0x130 - no vertex shader bound: the image is drawn with a program not valid
+in the current context (Mesa dereferences null where a GPU driver errors). The draw comes from
+QOpenGLWidget::resizeEvent (main canvas 656x790 -> 656x878 as the bar shows), on the Image visual with the
+7653x10204 texture. Crashes 100% in the plugin (meatballs, pre_processing), also with: prefetch off, planes
+computed in memory first, overview widget shapes off, first-section view off, OpenCV OpenCL off (an apparent
+fix was a broken probe). Never in plain napari with the same planes and add_image arguments, nor with
+replacing the layer 8x, resizing 40x, a second canvas in a dock, the welcome screen off and the dock shown,
+or after running pre-processing headless in the same process.
+Side finding: each replaced 7653x10204 image layer keeps ~0.66GB (rss 1.35 -> 5.31GB over 8 in plain napari).
 
 ### Pair registration mixing up pairs' crops (fixed)
 
