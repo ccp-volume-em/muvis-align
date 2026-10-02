@@ -47,7 +47,7 @@ thread, no Python frame). A rerun exited normally. The driver now terminates its
 closing napari might see the same lingering process. Not investigated further (needs native stacks, e.g.
 py-spy --native).
 
-### napari exits after pre-processing on the HPC (Mesa 22.3 llvmpipe; fix pending an HPC run)
+### napari exits after pre-processing on the HPC (fixed: Mesa 25 in the image)
 
 HPC run 2026-10-01 (34k sources, code at c8da3af): pre-processing finished (16 min), the refresh
 added the pre-processed lazy overview (1081 sections of 7337x8441 at 0.2um), and 1.5s after
@@ -77,8 +77,8 @@ replacing the layer 8x, resizing 40x, a second canvas in a dock, the welcome scr
 or after running pre-processing headless in the same process.
 Side finding: each replaced 7653x10204 image layer keeps ~0.66GB (rss 1.35 -> 5.31GB over 8 in plain napari).
 Mesa 25.0.7 (bookworm-backports) does not crash: 2/2 with it installed at container start, and the image
-built with it (Dockerfile, 43ac613) passes the same plugin run. Next (user): docker-build-push.sh,
-xpra-pull.sh, pre-processing on the 34k project. The root cause (which program is invalid) is not found.
+built with it (Dockerfile, 43ac613) passes the same plugin run. Confirmed on the HPC 2026-10-02: the 34k
+project's pre-processing and its view refresh completed. The root cause (which program is invalid) is not found.
 Not done: the ~0.66GB kept per replaced big image layer.
 Windows: faulthandler also reports access violations a driver raises and handles (Ciqtek preview: 5 dumps,
 run carried on), so the crash log is off on Windows (b8d59ba).
