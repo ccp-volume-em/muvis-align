@@ -1228,13 +1228,17 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
         )
     ]
 
+    # in image pixels: sized to the image, or a large overlap shown whole shrinks them to nothing
+    extent = max(image.shape[:spatial_dims])
+    point_size, line_width = max(6, extent / 80), max(1, extent / 400)
+
     if len(points_data) > 0:
         layers.append(
             (
                 points_data,
                 {
                     "name": "keypoints",
-                    "size": 6,
+                    "size": point_size,
                     "face_color": points_color,
                     "border_color": "transparent",
                     "symbol": "ring",
@@ -1252,7 +1256,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "name": "matches",
                     "shape_type": "line",
                     "edge_color": match_color,
-                    "edge_width": 1,
+                    "edge_width": line_width,
                     "opacity": 0.25,
                 },
                 "shapes",
@@ -1267,7 +1271,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "name": "matches_inliers",
                     "shape_type": "line",
                     "edge_color": inlier_color,
-                    "edge_width": 1,
+                    "edge_width": line_width,
                     "opacity": 0.25,
                 },
                 "shapes",

@@ -303,3 +303,16 @@ def test_get_overlap_images_says_plainly_when_two_images_do_not_overlap(offset, 
     else:
         with pytest.raises(NoOverlapError):
             get_overlap_images(sims[0], sims[1], 'source')
+
+
+@pytest.mark.parametrize('side, point_size, line_width', [(60, 6, 1), (1600, 20, 4)])
+def test_preview_points_and_lines_scale_with_the_image_shown(side, point_size, line_width):
+    from muvis_align.image.util import draw_keypoints_matches_napari
+
+    image = np.zeros((side, side // 2), np.float32)
+    points = np.array([[10.0, 10.0]])
+    layers = {kwargs['name']: kwargs for _, kwargs, _ in
+              draw_keypoints_matches_napari(image, points, image, points, matches=[[0, 0]], inliers=[True])}
+
+    assert layers['keypoints']['size'] == point_size
+    assert layers['matches_inliers']['edge_width'] == line_width

@@ -703,6 +703,8 @@ Progress:
   moving overlap, shown as point pairs (grid_point_pairs). On registered pairs the affine_matrix takes fixed
   crop pixels to the moving crop (10/10 meatballs pairs by brute-force shift search, and the pipeline's pair
   NCC improves with it, e.g. 0.08 -> 0.85); a synthetic scipy-shifted pair suggested the reverse - unexplained.
+  Two images without overlap now warn (NoOverlapError from get_overlap_images). Preview points and lines are sized
+  to the image shown (1/80 and 1/400 of its largest side, at least 6 and 1), else invisible on large overlaps (Ciqtek).
 
 ## TODO
 
