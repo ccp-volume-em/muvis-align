@@ -8,7 +8,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants
+    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, eval_context
 
 
 @pytest.mark.parametrize(
@@ -429,3 +429,10 @@ def test_print_significants_keeps_at_most_3_significant_digits(value, expected):
 
 def test_print_dict_simple_rounds_floats_only_in_zyx_order():
     assert print_dict_simple({'x': 18820.7, 'y': 0.0025505, 'z': 2}) == 'z: 2 y: 0.00255 x: 18800'
+
+
+def test_an_invalid_source_metadata_expression_warns_and_falls_back_to_the_default():
+    context = {'fn': [0, 1, 2]}
+    assert eval_context({'x': 'fn[-2]*24'}, 'x', 0, context) == 24
+    with pytest.warns(UserWarning, match=r"Invalid source metadata x: 'fn\[-9\]' \(IndexError"):
+        assert eval_context({'x': 'fn[-9]'}, 'x', 0, context) == 0

@@ -20,6 +20,7 @@ import re
 import sys
 import threading
 import time
+import warnings
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
 from xarray import DataArray
@@ -504,8 +505,10 @@ def eval_context(data, key, default_value, context):
             pass
         try:
             value = eval(value, context)
-        except:
-            pass
+        except Exception as error:
+            # napari shows a warning once, as a notification, however many sources repeat it
+            warnings.warn(f'Invalid source metadata {key}: {value!r} ({type(error).__name__}: {error}),'
+                          f' using {default_value}')
     if not isinstance(value, (float, int)):
         value = default_value
     return value
