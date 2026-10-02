@@ -35,6 +35,11 @@ Nothing.
 
 ## TODO
 
+- [ ] From the HPC run of 2026-10-02 (34k sources, 229725 pairs; full run log from the user once it finishes):
+      robust_linear runs all 10 rounds though the median residual stopped changing at round 3 (0.104; ~9-13 min
+      a round there) - stop once it stops improving; the full per-source msims are rebuilt before global
+      registration only to store the transforms (19 min on 1 core); the global registration metrics show no
+      progress (one bar step, 75% for ~1h).
 - [ ] Keep the refresh bar moving: per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
 - [ ] Opening a large project: napari's per-shape Python cost (~10s at 150k shapes, main viewer and overview
