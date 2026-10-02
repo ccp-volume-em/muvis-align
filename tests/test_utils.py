@@ -446,3 +446,27 @@ def test_an_invalid_source_metadata_expression_warns_and_falls_back_to_the_defau
     assert eval_context({'x': 'fn[-2]*24'}, 'x', 0, context) == 24
     with pytest.warns(UserWarning, match=r"Invalid source metadata x: 'fn\[-9\]' \(IndexError"):
         assert eval_context({'x': 'fn[-9]'}, 'x', 0, context) == 0
+
+
+def test_highs_solves_on_the_calling_thread_alone_so_no_workers_are_torn_down_at_its_exit():
+    import threading
+    import psutil
+    from scipy.optimize import _linprog_highs, linprog
+
+    assert getattr(_linprog_highs._highs_wrapper, '_muvis_single_threaded', False)
+    process = psutil.Process()
+    before = len(process.threads())
+    seen = []
+
+    def solve():
+        result = linprog(c=[1, 1], A_ub=[[-1, 0], [0, -1]], b_ub=[0, 0], bounds=(None, None))
+        seen.append((len(process.threads()), result.status))
+
+    worker = threading.Thread(target=solve)
+    worker.start()
+    worker.join()
+
+    threads_during, status = seen[0]
+    assert status == 0
+    # HiGHS' own pool would add ~11 workers here; the calling thread (plus any unrelated one) is all
+    assert threads_during <= before + 2

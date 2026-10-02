@@ -257,3 +257,74 @@ def test_restoring_a_transform_snapshot_puts_back_the_previous_value_or_removes_
     assert translation(msims[0]) == pytest.approx(1.0)
     assert 'registered' in get_msim_transform_keys(msims[0])
     assert 'registered' not in get_msim_transform_keys(msims[1])
+
+
+def test_grid_point_pairs_follow_the_transform_from_fixed_to_moving():
+    from muvis_align.image.util import grid_point_pairs
+
+    # fixed p lies at p + (5, 10) in the moving image
+    matrix = np.array([[1, 0, 5], [0, 1, 10], [0, 0, 1]], dtype=float)
+
+    fixed, moving, matches, inliers = grid_point_pairs((60, 120), (60, 120), matrix)
+
+    np.testing.assert_array_equal(moving, fixed + [5, 10])
+    step = np.diff(np.unique(fixed[:, 0]))[0]
+    np.testing.assert_allclose(fixed.min(axis=0), step / 2)
+    assert np.all(moving <= [59, 119])
+    np.testing.assert_array_equal(matches, np.column_stack([np.arange(len(fixed))] * 2))
+    assert inliers.dtype == bool and inliers.all()
+
+
+def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_drop_points_off_the_moving_image():
+    from muvis_align.image.util import grid_point_pairs
+
+    # (t, c, y, x) as multiview-stitcher gives it: spatial dims last
+    matrix = np.eye(5)
+    matrix[2:4, 4] = [20, 0]
+
+    fixed, moving, _, _ = grid_point_pairs((60, 60), (40, 60), matrix)
+
+    np.testing.assert_array_equal(moving, fixed + [20, 0])
+    # grid rows at 12 and 36: the second lands beyond the moving image's 40 rows
+    np.testing.assert_array_equal(np.unique(fixed[:, 0]), [12])
+
+
+@pytest.mark.parametrize('offset, overlaps', [(1000.0, False), (60.0, True)])
+def test_get_overlap_images_says_plainly_when_two_images_do_not_overlap(offset, overlaps):
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.image.util import NoOverlapError
+
+    sims = [si_utils.get_sim_from_array(np.ones((100, 100), np.float32), dims=['y', 'x'], scale={'y': 1, 'x': 1},
+                                        translation={'y': 0.0, 'x': x}, transform_key='source')
+            for x in (0.0, offset)]
+
+    if overlaps:
+        overlap1, overlap2, _ = get_overlap_images(sims[0], sims[1], 'source')
+        assert overlap1.sizes['x'] >= 40 and overlap2.sizes['x'] >= 40
+    else:
+        with pytest.raises(NoOverlapError):
+            get_overlap_images(sims[0], sims[1], 'source')
+
+
+@pytest.mark.parametrize('side, point_size, line_width', [(60, 6, 1), (1600, 20, 4)])
+def test_preview_points_and_lines_scale_with_the_image_shown(side, point_size, line_width):
+    from muvis_align.image.util import draw_keypoints_matches_napari
+
+    image = np.zeros((side, side // 2), np.float32)
+    points = np.array([[10.0, 10.0]])
+    layers = {kwargs['name']: kwargs for _, kwargs, _ in
+              draw_keypoints_matches_napari(image, points, image, points, matches=[[0, 0]], inliers=[True])}
+
+    assert layers['keypoints']['size'] == point_size
+    assert layers['matches_inliers']['edge_width'] == line_width
+
+
+@pytest.mark.parametrize('shape, expected', [((800, 50), (20, 1)), ((62, 83), (3, 3)), ((1407, 422), (20, 6))])
+def test_grid_point_pairs_are_spaced_by_the_ring_size_drawn(shape, expected):
+    from muvis_align.image.util import grid_point_pairs, preview_marker_sizes, side_by_side_extent
+
+    fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
+
+    assert (len(np.unique(fixed[:, 0])), len(np.unique(fixed[:, 1]))) == expected
+    step = np.diff(np.unique(fixed[:, 0]))[0]
+    assert step == pytest.approx(4 * preview_marker_sizes(side_by_side_extent(shape, shape))[0])

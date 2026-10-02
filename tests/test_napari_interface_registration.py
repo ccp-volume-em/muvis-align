@@ -2803,6 +2803,31 @@ def test_the_view_is_left_where_napari_put_it_without_a_section_shown_or_for_z_s
     bare_interface.viewer.dims.set_point.assert_not_called()
 
 
+def test_a_preview_of_two_images_that_do_not_overlap_warns_instead_of_failing(bare_interface):
+    from contextlib import contextmanager
+    from muvis_align.image.util import NoOverlapError
+
+    labels = {'registration.reg_preview_image1': 'S000_000_000', 'registration.reg_preview_image2': 'S000_007_007'}
+    bare_interface.param_widgets = {name: MagicMock(get_value=MagicMock(return_value=value)) for name, value in labels.items()}
+    bare_interface.reg.file_labels = ['S000_000_000', 'S000_007_007']
+    bare_interface.reg.register_msims = [object(), object()]
+
+    @contextmanager
+    def operation_progress(*args, **kwargs):
+        yield MagicMock()
+
+    bare_interface._operation_progress = operation_progress
+    bare_interface._run_off_thread = MagicMock(side_effect=NoOverlapError('the images do not overlap'))
+
+    with patch.object(interface_module, 'show_warning') as show_warning, \
+            patch('muvis_align.ui._utils.show_error') as show_error:
+        result = bare_interface.run_preview_registration()
+
+    assert result is None
+    show_warning.assert_called_once_with('S000_000_000 and S000_007_007 do not overlap: choose two images that do')
+    show_error.assert_not_called()
+
+
 def test_replacing_the_main_view_clears_napari_dask_cache_but_the_overview_does_not(bare_interface):
     bare_interface.viewer = MagicMock()
     bare_interface.viewer.layers = [object()]

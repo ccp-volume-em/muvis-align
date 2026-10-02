@@ -1106,6 +1106,37 @@ def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers
     return fig, ax
 
 
+def preview_marker_sizes(extent):
+    """(point size, line width) in image pixels for a preview whose largest side is `extent` pixels: sized to the
+    view, or a large overlap shown whole shrinks them to nothing."""
+    return max(6, extent / 80), max(1, extent / 400)
+
+
+def side_by_side_extent(shape1, shape2):
+    """The largest side of two images shown side by side along their shortest axis, as the preview shows them."""
+    shape = np.maximum(np.asarray(shape1), np.asarray(shape2))
+    shape[np.argmin(shape)] *= 2
+    return int(shape.max())
+
+
+def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, rings_per_step=4):
+    """Points on a regular grid over the fixed image and where `affine_matrix` puts them in the moving image, as
+    (fixed points, moving points, matches, inliers): what a registration giving only a transform shows in a preview."""
+    ndim = len(fixed_shape)
+    # spatial dims come last; on registered pairs the matrix takes fixed pixels to where they lie in the moving image
+    matrix = np.asarray(affine_matrix, dtype=float)[-(ndim + 1):, -(ndim + 1):]
+    # spaced by the drawn ring size: points crowd when their rings come close, whatever the overlap's size or shape
+    step = rings_per_step * preview_marker_sizes(side_by_side_extent(fixed_shape, moving_shape))[0]
+    axes = [np.arange(step / 2, size, step) for size in fixed_shape]
+    fixed_points = np.stack(np.meshgrid(*axes, indexing='ij'), axis=-1).reshape(-1, ndim)
+    homogeneous = np.column_stack([fixed_points, np.ones(len(fixed_points))])
+    moving_points = (matrix @ homogeneous.T).T[:, :ndim]
+    inside = np.all((moving_points >= 0) & (moving_points <= np.asarray(moving_shape) - 1), axis=1)
+    fixed_points, moving_points = fixed_points[inside], moving_points[inside]
+    matches = np.column_stack([np.arange(len(fixed_points))] * 2)
+    return fixed_points, moving_points, matches, np.ones(len(fixed_points), dtype=bool)
+
+
 def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], inliers=[],
                                   points_color='black', match_color='red', inlier_color='lime'):
     def _as_points_array(points):
@@ -1211,13 +1242,15 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
         )
     ]
 
+    point_size, line_width = preview_marker_sizes(max(image.shape[:spatial_dims]))
+
     if len(points_data) > 0:
         layers.append(
             (
                 points_data,
                 {
                     "name": "keypoints",
-                    "size": 6,
+                    "size": point_size,
                     "face_color": points_color,
                     "border_color": "transparent",
                     "symbol": "ring",
@@ -1235,7 +1268,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "name": "matches",
                     "shape_type": "line",
                     "edge_color": match_color,
-                    "edge_width": 1,
+                    "edge_width": line_width,
                     "opacity": 0.25,
                 },
                 "shapes",
@@ -1250,7 +1283,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "name": "matches_inliers",
                     "shape_type": "line",
                     "edge_color": inlier_color,
-                    "edge_width": 1,
+                    "edge_width": line_width,
                     "opacity": 0.25,
                 },
                 "shapes",
@@ -2235,6 +2268,10 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
     return shapes, good_pairs
 
 
+class NoOverlapError(ValueError):
+    """Two images that do not overlap where an overlap is needed."""
+
+
 def get_overlap_images(sim1, sim2, transform_key):
     sims = [sim1.squeeze(), sim2.squeeze()]
     # functionality copied from registration.register_pair_of_msims()
@@ -2245,7 +2282,12 @@ def get_overlap_images(sim1, sim2, transform_key):
         original_transform = sim.attrs['transforms'][transform_key]
         adapted_transform = _adapt_transform_to_image_dims(sim, original_transform, transform_key)
         sim.attrs['transforms'][transform_key] = adapted_transform
-    
+
+    stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in sims]
+    _, intersection = mv_graph.get_overlap_between_pair_of_stack_props(*stack_props)
+    if intersection is None:
+        raise NoOverlapError('the images do not overlap')
+
     result = _get_overlap_bboxes(
         sims[0],
         sims[1],

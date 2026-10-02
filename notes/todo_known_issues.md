@@ -91,6 +91,36 @@ crop - silently, or failing with `ValueError: inhomogeneous shape` in phase corr
 shapes differed. `register_pairs` now computes with `optimization.fuse.active` off. Still in
 dask 2026.8.0.
 
+### napari hangs on a registration preview (fixed: HiGHS run single-threaded)
+
+Cause (cdb native stacks, WinDbg installed via winget): a HiGHS worker thread (scipy/optimize/_highspy/_core.pyd)
+exiting, spinning in its TLS callback inside LdrShutdownThread - holding the Windows loader lock, so no thread can
+start (the Qt thread waits in threading.Thread.start). HiGHS starts ~11 workers for each thread that calls linprog
+and tears them down when that thread exits; the preview calls linprog (multiview-stitcher's overlap tests) from
+napari's pooled worker threads, which change and expire. Fix: every HiGHS solve with threads=1
+(util.single_threaded_highs, wrapping scipy's _highs_wrapper at import) - no workers, nothing to tear down.
+Stress loop (120 previews, Ciqtek, phase corr/orb/sift): before, a hang after preview 20, feature layers up to 17s,
+whole preview up to 36.7s, rss 3.2GB; after, no hang or stray thread in 120, feature layers max 0.9s, preview max 7.0s,
+rss 1.8GB, threads 58-61 (was 70-85). The reported ~10s metrics-to-layers gap was the same cause: each teardown
+holds the loader lock, stalling every thread start. Full suite 861 passed.
+
+2026-10-02, Ciqtek, Windows: napari froze starting a preview. py-spy: the Qt thread in threading.Thread.start
+(the progress heartbeat) waiting for the new thread to start; a thread with no Python frames ('Thread 0',
+active+gil) holds the GIL and spins at one core. It started during the previous preview (which completed) and
+stayed. Reproduced once in the plugin (UI driver, Ciqtek, 5th of phase corr/orb/phase/orb/sift: +9 threads,
+one busy); not in 20 more plugin previews nor in 8 headless registrations on a worker thread. py-spy --native
+fails here ('The parameter is incorrect'); no Windows debugger installed, thread start addresses unreadable.
+Stress loops (plugin, Ciqtek, phase corr/orb/sift cycled; scratchpad repeat_preview.py + stress_watch.sh):
+- one fresh run: 15 extra threads, one busy after the very first (phase correlation) preview - so not sift-only
+  (may have been a pool spin-waiting; detection now = a new thread cannot start within 10s).
+- 39 previews without a hang, then preview 38's 'show feature layers' took 12.2s wall / 0.8s CPU with rss
+  1.1 -> 3.4GB (the reported ~10s gap between metrics and layers), and preview 39 aborted in that step:
+  'terminate called without an active exception' (libstdc++: a std::thread destroyed while joinable).
+  libstdc++ is static in scipy's mingw-built .pyd files (fft/ducc, ckdtree, HiGHS, ...) and OpenCV's ffmpeg plugin.
+Ruled out in isolation: napari layers alone (30 rounds of image + 10k points + 2.5k lines, ~0.5s, no growth),
+HiGHS/linprog and multiview-stitcher's overlap from 40 short-lived threads, 8 headless registrations.
+Next: native stacks of a hang (WinDbg/procdump - not installed), or bisect the plugin's preview steps.
+
 ## In progress
 
 Opening the 34k HPC project (log 2026-10-01): the first section shown was slice 0, which holds
@@ -701,6 +731,14 @@ Progress:
   layers' chunks. Now emptied whenever the main view is replaced (clear_napari_dask_cache); caching within a
   view stays. Meatballs open + pre-processing: cache 3.27 -> 1.31GB, rss 2.60 -> 1.94GB.
 
+- Registration preview for built-in methods (phase correlation, elastix), which give a transform only:
+  a grid over the fixed overlap (spaced 4 ring sizes apart: 12193 20, meatballs 9, Ciqtek 120 points) mapped through the transform into the
+  moving overlap, shown as point pairs (grid_point_pairs). On registered pairs the affine_matrix takes fixed
+  crop pixels to the moving crop (10/10 meatballs pairs by brute-force shift search, and the pipeline's pair
+  NCC improves with it, e.g. 0.08 -> 0.85); a synthetic scipy-shifted pair suggested the reverse - unexplained.
+  Two images without overlap now warn (NoOverlapError from get_overlap_images). Preview points and lines are sized
+  to the image shown (1/80 and 1/400 of its largest side, at least 6 and 1), else invisible on large overlaps (Ciqtek).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
@@ -719,10 +757,6 @@ Progress:
 - [ ] Lazy overview on single-level sources (the meatballs files are pyramids, so its timings are optimistic for
       single-level data): each tile is read whole at full res and only then strided - read just the
       strided rows instead (as the direct uncompressed-level reads do), and measure on a single-level set.
-- [ ] Registration preview for multiview-stitcher's built-in methods (e.g. phase correlation), which give only a
-      transform, no matched points: a wrapper used only for the preview that maps points on a regular grid over
-      the pair's overlap through the found transform, as the point pairs the preview's napari shape/point layers
-      are built from, to show the offsets.
 - [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
       in with the pyramid files would also be single-level (slower pre-processing and overview).
 - [ ] Run a real convert with a pre-processing scale set: check output level-0 size and levels
