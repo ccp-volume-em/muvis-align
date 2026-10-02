@@ -1431,13 +1431,16 @@ class Interface:
                             'overlap1': overlap1, 'overlap2': overlap2, 'sims_pixel_space': sims_pixel_space,
                         }
 
-                    transform, quality, results = self.reg.register_overlap(
-                        overlap1, overlap2, sims_pixel_space, params=registration_params)
+                    with Timer('preview_registration: register the overlap', verbose=self._timing_verbose()):
+                        transform, quality, results = self.reg.register_overlap(
+                            overlap1, overlap2, sims_pixel_space, params=registration_params)
 
                     msim1, msim2 = self.reg.register_msims[index1], self.reg.register_msims[index2]
                     transforms = {(0, 1): transform}
                     qualities = {(0, 1): quality}
-                    metrics = calc_msims_metrics((msim1, msim2), transforms, qualities, metric_methods=self.metrics_methods)
+                    with Timer('preview_registration: pair metrics', verbose=self._timing_verbose()):
+                        metrics = calc_msims_metrics((msim1, msim2), transforms, qualities,
+                                                     metric_methods=self.metrics_methods)
                     self._remap_local_pair_metrics(metrics, (index1, index2))
                     return metrics, results, overlap1, overlap2
 
@@ -1450,14 +1453,16 @@ class Interface:
 
     def preview_registration(self):
         # the view stays until there is a result to replace it with: an empty viewer's welcome screen hides the bar
-        result = self.run_preview_registration()
+        with Timer('preview_registration: register (and pre-process if needed)', verbose=self._timing_verbose()):
+            result = self.run_preview_registration()
         if result is None:
             return
         metrics, results, overlap1, overlap2 = result
 
-        self.populate_metrics_table(metrics)
-        # metrics shown before the (slower) feature layers replace the view
-        flush_paint_events()
+        with Timer('preview_registration: show metrics', verbose=self._timing_verbose()):
+            self.populate_metrics_table(metrics)
+            # metrics shown before the (slower) feature layers replace the view
+            flush_paint_events()
 
         fixed_points = results.get('fixed_points', [])
         moving_points = results.get('moving_points', [])
@@ -1467,7 +1472,9 @@ class Interface:
             # a method giving only a transform (phase correlation, elastix): a grid shows its offsets
             fixed_points, moving_points, matches, inliers = grid_point_pairs(
                 np.shape(overlap1), np.shape(overlap2), results['affine_matrix'])
-        self._napari_view_show_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches, inliers)
+        with Timer('preview_registration: show feature layers', verbose=self._timing_verbose()):
+            self._napari_view_show_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches,
+                                            inliers)
         self.view_mode = ViewMode.FEATURES
 
     def populate_metrics_table(self, metrics_dict):
