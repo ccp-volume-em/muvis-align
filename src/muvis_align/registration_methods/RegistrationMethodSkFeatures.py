@@ -79,12 +79,6 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
                 feature_model.extract(data)
             points = feature_model.keypoints
             desc = feature_model.descriptors
-            if len(points) > self.nkeypoints:
-                if self.debug:
-                    print('#keypoints0', len(points))
-                indices = np.random.choice(len(points), self.nkeypoints, replace=False)
-                points = points[indices]
-                desc = desc[indices]
             if len(points) == 0:
                 logging.warning('Feature extraction: No features detected!')
         except Exception as e:

@@ -30,35 +30,6 @@ def test_detect_features_returns_skimage_keypoints_in_yx_order(monkeypatch):
     assert np.array_equal(desc, [[1], [2]])
 
 
-def test_detect_features_limits_keypoints_to_configured_maximum(monkeypatch):
-    data = make_dummy_blob_spatial_image_2d((32, 48), [(7, 11), (12, 14), (20, 30)], 'yx')
-    method = RegistrationMethodSkFeatures(data, params={'method': 'orb', 'gaussian_sigma': 0, 'max_keypoints': 2})
-
-    class DummyFeatureModel:
-        def __init__(self):
-            self.keypoints = np.array([[7.0, 11.0], [12.0, 14.0], [20.0, 30.0]], dtype=np.float32)
-            self.descriptors = np.array([[1], [2], [3]], dtype=np.uint8)
-
-        def detect_and_extract(self, image):
-            return None
-
-    monkeypatch.setattr(
-        'muvis_align.registration_methods.RegistrationMethodSkFeatures.ORB',
-        lambda **kwargs: DummyFeatureModel(),
-    )
-    monkeypatch.setattr(
-        'muvis_align.registration_methods.RegistrationMethodSkFeatures.np.random.choice',
-        lambda n, size, replace: np.array([0, 2]),
-    )
-
-    points, desc, processed = method.detect_features(data)
-
-    assert processed.shape == (32, 48)
-    assert points.shape == (2, 2)
-    assert np.allclose(points, [[7.0, 11.0], [20.0, 30.0]])
-    assert np.array_equal(desc, [[1], [3]])
-
-
 def test_match_returns_best_ransac_transform_and_inliers(monkeypatch):
     data = make_dummy_blob_spatial_image_2d((32, 48), [(0, 0)], 'yx')
     method = RegistrationMethodSkFeatures(
