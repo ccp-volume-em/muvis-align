@@ -699,9 +699,10 @@ Progress:
 - Windows tests: the crash log's open file blocked tmp cleanup (close_fault_log, 32c53be).
 
 - Registration preview for built-in methods (phase correlation, elastix), which give a transform only:
-  a grid over the fixed overlap (~4 points along its short side) mapped through the transform into the
-  moving overlap, shown as point pairs (grid_point_pairs). multiview-stitcher's affine_matrix maps moving
-  image coordinates to fixed ones (phase correlation of a +5/+10 shift gives -5/-10).
+  a grid over the fixed overlap (~3 points along its short side) mapped through the transform into the
+  moving overlap, shown as point pairs (grid_point_pairs). On registered pairs the affine_matrix takes fixed
+  crop pixels to the moving crop (10/10 meatballs pairs by brute-force shift search, and the pipeline's pair
+  NCC improves with it, e.g. 0.08 -> 0.85); a synthetic scipy-shifted pair suggested the reverse - unexplained.
 
 ## TODO
 
