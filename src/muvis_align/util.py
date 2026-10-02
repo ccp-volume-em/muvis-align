@@ -181,15 +181,24 @@ def print_dict(dct: dict, indent: int = 0) -> str:
     return s
 
 
-def print_dict_simple(dct: dict, dims: str='zyx') -> str:
+def print_dict_simple(dct: dict, dims: str='zyx', significant_digits: int=3) -> str:
     items = []
     for dim in dims:
         if dim in dct:
             value = dct[dim]
             if isinstance(value, float):
-                value = f'{value:.3f}'
+                value = print_significants(value, significant_digits)
             items.append(f'{dim}: {value}')
     return ' '.join(items)
+
+
+def print_significants(value: float, significant_digits: int) -> str:
+    # fixed-point rather than 'g', which turns 64863 into 6.49e+04
+    if value == 0 or not np.isfinite(value):
+        return f'{value:g}'
+    decimals = significant_digits - int(np.floor(np.log10(abs(value)))) - 1
+    text = f'{round(value, decimals):.{max(decimals, 0)}f}'
+    return text.rstrip('0').rstrip('.') if '.' in text else text
 
 
 def print_dict_xyz(dct: dict, dims='xyz', decimals=3, as_tuple=False) -> str:

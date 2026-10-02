@@ -8,7 +8,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers
+    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants
 
 
 @pytest.mark.parametrize(
@@ -417,3 +417,15 @@ def test_a_native_crash_leaves_every_threads_stack_in_the_log(tmp_path):
     assert result.returncode != 0
     log = log_filename.read_text(encoding='utf-8', errors='replace')
     assert 'Fatal Python error' in log and 'most recent call first' in log
+
+
+@pytest.mark.parametrize('value, expected', [
+    (0.0025505462087219684, '0.00255'), (0.004, '0.004'), (1.244, '1.24'), (1.5, '1.5'),
+    (-64863.2422089573, '-64900'), (12374.5, '12400'), (999.6, '1000'), (0.0, '0'), (-3.5, '-3.5'),
+])
+def test_print_significants_keeps_at_most_3_significant_digits(value, expected):
+    assert print_significants(value, 3) == expected
+
+
+def test_print_dict_simple_rounds_floats_only_in_zyx_order():
+    assert print_dict_simple({'x': 18820.7, 'y': 0.0025505, 'z': 2}) == 'z: 2 y: 0.00255 x: 18800'
