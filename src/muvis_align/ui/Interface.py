@@ -6,7 +6,7 @@ from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.qt.threading import create_worker
 from napari.utils import progress
-from napari.utils.notifications import show_info, show_warning
+from napari.utils.notifications import notification_manager, show_info, show_warning
 import networkx as nx
 import numpy as np
 import os.path
@@ -422,6 +422,8 @@ class Interface:
             _connect={
                 'returned': lambda value: outcome.__setitem__('value', value),
                 'errored': lambda error: outcome.__setitem__('error', error),
+                # a worker diverts warnings to this signal: shown as on the Qt thread, once per message
+                'warned': lambda warning: notification_manager.receive_warning(*warning),
                 'finished': loop.quit,
             },
         )
