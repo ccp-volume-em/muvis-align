@@ -1106,15 +1106,27 @@ def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers
     return fig, ax
 
 
-def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, points_per_short_axis=3):
+def preview_marker_sizes(extent):
+    """(point size, line width) in image pixels for a preview whose largest side is `extent` pixels: sized to the
+    view, or a large overlap shown whole shrinks them to nothing."""
+    return max(6, extent / 80), max(1, extent / 400)
+
+
+def side_by_side_extent(shape1, shape2):
+    """The largest side of two images shown side by side along their shortest axis, as the preview shows them."""
+    shape = np.maximum(np.asarray(shape1), np.asarray(shape2))
+    shape[np.argmin(shape)] *= 2
+    return int(shape.max())
+
+
+def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, rings_per_step=4):
     """Points on a regular grid over the fixed image and where `affine_matrix` puts them in the moving image, as
     (fixed points, moving points, matches, inliers): what a registration giving only a transform shows in a preview."""
     ndim = len(fixed_shape)
     # spatial dims come last; on registered pairs the matrix takes fixed pixels to where they lie in the moving image
     matrix = np.asarray(affine_matrix, dtype=float)[-(ndim + 1):, -(ndim + 1):]
-    # more across a long narrow overlap (a strip between tiles) than across a squarish one
-    aspect = max(fixed_shape) / max(min(fixed_shape), 1)
-    step = max(min(fixed_shape) / (points_per_short_axis * aspect ** 0.3), 1)
+    # spaced by the drawn ring size: points crowd when their rings come close, whatever the overlap's size or shape
+    step = rings_per_step * preview_marker_sizes(side_by_side_extent(fixed_shape, moving_shape))[0]
     axes = [np.arange(step / 2, size, step) for size in fixed_shape]
     fixed_points = np.stack(np.meshgrid(*axes, indexing='ij'), axis=-1).reshape(-1, ndim)
     homogeneous = np.column_stack([fixed_points, np.ones(len(fixed_points))])
@@ -1230,9 +1242,7 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
         )
     ]
 
-    # in image pixels: sized to the image, or a large overlap shown whole shrinks them to nothing
-    extent = max(image.shape[:spatial_dims])
-    point_size, line_width = max(6, extent / 80), max(1, extent / 400)
+    point_size, line_width = preview_marker_sizes(max(image.shape[:spatial_dims]))
 
     if len(points_data) > 0:
         layers.append(

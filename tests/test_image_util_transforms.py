@@ -265,7 +265,7 @@ def test_grid_point_pairs_follow_the_transform_from_fixed_to_moving():
     # fixed p lies at p + (5, 10) in the moving image
     matrix = np.array([[1, 0, 5], [0, 1, 10], [0, 0, 1]], dtype=float)
 
-    fixed, moving, matches, inliers = grid_point_pairs((60, 120), (60, 120), matrix, points_per_short_axis=6)
+    fixed, moving, matches, inliers = grid_point_pairs((60, 120), (60, 120), matrix)
 
     np.testing.assert_array_equal(moving, fixed + [5, 10])
     step = np.diff(np.unique(fixed[:, 0]))[0]
@@ -280,13 +280,13 @@ def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_drop_poi
 
     # (t, c, y, x) as multiview-stitcher gives it: spatial dims last
     matrix = np.eye(5)
-    matrix[2:4, 4] = [30, 0]
+    matrix[2:4, 4] = [20, 0]
 
-    fixed, moving, _, _ = grid_point_pairs((60, 60), (40, 60), matrix, points_per_short_axis=6)
+    fixed, moving, _, _ = grid_point_pairs((60, 60), (40, 60), matrix)
 
-    np.testing.assert_array_equal(moving, fixed + [30, 0])
-    assert np.all(moving[:, 0] <= 39)
-    assert len(fixed) == 6 * 1
+    np.testing.assert_array_equal(moving, fixed + [20, 0])
+    # grid rows at 12 and 36: the second lands beyond the moving image's 40 rows
+    np.testing.assert_array_equal(np.unique(fixed[:, 0]), [12])
 
 
 @pytest.mark.parametrize('offset, overlaps', [(1000.0, False), (60.0, True)])
@@ -319,12 +319,12 @@ def test_preview_points_and_lines_scale_with_the_image_shown(side, point_size, l
     assert layers['matches_inliers']['edge_width'] == line_width
 
 
-def test_grid_point_pairs_put_more_points_across_a_long_narrow_overlap():
-    from muvis_align.image.util import grid_point_pairs
+@pytest.mark.parametrize('shape, expected', [((800, 50), (20, 1)), ((62, 83), (3, 3)), ((1407, 422), (20, 6))])
+def test_grid_point_pairs_are_spaced_by_the_ring_size_drawn(shape, expected):
+    from muvis_align.image.util import grid_point_pairs, preview_marker_sizes, side_by_side_extent
 
-    def points_across(shape):
-        fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
-        return len(np.unique(fixed[:, 1]))
+    fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
 
-    assert points_across((400, 400)) == 3
-    assert points_across((1400, 400)) == 4
+    assert (len(np.unique(fixed[:, 0])), len(np.unique(fixed[:, 1]))) == expected
+    step = np.diff(np.unique(fixed[:, 0]))[0]
+    assert step == pytest.approx(4 * preview_marker_sizes(side_by_side_extent(shape, shape))[0])
