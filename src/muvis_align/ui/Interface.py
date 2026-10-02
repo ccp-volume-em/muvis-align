@@ -1444,13 +1444,15 @@ class Interface:
 
 
     def preview_registration(self):
-        self._clear_napari_view(self.viewer)
+        # the view stays until there is a result to replace it with: an empty viewer's welcome screen hides the bar
         result = self.run_preview_registration()
         if result is None:
             return
         metrics, results, overlap1, overlap2 = result
 
         self.populate_metrics_table(metrics)
+        # metrics shown before the (slower) feature layers replace the view
+        flush_paint_events()
 
         fixed_points = results.get('fixed_points', [])
         moving_points = results.get('moving_points', [])
