@@ -6,43 +6,20 @@ from muvis_align.fusion_methods.FusionMethod import FusionMethod
 class FusionMethodExclusive(FusionMethod):
     def fusion(self, transformed_views):
         """
-        Simple exclusive fusion:
-        1. in case of mixed pixel sizes: do not blend, in lieu of knowing actual pixel sizes prioritise 'smallest' (non-NaN) tiles first
-        2. avoid blending in general - exclusive use of single source information
+        Exclusive fusion: each pixel from a single view, no blending - the earliest imaged view covering it.
 
         Parameters
         ----------
-        transformed_views : list of ndarrays
-            transformed input views
+        transformed_views : ndarray
+            transformed input views (views, *spatial), NaN where a view does not reach
 
         Returns
         -------
         ndarray
-            Fusion of input views
+            Fusion of input views, 0 where no view reaches
         """
-        needs_cleanup = False
-        if len(transformed_views) > 1:
-            needs_cleanup = True
-            # create exclusive weights map for all views
-            weights = np.zeros(transformed_views.shape, dtype=bool)
-            # mask with all non-NaN pixels
-            mask = ~np.isnan(transformed_views)
-            # remaining mask (single mask for all views)
-            rem_mask = np.ones(transformed_views.shape[1:], dtype=bool)
-            n = np.count_nonzero(mask, axis=(1,2))
-            indices = np.argsort(n)
-            # prioritise smallest shapes (in lieu of actual pixel size info)
-            for index in indices:
-                mask1 = mask[index]
-                weights[index][mask1 * rem_mask] = True
-                # remove already assigned pixels from remaining mask
-                rem_mask *= ~mask1
-            # apply weights
-            transformed_views *= weights
-
-        fused = np.nansum(transformed_views, axis=0, dtype=transformed_views[0].dtype)
-        if needs_cleanup:
-            del weights
-            del mask
-            del rem_mask
-        return fused
+        valid = ~np.isnan(transformed_views)
+        # views arrive in source order, taken as imaging order: the first covering one per pixel wins
+        first = np.argmax(valid, axis=0)
+        fused = np.take_along_axis(transformed_views, first[None], axis=0)[0]
+        return np.where(np.isnan(fused), 0, fused).astype(transformed_views.dtype, copy=False)
