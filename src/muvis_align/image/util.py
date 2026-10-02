@@ -1106,7 +1106,7 @@ def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers
     return fig, ax
 
 
-def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, points_per_short_axis=6):
+def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, points_per_short_axis=4):
     """Points on a regular grid over the fixed image and where `affine_matrix` puts them in the moving image, as
     (fixed points, moving points, matches, inliers): what a registration giving only a transform shows in a preview."""
     ndim = len(fixed_shape)

@@ -699,7 +699,7 @@ Progress:
 - Windows tests: the crash log's open file blocked tmp cleanup (close_fault_log, 32c53be).
 
 - Registration preview for built-in methods (phase correlation, elastix), which give a transform only:
-  a grid over the fixed overlap (~6 points along its short side) mapped through the transform into the
+  a grid over the fixed overlap (~4 points along its short side) mapped through the transform into the
   moving overlap, shown as point pairs (grid_point_pairs). multiview-stitcher's affine_matrix maps moving
   image coordinates to fixed ones (phase correlation of a +5/+10 shift gives -5/-10).
 
