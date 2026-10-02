@@ -102,7 +102,8 @@ Nothing.
 
 ### Registration preview
 - Transform-only methods (phase correlation, elastix) show a grid of point pairs mapped through the transform,
-  spaced 4 ring sizes apart; points and lines sized to the image shown.
+  30 along the crop's longest side at one spacing (at least 3 a side, 2.5 ring sizes apart), every point kept;
+  points and lines sized to the image shown.
 - Two images without overlap warn instead of failing; the preview keeps the view until its result is ready,
   shows its metrics first and logs its step timings.
 - scikit-image SIFT: keypoints sampled before descriptors, no 2x upsampling (Ciqtek full-res pair 124s / 6GB ->
