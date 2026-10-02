@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from muvis_align.ui._utils import catch_run_errors, patch_shapes_text_coords
+from muvis_align.ui._utils import VisibleActivityDock, catch_run_errors, patch_shapes_text_coords
 
 
 def test_catch_run_errors_returns_result_on_success():
@@ -79,3 +79,23 @@ def test_patched_shapes_text_coords_match_napari():
     assert len(layer._view_indices) == 10
     np.testing.assert_array_equal(actual[0], expected[0])
     assert actual[1:] == expected[1:]
+
+
+def test_activity_dock_toggle_raises_no_private_access_warning():
+    import warnings
+    from types import SimpleNamespace
+    from napari.utils._proxies import PublicOnlyProxy
+
+    toggles = []
+    qt_viewer = SimpleNamespace(show_welcome_screen=True)
+    status_bar = PublicOnlyProxy(SimpleNamespace(_toggle_activity_dock=toggles.append))
+    window = PublicOnlyProxy(SimpleNamespace(_qt_viewer=PublicOnlyProxy(qt_viewer), _status_bar=status_bar))
+    viewer = SimpleNamespace(window=window)
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        with pytest.warns(FutureWarning):
+            window._status_bar
+        with VisibleActivityDock(viewer):
+            assert not qt_viewer.show_welcome_screen
+    assert qt_viewer.show_welcome_screen
+    assert toggles == [True, False]

@@ -1,7 +1,9 @@
 # Based on https://github.com/multiview-stitcher/napari-stitcher/blob/main/src/napari_stitcher/_stitcher_widget.py
 
+import contextlib
 import functools
 import logging
+import warnings
 
 from napari.utils.notifications import show_error, show_info
 
@@ -67,17 +69,27 @@ class VisibleActivityDock(object):
         self._welcome_shown = None
 
     def __enter__(self):
-        qt_viewer = getattr(self.viewer.window, '_qt_viewer', None)
-        if qt_viewer is not None and hasattr(qt_viewer, 'show_welcome_screen'):
-            self._welcome_shown = qt_viewer.show_welcome_screen
-            qt_viewer.show_welcome_screen = False
-        self.viewer.window._status_bar._toggle_activity_dock(True)
+        with _private_napari_access():
+            qt_viewer = getattr(self.viewer.window, '_qt_viewer', None)
+            if qt_viewer is not None and hasattr(qt_viewer, 'show_welcome_screen'):
+                self._welcome_shown = qt_viewer.show_welcome_screen
+                qt_viewer.show_welcome_screen = False
+            self.viewer.window._status_bar._toggle_activity_dock(True)
 
     def __exit__(self, type, value, traceback):
-        self.viewer.window._status_bar._toggle_activity_dock(False)
-        if self._welcome_shown is not None:
-            self.viewer.window._qt_viewer.show_welcome_screen = self._welcome_shown
-            self._welcome_shown = None
+        with _private_napari_access():
+            self.viewer.window._status_bar._toggle_activity_dock(False)
+            if self._welcome_shown is not None:
+                self.viewer.window._qt_viewer.show_welcome_screen = self._welcome_shown
+                self._welcome_shown = None
+
+
+@contextlib.contextmanager
+def _private_napari_access():
+    # napari shows each private-access FutureWarning as a notification: under xpra a window of its own
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', message='Private attribute access', category=FutureWarning)
+        yield
 
 
 def flush_paint_events():
