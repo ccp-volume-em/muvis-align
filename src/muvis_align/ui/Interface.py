@@ -6,7 +6,7 @@ from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import spatial_image_utils as si_utils, param_utils
 from napari.qt.threading import create_worker
 from napari.utils import progress
-from napari.utils.notifications import show_info, show_warning
+from napari.utils.notifications import notification_manager, show_info, show_warning
 import networkx as nx
 import numpy as np
 import os.path
@@ -34,13 +34,19 @@ from muvis_align.Timer import Timer
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
 from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
-from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
+from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress, SilentProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
-from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events
+from muvis_align.image.lazy_overview import lazy_section_overview, MsimLevels
+from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events, \
+    patch_multiscale_label_show, patch_shapes_text_coords
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
     resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle
+
+
+patch_shapes_text_coords()
+patch_multiscale_label_show()
 
 
 class _ProgressBridge(QObject):
@@ -171,6 +177,19 @@ class Interface:
     def write_params(self):
         write_params(self.params_path, self.params)
 
+    def copy_params_to_output(self):
+        """The project file as an action starts, next to its output: the settings the output was made with."""
+        params_path = getattr(self, 'params_path', None)
+        if not params_path or not os.path.exists(params_path):
+            return
+        output = resolve_to_project_dir(path_param_to_text(self.params['input_output'].get('output_path', '')),
+                                        self.get_project_dir())
+        os.makedirs(output, exist_ok=True)
+        target = os.path.join(output, os.path.basename(params_path))
+        if os.path.abspath(target) != os.path.abspath(params_path):
+            shutil.copyfile(params_path, target)
+            logging.info(f'Project settings copied to {target}')
+
     def change_param(self, param_name, value):
         keys = param_name.split('.')
         if keys[0] not in self.params:
@@ -264,6 +283,7 @@ class Interface:
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
+        self.copy_params_to_output()
         try:
             self._input_output_process()
         except OperationCancelled:
@@ -293,6 +313,7 @@ class Interface:
                 raise
             if ok:
                 self._show_loaded_project()
+                self._go_to_shown_section()
             else:
                 show_warning('Invalid input or output')
                 self.reg.state = RegState.UNINIT
@@ -318,6 +339,7 @@ class Interface:
                 fused_name = operation_to_past_participle(operation) if operation else None
                 if self.reg.has_saved_progress(fused_name, zarr_extension):
                     factory.ensure_phases(4)
+                self._show_middle_section()
                 # _show_loaded_project() below always ends by drawing the view, so drawing
                 # here would only draw once with the not-yet-registered transform
                 ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
@@ -325,6 +347,36 @@ class Interface:
                     self.populate_image_selection()
                     self._load_saved_progress(factory)
         return ok
+
+    def _show_middle_section(self):
+        """The middle section's sources read and drawn before the rest: at 34k sources on a network filesystem, reading
+        them all takes minutes, while the viewer stays usable. The full view replaces it once they are all read."""
+        indices = self.reg.middle_section_indices()
+        self._shown_section_indices = indices
+        if indices is None:
+            return
+        section = self.reg.section_registration(indices)
+        # a second or two, left off the bar: sized for reading every source, its phases would take that share
+        silent = SilentProgress()
+        self._run_off_thread(
+            lambda worker_factory: section.init_data(source_metadata=self.source_metadata,
+                                                     progress_factory=worker_factory),
+            silent)
+        full, self.reg = self.reg, section
+        try:
+            self.update_views(show_images=False, progress_factory=silent)
+        finally:
+            self.reg = full
+
+    def _go_to_shown_section(self):
+        """Keep the section shown while the rest were read: napari's own start, the middle step of the z range, is a
+        different section unless they are evenly spaced."""
+        indices = getattr(self, '_shown_section_indices', None)
+        dims = self.viewer.dims
+        if indices and dims.ndim >= 3 and self.reg.sources[0].get_size().get('z', 0) <= 1:
+            z_position = self.reg.positions[indices[0]].get('z')
+            if z_position is not None:
+                dims.set_point(dims.ndim - 3, z_position)
 
     def _run_off_thread(self, work, progress_factory):
         """Run work(progress_factory) on a worker thread, and wait for it here.
@@ -371,6 +423,8 @@ class Interface:
             _connect={
                 'returned': lambda value: outcome.__setitem__('value', value),
                 'errored': lambda error: outcome.__setitem__('error', error),
+                # a worker diverts warnings to this signal: shown as on the Qt thread, once per message
+                'warned': lambda warning: notification_manager.receive_warning(*warning),
                 'finished': loop.quit,
             },
         )
@@ -671,6 +725,7 @@ class Interface:
     def pre_processing_process(self):
         # pre-processing reports its own bar, then the view it leaves on screen reports a second
         # one of its own (update_views()) - the work and showing the result are two operations
+        self.copy_params_to_output()
         if not self.run_pre_processing():
             return
         self.update_views(show_preprocessed=True)
@@ -849,10 +904,14 @@ class Interface:
                         weight=shapes_weight),
                     factory)
 
-            # only shapes before pre-processing has run: the fused preview needs every source's
-            # real msim built, and deferring that keeps it off the initial project load
+            # at the sources' own positions, each section built only when viewed: image data as soon as the shapes
             data = None
-            if show_images:
+            if transform_key == self.reg.source_transform_key:
+                with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
+                    data = self._run_off_thread(
+                        lambda worker_factory: self._create_lazy_overview(show_preprocessed=show_preprocessed), factory)
+            # otherwise the fused preview, which needs every source's real msim built: not on opening a project
+            if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
                     # must not (see _run_off_thread()). The worker's factory goes all the way in,
@@ -865,16 +924,15 @@ class Interface:
             # cleared only once the new data is ready: an empty viewer shows the welcome screen,
             # which hides the activity dialog - for 44 minutes on a 34k-source project
             self._clear_napari_view(self.viewer)
-            if show_images:
-                if data is not None:
-                    with factory(total=1) as pbar, \
-                         Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
-                        # cheap=True: this is the general overview, not the accurate fusion-tab
-                        # preview (preview_fusion()) or the real exported result (fusion_process())
-                        # - a naive contrast guess is fine here, see _napari_view_add_fused_data()
-                        self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data',
-                                                         cheap=True)
-                        pbar.update(1)
+            if data is not None:
+                with factory(total=1) as pbar, \
+                     Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
+                    # cheap=True: this is the general overview, not the accurate fusion-tab
+                    # preview (preview_fusion()) or the real exported result (fusion_process())
+                    # - a naive contrast guess is fine here, see _napari_view_add_fused_data()
+                    self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data',
+                                                     cheap=True)
+                    pbar.update(1)
 
             with factory(total=1) as pbar, \
                  Timer('update_views: add shapes to viewer', verbose=self._timing_verbose()):
@@ -886,6 +944,23 @@ class Interface:
                 self._refresh_overview_shapes(transform_key, shapes, refs, labels, face_colors, is_3d=is_3d)
                 pbar.update(1)
         self.view_mode = ViewMode.OVERVIEW
+
+    def _create_lazy_overview(self, show_preprocessed=False):
+        reg = self.reg
+        transforms, output_order = getattr(reg, '_msim_transforms', None), getattr(reg, '_msim_output_order', None)
+        if transforms is None or output_order is None:
+            return None
+        readers, label = None, 'Overview'
+        if show_preprocessed and reg.register_msims is not None:
+            # a source pre-processing dropped (filter_foreground) is left out, not shown raw
+            readers = [None] * len(reg.sources)
+            for index, msim in zip(reg.register_indices, reg.register_msims):
+                readers[index] = MsimLevels(msim)
+            label = 'Pre-processed overview'
+        return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, reg.source_transform_key,
+                                     z_scale=getattr(reg, '_msim_z_scale', None),
+                                     preview_scale=self.params['input_output'].get('preview_scale'),
+                                     readers=readers, label=f'{label} ({len(reg.sources)} images)')
 
     def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
                                  face_colors=None, is_3d=None):
@@ -1370,13 +1445,15 @@ class Interface:
 
 
     def preview_registration(self):
-        self._clear_napari_view(self.viewer)
+        # the view stays until there is a result to replace it with: an empty viewer's welcome screen hides the bar
         result = self.run_preview_registration()
         if result is None:
             return
         metrics, results, overlap1, overlap2 = result
 
         self.populate_metrics_table(metrics)
+        # metrics shown before the (slower) feature layers replace the view
+        flush_paint_events()
 
         fixed_points = results.get('fixed_points', [])
         moving_points = results.get('moving_points', [])
@@ -1647,6 +1724,7 @@ class Interface:
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
+        self.copy_params_to_output()
         if 'convert' in self.params['registration']['operation']:
             # convert: each source written out individually at its own source/metadata
             # position, no registration and no fusion/blending - never reaches the fusion tab
@@ -1824,6 +1902,7 @@ class Interface:
 
 
     def fusion_process(self):
+        self.copy_params_to_output()
         message = 'Fusion was already performed. ' if self.reg.is_fused() else ''
         message += 'Export fused data?'
         reply = QMessageBox.question(None, 'muvis-align', message,

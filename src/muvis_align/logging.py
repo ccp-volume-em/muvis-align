@@ -1,8 +1,12 @@
+import faulthandler
 import logging
 import os
+import sys
 from  multiview_stitcher import __version__ as mvs_version
 
 from muvis_align._version import version
+
+_fault_file = None
 
 
 def init_logging(log_filename='log/muvis-align.log', log_format='%(asctime)s %(levelname)s: %(message)s',
@@ -34,5 +38,30 @@ def init_logging(log_filename='log/muvis-align.log', log_format='%(asctime)s %(l
                        'ome_zarr', 'zarr']:
             logging.getLogger(module).setLevel(logging.WARNING)
 
+    enable_fault_log(log_filename)
+
     logging.info(f'muvis-align version {version}')
     logging.info(f'Multiview-stitcher version: {mvs_version}')
+
+
+def enable_fault_log(log_filename):
+    """Every thread's stack appended to the log on a fatal signal: a native crash otherwise leaves no trace at all."""
+    global _fault_file
+    if sys.platform == 'win32':
+        # Windows also reports access violations its drivers raise and handle themselves: dumps that look like crashes
+        return
+    # faulthandler holds only the descriptor: the file must stay open for as long as it is enabled
+    fault_file = open(log_filename, 'a', encoding='utf-8')
+    faulthandler.enable(file=fault_file, all_threads=True)
+    if _fault_file is not None:
+        _fault_file.close()
+    _fault_file = fault_file
+
+
+def close_fault_log():
+    """Stop writing native crash stacks to the log, and release its file (Windows cannot delete an open file)."""
+    global _fault_file
+    if _fault_file is not None:
+        faulthandler.disable()
+        _fault_file.close()
+        _fault_file = None

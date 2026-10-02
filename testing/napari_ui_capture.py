@@ -27,6 +27,7 @@ ACTIONS = {
     'open': lambda interface: interface.input_output_process(),
     'pre_processing': lambda interface: interface.pre_processing_process(),
     'pair_registration': lambda interface: interface.pair_registration(),
+    'preview_registration': lambda interface: interface.preview_registration(),
     'registration': lambda interface: interface.registration_process(),
     'fusion': lambda interface: interface.fusion_process(),
 }
@@ -110,11 +111,14 @@ def main():
             ACTIONS[args.action](interface)
         finally:
             state['step'] = 'finished'
-            time.sleep(2 * args.interval)
-            state['done'] = True
-            # still alive two minutes after closing: show every thread's stack
-            faulthandler.dump_traceback_later(120)
-            QTimer.singleShot(1000, viewer.close)
+            # waited for with Qt running, so the last frames show the result painted
+            QTimer.singleShot(int(2 * args.interval * 1000), finish)
+
+    def finish():
+        state['done'] = True
+        # still alive two minutes after closing: show every thread's stack
+        faulthandler.dump_traceback_later(120)
+        QTimer.singleShot(1000, viewer.close)
 
     QTimer.singleShot(3000, run)
     napari.run()

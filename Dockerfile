@@ -33,6 +33,12 @@ RUN apt-get update && \
         libxcb-shape0 \
         && apt-get clean
 
+# Mesa 25 from backports: bookworm's 22.3 llvmpipe segfaults napari's draw of the pre-processed overview
+RUN echo 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/backports.list && \
+    apt-get update && \
+    apt-get install -qqy -t bookworm-backports libgl1-mesa-dri libglx-mesa0 libegl-mesa0 && \
+    apt-get clean
+
 # Set working directory
 WORKDIR /app
 

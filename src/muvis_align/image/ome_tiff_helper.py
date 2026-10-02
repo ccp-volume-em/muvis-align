@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - depends on the installed ngff_zarr
 
 from muvis_align.constants import default_chunk_size
 from muvis_align.image.color_conversion import hexrgb_to_rgba, rgba_to_int
+from muvis_align.image.tiff_metadata import get_extra_metadata, get_pixel_size_um, get_position_um
 from muvis_align.util import *
 
 
@@ -141,6 +142,11 @@ def read_tiff_source_metadata(filename):
         # .is_ome/.ome_metadata read only the description tag, not the series structure
         ome = (extract_ome_image_metadata(tif.ome_metadata)
                if tif.is_ome and tif.ome_metadata is not None else None)
+        if ome is None:
+            # no OME: the pixel size and stage position wherever a vendor wrote them, in um
+            vendor_metadata = get_extra_metadata(tif)
+            ome = {'scale': get_pixel_size_um(tif, vendor_metadata, dict(zip(axes.lower(), series.shape))),
+                   'position': get_position_um(vendor_metadata)}
 
     dims, _, _, _ = map_tiff_axes_to_ngff(axes, series.shape)
     shapes = [map_tiff_axes_to_ngff(axes, shape)[1] for shape in level_shapes]
@@ -148,9 +154,8 @@ def read_tiff_source_metadata(filename):
     if not shapes or not spatial_dims:
         return None
 
-    # ngff_zarr takes the physical pixel size from OME PhysicalSize*, defaulting any spatial dim
-    # the XML does not give to 1.0 - and ignores the TIFF resolution tags entirely, so a
-    # non-OME TIFF is simply 1.0 per dim
+    # as ngff_zarr, OME PhysicalSize* with 1.0 for any spatial dim not given; without OME the vendor's
+    # own fields or the TIFF resolution, which ngff_zarr ignores
     ome_scale = (ome or {}).get('scale') or {}
     ome_units = (ome or {}).get('units') or {}
     axis_of = {dim: index for index, dim in enumerate(dims)}

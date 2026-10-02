@@ -47,6 +47,42 @@ thread, no Python frame). A rerun exited normally. The driver now terminates its
 closing napari might see the same lingering process. Not investigated further (needs native stacks, e.g.
 py-spy --native).
 
+### napari exits after pre-processing on the HPC (fixed: Mesa 25 in the image)
+
+HPC run 2026-10-01 (34k sources, code at c8da3af): pre-processing finished (16 min), the refresh
+added the pre-processed lazy overview (1081 sections of 7337x8441 at 0.2um), and 1.5s after
+add_image napari was gone - no traceback, rss 11.7GB of 2TB. Likely a native crash in napari's
+first draw, which builds the viewed section from register_msims on 32 threads, while the prefetch
+builds its neighbours. Locally (data_400, 153 sources, 3 sections, Windows) it works.
+A fatal signal now appends every thread's stack to muvis-align.log (faulthandler): the next run
+shows where.
+Again 2026-10-02 (job 59049073, ea994fc, faulthandler in): pre-processing 17.6 min, lazy overview
+added, napari gone 1.4s after add_image, rss 11.4GB; the xpra log has no stack - the dump is in the
+project's output/muvis-align.log (asked the user for it, and sacct's State/ExitCode/MaxRSS).
+Its dump: SIGSEGV on the Qt thread in vispy glDrawArrays (llvmpipe), the first draw after add_image
+(our bar's setValue runs processEvents); a prefetch thread was in lazy_overview._paste.
+Reproduced locally: Linux container (muvis-align-xpra1, Xvfb, llvmpipe), UI driver pre_processing on
+the meatballs data (scratchpad linux_meatballs/run.sh) - segfault 1s after adding the pre-processed
+overview (3 sections of 7653x10204); the raw overview of the same size before it draws fine. Not
+reproduced by napari alone with a 7337x8441 uint8 image, nor a lazy 1081-plane stack with background
+builds, at 24/32/64 llvmpipe threads.
+Native stack (gdb + libgl1-mesa-dri-dbgsym 22.3.6-1+deb12u2): llvmpipe_draw_vbo -> llvmpipe_update_derived ->
+draw_find_shader_output with info=0x130 - no vertex shader bound: the image is drawn with a program not valid
+in the current context (Mesa dereferences null where a GPU driver errors). The draw comes from
+QOpenGLWidget::resizeEvent (main canvas 656x790 -> 656x878 as the bar shows), on the Image visual with the
+7653x10204 texture. Crashes 100% in the plugin (meatballs, pre_processing), also with: prefetch off, planes
+computed in memory first, overview widget shapes off, first-section view off, OpenCV OpenCL off (an apparent
+fix was a broken probe). Never in plain napari with the same planes and add_image arguments, nor with
+replacing the layer 8x, resizing 40x, a second canvas in a dock, the welcome screen off and the dock shown,
+or after running pre-processing headless in the same process.
+Side finding: each replaced 7653x10204 image layer keeps ~0.66GB (rss 1.35 -> 5.31GB over 8 in plain napari).
+Mesa 25.0.7 (bookworm-backports) does not crash: 2/2 with it installed at container start, and the image
+built with it (Dockerfile, 43ac613) passes the same plugin run. Confirmed on the HPC 2026-10-02: the 34k
+project's pre-processing and its view refresh completed. The root cause (which program is invalid) is not found.
+Not done: the ~0.66GB kept per replaced big image layer.
+Windows: faulthandler also reports access violations a driver raises and handles (Ciqtek preview: 5 dumps,
+run carried on), so the crash log is off on Windows (b8d59ba).
+
 ### Pair registration mixing up pairs' crops (fixed)
 
 dask's linear fusion renames a fused chain to a 115-char prefix plus 4 hex digits of `hash()`,
@@ -56,6 +92,33 @@ shapes differed. `register_pairs` now computes with `optimization.fuse.active` o
 dask 2026.8.0.
 
 ## In progress
+
+Opening the 34k HPC project (log 2026-10-01): the first section shown was slice 0, which holds
+only an overview; and the open could be faster (first view 10s, sources read 3.6 min, refresh 2.6 min).
+Plan: first section = the first with more than one file; then profile the open's slow steps
+(init sources 42ms CPU a file at 7 cores, shape geometries 38s, lazy overview 54s, add shapes 28s).
+Progress (synthetic project in the scratchpad: 100 sections x 30 128px tiles + an overview each,
+OME positions with z per section - without z every section overlaps every other, 1.3M pairs):
+- Reverted (91d22d6): the first section stays the first, even when it is a single file.
+- Done (f2e2cfe): shape transforms from a shared xarray template - geometries 6.0s -> 0.7s,
+  lazy overview 7.7s -> 1.7s at 3100 sources (HPC estimate 38s -> ~4s, 54s -> ~12s).
+- Init sources: real data_400 tiles take 2.7ms CPU a file locally vs 42ms on the HPC, so it is the
+  network filesystem (~31 small reads a file by tifffile, 256 threads), not reproducible here.
+- Left: add shapes (28s) and refresh overview shapes (15s) on the Qt thread - napari Shapes layers
+  of 34k + 115k rectangles, twice (main viewer and overview widget); ~39s untimed after init_data
+  on the HPC (populate tables; ~1s here at 3100).
+- Profiled add_shapes (napari 0.9.0, 150k 4-vertex polygons with z, Qt viewer, hidden): 22.8s, of
+  which 12.6s is Shapes._view_text_coords - it rebuilds the whole data list (_data_view.data) once
+  per shape in view, O(in view x all); still so on napari main. Reading the list once: 10.2s, same
+  coords. Only the main viewer has labels (overview widget has none). The other ~10s is napari's
+  per-shape Python (polygon/rectangle init alike). Done: that property patched to read the list
+  once (patch_shapes_text_coords, on Interface import; same coords). Synthetic 3100: add shapes 1.3 -> 0.9s.
+- Done (user request): the middle section by number is read and shown first, not the first (napari
+  starts on the middle step: the full view jumped to 49 of 99 after section 0), and the slider is set
+  to its z after the full view. Synthetic 100 sections: s00049 from the start; 9 sections with the
+  last at z 2.0: s00004 throughout (napari's slider has a step per section, 0-8).
+- Left: napari's per-shape Python cost (~10s at 150k shapes, main viewer and overview widget alike), the
+  HPC open's ~39s untimed after init_data, and init sources over NFS (not reproducible locally).
 
 Huge memory use on the HPC, where all tasks were effectively spawned at the same time instead of
 a bounded number running at once. Test project (local):
@@ -587,6 +650,54 @@ Progress:
   Default pairing is the wrong choice for a stack. Added (user request): pair and global registration log their
   settings, default pairing its '#candidate pairs'. No warning before building the graph (user: not wanted).
 
+- Doing (user request, branch phased-source-init): image data on screen within seconds of opening a large
+  project, before pre-processing (raw sources, not pre-processed ones). Agreed direction: sources initialised in
+  phases (as msims already are, later), shapes still from the sources; a lazy per-section overview (raw coarsest
+  stored level, direct reads, numpy paste) shown for the viewed section and filled in the background.
+  - Found: the test project (meatballs, 153 files, SBEMimage) and the HPC one take positions/scale from each file
+    (OME), so a template can't stand in for sources; init is 2.9ms a file locally, ~1.4s a file on the HPC's NFS.
+  - Done, step 1: image/lazy_overview.py - one plane per section, built when viewed from each tile's coarsest
+    level (source.data, no msim) pasted at build_source_stack_props' placement; update_views uses it whenever the
+    view is at the source positions (opening, after pre-processing), else the fused path as before. Meatballs
+    in the plugin: opening shows images with the shapes (lazy 0.1s, adding 1.0s); after pre-processing the
+    refresh has no size cap/overview step (HPC: 3.5 + 11.8 min). tests/test_lazy_overview.py.
+  - Done, step 2: built planes kept within 1GB (least recently viewed dropped; all 1081 at 34k would be ~17GB),
+    the 4 sections either side of a viewed one built in the background.
+  - Done, step 3 (user: first section only, one refresh at the end, one bar): on opening, the first folder's
+    files (first_section_indices; none when all files share a folder) are read into a display-only
+    section_registration and drawn, reporting to no bar (SilentProgress, still stops on a cancel); then every
+    source is read as before under the one 'Initialising sources' bar with the viewer usable, and the full view
+    replaces the section's. Meatballs: first section on screen 2.2s after starting, full view 4s later.
+  - Done: the first section is found by a labelled number in the file names (section/slice/s/z, as S000 or
+    SBEMimage's s00538, which varies and every file has), else by folder: SBEMimage keeps a folder per tile and
+    all overviews in one, and in S000_000_001 the last number is a tile index. Meatballs: 50 data_399 tiles +
+    the s00399 overview.
+  - Fixed (user report, meatballs): the overview drew smaller than its shapes outline - the 0.249um overview's
+    coarsest level (3.986um) pasted into a 0.32um plane repeated round(12.46)=12x, 983 of 1020um wide - and
+    ignored preview_scale (always the coarsest level, plane capped at 4096px). Now each plane pixel takes the
+    source pixel under its centre (any ratio, pixel edges as the outline's), the plane is at preview_scale, each
+    source read at its coarsest level no coarser than that, a plane capped by bytes (1GB / 9 planes kept).
+    Meatballs at 100nm: 10204x7653 plane, overview at level 0, tiles at level 3, built in 0.46s; its extent
+    matches the outline to a plane pixel.
+  - Done (user request): after pre-processing the view showed the raw sources (the lazy overview ignored
+    show_preprocessed). Now the section planes keep the sources' geometry but read each one's register_msim (lazy
+    pyramid, MsimLevels) at the coarsest level no coarser than the plane; a source filtered out stays empty.
+    Meatballs, pre-processing scale 2, 100nm: tiles at 0.08um, overview at 0.498um, a plane in 0.25s.
+  - Registration/fusion may stay slow on the big dataset (hours at 34k), not on a small one. Run only the
+    targeted tests after each change (user).
+
+## Done 2026-10-02 (besides the above)
+
+- Plain TIFFs: pixel size and stage position from vendor tags (napari-meta-tiff's _metadata.py copied as
+  image/tiff_metadata.py, ee05aeb); imagecodecs a dependency (7f3388f).
+- Source table shows 3 significant digits (8ace490); an invalid source metadata expression warns, and
+  warnings raised on a worker thread now reach napari's notifications (685d2c9, 9e41859).
+- napari private-access warnings muted around the activity dock only (9f0490a).
+- Exclusive fusion: earliest imaged (source order) view per pixel, one pass, works on 3D chunks (a1e5962).
+- scikit-image SIFT: keypoints sampled before descriptors, upsampling=1 (abd76a4, a0d3bb4) - Ciqtek
+  full-res preview pair 124s/6GB -> 22s/2GB. Preview shows its metrics before the feature layers (9be792f).
+- Windows tests: the crash log's open file blocked tmp cleanup (close_fault_log, 32c53be).
+
 ## TODO
 
 - [x] Pairing method "split, 2D x/y first" (see In progress / done above).
@@ -602,6 +713,13 @@ Progress:
       msims in pre-processing (~22 min for 34k sources; now 2 levels a source, ~30% less)
       and the preview size cap (3.4 min on the HPC). Promoting to 3D: done - removed from the
       refresh (a858e3f), 2x faster elsewhere (25ff85a).
+- [ ] Lazy overview on single-level sources (the meatballs files are pyramids, so its timings are optimistic for
+      single-level data): each tile is read whole at full res and only then strided - read just the
+      strided rows instead (as the direct uncompressed-level reads do), and measure on a single-level set.
+- [ ] Registration preview for multiview-stitcher's built-in methods (e.g. phase correlation), which give only a
+      transform, no matched points: a wrapper used only for the preview that maps points on a regular grid over
+      the pair's overlap through the found transform, as the point pairs the preview's napari shape/point layers
+      are built from, to show the offsets.
 - [ ] Check which HPC files name their channel 'channel 0' rather than '#0' - an old export mixed
       in with the pyramid files would also be single-level (slower pre-processing and overview).
 - [ ] Run a real convert with a pre-processing scale set: check output level-0 size and levels

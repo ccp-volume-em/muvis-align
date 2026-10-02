@@ -342,3 +342,57 @@ class _ProgressPhase:
         # accepted (phases and third-party bars call it) but ignored: the bar shows the
         # operation's own description throughout
         pass
+
+
+class SilentProgress:
+    """A progress factory that moves no bar but still stops on a cancel: for a short step inside an operation whose
+    bar is sized for its long one - its phases would otherwise take that one's share."""
+
+    def __call__(self, total=None, desc=None, weight=1, **_):
+        return _SilentPhase(total=total)
+
+    def ensure_phases(self, phases):
+        pass
+
+    def worker_twin(self, emit):
+        return self
+
+    def continue_from(self, twin):
+        pass
+
+    def set_position(self, *_):
+        pass
+
+    @property
+    def tqdm_class(self):
+        return _SilentPhase
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+class _SilentPhase:
+    def __init__(self, iterable=None, total=None, **_):
+        self.iterable, self.total, self.n = iterable, total, 0
+
+    def __iter__(self):
+        for item in self.iterable:
+            yield item
+            self.update(1)
+
+    def update(self, n=1):
+        raise_if_cancelled()
+        self.n += n
+
+    def __getattr__(self, name):
+        # set_description, refresh, close and the like: nothing to show
+        return lambda *args, **kwargs: None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False

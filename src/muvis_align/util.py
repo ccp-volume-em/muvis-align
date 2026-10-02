@@ -20,6 +20,7 @@ import re
 import sys
 import threading
 import time
+import warnings
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
 from xarray import DataArray
@@ -181,15 +182,24 @@ def print_dict(dct: dict, indent: int = 0) -> str:
     return s
 
 
-def print_dict_simple(dct: dict, dims: str='zyx') -> str:
+def print_dict_simple(dct: dict, dims: str='zyx', significant_digits: int=3) -> str:
     items = []
     for dim in dims:
         if dim in dct:
             value = dct[dim]
             if isinstance(value, float):
-                value = f'{value:.3f}'
+                value = print_significants(value, significant_digits)
             items.append(f'{dim}: {value}')
     return ' '.join(items)
+
+
+def print_significants(value: float, significant_digits: int) -> str:
+    # fixed-point rather than 'g', which turns 64863 into 6.49e+04
+    if value == 0 or not np.isfinite(value):
+        return f'{value:g}'
+    decimals = significant_digits - int(np.floor(np.log10(abs(value)))) - 1
+    text = f'{round(value, decimals):.{max(decimals, 0)}f}'
+    return text.rstrip('0').rstrip('.') if '.' in text else text
 
 
 def print_dict_xyz(dct: dict, dims='xyz', decimals=3, as_tuple=False) -> str:
@@ -287,6 +297,11 @@ def pattern_base_dir(pattern):
 
 def find_all_numbers(text: str) -> list:
     return list(map(int, re.findall(r'\d+', text)))
+
+
+def find_labelled_numbers(text: str) -> dict:
+    """Each number led by letters, by its lower-case label: 'x_s00399_ov0' -> {'s': 399, 'ov': 0}."""
+    return {label.lower(): int(number) for label, number in re.findall(r'([A-Za-z]+)(\d+)', text)}
 
 
 def split_path_parts(text: str) -> list:
@@ -490,8 +505,10 @@ def eval_context(data, key, default_value, context):
             pass
         try:
             value = eval(value, context)
-        except:
-            pass
+        except Exception as error:
+            # napari shows a warning once, as a notification, however many sources repeat it
+            warnings.warn(f'Invalid source metadata {key}: {value!r} ({type(error).__name__}: {error}),'
+                          f' using {default_value}')
     if not isinstance(value, (float, int)):
         value = default_value
     return value

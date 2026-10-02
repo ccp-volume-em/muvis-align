@@ -12,7 +12,7 @@ include_widget_plugin: true
 include_writer_plugin: false
 install_dependabot: true
 install_precommit: true
-license: GNU GPL v3.0
+license: MIT
 module_name: muvis_align
 plugin_name: muvis-align
 short_description: Image registration using multiview-stitcher

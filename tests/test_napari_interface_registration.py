@@ -27,6 +27,7 @@ import numpy as np
 from qtpy.QtWidgets import QMessageBox
 
 from muvis_align._widget import MainWidget
+from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
 from muvis_align.MVSRegistration import RegState
 
@@ -149,6 +150,7 @@ class TestNapariInterfaceRegistration:
             for handler in logging.getLogger().handlers[:]:
                 handler.close()
                 logging.getLogger().removeHandler(handler)
+            close_fault_log()
 
     def test_project_params_structure(self, config_data):
         """Test that project configuration has expected structure."""
@@ -710,6 +712,7 @@ def test_input_output_process_resolves_relative_paths_before_reg_init(
     bare_interface.reg.is_initialised.return_value = False
     bare_interface.need_source_reinit = False
     bare_interface.reg.init.return_value = True
+    bare_interface.reg.middle_section_indices.return_value = None
     bare_interface.update_metadata_source = MagicMock(return_value=True)
     bare_interface.populate_image_selection = MagicMock()
     bare_interface._load_saved_progress = MagicMock()
@@ -742,6 +745,7 @@ def test_input_output_process_cancelled_while_reading_sources_reads_them_again_n
     bare_interface.reg.is_initialised.return_value = False
     bare_interface.need_source_reinit = False
     bare_interface.reg.init.return_value = True
+    bare_interface.reg.middle_section_indices.return_value = None
     bare_interface.update_metadata_source = MagicMock(side_effect=OperationCancelled('Cancelled'))
     bare_interface._show_loaded_project = MagicMock()
 
@@ -2757,3 +2761,42 @@ def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interfa
     assert rows == ['summary', 'S000_000 - S000_001', 'S000 - S001']
     assert columns == ['quality', 'ncc']
     assert values[2] == [0.3, None]
+
+
+def test_the_project_file_is_copied_into_the_output_folder_as_an_action_starts(bare_interface, tmp_path):
+    project = tmp_path / "project.yml"
+    project.write_text("input_output:\n  output_path: output\n")
+    bare_interface.params_path = str(project)
+    bare_interface.params = {"input_output": {"output_path": "output"}}
+
+    bare_interface.copy_params_to_output()
+
+    assert (tmp_path / "output" / "project.yml").read_text() == project.read_text()
+
+
+def test_the_view_stays_on_the_section_shown_while_the_rest_were_read(bare_interface):
+    bare_interface.viewer = MagicMock()
+    bare_interface.viewer.dims.ndim = 3
+    bare_interface.reg.sources = [MagicMock()] * 3
+    bare_interface.reg.sources[0].get_size.return_value = {'y': 10, 'x': 10}
+    bare_interface.reg.positions = [{'z': 0.0}, {'z': 2.5}, {'z': 2.5}]
+    bare_interface._shown_section_indices = [1, 2]
+
+    bare_interface._go_to_shown_section()
+
+    bare_interface.viewer.dims.set_point.assert_called_once_with(0, 2.5)
+
+
+def test_the_view_is_left_where_napari_put_it_without_a_section_shown_or_for_z_stacks(bare_interface):
+    bare_interface.viewer = MagicMock()
+    bare_interface.viewer.dims.ndim = 3
+    bare_interface.reg.sources = [MagicMock()]
+    bare_interface.reg.sources[0].get_size.return_value = {'z': 5, 'y': 10, 'x': 10}
+    bare_interface.reg.positions = [{'z': 2.5}]
+
+    bare_interface._shown_section_indices = None
+    bare_interface._go_to_shown_section()
+    bare_interface._shown_section_indices = [0]
+    bare_interface._go_to_shown_section()
+
+    bare_interface.viewer.dims.set_point.assert_not_called()

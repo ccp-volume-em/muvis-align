@@ -860,3 +860,46 @@ def test_a_z_slab_is_fused_from_only_the_planes_that_reach_it():
 
     assert slab_sources(sims, 'source', properties, z_chunk=1) == [[0, 1], [2], [3]]
     assert slab_sources(sims, 'source', properties, z_chunk=2) == [[0, 1, 2], [3]]
+
+
+def test_the_middle_section_is_the_middle_folders_files_registered_as_the_whole_labels_them(tmp_path):
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
+             output_path=tmp_path.as_posix() + '/')
+
+    indices = reg.middle_section_indices()
+    section = reg.section_registration(indices)
+
+    assert indices == [index for index, filename in enumerate(reg.filenames) if '/S000/' in filename]
+    assert section.filenames == [reg.filenames[index] for index in indices]
+    assert section.file_labels == [reg.file_labels[index] for index in indices]
+    assert section.output == reg.output
+
+
+def test_files_in_one_folder_have_no_middle_section_to_show_before_the_rest(tmp_path):
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
+             output_path=tmp_path.as_posix() + '/')
+
+    assert reg.middle_section_indices() is None
+
+
+@pytest.mark.parametrize('filenames, expected', [
+    # SBEMimage: a folder per tile, the overviews of every slice in one folder
+    (['ov/ov000/x_ov000_s00538.tif', 'ov/ov000/x_ov000_s00539.tif',
+      'tiles/g0000/t0000/x_g0000_t0000_s00538.tif', 'tiles/g0000/t0000/x_g0000_t0000_s00539.tif',
+      'tiles/g0000/t0001/x_g0000_t0001_s00538.tif', 'tiles/g0000/t0001/x_g0000_t0001_s00539.tif'], [0, 2, 4]),
+    # the last number is a tile index here, the section is the labelled one
+    (['S000/S000_000_000.ome.zarr', 'S000/S000_000_001.ome.zarr',
+      'S001/S001_000_000.ome.zarr', 'S001/S001_000_001.ome.zarr'], [0, 1]),
+    (['a/tile_0.tif', 'a/tile_1.tif', 'b/tile_0.tif'], [0, 1]),
+    (['a/S000_0.tif', 'a/S000_1.tif'], None),
+    # the step napari's dims start on: sections sorted by number, int((n - 1) / 2)
+    (['S002_0.tif', 'S000_0.tif', 'S001_0.tif', 'S001_1.tif'], [2, 3]),
+    (['S010_0.tif', 'S003_0.tif', 'S007_0.tif', 'S004_0.tif'], [3]),
+])
+def test_the_middle_section_is_found_by_the_labelled_section_number_else_the_folder(filenames, expected):
+    reg = MVSRegistration()
+    reg.filenames = filenames
+
+    assert reg.middle_section_indices() == expected

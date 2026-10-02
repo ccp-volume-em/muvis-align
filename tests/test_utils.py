@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -6,7 +8,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map, get_filetitle
+    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, eval_context
 
 
 @pytest.mark.parametrize(
@@ -398,3 +400,49 @@ def test_a_cancel_left_from_before_does_not_stop_the_next_operation():
     request_cancel()
     with cancellable():
         raise_if_cancelled()
+
+
+def test_labelled_numbers_are_keyed_by_their_lower_case_label_and_unlabelled_ones_left_out():
+    assert find_labelled_numbers('EM04652-02_slice17_r0005_t0002_s00399.ome.tif') == \
+        {'em': 4652, 'slice': 17, 'r': 5, 't': 2, 's': 399}
+    assert find_labelled_numbers('S000_000_001.ome.zarr') == {'s': 0}
+
+
+@pytest.mark.skipif(sys.platform == 'win32', reason='off on Windows: it also reports access violations handled there')
+def test_a_native_crash_leaves_every_threads_stack_in_the_log(tmp_path):
+    log_filename = tmp_path / 'muvis-align.log'
+    code = ('import faulthandler; from muvis_align.logging import enable_fault_log;'
+            f' enable_fault_log({str(log_filename)!r}); faulthandler._sigsegv()')
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True)
+
+    assert result.returncode != 0
+    log = log_filename.read_text(encoding='utf-8', errors='replace')
+    assert 'Fatal Python error' in log and 'most recent call first' in log
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows only')
+def test_the_crash_log_is_off_on_windows(tmp_path):
+    from muvis_align.logging import enable_fault_log
+
+    enable_fault_log(str(tmp_path / 'muvis-align.log'))
+
+    assert not (tmp_path / 'muvis-align.log').exists()
+
+
+@pytest.mark.parametrize('value, expected', [
+    (0.0025505462087219684, '0.00255'), (0.004, '0.004'), (1.244, '1.24'), (1.5, '1.5'),
+    (-64863.2422089573, '-64900'), (12374.5, '12400'), (999.6, '1000'), (0.0, '0'), (-3.5, '-3.5'),
+])
+def test_print_significants_keeps_at_most_3_significant_digits(value, expected):
+    assert print_significants(value, 3) == expected
+
+
+def test_print_dict_simple_rounds_floats_only_in_zyx_order():
+    assert print_dict_simple({'x': 18820.7, 'y': 0.0025505, 'z': 2}) == 'z: 2 y: 0.00255 x: 18800'
+
+
+def test_an_invalid_source_metadata_expression_warns_and_falls_back_to_the_default():
+    context = {'fn': [0, 1, 2]}
+    assert eval_context({'x': 'fn[-2]*24'}, 'x', 0, context) == 24
+    with pytest.warns(UserWarning, match=r"Invalid source metadata x: 'fn\[-9\]' \(IndexError"):
+        assert eval_context({'x': 'fn[-9]'}, 'x', 0, context) == 0

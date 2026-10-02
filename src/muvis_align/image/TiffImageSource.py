@@ -4,6 +4,7 @@ from ngff_zarr import tiff_file_to_ngff_images, NgffMultiscales
 from muvis_align.image.ome_tiff_helper import read_tiff_level_arrays, read_tiff_source_metadata, read_tiff_creator
 from muvis_align.util import convert_to_um
 from muvis_align.image.ImageSource import ImageSource
+from muvis_align.image.tiff_metadata import get_extra_metadata
 from muvis_align.image.color_conversion import hexrgb_to_rgba
 
 
@@ -38,11 +39,11 @@ class TiffImageSource(ImageSource):
         self.rotation = 0
 
     def _read_metadata(self):
-        # full OME-XML root dict - a DOM parse, so kept behind the lazy metadata property
+        # full OME-XML root dict, else every tag but the pixel layout - kept behind the lazy metadata property
         with tifffile.TiffFile(self.filename) as tif:
             if tif.is_ome and tif.ome_metadata is not None:
                 return tifffile.xml2dict(tif.ome_metadata).get('OME', {})
-        return {}
+            return get_extra_metadata(tif)
 
     def _load_data(self):
         # the arrays come off tifffile's own zarr store (read_tiff_level_arrays), the same route

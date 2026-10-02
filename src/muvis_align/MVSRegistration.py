@@ -597,6 +597,30 @@ class MVSRegistration:
 
         return True
 
+    def middle_section_indices(self):
+        """The files of the middle section, by section number (a label as S000 or SBEMimage's s00538), else by folder;
+        None if neither tells sections apart."""
+        # tile and slice indices look alike in a name: only the label tells them apart
+        labelled = [find_labelled_numbers(Path(filename).name) for filename in self.filenames]
+        candidates = [[numbers.get(label) for numbers in labelled] for label in section_number_labels]
+        candidates.append([Path(filename).parent for filename in self.filenames])
+        for keys in candidates:
+            sections = sorted(set(keys)) if None not in keys else []
+            if len(sections) > 1:
+                # the step napari's dims start on: int((nsteps - 1) / 2)
+                middle = sections[(len(sections) - 1) // 2]
+                return [index for index, key in enumerate(keys) if key == middle]
+        return None
+
+    def section_registration(self, indices):
+        """A registration of only the files at `indices`, labelled as here: to show them before the rest are read."""
+        section = MVSRegistration()
+        section.init(operation=self.operation, label=self.fileset_label,
+                     input_path=[self.filenames[index] for index in indices],
+                     input_labels=[self.file_labels[index] for index in indices], output_path=self.output,
+                     overwrite=False, pairing=self.pairing, verbose=self.verbose)
+        return section
+
     def init_sources(self, progress_factory=None):
         source_metadata0 = self.source_metadata
         source_metadata = {}

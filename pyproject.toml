@@ -3,7 +3,8 @@ name = "muvis-align"
 dynamic = ["version"]
 description = "Image registration using multiview-stitcher"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE.md"]
 authors = [
   {name = "Joost de Folter"},
   {email = "folterj@gmail.com"},
@@ -12,7 +13,6 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Framework :: napari",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -37,6 +37,7 @@ dependencies = [
     "threadpoolctl",
     "dask>=2024.8.0,<2026.9.0",
     "tifffile>=2023.9.26",
+    "imagecodecs",
     "zarr",
     "ome-zarr",
     "ngff-zarr>=0.38.0,<0.48.0",

@@ -67,17 +67,19 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
             # not thread-safe - create instance that is not re-used in other thread
             if 'orb' in self.method:
                 feature_model = ORB(n_keypoints=self.nkeypoints, downscale=self.downscale_factor)
+                feature_model.detect_and_extract(data)
             else:
-                feature_model = SIFT()
-            feature_model.detect_and_extract(data)
+                # no upsampling: meant for small images, it quadruples a full-resolution overlap's scale space
+                feature_model = SIFT(upsampling=1)
+                feature_model.detect(data)
+                # sampled before extracting: descriptors for every keypoint were most of the time, then mostly dropped
+                if len(feature_model.keypoints) > self.nkeypoints:
+                    indices = np.random.choice(len(feature_model.keypoints), self.nkeypoints, replace=False)
+                    for name in ('keypoints', 'positions', 'scales', 'sigmas', 'octaves', 'orientations'):
+                        setattr(feature_model, name, getattr(feature_model, name)[indices])
+                feature_model.extract(data)
             points = feature_model.keypoints
             desc = feature_model.descriptors
-            if len(points) > self.nkeypoints:
-                if self.debug:
-                    print('#keypoints0', len(points))
-                indices = np.random.choice(len(points), self.nkeypoints, replace=False)
-                points = points[indices]
-                desc = desc[indices]
             if len(points) == 0:
                 logging.warning('Feature extraction: No features detected!')
         except Exception as e:
