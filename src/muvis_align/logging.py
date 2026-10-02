@@ -1,6 +1,7 @@
 import faulthandler
 import logging
 import os
+import sys
 from  multiview_stitcher import __version__ as mvs_version
 
 from muvis_align._version import version
@@ -46,6 +47,9 @@ def init_logging(log_filename='log/muvis-align.log', log_format='%(asctime)s %(l
 def enable_fault_log(log_filename):
     """Every thread's stack appended to the log on a fatal signal: a native crash otherwise leaves no trace at all."""
     global _fault_file
+    if sys.platform == 'win32':
+        # Windows also reports access violations its drivers raise and handle themselves: dumps that look like crashes
+        return
     # faulthandler holds only the descriptor: the file must stay open for as long as it is enabled
     fault_file = open(log_filename, 'a', encoding='utf-8')
     faulthandler.enable(file=fault_file, all_threads=True)

@@ -408,6 +408,7 @@ def test_labelled_numbers_are_keyed_by_their_lower_case_label_and_unlabelled_one
     assert find_labelled_numbers('S000_000_001.ome.zarr') == {'s': 0}
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='off on Windows: it also reports access violations handled there')
 def test_a_native_crash_leaves_every_threads_stack_in_the_log(tmp_path):
     log_filename = tmp_path / 'muvis-align.log'
     code = ('import faulthandler; from muvis_align.logging import enable_fault_log;'
@@ -417,6 +418,15 @@ def test_a_native_crash_leaves_every_threads_stack_in_the_log(tmp_path):
     assert result.returncode != 0
     log = log_filename.read_text(encoding='utf-8', errors='replace')
     assert 'Fatal Python error' in log and 'most recent call first' in log
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='Windows only')
+def test_the_crash_log_is_off_on_windows(tmp_path):
+    from muvis_align.logging import enable_fault_log
+
+    enable_fault_log(str(tmp_path / 'muvis-align.log'))
+
+    assert not (tmp_path / 'muvis-align.log').exists()
 
 
 @pytest.mark.parametrize('value, expected', [
