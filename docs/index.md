@@ -54,4 +54,4 @@ directly a pipeline parameter file.
 - Generated documentation: [deepwiki.com/ccp-volume-em/muvis-align](https://deepwiki.com/ccp-volume-em/muvis-align)
 - multiview-stitcher: [github.com/multiview-stitcher/multiview-stitcher](https://github.com/multiview-stitcher/multiview-stitcher)
 
-Distributed under the GNU GPL v3.0 licence.
+Distributed under the MIT licence.

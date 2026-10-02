@@ -1,6 +1,6 @@
 # muvis-align
 
-[![License GNU GPL v3.0](https://img.shields.io/pypi/l/muvis-align.svg?color=green)](https://github.com/folterj/muvis-align/raw/main/LICENSE)
+[![License MIT](https://img.shields.io/pypi/l/muvis-align.svg?color=green)](https://github.com/folterj/muvis-align/raw/main/LICENSE.md)
 [![PyPI](https://img.shields.io/pypi/v/muvis-align.svg?color=green)](https://pypi.org/project/muvis-align)
 [![Python Version](https://img.shields.io/pypi/pyversions/muvis-align.svg?color=green)](https://python.org)
 [![tests](https://github.com/folterj/muvis-align/workflows/tests/badge.svg)](https://github.com/folterj/muvis-align/actions)
@@ -55,7 +55,7 @@ the coverage at least stays the same before you submit a pull request.
 
 ## License
 
-Distributed under the terms of the [GNU GPL v3.0] license,
+Distributed under the terms of the [MIT] license,
 "muvis-align" is free and open source software
 
 ## Issues
