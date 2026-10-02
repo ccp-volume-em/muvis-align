@@ -286,3 +286,20 @@ def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_drop_poi
     np.testing.assert_array_equal(moving, fixed + [30, 0])
     assert np.all(moving[:, 0] <= 39)
     assert len(fixed) == 6 * 1
+
+
+@pytest.mark.parametrize('offset, overlaps', [(1000.0, False), (60.0, True)])
+def test_get_overlap_images_says_plainly_when_two_images_do_not_overlap(offset, overlaps):
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.image.util import NoOverlapError
+
+    sims = [si_utils.get_sim_from_array(np.ones((100, 100), np.float32), dims=['y', 'x'], scale={'y': 1, 'x': 1},
+                                        translation={'y': 0.0, 'x': x}, transform_key='source')
+            for x in (0.0, offset)]
+
+    if overlaps:
+        overlap1, overlap2, _ = get_overlap_images(sims[0], sims[1], 'source')
+        assert overlap1.sizes['x'] >= 40 and overlap2.sizes['x'] >= 40
+    else:
+        with pytest.raises(NoOverlapError):
+            get_overlap_images(sims[0], sims[1], 'source')

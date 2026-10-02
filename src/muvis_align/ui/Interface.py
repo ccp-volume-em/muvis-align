@@ -22,7 +22,7 @@ from muvis_align.file.project_yaml import read_params, get_template_params, writ
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
-    draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, \
+    draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, NoOverlapError, \
     make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
     snapshot_msims_transform, restore_msims_transform, \
@@ -1441,7 +1441,11 @@ class Interface:
                     self._remap_local_pair_metrics(metrics, (index1, index2))
                     return metrics, results, overlap1, overlap2
 
-            return self._run_off_thread(register_preview, factory)
+            try:
+                return self._run_off_thread(register_preview, factory)
+            except NoOverlapError:
+                show_warning(f'{label1} and {label2} do not overlap: choose two images that do')
+                return None
 
 
     def preview_registration(self):

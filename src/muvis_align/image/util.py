@@ -2252,6 +2252,10 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
     return shapes, good_pairs
 
 
+class NoOverlapError(ValueError):
+    """Two images that do not overlap where an overlap is needed."""
+
+
 def get_overlap_images(sim1, sim2, transform_key):
     sims = [sim1.squeeze(), sim2.squeeze()]
     # functionality copied from registration.register_pair_of_msims()
@@ -2262,7 +2266,12 @@ def get_overlap_images(sim1, sim2, transform_key):
         original_transform = sim.attrs['transforms'][transform_key]
         adapted_transform = _adapt_transform_to_image_dims(sim, original_transform, transform_key)
         sim.attrs['transforms'][transform_key] = adapted_transform
-    
+
+    stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in sims]
+    _, intersection = mv_graph.get_overlap_between_pair_of_stack_props(*stack_props)
+    if intersection is None:
+        raise NoOverlapError('the images do not overlap')
+
     result = _get_overlap_bboxes(
         sims[0],
         sims[1],
