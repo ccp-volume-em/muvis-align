@@ -69,7 +69,8 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
                 feature_model = ORB(n_keypoints=self.nkeypoints, downscale=self.downscale_factor)
                 feature_model.detect_and_extract(data)
             else:
-                feature_model = SIFT()
+                # no upsampling: meant for small images, it quadruples a full-resolution overlap's scale space
+                feature_model = SIFT(upsampling=1)
                 feature_model.detect(data)
                 # sampled before extracting: descriptors for every keypoint were most of the time, then mostly dropped
                 if len(feature_model.keypoints) > self.nkeypoints:

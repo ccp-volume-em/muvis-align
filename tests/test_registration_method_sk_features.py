@@ -170,7 +170,7 @@ def test_sift_extracts_only_the_sampled_keypoints_as_extracting_all_would():
     np.random.seed(1)
     points, desc, processed = method.detect_features(data)
 
-    reference = SIFT()
+    reference = SIFT(upsampling=1)
     reference.detect_and_extract(processed)
     assert len(reference.keypoints) > 20
     np.random.seed(1)
