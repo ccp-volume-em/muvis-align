@@ -37,6 +37,7 @@ dependencies = [
     "threadpoolctl",
     "dask>=2024.8.0,<2026.9.0",
     "tifffile>=2023.9.26",
+    "imagecodecs",
     "zarr",
     "ome-zarr",
     "ngff-zarr>=0.38.0,<0.46.0",
