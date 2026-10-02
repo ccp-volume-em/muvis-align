@@ -27,6 +27,7 @@ import numpy as np
 from qtpy.QtWidgets import QMessageBox
 
 from muvis_align._widget import MainWidget
+from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
 from muvis_align.MVSRegistration import RegState
 
@@ -149,6 +150,7 @@ class TestNapariInterfaceRegistration:
             for handler in logging.getLogger().handlers[:]:
                 handler.close()
                 logging.getLogger().removeHandler(handler)
+            close_fault_log()
 
     def test_project_params_structure(self, config_data):
         """Test that project configuration has expected structure."""

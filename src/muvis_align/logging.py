@@ -52,3 +52,12 @@ def enable_fault_log(log_filename):
     if _fault_file is not None:
         _fault_file.close()
     _fault_file = fault_file
+
+
+def close_fault_log():
+    """Stop writing native crash stacks to the log, and release its file (Windows cannot delete an open file)."""
+    global _fault_file
+    if _fault_file is not None:
+        faulthandler.disable()
+        _fault_file.close()
+        _fault_file = None
