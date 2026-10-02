@@ -157,3 +157,15 @@ def _parented_label_class(label_class):
                 super().setVisible(visible)
 
     return ParentedLabel
+
+
+def clear_napari_dask_cache():
+    """Empty napari's dask cache: it keeps removed layers' computed chunks, up to a quarter of RAM (~500GB on a 2TB
+    HPC node), and the lazy overview has its own plane cache."""
+    try:
+        from napari.utils._dask_utils import _DASK_CACHE
+    except ImportError:
+        return
+    cache = getattr(_DASK_CACHE, 'cache', None)
+    if cache is not None and getattr(cache, 'total_bytes', 0):
+        cache.clear()
