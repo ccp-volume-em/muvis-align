@@ -1450,6 +1450,7 @@ def test_update_napari_features_dispatches_all_layer_types(
     bare_interface, monkeypatch
 ):
     viewer = MagicMock()
+    viewer.layers.__len__.return_value = 1
     layers = [
         ("image", {"name": "image"}, "image"),
         ("points", {"name": "points"}, "points"),
@@ -2800,3 +2801,16 @@ def test_the_view_is_left_where_napari_put_it_without_a_section_shown_or_for_z_s
     bare_interface._go_to_shown_section()
 
     bare_interface.viewer.dims.set_point.assert_not_called()
+
+
+def test_replacing_the_main_view_clears_napari_dask_cache_but_the_overview_does_not(bare_interface):
+    bare_interface.viewer = MagicMock()
+    bare_interface.viewer.layers = [object()]
+    overview = MagicMock()
+    overview.layers = [object()]
+
+    with patch.object(interface_module, 'clear_napari_dask_cache') as clear_cache:
+        bare_interface._clear_napari_view(overview)
+        clear_cache.assert_not_called()
+        bare_interface._clear_napari_view(bare_interface.viewer)
+        clear_cache.assert_called_once_with()

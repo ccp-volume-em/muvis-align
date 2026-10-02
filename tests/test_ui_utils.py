@@ -2,7 +2,8 @@ import logging
 
 import pytest
 
-from muvis_align.ui._utils import VisibleActivityDock, catch_run_errors, patch_multiscale_label_show, patch_shapes_text_coords
+from muvis_align.ui._utils import VisibleActivityDock, catch_run_errors, clear_napari_dask_cache, \
+    patch_multiscale_label_show, patch_shapes_text_coords
 
 
 def test_catch_run_errors_returns_result_on_success():
@@ -123,3 +124,19 @@ def test_the_multiscale_label_shows_only_once_the_layer_controls_hold_it(qtbot):
 
     assert shown.isVisible() and shown.parent() is parent
     assert not hidden.isVisible()
+
+
+def test_clearing_napari_dask_cache_drops_the_chunks_it_kept():
+    import dask.array as da
+    import numpy as np
+    from napari.utils import _dask_utils
+
+    cache = _dask_utils.resize_dask_cache(64 * 2**20).cache
+    data = da.from_array(np.arange(4 * 256 * 256, dtype=np.float64).reshape(4, 256, 256), chunks=(1, 256, 256))
+    with _dask_utils.configure_dask(data)():
+        (data[1] * 2).compute()
+    assert cache.total_bytes > 0
+
+    clear_napari_dask_cache()
+
+    assert cache.total_bytes == 0

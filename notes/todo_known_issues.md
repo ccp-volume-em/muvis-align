@@ -75,11 +75,11 @@ computed in memory first, overview widget shapes off, first-section view off, Op
 fix was a broken probe). Never in plain napari with the same planes and add_image arguments, nor with
 replacing the layer 8x, resizing 40x, a second canvas in a dock, the welcome screen off and the dock shown,
 or after running pre-processing headless in the same process.
-Side finding: each replaced 7653x10204 image layer keeps ~0.66GB (rss 1.35 -> 5.31GB over 8 in plain napari).
+Side finding: each replaced 7653x10204 image layer kept ~0.66GB (rss 1.35 -> 5.31GB over 8 in plain napari) -
+  napari's dask cache, now cleared on each view change (see Done 2026-10-02).
 Mesa 25.0.7 (bookworm-backports) does not crash: 2/2 with it installed at container start, and the image
 built with it (Dockerfile, 43ac613) passes the same plugin run. Confirmed on the HPC 2026-10-02: the 34k
 project's pre-processing and its view refresh completed. The root cause (which program is invalid) is not found.
-Not done: the ~0.66GB kept per replaced big image layer.
 Windows: faulthandler also reports access violations a driver raises and handles (Ciqtek preview: 5 dumps,
 run carried on), so the crash log is off on Windows (b8d59ba).
 
@@ -697,6 +697,9 @@ Progress:
 - scikit-image SIFT: keypoints sampled before descriptors, upsampling=1 (abd76a4, a0d3bb4) - Ciqtek
   full-res preview pair 124s/6GB -> 22s/2GB. Preview shows its metrics before the feature layers (9be792f).
 - Windows tests: the crash log's open file blocked tmp cleanup (close_fault_log, 32c53be).
+- Memory kept per replaced image layer: napari's dask cache (25% of RAM, ~500GB on the HPC) kept removed
+  layers' chunks. Now emptied whenever the main view is replaced (clear_napari_dask_cache); caching within a
+  view stays. Meatballs open + pre-processing: cache 3.27 -> 1.31GB, rss 2.60 -> 1.94GB.
 
 ## TODO
 
