@@ -96,3 +96,23 @@ def flush_paint_events():
     app = QApplication.instance()
     if app is not None:
         app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+
+
+def patch_shapes_text_coords():
+    """Make napari's Shapes label positions read the layer's shape list once, not once per shape
+    in view - quadratic otherwise: 12.6s of a 22.8s add_shapes at 150k shapes (napari 0.9.0)."""
+    from napari.layers import Shapes
+
+    original = getattr(Shapes, '_view_text_coords', None)
+    if not isinstance(original, property) or getattr(original.fget, '_muvis_patched', False):
+        return
+
+    def view_text_coords(self):
+        data = self._data_view.data
+        displayed = self._slice_input.displayed
+        coords = [data[index][:, displayed] for index in self._view_indices]
+        return self.text.compute_text_coords(coords, self._slice_input.ndisplay, self._slice_input.order)
+
+    view_text_coords._muvis_patched = True
+    view_text_coords._muvis_original = original
+    Shapes._view_text_coords = property(view_text_coords)

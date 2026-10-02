@@ -81,6 +81,14 @@ OME positions with z per section - without z every section overlaps every other,
 - Left: add shapes (28s) and refresh overview shapes (15s) on the Qt thread - napari Shapes layers
   of 34k + 115k rectangles, twice (main viewer and overview widget); ~39s untimed after init_data
   on the HPC (populate tables; ~1s here at 3100).
+- Profiled add_shapes (napari 0.9.0, 150k 4-vertex polygons with z, Qt viewer, hidden): 22.8s, of
+  which 12.6s is Shapes._view_text_coords - it rebuilds the whole data list (_data_view.data) once
+  per shape in view, O(in view x all); still so on napari main. Reading the list once: 10.2s, same
+  coords. Only the main viewer has labels (overview widget has none). The other ~10s is napari's
+  per-shape Python (polygon/rectangle init alike). Done: that property patched to read the list
+  once (patch_shapes_text_coords, on Interface import; same coords). Synthetic 3100: add shapes 1.3 -> 0.9s.
+- User question: show the section napari will display first (it goes to the middle step when the
+  first layer is added, so the full view jumps to slice 49 of 99 after section 0 was shown).
 
 Huge memory use on the HPC, where all tasks were effectively spawned at the same time instead of
 a bounded number running at once. Test project (local):

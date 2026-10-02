@@ -37,11 +37,15 @@ from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress, SilentProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
 from muvis_align.image.lazy_overview import lazy_section_overview, MsimLevels
-from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events
+from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events, \
+    patch_shapes_text_coords
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
     resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle
+
+
+patch_shapes_text_coords()
 
 
 class _ProgressBridge(QObject):

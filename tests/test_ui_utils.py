@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from muvis_align.ui._utils import catch_run_errors
+from muvis_align.ui._utils import catch_run_errors, patch_shapes_text_coords
 
 
 def test_catch_run_errors_returns_result_on_success():
@@ -55,3 +55,27 @@ def test_activity_dock_keeps_welcome_screen_off_while_open():
 
     assert qt_viewer.show_welcome_screen is True
     status_bar._toggle_activity_dock.assert_called_with(False)
+
+
+def test_patched_shapes_text_coords_match_napari():
+    import numpy as np
+    from napari.components import ViewerModel
+    from napari.layers import Shapes
+
+    patch_shapes_text_coords()
+    patch_shapes_text_coords()
+    patched = Shapes._view_text_coords
+    assert patched.fget._muvis_patched
+    original = patched.fget._muvis_original
+    assert not getattr(original.fget, '_muvis_patched', False)
+
+    base = np.array([[0, 0], [0, 10], [10, 10], [10, 0]], dtype=float)
+    shapes = [np.column_stack([np.full(4, index % 3), base + index * 5]) for index in range(30)]
+    labels = [str(index) for index in range(30)]
+    viewer = ViewerModel()
+    layer = viewer.add_shapes(shapes, shape_type='polygon', text={'string': '{labels}'}, features={'labels': labels})
+    viewer.dims.set_current_step(0, 1)
+    expected, actual = original.fget(layer), layer._view_text_coords
+    assert len(layer._view_indices) == 10
+    np.testing.assert_array_equal(actual[0], expected[0])
+    assert actual[1:] == expected[1:]
