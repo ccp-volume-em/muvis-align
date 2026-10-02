@@ -270,12 +270,11 @@ def test_grid_point_pairs_follow_the_transform_from_fixed_to_moving():
     np.testing.assert_array_equal(moving, fixed + [5, 10])
     step = np.diff(np.unique(fixed[:, 0]))[0]
     np.testing.assert_allclose(fixed.min(axis=0), step / 2)
-    assert np.all(moving <= [59, 119])
     np.testing.assert_array_equal(matches, np.column_stack([np.arange(len(fixed))] * 2))
     assert inliers.dtype == bool and inliers.all()
 
 
-def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_drop_points_off_the_moving_image():
+def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_keep_points_off_the_moving_image():
     from muvis_align.image.util import grid_point_pairs
 
     # (t, c, y, x) as multiview-stitcher gives it: spatial dims last
@@ -285,8 +284,9 @@ def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_drop_poi
     fixed, moving, _, _ = grid_point_pairs((60, 60), (40, 60), matrix)
 
     np.testing.assert_array_equal(moving, fixed + [20, 0])
-    # grid rows at 12 and 36: the second lands beyond the moving image's 40 rows
-    np.testing.assert_array_equal(np.unique(fixed[:, 0]), [12])
+    # the whole fixed image at one spacing, also rows whose partner lies past the moving image's 40 rows
+    rows = np.unique(fixed[:, 0])
+    assert rows.max() > 60 - np.diff(rows)[0] and moving[:, 0].max() > 39
 
 
 @pytest.mark.parametrize('offset, overlaps', [(1000.0, False), (60.0, True)])
@@ -319,12 +319,10 @@ def test_preview_points_and_lines_scale_with_the_image_shown(side, point_size, l
     assert layers['matches_inliers']['edge_width'] == line_width
 
 
-@pytest.mark.parametrize('shape, expected', [((800, 50), (20, 1)), ((62, 83), (3, 3)), ((1407, 422), (20, 6))])
-def test_grid_point_pairs_are_spaced_by_the_ring_size_drawn(shape, expected):
-    from muvis_align.image.util import grid_point_pairs, preview_marker_sizes, side_by_side_extent
+@pytest.mark.parametrize('shape, expected', [((800, 50), (30, 3)), ((1407, 422), (30, 9)), ((62, 83), (4, 6))])
+def test_grid_point_pairs_put_30_along_the_longest_side_at_least_3_along_any_and_rings_apart(shape, expected):
+    from muvis_align.image.util import grid_point_pairs
 
     fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
 
     assert (len(np.unique(fixed[:, 0])), len(np.unique(fixed[:, 1]))) == expected
-    step = np.diff(np.unique(fixed[:, 0]))[0]
-    assert step == pytest.approx(4 * preview_marker_sizes(side_by_side_extent(shape, shape))[0])

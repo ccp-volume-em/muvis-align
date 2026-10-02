@@ -1119,20 +1119,23 @@ def side_by_side_extent(shape1, shape2):
     return int(shape.max())
 
 
-def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, rings_per_step=4):
+def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, points_on_longest_side=30, min_points_on_a_side=3,
+                     min_rings_apart=2.5):
     """Points on a regular grid over the fixed image and where `affine_matrix` puts them in the moving image, as
     (fixed points, moving points, matches, inliers): what a registration giving only a transform shows in a preview."""
     ndim = len(fixed_shape)
     # spatial dims come last; on registered pairs the matrix takes fixed pixels to where they lie in the moving image
     matrix = np.asarray(affine_matrix, dtype=float)[-(ndim + 1):, -(ndim + 1):]
-    # spaced by the drawn ring size: points crowd when their rings come close, whatever the overlap's size or shape
-    step = rings_per_step * preview_marker_sizes(side_by_side_extent(fixed_shape, moving_shape))[0]
-    axes = [np.arange(step / 2, size, step) for size in fixed_shape]
+    # the longest side's spacing in every direction - no closer than the drawn rings allow (small overlaps), but closer
+    # where a side would get fewer than the minimum
+    ring_size = preview_marker_sizes(side_by_side_extent(fixed_shape, moving_shape))[0]
+    step = max(max(fixed_shape) / points_on_longest_side, min_rings_apart * ring_size)
+    axis_steps = [min(step, size / min_points_on_a_side) for size in fixed_shape]
+    axes = [np.arange(axis_step / 2, size, axis_step) for size, axis_step in zip(fixed_shape, axis_steps)]
     fixed_points = np.stack(np.meshgrid(*axes, indexing='ij'), axis=-1).reshape(-1, ndim)
+    # all kept, also where the partner falls outside the moving image: its line then shows how far the tiles are offset
     homogeneous = np.column_stack([fixed_points, np.ones(len(fixed_points))])
     moving_points = (matrix @ homogeneous.T).T[:, :ndim]
-    inside = np.all((moving_points >= 0) & (moving_points <= np.asarray(moving_shape) - 1), axis=1)
-    fixed_points, moving_points = fixed_points[inside], moving_points[inside]
     matches = np.column_stack([np.arange(len(fixed_points))] * 2)
     return fixed_points, moving_points, matches, np.ones(len(fixed_points), dtype=bool)
 
