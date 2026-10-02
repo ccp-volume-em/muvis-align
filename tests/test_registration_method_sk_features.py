@@ -182,3 +182,27 @@ def test_registration_returns_identity_when_quality_or_inliers_are_missing(monke
     assert np.allclose(result['affine_matrix'], np.eye(3))
     assert result['quality'] == 0
 
+
+
+def test_sift_extracts_only_the_sampled_keypoints_as_extracting_all_would():
+    from skimage.feature import SIFT
+
+    from scipy.ndimage import gaussian_filter
+
+    # blurred noise wrapped to full uint8 range: hundreds of keypoints in a small image
+    noise = gaussian_filter(np.random.default_rng(0).random((96, 128)), 2)
+    data = make_dummy_blob_spatial_image_2d((96, 128), [(20, 30)], 'yx')
+    data = data.copy(data=(noise * 255 * 8 % 255).astype(np.uint8).reshape(data.shape))
+    method = RegistrationMethodSkFeatures(data, params={'method': 'sift', 'gaussian_sigma': 0, 'max_keypoints': 20,
+                                                        'normalisation': False})
+
+    np.random.seed(1)
+    points, desc, processed = method.detect_features(data)
+
+    reference = SIFT()
+    reference.detect_and_extract(processed)
+    assert len(reference.keypoints) > 20
+    np.random.seed(1)
+    indices = np.random.choice(len(reference.keypoints), 20, replace=False)
+    np.testing.assert_array_equal(points, reference.keypoints[indices])
+    np.testing.assert_array_equal(desc, reference.descriptors[indices])
