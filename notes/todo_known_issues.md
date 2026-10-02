@@ -76,6 +76,9 @@ fix was a broken probe). Never in plain napari with the same planes and add_imag
 replacing the layer 8x, resizing 40x, a second canvas in a dock, the welcome screen off and the dock shown,
 or after running pre-processing headless in the same process.
 Side finding: each replaced 7653x10204 image layer keeps ~0.66GB (rss 1.35 -> 5.31GB over 8 in plain napari).
+Mesa 25.0.7 (bookworm-backports) does not crash: 2/2 with it installed at container start, and the image
+built with it (Dockerfile) passes the same plugin run. Next (user): docker-build-push.sh, xpra-pull.sh,
+pre-processing on the 34k project.
 
 ### Pair registration mixing up pairs' crops (fixed)
 
