@@ -59,7 +59,7 @@ Other:
 - [ ] **Lazy overview: strided reads of single-level sources** - each tile is read whole at full res, then strided;
       read only the strided rows (as the direct uncompressed-level reads do), and measure on a single-level set.
 - [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
-      single-level export mixed in?).
+      single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
 - [ ] **Test a real convert** - with a pre-processing scale set: check the output's level-0 size and levels down to
       ~128px.
 - [ ] **Re-measure HPC pair registration memory** - rss grew ~1.2MB a pair and slowed after ~100k pairs (19h for
@@ -69,6 +69,10 @@ Other:
       changing threads. Details in notes/multiview_stitcher.md.
 
 ## Done
+
+- **Fusion on mixed channel labels** - the HPC fusion (2026-10-03) failed with KeyError '#0' after writing 471MB:
+  fusion selects every source by the first one's 'c' labels. fuse() now gives a single-channel source named
+  otherwise the common label (unify_msim_channels), and stops with an error on differing multichannel labels.
 
 ### Opening large projects (PR #56)
 - **Lazy per-section overview** - raw sources shown one plane per section, built when viewed from each source's

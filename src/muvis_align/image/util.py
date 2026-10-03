@@ -2511,6 +2511,31 @@ def _promote_msim_to_3d(msim, z_position):
     return DataTree.from_dict(nodes)
 
 
+def unify_msim_channels(msims):
+    """msims whose 'c' labels all match the first's, as fusion selects every source by those. A single-channel
+    source named differently (a file with no channel name gets 'channel N') takes the label; several is an error."""
+    labels = list(get_msim_image0(msims[0]).coords['c'].values) if msims else []
+    new_msims = []
+    for msim in msims:
+        msim_labels = list(get_msim_image0(msim).coords['c'].values)
+        if sorted(msim_labels) == sorted(labels):
+            new_msims.append(msim)
+        elif len(msim_labels) == len(labels) == 1:
+            new_msims.append(_relabel_msim_channels(msim, labels))
+        else:
+            raise ValueError(f'Sources have different channels: {msim_labels} and {labels}')
+    relabelled = sum(new is not old for new, old in zip(new_msims, msims))
+    if relabelled:
+        logging.warning(f'Fusion: {relabelled} source(s) with another channel name given {str(labels[0])!r}')
+    return new_msims
+
+
+def _relabel_msim_channels(msim, labels):
+    nodes = {scale_key: msim[scale_key].ds.assign_coords(c=list(labels))
+             for scale_key in msi_utils.get_sorted_scale_keys(msim)}
+    return DataTree.from_dict(nodes)
+
+
 def msim_is_2d(msim):
     """Whether this msim is already 2D - no z dim, and a 2D (3x3) affine on every transform.
     make_msims_2d() rebuilds a msim's whole DataTree, which for a few thousand sources is

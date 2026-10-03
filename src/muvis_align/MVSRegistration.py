@@ -1903,6 +1903,8 @@ class MVSRegistration:
         # for it, rather than every level of every source being rebuilt up front
         if num_z_positions > 1 or self.is_stack:
             msims = make_msims_3d(msims, z_scale=z_scale, positions=self.positions)
+        if not is_channel_overlay:
+            msims = unify_msim_channels(msims)
 
         output_stack_properties = calc_output_properties(msims, transform_key,
                                                          output_spacing_method=output_spacing, z_scale=z_scale)
