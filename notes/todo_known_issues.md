@@ -31,16 +31,19 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-Nothing.
+**Faster refresh after registration** - the 28 untimed minutes measured locally (x~3 on the HPC):
+copy_transforms_to_msims onto the 3D view msims 9ms a source (DataTree setitem alignment per level; assign +
+DataTree.from_dict 4.6ms), the metrics table 78s to fill at 229k rows plus ~2 min of a quadratic row dedupe
+(`not in` a list). Plan: dedupe with a dict, rebuild rather than set the view transforms, time each step.
 
 ## TODO
 
 From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in all, no errors):
-- [ ] **Stop robust_linear once converged** - it ran all 10 rounds though the median residual stopped changing at
-      round 3 (0.104), ~9-13 min a round at 229k edges: over an hour for nothing.
-- [ ] **Skip the msims rebuild before global registration** - the full per-source pyramids are rebuilt only to
-      store the transforms on them: 19 min on one core.
-- [ ] **Progress for the global registration metrics** - one bar step, so the bar sits at 75% for ~1h.
+- [ ] **The msims build in global registration** - 18 min on one core (GIL-bound) for the full per-source pyramids.
+      Not skippable: save_mappings_csv, the view refresh (copy_transforms_to_msims), the metadata table and fusion
+      all read them right after. The cost is the build itself (see Faster per-source xarray construction): ~10ms
+      CPU a single-level source locally - a third opening the tiff as a zarr store, the rest xarray (assign_coords,
+      alignment, DataTree.from_dict, expand_dims); 31ms on the HPC.
 - [ ] **Faster refresh after registration (67 min)** - 28 min untimed at its start (view msims for 34k sources, or
       filling the metadata table (34k rows) / metrics table (229k pairs) on the Qt thread? - time them first);
       overlap shapes 11.4 min (78897 exact intersection tests at 4.7ms, the transforms being rigid now);
@@ -70,6 +73,9 @@ Other:
 
 ## Done
 
+- **robust_linear stops once converged** - when no residual moved more than 1% of the Cauchy scale in a round; the
+  largest change is logged each round (check it on the next HPC run: 7 of 10 rounds were for nothing).
+- **Global registration metrics progress** - per registered pair, not one step for ~1h.
 - **Fusion on mixed channel labels** - the HPC fusion (2026-10-03) failed with KeyError '#0' after writing 471MB:
   fusion selects every source by the first one's 'c' labels. fuse() now gives a single-channel source named
   otherwise the common label (unify_msim_channels), and stops with an error on differing multichannel labels.
