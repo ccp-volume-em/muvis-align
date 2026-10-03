@@ -133,3 +133,11 @@ def test_views_are_ranked_when_only_some_of_a_blocks_sources_reach_it():
     group_params = [np.eye(3) * scale for scale in (1, 2, 3)]
 
     assert _view_ranks([group_params[0], group_params[2]], group_params, [1, 1, 2]).tolist() == [1, 2]
+
+
+def test_a_view_passed_without_its_singleton_z_is_still_ranked():
+    from muvis_align.fusion_slabs import _view_ranks
+
+    group_params = [np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 2.0, 2.0, 1.0])]
+
+    assert _view_ranks([np.diag([2.0, 2.0, 1.0])], group_params, [1, 2]).tolist() == [2]

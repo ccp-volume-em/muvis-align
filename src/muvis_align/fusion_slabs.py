@@ -104,7 +104,9 @@ def _view_ranks(params, group_params, group_ranks):
     for param in params:
         param = np.asarray(param).squeeze()
         for index in range(start, len(group_params)):
-            if np.allclose(param, group_params[index]):
+            # a block fused in 2D gets the affines without the singleton z: compare their trailing (y, x) part
+            size = min(param.shape[-1], group_params[index].shape[-1])
+            if np.allclose(param[-size:, -size:], group_params[index][-size:, -size:]):
                 ranks.append(group_ranks[index])
                 start = index + 1
                 break
