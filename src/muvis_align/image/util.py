@@ -1842,12 +1842,13 @@ def _bb_vertices(points):
     return _minimal_bb_vertices(points)
 
 
-def _minimal_bb_vertices(points, return_edge_path=False):
+def _minimal_bb_vertices(points, return_edge_path=False, convex=False):
     """Return the corners of an oriented bounding box around *points*.
 
     Corners are ordered around one face before the corresponding corners on
     the opposite face.  If ``return_edge_path`` is true, return the continuous
-    path used to render all edges of a 3D box without diagonals.
+    path used to render all edges of a 3D box without diagonals. ``convex``: 2D
+    points that already are a convex polygon in order, so need no hull.
     """
     points = np.asarray(points, dtype=float)
     if points.ndim != 2 or points.shape[1] not in (2, 3):
@@ -1857,8 +1858,11 @@ def _minimal_bb_vertices(points, return_edge_path=False):
 
     centered = points - points.mean(axis=0)
     if points.shape[1] == 2:
-        hull = ConvexHull(points) if np.linalg.matrix_rank(centered) == 2 else None
-        hull_points = points[hull.vertices] if hull is not None else points
+        if convex:
+            hull_points = points
+        else:
+            hull = ConvexHull(points) if np.linalg.matrix_rank(centered) == 2 else None
+            hull_points = points[hull.vertices] if hull is not None else points
         edges = np.diff(np.vstack((hull_points, hull_points[0])), axis=0)
         directions = edges[np.linalg.norm(edges, axis=1) > 0]
         if len(directions) == 0:
@@ -1872,11 +1876,11 @@ def _minimal_bb_vertices(points, return_edge_path=False):
                 ),
                 axis=1,
             )
-            areas = []
-            for candidate in candidates:
-                projected = points @ candidate.T
-                areas.append(np.prod(np.ptp(projected, axis=0)))
-            axes = candidates[np.argmin(areas)]
+            projected = points @ candidates.transpose(0, 2, 1)
+            areas = np.prod(np.ptp(projected, axis=1), axis=1)
+            # of equal boxes the one nearest the image axes, wherever the polygon starts: an axis-aligned one as drawn
+            tied = np.flatnonzero(areas <= areas.min() * (1 + 1e-9))
+            axes = candidates[tied[np.argmax(candidates[tied, 0, 0])]]
     else:
         rank = np.linalg.matrix_rank(centered)
         candidates = []
@@ -2124,6 +2128,48 @@ def _aabb_overlap_shapes_2d(all_stack_props, pairs, mins, maxs, force_2d, is_mul
     return list(boxes), list(pairs)
 
 
+def _tile_polygon_2d(stack_props):
+    """A source's yx footprint as a counter-clockwise polygon - a singleton z dropped."""
+    points = np.asarray(mv_graph.get_vertices_from_stack_props(stack_props), dtype=float)[:, -2:]
+    points = np.unique(points, axis=0)
+    centre = points.mean(axis=0)
+    return points[np.argsort(np.arctan2(points[:, 1] - centre[1], points[:, 0] - centre[0]))]
+
+
+def _clip_convex_polygons_2d(subject, clip):
+    """Sutherland-Hodgman: the intersection of two convex counter-clockwise polygons, or None where they do not
+    overlap in an area. The exact test's answer in 2D, without its linear program (4.7ms a pair on the HPC)."""
+    output = list(subject)
+    for index in range(len(clip)):
+        if not output:
+            return None
+        start, end = clip[index], clip[(index + 1) % len(clip)]
+        edge = end - start
+
+        def inside(point):
+            return edge[0] * (point[1] - start[1]) - edge[1] * (point[0] - start[0]) >= 0
+
+        def crossing(point1, point2):
+            delta = point2 - point1
+            denominator = edge[0] * delta[1] - edge[1] * delta[0]
+            ratio = (edge[1] * (point1[0] - start[0]) - edge[0] * (point1[1] - start[1])) / denominator
+            return point1 + ratio * delta
+
+        points, output = output, []
+        for current, previous in zip(points, points[-1:] + points[:-1]):
+            if inside(current):
+                if not inside(previous):
+                    output.append(crossing(previous, current))
+                output.append(current)
+            elif inside(previous):
+                output.append(crossing(previous, current))
+    if len(output) < 3:
+        return None
+    polygon = np.array(output)
+    area = 0.5 * abs(np.dot(polygon[:, 0], np.roll(polygon[:, 1], -1)) - np.dot(polygon[:, 1], np.roll(polygon[:, 0], -1)))
+    return polygon if area > 1e-9 * np.ptp(polygon, axis=0).max() ** 2 else None
+
+
 def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtype=np.uint8):
     # accepts sims, msims or stack properties. Geometry is all this needs, and the common path
     # (broad phase + the AABB fast path below) works off stack properties alone - only
@@ -2167,6 +2213,8 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
     n_exact_tests = 0
     exact_test_time = 0.0
     n_fast_shapes = 0
+    n_clipped_shapes = 0
+    clip_start = time.time()
     for pair in pairs:
         props1 = all_stack_props[pair[0]]
         props2 = all_stack_props[pair[1]]
@@ -2211,60 +2259,74 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
             good_pairs.append(pair)
             continue
 
-        # only from here on is an actual sim needed - the exact test below is multiview_stitcher's
-        sim1, sim2 = get_pair_sim(pair[0]), get_pair_sim(pair[1])
-        # only singleton-z sims (promoted 2D sections) are squeezed; a real volume is intersected
-        # in 3D and its points projected to yx below
-        if force_2d and all(sim.sizes.get('z', 1) == 1 for sim in (sim1, sim2)):
-            projected_sims = []
-            for sim in (sim1, sim2):
-                if 'z' in sim.dims:
-                    sim_2d = sim.squeeze('z', drop=True)
-                    sim_2d.attrs = dict(sim.attrs)
-                    sim_2d.attrs['transforms'] = dict(sim.attrs['transforms'])
-                    affine_2d = _adapt_transform_to_image_dims(
-                        sim_2d,
-                        sim_2d.attrs['transforms'][transform_key],
-                        transform_key,
-                    )
-                    si_utils.set_sim_affine(sim_2d, affine_2d, transform_key)
-                    sim = sim_2d
-                projected_sims.append(sim)
-            sim1, sim2 = projected_sims
+        if 'z' not in props1['shape'] and 'z' not in props2['shape'] or (
+                force_2d and props1['shape'].get('z') == 1 and props2['shape'].get('z') == 1):
+            polygon = _clip_convex_polygons_2d(_tile_polygon_2d(props1), _tile_polygon_2d(props2))
+            if polygon is not None:
+                shape = _minimal_bb_vertices(polygon, convex=True)
+                if is_multi_z_shapes:
+                    shape = [[shape_z_position] + list(element) for element in shape]
+                shapes.append(shape)
+                good_pairs.append(pair)
+                n_clipped_shapes += 1
+        else:
+            # only from here on is an actual sim needed - the exact test below is multiview_stitcher's
+            sim1, sim2 = get_pair_sim(pair[0]), get_pair_sim(pair[1])
+            # only singleton-z sims (promoted 2D sections) are squeezed; a real volume is intersected
+            # in 3D and its points projected to yx below
+            if force_2d and all(sim.sizes.get('z', 1) == 1 for sim in (sim1, sim2)):
+                projected_sims = []
+                for sim in (sim1, sim2):
+                    if 'z' in sim.dims:
+                        sim_2d = sim.squeeze('z', drop=True)
+                        sim_2d.attrs = dict(sim.attrs)
+                        sim_2d.attrs['transforms'] = dict(sim.attrs['transforms'])
+                        affine_2d = _adapt_transform_to_image_dims(
+                            sim_2d,
+                            sim_2d.attrs['transforms'][transform_key],
+                            transform_key,
+                        )
+                        si_utils.set_sim_affine(sim_2d, affine_2d, transform_key)
+                        sim = sim_2d
+                    projected_sims.append(sim)
+                sim1, sim2 = projected_sims
 
-        n_exact_tests += 1
-        exact_test_start = time.time()
-        try:
-            # catch in case there is no overlap - _get_overlap_bboxes runs an exact
-            # (scipy.optimize.linprog-based) intersection test per pair, a solver call that
-            # costs low-single-digit milliseconds even for a trivial problem - the dominant
-            # cost here once thousands of pairs reach it, see the logging below
-            result = _get_overlap_bboxes(
-                sim1,
-                sim2,
-                input_transform_key=transform_key,
-                output_transform_key=transform_key,
-            )
-            points = result['intersection'].intersections
-            if points.shape[1] == 3 and force_2d:
-                # remove constant z coordinate
-                points = points[:, 1:]
-            shape = _minimal_bb_vertices(points)
-            if is_multi_z_shapes:
-                shape = [[shape_z_position] + list(element) for element in shape]
-            shapes.append(shape)
-            good_pairs.append(pair)
-        except AttributeError:
-            # ignore NoneType error if there is no overlap
-            pass
-        except ValueError as e:
-            logging.exception(f'Error processing pair {pair}: {e}')
-        finally:
-            exact_test_time += time.time() - exact_test_start
+            n_exact_tests += 1
+            exact_test_start = time.time()
+            try:
+                # catch in case there is no overlap - _get_overlap_bboxes runs an exact
+                # (scipy.optimize.linprog-based) intersection test per pair, a solver call that
+                # costs low-single-digit milliseconds even for a trivial problem - the dominant
+                # cost here once thousands of pairs reach it, see the logging below
+                result = _get_overlap_bboxes(
+                    sim1,
+                    sim2,
+                    input_transform_key=transform_key,
+                    output_transform_key=transform_key,
+                )
+                points = result['intersection'].intersections
+                if points.shape[1] == 3 and force_2d:
+                    # remove constant z coordinate
+                    points = points[:, 1:]
+                shape = _minimal_bb_vertices(points)
+                if is_multi_z_shapes:
+                    shape = [[shape_z_position] + list(element) for element in shape]
+                shapes.append(shape)
+                good_pairs.append(pair)
+            except AttributeError:
+                # ignore NoneType error if there is no overlap
+                pass
+            except ValueError as e:
+                logging.exception(f'Error processing pair {pair}: {e}')
+            finally:
+                exact_test_time += time.time() - exact_test_start
     if n_exact_tests:
         logging.info(f'create_overlap_shapes: {n_exact_tests} exact intersection tests'
                      f' (of {len(pairs)} candidate pairs), {exact_test_time:.1f}s total'
                      f' ({1000 * exact_test_time / n_exact_tests:.1f}ms per test)')
+    if n_clipped_shapes:
+        logging.info(f'create_overlap_shapes: {n_clipped_shapes} shapes by 2D polygon clipping'
+                     f' (of {len(pairs)} pairs), {time.time() - clip_start - exact_test_time:.1f}s')
     if n_fast_shapes:
         logging.info(f'create_overlap_shapes: {n_fast_shapes} shapes from broad-phase AABB '
                      f'intersection directly (no linprog)')
