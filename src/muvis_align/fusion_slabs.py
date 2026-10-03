@@ -44,7 +44,7 @@ def _block_overlaps(bounds, origin, spacing, chunk, nblocks):
 
 def budget_chunksize(bounds, output_stack_properties, output_chunksize, sdims, budget_bytes, bytes_per_voxel,
                      min_xy_chunk=256):
-    """The largest yx chunk, halving from output_chunksize, whose busiest block fits budget_bytes: a block holds
+    """The largest yx chunk, shrinking from output_chunksize, whose busiest block fits budget_bytes: a block holds
     every source it meets transformed to its full size, so a coarse level's block meeting a whole section's tiles
     at once costs many times a fine one's - counted from the sources' own bounds, not their average density."""
     chunk = {dim: int(size) for dim, size in output_chunksize.items()}
@@ -64,10 +64,14 @@ def budget_chunksize(bounds, output_stack_properties, output_chunksize, sdims, b
             elif len(sources):
                 busiest = max(busiest, len(sources))
         voxels = int(np.prod([chunk[dim] for dim in sdims]))
-        if busiest * voxels * bytes_per_voxel <= budget_bytes or all(chunk[dim] <= min_xy_chunk for dim in xy_dims):
+        needed = busiest * voxels * bytes_per_voxel
+        if needed <= budget_bytes or all(chunk[dim] <= min_xy_chunk for dim in xy_dims):
             return chunk
+        # by just the factor needed (fewer sources may meet the smaller block, so check again): halving went from
+        # 1600 to 800 where ~1500 fits, and every extra block costs its own fixed overhead
+        factor = min(0.95, np.sqrt(budget_bytes / needed))
         for dim in xy_dims:
-            chunk[dim] = max(min_xy_chunk, chunk[dim] // 2)
+            chunk[dim] = max(min_xy_chunk, int(chunk[dim] * factor) // 64 * 64)
 
 
 def block_sources(bounds, output_stack_properties, output_chunksize, sdims):

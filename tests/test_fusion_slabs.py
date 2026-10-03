@@ -91,3 +91,17 @@ def test_a_block_meeting_many_sources_is_made_smaller():
     # one source alone keeps the full size
     assert budget_chunksize(bounds[:1], properties, {'y': 4096, 'x': 4096}, ['y', 'x'], 4096 * 4096 * 12, 12) == \
         {'y': 4096, 'x': 4096}
+
+
+def test_a_block_just_over_budget_shrinks_a_little_not_by_half():
+    """12 sources over every block, at 1600px a little over budget: 1472 fits, where halving went to 800."""
+    from muvis_align.fusion_slabs import budget_chunksize
+
+    properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': 6400, 'x': 6400}}
+    bounds = np.array([[[0.0, 6400.0], [0.0, 6400.0]]] * 12)
+    budget = 352 * 1000 ** 2
+
+    chunk = budget_chunksize(bounds, properties, {'y': 1600, 'x': 1600}, ['y', 'x'], budget, 12)
+
+    assert chunk == {'y': 1472, 'x': 1472}
+    assert 12 * 1472 * 1472 * 12 <= budget < 12 * 1600 * 1600 * 12
