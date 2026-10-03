@@ -3001,7 +3001,9 @@ def copy_transforms_to_msims(sources, target_msims, transform_key):
         else:
             transform = si_utils.get_affine_from_sim(source, transform_key=transform_key)
         transform_dims = np.array(transform.coords['x_in'])
-        if len(transform_dims) - 1 != len(dims):
+        if len(transform_dims) == 3 and len(dims) == 3:
+            transform = widen_xaffine_to_3d(transform)
+        elif len(transform_dims) - 1 != len(dims):
             new_transform = param_utils.identity_transform(ndim=len(dims))
             common_dims = [dim for dim in transform.dims if dim in new_transform.dims and dim != 't']
             if len(common_dims) > 0:
@@ -3011,7 +3013,18 @@ def copy_transforms_to_msims(sources, target_msims, transform_key):
                     transform_slice = transform
                 new_transform.loc[{dim: transform_slice.coords[dim] for dim in common_dims}] = transform_slice
             transform = new_transform
-        msi_utils.set_affine_transform(target_msim, transform, transform_key=transform_key)
+        set_msim_affine(target_msim, transform, transform_key=transform_key)
+
+
+def set_msim_affine(msim, xaffine, transform_key, base_transform_key=None):
+    """msi_utils.set_affine_transform at a third of the cost: one dataset per level, not a DataTree item set, whose
+    alignment took 9ms a source - minutes at 34k sources."""
+    if base_transform_key is not None:
+        xaffine = param_utils.rebase_affine(xaffine,
+                                            msi_utils.get_transform_from_msim(msim, transform_key=base_transform_key))
+    for scale_key in msi_utils.get_sorted_scale_keys(msim):
+        node = msim[scale_key]
+        node.dataset = node.to_dataset(inherit=False).assign({transform_key: xaffine})
 
 
 def print_sim_info(data):
