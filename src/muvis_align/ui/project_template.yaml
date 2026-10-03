@@ -512,12 +512,14 @@ parameters:
   - name: ome_version
     type: dropdown
     label: "OME version"
-    description: "OME version (0.4, 0.5, ...)"
+    description: "OME version"
     options:
       - label: "0.4"
         value: "0.4"
       - label: "0.5"
         value: "0.5"
+      - label: "0.6"
+        value: "0.6"
     default: "0.5"
     cli_tag: "--ome_version"
     cli_order: 3
