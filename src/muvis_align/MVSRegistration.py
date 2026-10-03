@@ -1803,12 +1803,12 @@ class MVSRegistration:
         mappings_dict = {index: mapping for index, mapping in zip(register_indices, mappings)}
 
         reg_channel = params.get('channel', 0)
-        with self.progress_phase(progress_factory, total=1, desc='Global registration metrics'), \
-                Timer('global registration metrics', verbose=self.logging_time):
+        with Timer('global registration metrics', verbose=self.logging_time):
             metrics = calc_global_metrics(pair_msims, self.source_transform_key, self.reg_transform_key,
                                           params.get('metrics', []), reg_channel=reg_channel,
                                           reg_results=reg_result,
-                                          n_parallel_pairs=n_parallel_pairwise_regs)
+                                          n_parallel_pairs=n_parallel_pairwise_regs,
+                                          progress_factory=progress_factory)
 
         if self.group_pairs:
             metrics['group_pairs'] = self.group_pair_metrics()

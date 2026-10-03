@@ -786,6 +786,38 @@ def test_register_global_resolves_with_the_groupwise_method_named_in_its_params(
     assert sorted(results['mappings']) == list(range(len(reg.pair_msims)))
 
 
+
+def test_register_global_reports_its_metrics_pair_by_pair():
+    """The metrics took 56 minutes on the HPC as a single bar step: they now count the registered pairs."""
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
+             output_path='../../output/test_register_global_metrics_progress/')
+    reg.init_data()
+    reg.preprocess(reg.msims)
+    params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid'}
+    reg.register_pairs(reg.register_msims, params=params)
+    phases = []
+
+    class RecordingPhase:
+        def __init__(self, total=None, desc=None, **_):
+            self.record = {'desc': desc, 'total': total, 'done': 0}
+            phases.append(self.record)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def update(self, count=1):
+            self.record['done'] += count
+
+    reg.register_global(reg.pair_msims, params=params, progress_factory=RecordingPhase)
+
+    metrics_phases = [phase for phase in phases if 'metrics' in phase['desc'].lower()]
+    assert metrics_phases == [{'desc': 'Global metrics', 'total': reg.pairs_graph.number_of_edges(),
+                               'done': reg.pairs_graph.number_of_edges()}]
+
 def test_a_cancel_stops_building_sources_without_building_the_rest():
     """The build used to submit every source at once, so a cancel waited for all of them (34k on the HPC)."""
     import threading
