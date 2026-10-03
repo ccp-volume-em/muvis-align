@@ -470,3 +470,19 @@ def test_highs_solves_on_the_calling_thread_alone_so_no_workers_are_torn_down_at
     assert status == 0
     # HiGHS' own pool would add ~11 workers here; the calling thread (plus any unrelated one) is all
     assert threads_during <= before + 2
+
+
+def _worker_blas_threads(_):
+    return os.environ.get('OPENBLAS_NUM_THREADS'), os.environ.get('OMP_NUM_THREADS')
+
+
+def test_workers_start_with_one_blas_thread_and_leave_the_parent_as_it_was():
+    """Each OpenBLAS commits a buffer per thread as numpy/scipy load, before any initializer runs."""
+    from muvis_align.util import worker_process_pool
+
+    before = os.environ.get('OPENBLAS_NUM_THREADS')
+    with worker_process_pool(2) as pool:
+        seen = list(pool.map(_worker_blas_threads, range(2)))
+
+    assert seen == [('1', '1'), ('1', '1')]
+    assert os.environ.get('OPENBLAS_NUM_THREADS') == before

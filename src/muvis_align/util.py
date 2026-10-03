@@ -692,7 +692,26 @@ def picklable(value):
         return False
 
 
+_worker_environment = {'OPENBLAS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '1', 'MKL_NUM_THREADS': '1'}
+_spawn_lock = threading.Lock()
+
+
 class _WorkerProcessPool(ProcessPoolExecutor):
+    def _spawn_process(self):
+        # set before numpy/scipy load: each OpenBLAS commits a buffer per thread at import, ~1.9GB a worker
+        # with 24 cores - 24 workers ran out of Windows commit; the initializer's limits come too late
+        with _spawn_lock:
+            saved = {name: os.environ.get(name) for name in _worker_environment}
+            os.environ.update(_worker_environment)
+            try:
+                super()._spawn_process()
+            finally:
+                for name, value in saved.items():
+                    if value is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = value
+
     def __exit__(self, exc_type, exc_value, traceback):
         # cancelled: not waited for - its workers finish their current item and exit on their own
         if exc_type is not None and issubclass(exc_type, OperationCancelled):

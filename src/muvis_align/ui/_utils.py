@@ -6,15 +6,46 @@ import logging
 import warnings
 
 from napari.utils.notifications import show_error, show_info
+from qtpy.QtCore import QCoreApplication, QThread
+from qtpy.QtWidgets import QMessageBox
 
 from muvis_align.util import OperationCancelled
 
 
+def operation_label(func_name):
+    """'run_pair_registration' -> 'Pair registration'."""
+    words = func_name.removeprefix('run_').replace('_', ' ')
+    return words[:1].upper() + words[1:]
+
+
+def log_file():
+    return next((handler.baseFilename for handler in logging.getLogger().handlers
+                 if isinstance(handler, logging.FileHandler)), None)
+
+
+def failure_message(label, error):
+    message = f'{label} failed:\n{error}'
+    if isinstance(error, MemoryError):
+        message += '\n\nOut of memory: fewer registration threads, or closing other programs, may help.'
+    if log_file():
+        message += f'\n\nDetails in {log_file()}'
+    return message
+
+
+def report_failure(label, error):
+    # a dialog, as a success gets: napari's corner notification fades within seconds, unseen behind the activity dock
+    message = failure_message(label, error)
+    application = QCoreApplication.instance()
+    if application is not None and QThread.currentThread() is application.thread():
+        QMessageBox.critical(None, 'muvis-align', message)
+    else:
+        show_error(message)
+
+
 def catch_run_errors(func):
-    """Wrap a run_*() method so a failure shows a napari popup and logs the full traceback to
-    the main log file, instead of surfacing as an opaque signal-emission error - and returns
-    None instead of propagating, so callers can bail out (e.g. skip a 'completed' dialog) by
-    checking the return value.
+    """Wrap a run_*() method so a failure shows a dialog and logs the full traceback to the main log
+    file, instead of surfacing as an opaque signal-emission error - and returns None instead of
+    propagating, so callers can bail out (e.g. skip a 'completed' dialog) by checking the return value.
     """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -26,7 +57,7 @@ def catch_run_errors(func):
             return None
         except Exception as e:
             logging.exception(f'{func.__name__} failed')
-            show_error(f'{func.__name__} failed: {e}')
+            report_failure(operation_label(func.__name__), e)
             return None
     return wrapper
 
