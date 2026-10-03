@@ -68,3 +68,20 @@ def test_value_changed_keeps_a_trailing_separator_being_typed():
 
     interface.change_param.assert_called_once_with('input_output.input_path', 'data/input/')
     assert widget.line_edit.value == 'data/input/'
+
+
+def test_a_table_filled_with_its_signals_held_matches_a_plain_fill(qapp):
+    from magicgui.widgets import Table
+    from qtpy.QtCore import Qt
+
+    value = ([[0.9, None], [0.5, 0.4], [0.1, 0.2]], ['summary', 'a - b', 'b - c'], ['quality', 'ncc'])
+    plain, held = Table(), Table()
+    plain.set_value(value)
+
+    ParamWidget('registration.metrics_table', held, interface=None).set_value(value)
+
+    assert held.value == plain.value
+    for orientation, count in ((Qt.Vertical, 3), (Qt.Horizontal, 2)):
+        assert ([held.native.model().headerData(index, orientation) for index in range(count)]
+                == [plain.native.model().headerData(index, orientation) for index in range(count)])
+    assert held.native.verticalHeader().count() == 3

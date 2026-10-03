@@ -648,7 +648,8 @@ class Interface:
             view_msims = self._run_off_thread(
                 lambda worker_factory: self.ensure_view_msims(progress_factory=worker_factory),
                 factory)
-        copy_transforms_to_msims(self.reg.msims, view_msims, transform_key)
+        with Timer('copy transforms to view msims', verbose=self._timing_verbose()):
+            copy_transforms_to_msims(self.reg.msims, view_msims, transform_key)
 
     @view_msims.setter
     def view_msims(self, value):
@@ -1503,9 +1504,9 @@ class Interface:
         row_metrics = {self.reg.file_labels[indices[0]] + ' - ' + self.reg.file_labels[indices[1]]: value
                        for indices, value in (pairs_metrics or {}).items()}
         row_metrics |= {' - '.join(labels): value for labels, value in metrics_dict.get('group_pairs', {}).items()}
-        for pair_key, pair_value in row_metrics.items():
-            if pair_key not in item_keys:
-                item_keys.append(pair_key)
+        # a dict for its order: `not in` the row list was quadratic, minutes at 229k pairs
+        item_keys = list(dict.fromkeys(item_keys + list(row_metrics)))
+        for pair_value in row_metrics.values():
             for transform_key, transform_value in pair_value.items():
                 if transform_key not in transform_keys:
                     transform_keys.append(transform_key)
@@ -1552,10 +1553,11 @@ class Interface:
 
     def update_registered(self, view_transform_key=None, progress_factory=None):
         msims = self.reg.msims
-        coord_systems = get_transforms(msims)
-        self.populate_coordinate_systems(coord_systems)
-        self.populate_metadata_table(msims)
-        self.populate_metrics_table(self.reg.metrics)
+        with Timer('update_registered: tables', verbose=self._timing_verbose()):
+            coord_systems = get_transforms(msims)
+            self.populate_coordinate_systems(coord_systems)
+            self.populate_metadata_table(msims)
+            self.populate_metrics_table(self.reg.metrics)
         self.update_views(transform_key=view_transform_key, progress_factory=progress_factory)
 
     def enable_modify_pair_registration(self, enabled=True):

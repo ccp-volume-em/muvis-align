@@ -14,7 +14,7 @@ from multiview_stitcher.registration import compute_pairwise_registrations
 from scipy.ndimage import gaussian_filter
 
 from muvis_align.constants import default_split_binning, split_grid_margin, split_smoothing
-from muvis_align.image.util import (build_view_adjacency_graph, restore_msims_transform,
+from muvis_align.image.util import (build_view_adjacency_graph, restore_msims_transform, set_msim_affine,
                                     snapshot_msims_transform)
 from muvis_align.util import raise_if_cancelled
 
@@ -130,8 +130,7 @@ def register_groups(msims, transforms, groups, base_transform_key, pairwise_reg_
     graph = nx.Graph()
     try:
         for msim, transform in zip(msims, transforms):
-            msi_utils.set_affine_transform(msim, transform, transform_key=STAGE1_KEY,
-                                           base_transform_key=base_transform_key)
+            set_msim_affine(msim, transform, transform_key=STAGE1_KEY, base_transform_key=base_transform_key)
         grid, tile_size = group_grid(msims, STAGE1_KEY)
         # two groups held at a time: at a thousand planes all of them would not fit in memory
         previous = None

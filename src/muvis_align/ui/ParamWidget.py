@@ -1,3 +1,5 @@
+from magicgui.widgets import Table
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QHeaderView
 
 from muvis_align.ui.bilayers_util import to_magicgui_choices
@@ -20,7 +22,23 @@ class ParamWidget:
     def set_value(self, value, choices=None):
         if choices is not None:
             self.set_choices(choices)
-        self.widget.set_value(value)
+        if isinstance(self.widget, Table):
+            self._set_table_value(value)
+        else:
+            self.widget.set_value(value)
+
+    def _set_table_value(self, value):
+        # the header view handles a signal per row label, quadratically: 74s for 229k rows, 7s told once at the end
+        model = self.widget.native.model()
+        model.blockSignals(True)
+        try:
+            self.widget.set_value(value)
+        finally:
+            model.blockSignals(False)
+        model.layoutChanged.emit()
+        for orientation, count in ((Qt.Vertical, model.rowCount()), (Qt.Horizontal, model.columnCount())):
+            if count:
+                model.headerDataChanged.emit(orientation, 0, count - 1)
 
     def set_choices(self, choices):
         self.widget.choices = to_magicgui_choices(choices)

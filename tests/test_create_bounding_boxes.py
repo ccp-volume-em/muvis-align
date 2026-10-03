@@ -410,3 +410,52 @@ def test_vectorized_aabb_overlap_shapes_match_the_exact_path(nz, with_z, force_2
     for shape, exact_shape in zip(shapes, exact_shapes):
         np.testing.assert_allclose(np.asarray(shape, dtype=float),
                                    np.asarray(exact_shape, dtype=float))
+
+
+def _rotated_tile(row, col, angle):
+    from multiview_stitcher import param_utils
+    from muvis_align.util import create_transform
+
+    transform = create_transform((0, 0), angle, translation=[row * 90.0, col * 90.0], matrix_size=3)
+    return {'shape': {'y': 100, 'x': 100}, 'spacing': {'y': 1.0, 'x': 1.0}, 'origin': {'y': 0.0, 'x': 0.0},
+            'transform': param_utils.affine_to_xaffine(transform)}
+
+
+@pytest.mark.parametrize('first, second', [((0, 0, 2.0), (0, 1, -1.5)), ((0, 0, -3.0), (1, 1, 2.5)),
+                                           ((0, 0, 0.0), (1, 0, 0.0))])
+def test_clipped_overlap_is_the_exact_tests_region(first, second):
+    """Both are exact: the same polygon, by area and vertices, as multiview_stitcher's linear program finds."""
+    from scipy.spatial import ConvexHull
+    from muvis_align.image.util import (_clip_convex_polygons_2d, _get_overlap_bboxes, _tile_polygon_2d,
+                                        sim_from_stack_props)
+
+    tiles = [_rotated_tile(*first), _rotated_tile(*second)]
+    sims = [sim_from_stack_props(tile, np.uint8, 'registered') for tile in tiles]
+    exact = np.asarray(_get_overlap_bboxes(*sims, input_transform_key='registered',
+                                           output_transform_key='registered')['intersection'].intersections)
+
+    clipped = _clip_convex_polygons_2d(*[_tile_polygon_2d(tile) for tile in tiles])
+
+    assert ConvexHull(clipped).volume == pytest.approx(ConvexHull(exact).volume, rel=1e-9)
+    assert np.linalg.norm(clipped[:, None] - exact[None], axis=-1).min(axis=1).max() < 1e-6
+
+
+@pytest.mark.parametrize('second', [(5, 5, 0.0), (1, 1, 0.0)], ids=['apart', 'touching-corner'])
+def test_tiles_without_a_shared_area_clip_to_nothing(second):
+    from muvis_align.image.util import _clip_convex_polygons_2d, _tile_polygon_2d
+
+    # vertices are pixel centres, 0..99: (1, 1) moved to start at 99 shares only (0, 0)'s corner
+    tiles = [_rotated_tile(0, 0, 0.0), _rotated_tile(*second)]
+    if second == (1, 1, 0.0):
+        tiles[1]['origin'] = {'y': 9.0, 'x': 9.0}
+
+    assert _clip_convex_polygons_2d(*[_tile_polygon_2d(tile) for tile in tiles]) is None
+
+
+def test_a_convex_polygon_boxes_as_its_hull_does():
+    from muvis_align.image.util import _clip_convex_polygons_2d, _minimal_bb_vertices, _tile_polygon_2d
+
+    polygon = _clip_convex_polygons_2d(_tile_polygon_2d(_rotated_tile(0, 0, 2.0)),
+                                       _tile_polygon_2d(_rotated_tile(0, 1, -1.5)))
+
+    np.testing.assert_allclose(_minimal_bb_vertices(polygon, convex=True), _minimal_bb_vertices(polygon))

@@ -1005,7 +1005,7 @@ class MVSRegistration:
                         # the mapping is stored as registration produced it - 2D for a stack,
                         # whose msims are stored 2D too (see fuse()), so neither needs widening
                         mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
-                        msi_utils.set_affine_transform(msim, mapping, transform_key=self.reg_transform_key)
+                        set_msim_affine(msim, mapping, transform_key=self.reg_transform_key)
                         if pbar is not None:
                             pbar.update(1)
                 if not is_3d:
@@ -1720,7 +1720,7 @@ class MVSRegistration:
                                  desc='Applying transforms') as pbar, \
                 Timer('apply registered transforms', verbose=self.logging_time):
             for imsim, msim in enumerate(pair_msims):
-                msi_utils.set_affine_transform(
+                set_msim_affine(
                     msim,
                     transforms[imsim],
                     transform_key=self.reg_transform_key,
@@ -1778,14 +1778,14 @@ class MVSRegistration:
                 Timer('store transforms on sources', verbose=self.logging_time):
             for reg_msim, index in zip(pair_msims, register_indices):
                 reg_transform = msi_utils.get_transform_from_msim(reg_msim, transform_key=self.reg_transform_key)
-                msi_utils.set_affine_transform(self.msims[index], reg_transform, transform_key=self.reg_transform_key)
+                set_msim_affine(self.msims[index], reg_transform, transform_key=self.reg_transform_key)
                 if pbar is not None:
                     pbar.update(1)
 
         # set missing transforms - sources that never took part in registration (e.g. filtered out)
         for msim in self.msims:
             if self.reg_transform_key not in get_msim_transform_keys(msim):
-                msi_utils.set_affine_transform(
+                set_msim_affine(
                     msim,
                     param_utils.identity_transform(ndim=ndims, t_coords=[0]),
                     transform_key=self.reg_transform_key)

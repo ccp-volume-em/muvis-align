@@ -326,3 +326,44 @@ def test_grid_point_pairs_put_30_along_the_longest_side_at_least_3_along_any_and
     fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
 
     assert (len(np.unique(fixed[:, 0])), len(np.unique(fixed[:, 1]))) == expected
+
+def pyramid_msim(index=0):
+    import dask.array as da
+    from multiview_stitcher import msi_utils
+    from multiview_stitcher import spatial_image_utils as si_utils
+
+    sim = si_utils.get_sim_from_array(da.zeros((1, 1, 64, 64), dtype=np.uint8, chunks=32), dims=['t', 'c', 'y', 'x'],
+                                      translation={'y': 0.0, 'x': 10.0 * index}, transform_key='source_metadata')
+    return msi_utils.get_msim_from_sim(sim, scale_factors=[2, 4])
+
+
+@pytest.mark.parametrize('base_transform_key', [None, 'source_metadata'])
+def test_setting_a_msim_affine_matches_multiview_stitchers(base_transform_key):
+    from multiview_stitcher import msi_utils, param_utils
+    from muvis_align.image.util import set_msim_affine
+
+    matrix = np.array([[0.9, -0.1, 5.0], [0.1, 0.9, -3.0], [0.0, 0.0, 1.0]])
+    transform = param_utils.affine_to_xaffine(matrix, t_coords=[0])
+    expected, msim = pyramid_msim(), pyramid_msim()
+    msi_utils.set_affine_transform(expected, transform, transform_key='registered', base_transform_key=base_transform_key)
+
+    set_msim_affine(msim, transform, transform_key='registered', base_transform_key=base_transform_key)
+
+    for scale_key in msi_utils.get_sorted_scale_keys(expected):
+        xr.testing.assert_identical(msim[scale_key].to_dataset(), expected[scale_key].to_dataset())
+
+
+def test_a_2d_transform_copied_onto_3d_msims_is_widened_as_before():
+    from multiview_stitcher import msi_utils, param_utils
+    from muvis_align.image.util import copy_transforms_to_msims, make_msims_3d
+
+    matrix = np.array([[0.9, -0.1, 5.0], [0.1, 0.9, -3.0], [0.0, 0.0, 1.0]])
+    source = pyramid_msim()
+    msi_utils.set_affine_transform(source, param_utils.affine_to_xaffine(matrix, t_coords=[0]), transform_key='registered')
+    target = make_msims_3d([pyramid_msim()], z_scale=1.0)[0]
+    widened = param_utils.identity_transform(ndim=3)
+    widened.loc[{'x_in': ['y', 'x', '1'], 'x_out': ['y', 'x', '1']}] = matrix
+
+    copy_transforms_to_msims([source], [target], 'registered')
+
+    xr.testing.assert_identical(msi_utils.get_transform_from_msim(target, 'registered').rename(None), widened)
