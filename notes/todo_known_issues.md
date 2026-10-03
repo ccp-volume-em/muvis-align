@@ -31,13 +31,7 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-**Native-resolution fusion** (branch native-resolution-fusion, test version) - output_spacing None/'native' when
-writing a file: levels at the sources' own pixel sizes (meatballs 0.01..0.16, 0.249..7.97), each fused from only the
-sources at least that fine; every block from only the sources reaching it (also speeds up 'mean'); blocks budgeted
-per level; multiscales metadata by us. Meatballs: native 294s, 1.2GB on disk (level 0 at 0.01um 874MB) vs mean 309s,
-3.4GB (level 0 at 0.0147um 2.25GB); HPC projection ~0.3TB. data/3d, data/S*, Ciqtek, slides subset all run.
-Open: slides subset native 23s vs mean 9s (budget halves its blocks to 800px - why so many sources a block?);
-tiles over overview vs average; 'native' as project default.
+Nothing.
 
 ## TODO
 
@@ -51,8 +45,10 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       the new timers on the next HPC run (copy transforms to view msims, update_registered: tables).
 
 Other:
-- [ ] **Support OME-Zarr 0.6** - selectable in the UI now, not yet supported: get_ome_zarr_format falls back to
-      ome-zarr's CurrentFormat for it (maybe 0.5, silently), and ngff-zarr's writer takes it as given. Reading too.
+- [ ] **Support OME-Zarr 0.6** - offered in the UI; checked 2026-10-03 on data/S000: fusion (native and mean) fails at
+      its start, multiview_stitcher 0.1.62 (latest) knowing only 0.4/0.5 (update_zarr_array_creation_kwargs_for_ngff_
+      version); convert writes ngff-zarr 0.38's draft '0.6.dev4' and reads back. 0.6 changes the coordinate
+      transformations, not just the label: write it ourselves in native fusion once ngff-zarr (0.48 out) writes it final.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
 - [ ] **Faster opening of large projects** - napari's per-shape Python cost (~10s at 150k shapes, main viewer and
@@ -68,9 +64,16 @@ Other:
       (only the kept one is needed), the O(nodes x edges) reference-node search, the HiGHS thread pool from
       changing threads. Details in notes/multiview_stitcher.md. And to dask: linear fusion's key names (a 115-char
       prefix + 4 hex digits of hash()) collide between similar chains in one graph (see Done).
+      To multiview_stitcher also: OME-Zarr 0.6 in its writers; zarr writing that fuses each level for multiscale input
+      (as its lazy path does, with custom levels and per-level sources - see native fusion); level names that sort as
+      text past 10 levels (its writer's '10' lands after '1' in napari's own reader).
 
 ## Done
 
+- **Native-resolution fusion** (PR #60) - output_spacing 'native' (None when writing a file; default for new projects):
+  levels at the sources' own pixel sizes, each from the sources at least that fine, tiles over the overview, every
+  block from only the sources reaching it, blocks budgeted per level, level names zero-padded past 10. Meatballs
+  native 5 min / 1.2GB vs mean 5 min / 3.4GB; HPC projection ~0.3TB vs 7.6TiB - measure on the next HPC run.
 - **A real convert** - meatballs tiles (2304x3072, levels 0.01..0.16um) at pre-processing scale 2: level 0 1152x1536 at
   0.02um, then the source's own levels and one made at 0.32um (72x96), the largest dim under 128px.
 - **dask fused-key collision elsewhere?** - no: fusion's graphs (lazy, and each export block with its zarr write) keep
