@@ -15,28 +15,49 @@ def test_catch_run_errors_returns_result_on_success():
     assert Dummy().run_thing() == "ok"
 
 
-def test_catch_run_errors_shows_popup_and_logs_on_failure(monkeypatch, caplog):
-    """A failing run_*() method must not propagate - it shows a napari popup, logs the full
-    traceback to the main log file, and returns None so the caller (e.g. a *_process() handler)
-    can bail out instead of showing a bogus 'completed' dialog."""
+def test_catch_run_errors_shows_a_dialog_and_logs_on_failure(monkeypatch, caplog, qapp):
+    """A failing run_*() method must not propagate - it shows a dialog naming the step (napari's corner
+    notification fades unseen), logs the full traceback, and returns None so the caller (e.g. a *_process()
+    handler) can bail out instead of showing a bogus 'completed' dialog."""
     shown = []
-    monkeypatch.setattr(
-        "muvis_align.ui._utils.show_error", lambda message: shown.append(message)
-    )
+    monkeypatch.setattr("muvis_align.ui._utils.QMessageBox.critical",
+                        lambda parent, title, message: shown.append(message))
 
     class Dummy:
         @catch_run_errors
-        def run_thing(self):
+        def run_pair_registration(self):
             raise ValueError("boom")
 
     with caplog.at_level(logging.ERROR):
-        result = Dummy().run_thing()
+        result = Dummy().run_pair_registration()
 
     assert result is None
     assert len(shown) == 1
-    assert "run_thing failed" in shown[0]
-    assert "boom" in shown[0]
-    assert any("run_thing failed" in record.message for record in caplog.records)
+    assert shown[0].startswith("Pair registration failed:\nboom")
+    assert any("run_pair_registration failed" in record.message for record in caplog.records)
+
+
+def test_running_out_of_memory_says_what_may_help():
+    from muvis_align.ui._utils import failure_message
+
+    assert "Out of memory" in failure_message("Pair registration", MemoryError("Unable to allocate 6.75 MiB"))
+    assert "Out of memory" not in failure_message("Pair registration", ValueError("boom"))
+
+
+def test_a_failure_off_the_qt_thread_falls_back_to_a_notification(monkeypatch, qapp):
+    import threading
+    from muvis_align.ui._utils import report_failure
+
+    dialogs, notifications = [], []
+    monkeypatch.setattr("muvis_align.ui._utils.QMessageBox.critical", lambda *args: dialogs.append(args))
+    monkeypatch.setattr("muvis_align.ui._utils.show_error", notifications.append)
+
+    worker = threading.Thread(target=report_failure, args=("Fusion", ValueError("boom")))
+    worker.start()
+    worker.join()
+
+    assert not dialogs
+    assert notifications[0].startswith("Fusion failed:")
 
 
 def test_activity_dock_keeps_welcome_screen_off_while_open():

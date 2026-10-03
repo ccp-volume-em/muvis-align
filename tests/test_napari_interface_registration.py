@@ -1692,7 +1692,7 @@ def test_run_preview_registration_returns_none_on_failure(
     unhandled exception, so preview_registration() can bail out cleanly."""
     _stub_preview_registration_deps(bare_interface, monkeypatch)
     bare_interface.reg.select_pair_overlap.side_effect = ValueError("boom")
-    monkeypatch.setattr("muvis_align.ui._utils.show_error", MagicMock())
+    monkeypatch.setattr("muvis_align.ui._utils.report_failure", MagicMock())
 
     result = bare_interface.run_preview_registration()
 
