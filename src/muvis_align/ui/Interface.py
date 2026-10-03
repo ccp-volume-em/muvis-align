@@ -648,7 +648,8 @@ class Interface:
             view_msims = self._run_off_thread(
                 lambda worker_factory: self.ensure_view_msims(progress_factory=worker_factory),
                 factory)
-        copy_transforms_to_msims(self.reg.msims, view_msims, transform_key)
+        with Timer('copy transforms to view msims', verbose=self._timing_verbose()):
+            copy_transforms_to_msims(self.reg.msims, view_msims, transform_key)
 
     @view_msims.setter
     def view_msims(self, value):
@@ -1552,10 +1553,11 @@ class Interface:
 
     def update_registered(self, view_transform_key=None, progress_factory=None):
         msims = self.reg.msims
-        coord_systems = get_transforms(msims)
-        self.populate_coordinate_systems(coord_systems)
-        self.populate_metadata_table(msims)
-        self.populate_metrics_table(self.reg.metrics)
+        with Timer('update_registered: tables', verbose=self._timing_verbose()):
+            coord_systems = get_transforms(msims)
+            self.populate_coordinate_systems(coord_systems)
+            self.populate_metadata_table(msims)
+            self.populate_metrics_table(self.reg.metrics)
         self.update_views(transform_key=view_transform_key, progress_factory=progress_factory)
 
     def enable_modify_pair_registration(self, enabled=True):
