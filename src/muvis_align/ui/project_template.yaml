@@ -482,15 +482,17 @@ parameters:
   - name: spacing
     type: dropdown
     label: "Spacing"
-    description: "Output spacing (mean, min (highest resolution), max (lowest resolution) pixel size)"
+    description: "Output spacing (native: each level at the sources' own pixel sizes, never upsampled; mean, min (highest resolution), max (lowest resolution) pixel size)"
     options:
+      - label: Native
+        value: "native"
       - label: Mean
         value: "mean"
       - label: Min
         value: "min"
       - label: Max
         value: "max"
-    default: "mean"
+    default: "native"
     cli_tag: "--spacing"
     cli_order: 1
     optional: True

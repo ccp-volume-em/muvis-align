@@ -34,7 +34,7 @@ from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
-from muvis_align.fusion_slabs import fuse_to_zarr_by_z_slabs
+from muvis_align.fusion_slabs import fuse_native_levels_to_ome_zarr, fuse_to_zarr_by_z_slabs
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
@@ -1852,7 +1852,7 @@ class MVSRegistration:
         result it returns, which is where the work is then done."""
         return not self.is_channel_overlay(dimension, extra_metadata) and 'compos' not in (fusion_method or '')
 
-    def fuse(self, msims, fusion_method=None, output_spacing='mean', transform_key=None,
+    def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
              dimension=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
              output_chunksize=None):
@@ -1870,6 +1870,9 @@ class MVSRegistration:
         propagates that same z=1 chunking into every pyramid level of the fused output - each
         level then has as many chunks (and dask graph tasks) in z as there are z-slices, even
         once a level's XY extent has been downsampled to a handful of pixels.
+
+        output_spacing None or 'native', written to a file: every level at its own pixel size, from the sources at
+        least that fine (see fuse_native_levels_to_ome_zarr) - not in memory, where it stays 'mean'.
         """
         logging.info('Fusion...')
         if output_filename is not None:
@@ -1906,6 +1909,12 @@ class MVSRegistration:
         if not is_channel_overlay:
             msims = unify_msim_channels(msims)
 
+        is_native = (output_spacing is None or str(output_spacing).lower() == 'native')
+        is_native = is_native and output_filename is not None and not is_channel_overlay
+        if is_native:
+            output_spacing = 'min'
+        elif output_spacing is None or str(output_spacing).lower() == 'native':
+            output_spacing = 'mean'
         output_stack_properties = calc_output_properties(msims, transform_key,
                                                          output_spacing_method=output_spacing, z_scale=z_scale)
 
@@ -1990,7 +1999,16 @@ class MVSRegistration:
                 else:
                     zarr_options = None
                 with dask.config.set(scheduler='threads'):
-                    if saving_zarr and self.fuse_by_z_slabs and num_z_positions > 1 and 'z' in output_chunksize:
+                    if saving_zarr and is_native:
+                        source_spacings = [min(si_utils.get_spacing_from_sim(get_msim_image0(msim))[dim]
+                                               for dim in 'yx') for msim in msims]
+                        # a section stack keeps every section at every level; a volume is scaled in z too
+                        scaled_dims = ['y', 'x'] + (['z'] if get_msim_image0(msims[0]).sizes.get('z', 1) > 1 else [])
+                        fused_image = fuse_native_levels_to_ome_zarr(
+                            msims, source_spacings, output_filename, transform_key, output_stack_properties,
+                            output_chunksize, scaled_dims, fusion_func=fuse_func, zarr_options=zarr_options,
+                            batch_options=self._fusion_batch_options(saving_zarr))
+                    elif saving_zarr and self.fuse_by_z_slabs and num_z_positions > 1 and 'z' in output_chunksize:
                         # a stack's block reaches only the z-planes at its depth: fused from all, it costs as many
                         fused_image = fuse_to_zarr_by_z_slabs(
                             msims, output_filename, transform_key, output_stack_properties, output_chunksize,
