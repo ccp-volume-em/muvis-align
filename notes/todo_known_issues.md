@@ -31,7 +31,13 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-Nothing.
+**Native-resolution fusion** (branch native-resolution-fusion, test version) - output_spacing None/'native' when
+writing a file: levels at the sources' own pixel sizes (meatballs 0.01..0.16, 0.249..7.97), each fused from only the
+sources at least that fine; every block from only the sources reaching it (also speeds up 'mean'); blocks budgeted
+per level; multiscales metadata by us. Meatballs: native 294s, 1.2GB on disk (level 0 at 0.01um 874MB) vs mean 309s,
+3.4GB (level 0 at 0.0147um 2.25GB); HPC projection ~0.3TB. data/3d, data/S*, Ciqtek, slides subset all run.
+Open: slides subset native 23s vs mean 9s (budget halves its blocks to 800px - why so many sources a block?);
+tiles over overview vs average; 'native' as project default.
 
 ## TODO
 
