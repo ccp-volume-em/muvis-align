@@ -31,10 +31,7 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-**Faster refresh after registration** - the 28 untimed minutes measured locally (x~3 on the HPC):
-copy_transforms_to_msims onto the 3D view msims 9ms a source (DataTree setitem alignment per level; assign +
-DataTree.from_dict 4.6ms), the metrics table 78s to fill at 229k rows plus ~2 min of a quadratic row dedupe
-(`not in` a list). Plan: dedupe with a dict, rebuild rather than set the view transforms, time each step.
+Nothing.
 
 ## TODO
 
@@ -44,12 +41,12 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       all read them right after. The cost is the build itself (see Faster per-source xarray construction): ~10ms
       CPU a single-level source locally - a third opening the tiff as a zarr store, the rest xarray (assign_coords,
       alignment, DataTree.from_dict, expand_dims); 31ms on the HPC.
-- [ ] **Faster refresh after registration (67 min)** - 28 min untimed at its start (view msims for 34k sources, or
-      filling the metadata table (34k rows) / metrics table (229k pairs) on the Qt thread? - time them first);
-      overlap shapes 11.4 min (78897 exact intersection tests at 4.7ms, the transforms being rigid now);
-      composite overview 12.2 min; preview size cap 6.5 min.
+- [ ] **Faster refresh after registration** - left: composite overview 12.2 min, preview size cap 6.5 min. Check
+      the new timers on the next HPC run (copy transforms to view msims, update_registered: tables).
 
 Other:
+- [ ] **Support OME-Zarr 0.6** - selectable in the UI now, not yet supported: get_ome_zarr_format falls back to
+      ome-zarr's CurrentFormat for it (maybe 0.5, silently), and ngff-zarr's writer takes it as given. Reading too.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
 - [ ] **Faster opening of large projects** - napari's per-shape Python cost (~10s at 150k shapes, main viewer and
@@ -73,6 +70,9 @@ Other:
 
 ## Done
 
+- **Faster refresh after registration** (merged 2026-10-03) - set_msim_affine for every transform write (a third of
+  msi_utils.set_affine_transform's cost), tables filled in linear time (Qt header signals held: 74s -> 7s at 229k
+  rows), timers on the untimed steps, 2D overlap shapes by polygon clipping instead of linprog (4.7 -> ~0.3ms a pair).
 - **robust_linear stops once converged** - when no residual moved more than 1% of the Cauchy scale in a round; the
   largest change is logged each round (check it on the next HPC run: 7 of 10 rounds were for nothing).
 - **Global registration metrics progress** - per registered pair, not one step for ~1h.
