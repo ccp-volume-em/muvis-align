@@ -12,6 +12,9 @@ Distilled from recurring feedback across sessions. Follow these when making chan
 - Reserve full-suite runs for larger/riskier changes, or once before pushing a batch of combined fixes.
 - Never assert a registration's accuracy (an expected shift from phase correlation/SIFT, or how close two solvers' fits come): platform numerics and RANSAC vary, so such tests fail at random. Stub the registration result with a known transform and assert the code's handling of it exactly; check input preparation by value; compare two deterministic paths for identical output.
 - Don't create a new permanent test file per change - add tests to the existing file matching the module under test (e.g. `tests/test_utils.py` for `util.py`). Only give a feature its own test file when it's substantial/self-contained enough to warrant one.
+- Test on the least data that exercises the change: a fusion rule needs a few sources at their metadata positions, not a registered project; repo `data/` or a subset glob before any full project.
+- Plan one combined check per change instead of a run per question: decide up front what it must show (output, sizes, times), and reuse results rather than rerunning. Run a full project (e.g. meatballs) at most once, when a whole-run number (size, time) is the point.
+- Keep written output small: no full-size fusions/exports unless their size or speed is what's measured, in the scratchpad, deleted once read.
 
 ## Running the napari UI without user input
 - To see what the plugin actually shows (progress bars, dialogs, layers), drive it from a script instead of asking the user: `testing/napari_ui_capture.py <project.yml> <shots_dir> --action open|pre_processing|pair_registration`.
