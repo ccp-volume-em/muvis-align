@@ -40,7 +40,7 @@ dependencies = [
     "imagecodecs",
     "zarr",
     "ome-zarr",
-    "ngff-zarr>=0.38.0,<0.48.0",
+    "ngff-zarr>=0.48.0,<0.49.0",
     "ome-zarr-models>=1.8.0rc2",
     "rocrate>=0.15.0",
     "matplotlib",

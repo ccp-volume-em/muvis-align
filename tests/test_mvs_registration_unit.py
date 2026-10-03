@@ -938,3 +938,16 @@ def test_the_middle_section_is_found_by_the_labelled_section_number_else_the_fol
     reg.filenames = filenames
 
     assert reg.middle_section_indices() == expected
+
+
+def test_ome_zarr_06_is_refused_before_fusing_other_than_natively(tmp_path):
+    import pytest
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
+             output_path=tmp_path.as_posix() + '/')
+    reg.init_data()
+
+    with pytest.raises(ValueError, match="'native' output spacing only"):
+        reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key, output_spacing='mean',
+                 output_filename='fused', ome_version='0.6')
+    assert not glob.glob(tmp_path.as_posix() + '/fused*')

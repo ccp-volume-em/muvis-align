@@ -45,10 +45,8 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       the new timers on the next HPC run (copy transforms to view msims, update_registered: tables).
 
 Other:
-- [ ] **Support OME-Zarr 0.6** - offered in the UI; checked 2026-10-03 on data/S000: fusion (native and mean) fails at
-      its start, multiview_stitcher 0.1.62 (latest) knowing only 0.4/0.5 (update_zarr_array_creation_kwargs_for_ngff_
-      version); convert writes ngff-zarr 0.38's draft '0.6.dev4' and reads back. 0.6 changes the coordinate
-      transformations, not just the label: write it ourselves in native fusion once ngff-zarr (0.48 out) writes it final.
+- [ ] **OME-Zarr 0.6 from 'mean'/'min'/'max' fusion** - refused before fusing (multiview_stitcher 0.1.62 writes 0.4/0.5
+      only); native fusion and convert write 0.6 (ngff-zarr >= 0.48). Ask upstream (see Upstream fixes).
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
 - [ ] **Faster opening of large projects** - napari's per-shape Python cost (~10s at 150k shapes, main viewer and
