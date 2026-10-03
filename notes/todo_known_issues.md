@@ -54,8 +54,6 @@ Other:
       NFS (42ms CPU a file on the HPC vs 2.7ms locally: ~31 small reads a file by tifffile).
 - [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
       preview size cap (3.4 min on the HPC).
-- [ ] **dask fused-key collision elsewhere?** - other computes over many similar per-source chains may hit it (see
-      Done): fusion and the global metrics - check, or switch linear fusion off process-wide. Report upstream.
 - [ ] **Lazy overview: strided reads of single-level sources** - each tile is read whole at full res, then strided;
       read only the strided rows (as the direct uncompressed-level reads do), and measure on a single-level set.
 - [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
@@ -64,10 +62,14 @@ Other:
       ~128px.
 - [ ] **Upstream fixes to multiview-stitcher** - phase correlation's spearman quality for every candidate shift
       (only the kept one is needed), the O(nodes x edges) reference-node search, the HiGHS thread pool from
-      changing threads. Details in notes/multiview_stitcher.md.
+      changing threads. Details in notes/multiview_stitcher.md. And to dask: linear fusion's key names (a 115-char
+      prefix + 4 hex digits of hash()) collide between similar chains in one graph (see Done).
 
 ## Done
 
+- **dask fused-key collision elsewhere?** - no: fusion's graphs (lazy, and each export block with its zarr write) keep
+  their names through dask.optimize (dask 2025.10, no 4-hex-digit fused keys); the global metrics already compute
+  with linear fusion off (metrics.py).
 - **HPC pair registration memory** - rss grew ~1.2MB a pair and slowed after ~100k pairs (19h for 229k pairs, before
   worker processes); the 2026-10-02 run took 4.6h at a flat ~18GB.
 - **Faster refresh after registration** (merged 2026-10-03) - set_msim_affine for every transform write (a third of
