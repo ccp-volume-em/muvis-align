@@ -62,14 +62,14 @@ Other:
       single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
 - [ ] **Test a real convert** - with a pre-processing scale set: check the output's level-0 size and levels down to
       ~128px.
-- [ ] **Re-measure HPC pair registration memory** - rss grew ~1.2MB a pair and slowed after ~100k pairs (19h for
-      229k pairs, before worker processes); the 2026-10-02 run took 4.6h at a flat ~18GB - confirmed, done.
 - [ ] **Upstream fixes to multiview-stitcher** - phase correlation's spearman quality for every candidate shift
       (only the kept one is needed), the O(nodes x edges) reference-node search, the HiGHS thread pool from
       changing threads. Details in notes/multiview_stitcher.md.
 
 ## Done
 
+- **HPC pair registration memory** - rss grew ~1.2MB a pair and slowed after ~100k pairs (19h for 229k pairs, before
+  worker processes); the 2026-10-02 run took 4.6h at a flat ~18GB.
 - **Faster refresh after registration** (merged 2026-10-03) - set_msim_affine for every transform write (a third of
   msi_utils.set_affine_transform's cost), tables filled in linear time (Qt header signals held: 74s -> 7s at 229k
   rows), timers on the untimed steps, 2D overlap shapes by polygon clipping instead of linprog (4.7 -> ~0.3ms a pair).
