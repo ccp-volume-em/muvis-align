@@ -141,3 +141,12 @@ def test_a_view_passed_without_its_singleton_z_is_still_ranked():
     group_params = [np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 2.0, 2.0, 1.0])]
 
     assert _view_ranks([np.diag([2.0, 2.0, 1.0])], group_params, [1, 2]).tolist() == [2]
+
+
+def test_level_names_sort_as_text_in_level_order():
+    from muvis_align.fusion_slabs import level_paths
+
+    assert level_paths(10) == [str(index) for index in range(10)]
+    eleven = level_paths(11)
+    assert eleven[0] == '00' and eleven[-1] == '10'
+    assert sorted(eleven) == eleven

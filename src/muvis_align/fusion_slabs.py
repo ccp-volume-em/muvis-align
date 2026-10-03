@@ -286,6 +286,13 @@ def native_level_stack_properties(level0_properties, level_spacings, scaled_dims
     return levels
 
 
+def level_paths(count):
+    """'0'..'9', zero-padded from 11 levels on: readers that list a group's arrays by name (napari's own) sort them
+    as text, putting '10' after '1' - the multiscales metadata, which names them, has them in order either way."""
+    width = len(str(count - 1)) if count > 10 else 1
+    return [str(index).zfill(width) for index in range(count)]
+
+
 def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, transform_key, level0_properties,
                                    output_chunksize, scaled_dims, fusion_func=None, zarr_options=None,
                                    batch_options=None, interpolation_order=1, tolerance=0.05):
@@ -297,6 +304,7 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
     level_spacings = native_level_spacings(source_spacings, [level0_properties['shape'][dim] for dim in scaled_dims],
                                            tolerance=tolerance)
     levels = native_level_stack_properties(level0_properties, level_spacings, scaled_dims)
+    paths = level_paths(len(levels))
     for index, (level_spacing, properties) in enumerate(zip(level_spacings, levels)):
         output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
         selected = [msim for msim, spacing in zip(msims, source_spacings) if spacing <= level_spacing * (1 + tolerance)]
@@ -309,7 +317,7 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
             level_chunksize, list(si_utils.get_spatial_dims_from_sim(sims[0])), default_export_fusion_chunk_bytes,
             4 * fusion_stack_arrays)
         # tiles over the overview: where a finer source covers a pixel, the coarser one under it is left out
-        fuse_into_zarr_array(sims, os.path.join(output_zarr_url, str(index)), transform_key, output_properties,
+        fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key, output_properties,
                              level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
                              batch_options=batch_options, interpolation_order=interpolation_order,
                              desc=f'Level {index} at {level_spacing:.4g} ({len(sims)} sources)',
@@ -321,5 +329,5 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
     group = zarr.open_group(output_zarr_url, mode='a', **ngff_utils.zarr_group_creation_kwargs_for_ngff_version(ngff_version))
     ngff_utils.write_multiscales_metadata(
         group, axes=axes, ngff_version=ngff_version,
-        datasets=[{'path': str(index), 'coordinateTransformations': coordtfs[index]} for index in range(len(levels))])
+        datasets=[{'path': paths[index], 'coordinateTransformations': coordtfs[index]} for index in range(len(levels))])
     return ngff_utils.read_msim_from_ome_zarr(output_zarr_url, transform_key=transform_key, array_backend='dask')
