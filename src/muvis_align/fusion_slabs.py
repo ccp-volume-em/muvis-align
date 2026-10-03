@@ -1,6 +1,6 @@
-"""A fusion written to zarr one z-slab of blocks at a time, each slab fused from only the sources that reach it:
-multiview_stitcher fuses every block from every source, in Python, so a block's cost grows with the source count.
-The steps are its own zarr path's, prepare_block_fusion(create_output=False) attaching each slab to the one store."""
+"""Fusion written to zarr block by block, each block from only the sources that reach it and only the blocks some
+source reaches: multiview_stitcher runs Python over every source it gives a block, so a block's cost grows with the
+source count. The steps are its own zarr path's, prepare_block_fusion(create_output=False) attaching to the store."""
 import copy
 import os
 import shutil
@@ -13,28 +13,6 @@ from multiview_stitcher import msi_utils, mv_graph, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
-
-
-def slab_sources(sims, transform_key, output_stack_properties, z_chunk, interpolation_order=1):
-    """Per z-slab of output blocks (z_chunk voxels thick), the indices of the sources that reach it - by
-    multiview_stitcher's own rule: each source's box, padded for interpolation unless z is grid-aligned."""
-    sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
-    params = [si_utils.get_affine_from_sim(sim, transform_key=transform_key) for sim in sims]
-    boxes = [si_utils.get_stack_properties_from_sim(sim) for sim in sims]
-    is_grid_aligned = 'z' in fusion_core._get_grid_aligned_translation_dims(
-        sparams=params, views_bb=boxes, output_stack_properties=output_stack_properties, sdims=sdims)
-    origin, spacing = output_stack_properties['origin']['z'], output_stack_properties['spacing']['z']
-    nslabs = int(np.ceil(output_stack_properties['shape']['z'] / z_chunk))
-    slabs = [[] for _ in range(nslabs)]
-    for index, sim in enumerate(sims):
-        padding = 0.0 if is_grid_aligned else interpolation_order * boxes[index]['spacing']['z']
-        props = si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
-        z_values = mv_graph.get_vertices_from_stack_props(props)[:, sdims.index('z')]
-        first = max(0, int(np.floor((z_values.min() - padding - origin) / (z_chunk * spacing))))
-        last = min(nslabs - 1, int(np.floor((z_values.max() + padding - origin) / (z_chunk * spacing))))
-        for slab in range(first, last + 1):
-            slabs[slab].append(index)
-    return slabs
 
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):
@@ -57,25 +35,8 @@ def source_bounds(sims, transform_key, output_stack_properties, interpolation_or
     return bounds
 
 
-def reached_blocks(block_ids, bounds, output_stack_properties, output_chunksize, sdims, block_axes):
-    """The blocks some source reaches. One no source reaches keeps the store's fill value unwritten, as fusing it
-    from no source would give - at native resolution, most of them."""
-    if not len(bounds) or not block_ids:
-        return []
-    blocks = np.asarray(block_ids, dtype=int).reshape(len(block_ids), -1)
-    keep = np.ones(len(blocks), dtype=bool)
-    for axis, dim in enumerate(sdims):
-        spacing, chunk = output_stack_properties['spacing'][dim], int(output_chunksize[dim])
-        # a block's pixel centres, widened by half a pixel each side
-        low = output_stack_properties['origin'][dim] + (blocks[:, block_axes[axis]] * chunk - 0.5) * spacing
-        high = low + chunk * spacing
-        keep &= np.any((low[:, None] <= bounds[None, :, axis, 1]) & (bounds[None, :, axis, 0] <= high[:, None]),
-                       axis=1)
-    return [block_id for block_id, kept in zip(block_ids, keep) if kept]
-
-
 def _block_overlaps(bounds, origin, spacing, chunk, nblocks):
-    """Per block along one dim and source, whether the source reaches the block (as reached_blocks tests it)."""
+    """Per block along one dim and source, whether the source reaches the block: its padded bounds meet the block's pixel centres, widened by half a pixel."""
     low = origin + (np.arange(nblocks) * chunk - 0.5) * spacing
     high = low + chunk * spacing
     return (low[:, None] <= bounds[None, :, 1]) & (bounds[None, :, 0] <= high[:, None])
@@ -109,54 +70,80 @@ def budget_chunksize(bounds, output_stack_properties, output_chunksize, sdims, b
             chunk[dim] = max(min_xy_chunk, chunk[dim] // 2)
 
 
+def block_sources(bounds, output_stack_properties, output_chunksize, sdims):
+    """The blocks some source reaches, grouped by exactly which: {source indices: [spatial block indices]}.
+    multiview_stitcher's per-block fusion runs Python over every source it is given, reaching the block or not."""
+    overlaps = [_block_overlaps(bounds[:, axis], output_stack_properties['origin'][dim],
+                                output_stack_properties['spacing'][dim], int(output_chunksize[dim]),
+                                int(np.ceil(output_stack_properties['shape'][dim] / int(output_chunksize[dim]))))
+                for axis, dim in enumerate(sdims)]
+    groups = {}
+    # the first dim's blocks one at a time keeps the rest a small product (a section's sources, at most)
+    for first_block, first_overlap in enumerate(overlaps[0]):
+        candidates = np.flatnonzero(first_overlap)
+        if len(candidates):
+            rest = [overlap[:, candidates] for overlap in overlaps[1:]]
+            for rest_blocks in np.ndindex(*[len(overlap) for overlap in rest]):
+                reach = np.ones(len(candidates), dtype=bool)
+                for overlap, block in zip(rest, rest_blocks):
+                    reach &= overlap[block]
+                if reach.any():
+                    groups.setdefault(tuple(candidates[reach].tolist()), []).append((first_block,) + rest_blocks)
+    return groups
+
+
 def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize, fusion_func=None,
                          creation_kwargs=None, batch_options=None, interpolation_order=1, desc=None):
-    """Fuse `sims` into a new zarr array at store_url: a z-slab of blocks at a time from the sources reaching it, and
-    only the blocks some source reaches. Returns the array's dims and output stack properties."""
+    """Fuse `sims` into a new zarr array at store_url: only the blocks some source reaches, each from only the sources
+    reaching it (one prepare_block_fusion per set of them, ~2ms). Returns the array's dims and output properties."""
     batch_options = batch_options or {}
     dims = list(sims[0].dims)
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
-    z_axis = dims.index('z') if 'z' in dims else None
-    if z_axis is None:
-        slabs = [list(range(len(sims)))]
-    else:
-        slabs = slab_sources(sims, transform_key, output_stack_properties, int(output_chunksize['z']),
-                             interpolation_order)
-    bounds = source_bounds(sims, transform_key, output_stack_properties, interpolation_order)
     block_axes = [dims.index(dim) for dim in sdims]
+    bounds = source_bounds(sims, transform_key, output_stack_properties, interpolation_order)
+    groups = block_sources(bounds, output_stack_properties, output_chunksize, sdims)
     batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
-    info, progress = None, None
-    for slab, sources in enumerate(slabs):
-        if sources or info is None:
-            # the first slab creates the store (from any source, if it has none), the others attach to it
-            fuse_kwargs = {'images': [sims[index] for index in sources] or sims[:1], 'transform_key': transform_key,
-                           'output_chunksize': output_chunksize,
-                           'output_stack_properties': copy.deepcopy(output_stack_properties),
-                           'interpolation_order': interpolation_order}
-            # None would replace multiview_stitcher's own default
-            if fusion_func is not None:
-                fuse_kwargs['fusion_func'] = fusion_func
-            info = fusion_core.prepare_block_fusion(store_url, fuse_kwargs=fuse_kwargs,
-                                                    zarr_array_creation_kwargs=creation_kwargs,
-                                                    create_output=progress is None, verbose=False)
-        if progress is None:
-            progress = fusion_core.tqdm(total=int(np.prod(info['nblocks'])), desc=desc)
-        ranges = [range(count) for count in info['nblocks']]
-        if z_axis is not None:
-            ranges[z_axis] = range(slab, slab + 1)
-        block_ids = list(np.ndindex(*[len(values) for values in ranges]))
-        block_ids = [tuple(values[position] for values, position in zip(ranges, block)) for block in block_ids]
-        reached = reached_blocks(block_ids, bounds[sources], output_stack_properties, output_chunksize, sdims,
-                                 block_axes)
-        progress.update(len(block_ids) - len(reached))
-        for start in range(0, len(reached), n_batch):
-            batch = reached[start:start + n_batch]
-            if batch_func is None:
-                for block_id in batch:
-                    info['func'](block_id)
-            else:
-                batch_func(info['func'], batch, **(batch_options.get('batch_func_kwargs') or {}))
-            progress.update(len(batch))
+
+    def prepare(sources, create_output):
+        fuse_kwargs = {'images': [sims[index] for index in sources], 'transform_key': transform_key,
+                       'output_chunksize': output_chunksize,
+                       'output_stack_properties': copy.deepcopy(output_stack_properties),
+                       'interpolation_order': interpolation_order}
+        # None would replace multiview_stitcher's own default
+        if fusion_func is not None:
+            fuse_kwargs['fusion_func'] = fusion_func
+        return fusion_core.prepare_block_fusion(store_url, fuse_kwargs=fuse_kwargs,
+                                                zarr_array_creation_kwargs=creation_kwargs,
+                                                create_output=create_output, verbose=False)
+
+    # the store is created first, from any source: a block none reaches is never written
+    info = prepare((0,), create_output=True)
+    nblocks = info['nblocks']
+    nonspatial_axes = [axis for axis in range(len(dims)) if axis not in block_axes]
+    funcs = {}
+    for sources, spatial_blocks in groups.items():
+        func = prepare(sources, create_output=False)['func']
+        for nonspatial_block in np.ndindex(*[nblocks[axis] for axis in nonspatial_axes]):
+            for spatial_block in spatial_blocks:
+                block_id = [0] * len(dims)
+                for axis, block in zip(nonspatial_axes + block_axes, nonspatial_block + spatial_block):
+                    block_id[axis] = block
+                funcs[tuple(block_id)] = func
+
+    def fuse_block(block_id):
+        return funcs[block_id](block_id)
+
+    block_ids = sorted(funcs)
+    progress = fusion_core.tqdm(total=int(np.prod(nblocks)), desc=desc)
+    progress.update(int(np.prod(nblocks)) - len(block_ids))
+    for start in range(0, len(block_ids), n_batch):
+        batch = block_ids[start:start + n_batch]
+        if batch_func is None:
+            for block_id in batch:
+                fuse_block(block_id)
+        else:
+            batch_func(fuse_block, batch, **(batch_options.get('batch_func_kwargs') or {}))
+        progress.update(len(batch))
     progress.close()
     return dims, info['output_stack_properties']
 

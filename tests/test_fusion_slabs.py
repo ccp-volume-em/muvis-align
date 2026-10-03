@@ -7,7 +7,7 @@ from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.fusion_slabs import (fuse_native_levels_to_ome_zarr, native_level_spacings,
-                                      native_level_stack_properties, reached_blocks)
+                                      native_level_stack_properties, block_sources)
 
 
 @pytest.mark.parametrize('source_spacings, shape, expected', [
@@ -38,14 +38,14 @@ def test_native_levels_share_one_extent_and_keep_an_unscaled_dim():
     assert levels[1]['origin'] == {'z': 0.0, 'y': 0.75, 'x': 0.75}
 
 
-def test_only_blocks_a_source_reaches_are_fused():
+def test_each_block_is_fused_from_only_the_sources_reaching_it():
     properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': 40, 'x': 40}}
-    bounds = np.array([[[12.0, 18.0], [25.0, 28.0]]])
-    block_ids = [(row, col) for row in range(4) for col in range(4)]
+    # one source inside block (1, 2), one across blocks (0, 0) and (0, 1)
+    bounds = np.array([[[12.0, 18.0], [25.0, 28.0]], [[2.0, 5.0], [5.0, 15.0]]])
 
-    reached = reached_blocks(block_ids, bounds, properties, {'y': 10, 'x': 10}, ['y', 'x'], [0, 1])
+    groups = block_sources(bounds, properties, {'y': 10, 'x': 10}, ['y', 'x'])
 
-    assert reached == [(1, 2)]
+    assert groups == {(1,): [(0, 0), (0, 1)], (0,): [(1, 2)]}
 
 
 def flat_msim(value, size, spacing, origin):

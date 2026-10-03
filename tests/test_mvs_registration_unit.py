@@ -877,21 +877,24 @@ def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp
                               np.asarray(msi_utils.get_sim_from_msim(fused[True], scale=level).data))
 
 
-def test_a_z_slab_is_fused_from_only_the_planes_that_reach_it():
-    from multiview_stitcher import msi_utils, spatial_image_utils as si_utils
-    from muvis_align.fusion_slabs import slab_sources
+def test_a_block_is_fused_from_only_the_planes_that_reach_it():
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.fusion_slabs import block_sources, source_bounds
 
     def plane(z):
-        sim = si_utils.get_sim_from_array(np.ones((1, 8, 8), dtype=np.uint16), dims=['z', 'y', 'x'],
-                                          scale={'z': 1.0, 'y': 1.0, 'x': 1.0},
-                                          translation={'z': float(z), 'y': 0.0, 'x': 0.0}, transform_key='source')
-        return sim
+        return si_utils.get_sim_from_array(np.ones((1, 8, 8), dtype=np.uint16), dims=['z', 'y', 'x'],
+                                           scale={'z': 1.0, 'y': 1.0, 'x': 1.0},
+                                           translation={'z': float(z), 'y': 0.0, 'x': 0.0}, transform_key='source')
     sims = [plane(z) for z in (0, 0, 1, 2)]
     properties = {'origin': {'z': 0.0, 'y': 0.0, 'x': 0.0}, 'spacing': {'z': 1.0, 'y': 1.0, 'x': 1.0},
                   'shape': {'z': 3, 'y': 8, 'x': 8}}
+    bounds = source_bounds(sims, 'source', properties)
 
-    assert slab_sources(sims, 'source', properties, z_chunk=1) == [[0, 1], [2], [3]]
-    assert slab_sources(sims, 'source', properties, z_chunk=2) == [[0, 1, 2], [3]]
+    by_plane = block_sources(bounds, properties, {'z': 1, 'y': 8, 'x': 8}, ['z', 'y', 'x'])
+    by_two_planes = block_sources(bounds, properties, {'z': 2, 'y': 8, 'x': 8}, ['z', 'y', 'x'])
+
+    assert by_plane == {(0, 1): [(0, 0, 0)], (2,): [(1, 0, 0)], (3,): [(2, 0, 0)]}
+    assert by_two_planes == {(0, 1, 2): [(0, 0, 0)], (3,): [(1, 0, 0)]}
 
 
 def test_the_middle_section_is_the_middle_folders_files_registered_as_the_whole_labels_them(tmp_path):
