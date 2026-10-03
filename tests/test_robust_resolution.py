@@ -73,3 +73,41 @@ def test_a_cancel_stops_the_robust_rounds():
         request_cancel()
         with pytest.raises(OperationCancelled):
             groupwise_resolution(grid_graph(), method=ROBUST_LINEAR, transform='translation')
+
+
+
+def scripted_solver(monkeypatch, residual_rounds):
+    """linear_two_pass replaced by one giving every edge the next round's residual: the list of solves it saw."""
+    from muvis_align import robust_resolution
+
+    calls = []
+
+    def solve(graph, **_):
+        residual = residual_rounds[min(len(calls), len(residual_rounds) - 1)]
+        calls.append(residual)
+        edges = list(graph.edges)
+        metrics = {'u': [edge[0] for edge in edges], 'v': [edge[1] for edge in edges],
+                   'residual': [residual] * len(edges)}
+        return {node: affine() for node in graph.nodes}, {'metrics': metrics}
+
+    monkeypatch.setattr(robust_resolution, 'groupwise_resolution_linear_two_pass', solve)
+    return calls
+
+
+def test_the_rounds_stop_once_no_residual_moves(monkeypatch):
+    from muvis_align.robust_resolution import groupwise_resolution_robust_linear
+
+    # with scale 1 the third round moves 0.005, within the default 0.01
+    calls = scripted_solver(monkeypatch, [0.5, 0.2, 0.195, 0.195])
+    groupwise_resolution_robust_linear(grid_graph(), transform='translation', scale=1.0, rounds=10)
+
+    assert calls == [0.5, 0.2, 0.195]
+
+
+def test_the_rounds_run_out_while_residuals_keep_moving(monkeypatch):
+    from muvis_align.robust_resolution import groupwise_resolution_robust_linear
+
+    calls = scripted_solver(monkeypatch, [0.1 * (index % 2) for index in range(10)])
+    groupwise_resolution_robust_linear(grid_graph(), transform='translation', scale=1.0, rounds=4)
+
+    assert len(calls) == 4

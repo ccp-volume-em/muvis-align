@@ -9,7 +9,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.image.util import (build_source_msim, build_source_redimensioned_msim,
                                     get_level_from_scale, rechunk_if_monolithic,
-                                    select_msim_subpyramid_at_scale)
+                                    select_msim_subpyramid_at_scale, unify_msim_channels)
 
 
 def test_rechunk_if_monolithic_splits_single_chunk_data():
@@ -180,3 +180,49 @@ def test_ends_only_keeps_the_first_and_coarsest_levels_unchanged(from_level, nle
     expected = full[:1] + full[-1:] if len(full) > 2 else full
     assert describe_levels(ends) == expected
     assert msi_utils.get_sorted_scale_keys(ends) == [f'scale{index}' for index in range(len(expected))]
+
+
+def channel_msim(labels, offset=0.0):
+    sim = si_utils.get_sim_from_array(np.ones((len(labels), 16, 16), dtype=np.uint8), dims=['c', 'y', 'x'],
+                                      translation={'y': 0.0, 'x': offset}, transform_key='source_metadata',
+                                      c_coords=list(labels))
+    return msi_utils.get_msim_from_sim(sim, scale_factors=[2])
+
+
+def msim_channel_labels(msim):
+    return [list(msim[scale_key].ds['image'].coords['c'].values) for scale_key in msi_utils.get_sorted_scale_keys(msim)]
+
+
+def test_a_single_channel_named_otherwise_takes_the_common_label_on_every_level():
+    msims = [channel_msim(['#0']), channel_msim(['channel 0'], offset=16.0)]
+
+    unified = unify_msim_channels(msims)
+
+    assert unified[0] is msims[0]
+    assert msim_channel_labels(unified[1]) == [['#0'], ['#0']]
+    xr.testing.assert_identical(unified[1]['scale1'].ds['image'].drop_vars('c'),
+                                msims[1]['scale1'].ds['image'].drop_vars('c'))
+
+
+def test_matching_channels_in_another_order_are_left_alone():
+    msims = [channel_msim(['a', 'b']), channel_msim(['b', 'a'])]
+
+    unified = unify_msim_channels(msims)
+
+    assert all(new is old for new, old in zip(unified, msims))
+
+
+def test_differing_multichannel_labels_are_an_error():
+    with pytest.raises(ValueError, match='different channels'):
+        unify_msim_channels([channel_msim(['a', 'b']), channel_msim(['a', 'c'])])
+
+
+def test_sources_with_differing_channel_names_fuse_once_unified():
+    from multiview_stitcher import fusion
+
+    msims = unify_msim_channels([channel_msim(['#0']), channel_msim(['channel 0'], offset=16.0)])
+
+    fused = msi_utils.get_sim_from_msim(fusion.fuse(msims, transform_key='source_metadata'), scale='scale0')
+
+    assert list(fused.coords['c'].values) == ['#0']
+    assert int(fused.max().compute()) == 1
