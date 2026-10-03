@@ -12,6 +12,8 @@ import multiview_stitcher.fusion._core as fusion_core
 from multiview_stitcher import msi_utils, mv_graph, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
+from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
+
 
 def slab_sources(sims, transform_key, output_stack_properties, z_chunk, interpolation_order=1):
     """Per z-slab of output blocks (z_chunk voxels thick), the indices of the sources that reach it - by
@@ -70,6 +72,41 @@ def reached_blocks(block_ids, bounds, output_stack_properties, output_chunksize,
         keep &= np.any((low[:, None] <= bounds[None, :, axis, 1]) & (bounds[None, :, axis, 0] <= high[:, None]),
                        axis=1)
     return [block_id for block_id, kept in zip(block_ids, keep) if kept]
+
+
+def _block_overlaps(bounds, origin, spacing, chunk, nblocks):
+    """Per block along one dim and source, whether the source reaches the block (as reached_blocks tests it)."""
+    low = origin + (np.arange(nblocks) * chunk - 0.5) * spacing
+    high = low + chunk * spacing
+    return (low[:, None] <= bounds[None, :, 1]) & (bounds[None, :, 0] <= high[:, None])
+
+
+def budget_chunksize(bounds, output_stack_properties, output_chunksize, sdims, budget_bytes, bytes_per_voxel,
+                     min_xy_chunk=256):
+    """The largest yx chunk, halving from output_chunksize, whose busiest block fits budget_bytes: a block holds
+    every source it meets transformed to its full size, so a coarse level's block meeting a whole section's tiles
+    at once costs many times a fine one's - counted from the sources' own bounds, not their average density."""
+    chunk = {dim: int(size) for dim, size in output_chunksize.items()}
+    xy_dims = [dim for dim in ('y', 'x') if dim in chunk]
+    while True:
+        overlaps = {}
+        for axis, dim in enumerate(sdims):
+            nblocks = int(np.ceil(output_stack_properties['shape'][dim] / chunk[dim]))
+            overlaps[dim] = _block_overlaps(bounds[:, axis], output_stack_properties['origin'][dim],
+                                            output_stack_properties['spacing'][dim], chunk[dim], nblocks)
+        busiest = 0
+        for z_overlap in (overlaps['z'] if 'z' in overlaps else [np.ones(len(bounds), dtype=bool)]):
+            sources = np.flatnonzero(z_overlap)
+            if len(sources) and len(xy_dims) == 2:
+                counts = overlaps['y'][:, sources].astype(np.int32) @ overlaps['x'][:, sources].T.astype(np.int32)
+                busiest = max(busiest, int(counts.max()))
+            elif len(sources):
+                busiest = max(busiest, len(sources))
+        voxels = int(np.prod([chunk[dim] for dim in sdims]))
+        if busiest * voxels * bytes_per_voxel <= budget_bytes or all(chunk[dim] <= min_xy_chunk for dim in xy_dims):
+            return chunk
+        for dim in xy_dims:
+            chunk[dim] = max(min_xy_chunk, chunk[dim] // 2)
 
 
 def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize, fusion_func=None,
@@ -223,6 +260,10 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
             msim, scale='scale%s' % msi_utils.get_res_level_from_spacing(msim, output_properties['spacing']))
             for msim in selected]
         level_chunksize = {dim: min(int(output_chunksize[dim]), properties['shape'][dim]) for dim in output_chunksize}
+        level_chunksize = budget_chunksize(
+            source_bounds(sims, transform_key, output_properties, interpolation_order), output_properties,
+            level_chunksize, list(si_utils.get_spatial_dims_from_sim(sims[0])), default_export_fusion_chunk_bytes,
+            4 * fusion_stack_arrays)
         fuse_into_zarr_array(sims, os.path.join(output_zarr_url, str(index)), transform_key, output_properties,
                              level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
                              batch_options=batch_options, interpolation_order=interpolation_order,

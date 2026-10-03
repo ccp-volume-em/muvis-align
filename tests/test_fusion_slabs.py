@@ -75,3 +75,19 @@ def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path):
     coarsest = np.asarray(levels[2].data).squeeze()
     assert coarsest[5, 5] == 10
     assert 10 < coarsest[28, 28] < 200
+
+
+def test_a_block_meeting_many_sources_is_made_smaller():
+    """Ten sources stacked in one corner: a block holding them all must shrink, wherever else is empty."""
+    from muvis_align.fusion_slabs import budget_chunksize
+
+    properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': 4096, 'x': 4096}}
+    bounds = np.array([[[0.0, 300.0], [0.0, 300.0]]] * 10)
+    budget = 10 * 512 * 512 * 12
+
+    chunk = budget_chunksize(bounds, properties, {'y': 4096, 'x': 4096}, ['y', 'x'], budget, 12)
+
+    assert chunk == {'y': 512, 'x': 512}
+    # one source alone keeps the full size
+    assert budget_chunksize(bounds[:1], properties, {'y': 4096, 'x': 4096}, ['y', 'x'], 4096 * 4096 * 12, 12) == \
+        {'y': 4096, 'x': 4096}
