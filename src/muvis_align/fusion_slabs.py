@@ -2,6 +2,7 @@
 source reaches: multiview_stitcher runs Python over every source it gives a block, so a block's cost grows with the
 source count. The steps are its own zarr path's, prepare_block_fusion(create_output=False) attaching to the store."""
 import copy
+import inspect
 import os
 import shutil
 
@@ -96,10 +97,54 @@ def block_sources(bounds, output_stack_properties, output_chunksize, sdims):
     return groups
 
 
+def _view_ranks(params, group_params, group_ranks):
+    """Each fused view's rank: multiview_stitcher passes a block only the views it finds there, in order - a
+    subsequence of the block's sources, told apart by their affines."""
+    ranks, start = [], 0
+    for param in params:
+        param = np.asarray(param).squeeze()
+        for index in range(start, len(group_params)):
+            if np.allclose(param, group_params[index]):
+                ranks.append(group_ranks[index])
+                start = index + 1
+                break
+        else:
+            ranks.append(min(group_ranks))
+    return np.asarray(ranks, dtype=float)
+
+
+def prioritise_finer_views(fusion_func, group_params, group_ranks):
+    """fusion_func over only the finest views at each pixel: where a tile covers it, the overview under it is left
+    out rather than averaged in. Views of equal rank are fused as fusion_func would."""
+    wanted = inspect.signature(fusion_func).parameters
+
+    def fusion(**kwargs):
+        views = kwargs['transformed_views']
+        ranks = _view_ranks(kwargs.pop('params'), group_params, group_ranks)
+        ranks = ranks.reshape((-1,) + (1,) * (views.ndim - 1))
+        valid = ~np.isnan(views)
+        finest = np.min(np.where(valid, ranks, np.inf), axis=0)
+        keep = valid & (ranks == finest)
+        kwargs['transformed_views'] = np.where(keep, views, np.nan)
+        if kwargs.get('blending_weights') is not None:
+            weights = np.where(keep, kwargs['blending_weights'], 0)
+            total = weights.sum(axis=0)
+            kwargs['blending_weights'] = np.divide(weights, total, out=np.zeros_like(weights), where=total > 0)
+        return fusion_func(**{name: value for name, value in kwargs.items() if name in wanted})
+
+    # multiview_stitcher passes what the signature names: fusion_func's own arguments, and the views' affines
+    parameters = [inspect.Parameter(name, inspect.Parameter.KEYWORD_ONLY) for name in wanted]
+    if 'params' not in wanted:
+        parameters.append(inspect.Parameter('params', inspect.Parameter.KEYWORD_ONLY))
+    fusion.__signature__ = inspect.Signature(parameters)
+    return fusion
+
+
 def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize, fusion_func=None,
-                         creation_kwargs=None, batch_options=None, interpolation_order=1, desc=None):
+                         creation_kwargs=None, batch_options=None, interpolation_order=1, desc=None, ranks=None):
     """Fuse `sims` into a new zarr array at store_url: only the blocks some source reaches, each from only the sources
-    reaching it (one prepare_block_fusion per set of them, ~2ms). Returns the array's dims and output properties."""
+    reaching it (one prepare_block_fusion per set of them, ~2ms). With `ranks` (lower first, e.g. pixel sizes), a
+    block whose sources differ in rank fuses only the lowest-ranked at each pixel. Returns dims and properties."""
     batch_options = batch_options or {}
     dims = list(sims[0].dims)
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
@@ -113,9 +158,15 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
                        'output_chunksize': output_chunksize,
                        'output_stack_properties': copy.deepcopy(output_stack_properties),
                        'interpolation_order': interpolation_order}
+        block_func = fusion_func
+        if ranks is not None and len({ranks[index] for index in sources}) > 1:
+            group_params = [np.asarray(si_utils.get_affine_from_sim(sims[index], transform_key=transform_key)).squeeze()
+                            for index in sources]
+            block_func = prioritise_finer_views(fusion_func or fusion_core.weighted_average_fusion, group_params,
+                                                [ranks[index] for index in sources])
         # None would replace multiview_stitcher's own default
-        if fusion_func is not None:
-            fuse_kwargs['fusion_func'] = fusion_func
+        if block_func is not None:
+            fuse_kwargs['fusion_func'] = block_func
         return fusion_core.prepare_block_fusion(store_url, fuse_kwargs=fuse_kwargs,
                                                 zarr_array_creation_kwargs=creation_kwargs,
                                                 create_output=create_output, verbose=False)
@@ -255,10 +306,12 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
             source_bounds(sims, transform_key, output_properties, interpolation_order), output_properties,
             level_chunksize, list(si_utils.get_spatial_dims_from_sim(sims[0])), default_export_fusion_chunk_bytes,
             4 * fusion_stack_arrays)
+        # tiles over the overview: where a finer source covers a pixel, the coarser one under it is left out
         fuse_into_zarr_array(sims, os.path.join(output_zarr_url, str(index)), transform_key, output_properties,
                              level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
                              batch_options=batch_options, interpolation_order=interpolation_order,
-                             desc=f'Level {index} at {level_spacing:.4g} ({len(sims)} sources)')
+                             desc=f'Level {index} at {level_spacing:.4g} ({len(sims)} sources)',
+                             ranks=[spacing for spacing in source_spacings if spacing <= level_spacing * (1 + tolerance)])
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
         level0_properties, [level['factors'] for level in levels],
