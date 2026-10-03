@@ -492,7 +492,7 @@ parameters:
         value: "min"
       - label: Max
         value: "max"
-    default: "mean"
+    default: "native"
     cli_tag: "--spacing"
     cli_order: 1
     optional: True
