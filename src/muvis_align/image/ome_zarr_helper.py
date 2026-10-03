@@ -174,7 +174,10 @@ def get_ome_zarr_format(ome_version):
         ome_zarr_format = ome_zarr.format.FormatV04()
     elif str(ome_version) == '0.5':
         ome_zarr_format = ome_zarr.format.FormatV05()
-    else:
+    elif ome_version is None:
         ome_zarr_format = ome_zarr.format.CurrentFormat()
+    else:
+        # ome-zarr-py writes 0.4/0.5 only: anything else would be written as its current format, labelled as asked
+        raise ValueError(f'OME-Zarr {ome_version} cannot be written here: 0.4 or 0.5')
     zarr_format = 3 if float(ome_zarr_format.version) >= 0.5 else 2
     return zarr_format, ome_zarr_format

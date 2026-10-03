@@ -150,3 +150,25 @@ def test_level_names_sort_as_text_in_level_order():
     eleven = level_paths(11)
     assert eleven[0] == '00' and eleven[-1] == '10'
     assert sorted(eleven) == eleven
+
+
+def test_native_fusion_writes_ome_zarr_06_that_reads_back(tmp_path):
+    """0.6 stores its arrays as 0.5 does; its metadata names a coordinate system each level's transforms lead into."""
+    import json
+    from multiview_stitcher import ngff_utils
+
+    overview, tile = flat_msim(10, 64, 2.0, 0.0), flat_msim(200, 64, 0.5, 40.0)
+    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
+    url = (tmp_path / 'fused.ome.zarr').as_posix()
+
+    fuse_native_levels_to_ome_zarr([overview, tile], [2.0, 0.5], url, 'source', level0, {'y': 64, 'x': 64},
+                                   ['y', 'x'], zarr_options={'ngff_version': '0.6'})
+
+    group = json.load(open(os.path.join(url, 'zarr.json')))
+    assert group['zarr_format'] == 3
+    assert group['attributes']['ome']['version'] == '0.6'
+    assert 'coordinateSystems' in group['attributes']['ome']['multiscales'][0]
+    read = ngff_utils.read_msim_from_ome_zarr(url, transform_key='read', array_backend='dask')
+    levels = [msi_utils.get_sim_from_msim(read, scale=key) for key in msi_utils.get_sorted_scale_keys(read)]
+    assert [si_utils.get_spacing_from_sim(level)['x'] for level in levels] == pytest.approx([0.5, 1.0, 2.0])
+    assert int(np.asarray(levels[0].data).squeeze()[100, 100]) == 200

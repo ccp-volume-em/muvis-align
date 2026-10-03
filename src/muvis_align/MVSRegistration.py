@@ -1915,6 +1915,11 @@ class MVSRegistration:
             output_spacing = 'min'
         elif output_spacing is None or str(output_spacing).lower() == 'native':
             output_spacing = 'mean'
+        if (output_filename is not None and not is_native and not is_channel_overlay
+                and str(ome_version).startswith('0.6')):
+            # before any work: multiview_stitcher's writer, which writes every other spacing, knows 0.4 and 0.5 only
+            raise ValueError("OME-Zarr 0.6 is written with 'native' output spacing only; choose 0.5 for "
+                             f"'{output_spacing}'")
         output_stack_properties = calc_output_properties(msims, transform_key,
                                                          output_spacing_method=output_spacing, z_scale=z_scale)
 

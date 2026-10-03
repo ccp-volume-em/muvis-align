@@ -2,12 +2,14 @@
 source reaches: multiview_stitcher runs Python over every source it gives a block, so a block's cost grows with the
 source count. The steps are its own zarr path's, prepare_block_fusion(create_output=False) attaching to the store."""
 import copy
+from dataclasses import asdict
 import inspect
 import os
 import shutil
 
 import dask.array as da
 import numpy as np
+import ngff_zarr
 import zarr
 import multiview_stitcher.fusion._core as fusion_core
 from multiview_stitcher import msi_utils, mv_graph, ngff_utils
@@ -205,14 +207,50 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     return dims, info['output_stack_properties']
 
 
+def storage_ngff_version(ngff_version):
+    # 0.6 changed the metadata, not the arrays: they are stored as 0.5's (zarr v3), which multiview_stitcher can create
+    return '0.5' if str(ngff_version).startswith('0.6') else ngff_version
+
+
 def _zarr_options(zarr_options):
     zarr_options = zarr_options or {}
     ome_zarr = zarr_options.get('ome_zarr', False)
     ngff_version = zarr_options.get('ngff_version', '0.4')
     creation_kwargs = zarr_options.get('zarr_array_creation_kwargs')
     if ome_zarr:
-        creation_kwargs = ngff_utils.update_zarr_array_creation_kwargs_for_ngff_version(ngff_version, creation_kwargs)
+        creation_kwargs = ngff_utils.update_zarr_array_creation_kwargs_for_ngff_version(
+            storage_ngff_version(ngff_version), creation_kwargs)
     return ome_zarr, ngff_version, creation_kwargs
+
+
+def write_multiscales_metadata(group, axes, datasets, ngff_version):
+    """multiview_stitcher's write_multiscales_metadata, and OME-Zarr 0.6 too, which it does not know: the same
+    metadata converted by ngff-zarr (axes in a coordinate system, each level's transforms a sequence into it)."""
+    if not str(ngff_version).startswith('0.6'):
+        ngff_utils.write_multiscales_metadata(group, axes=axes, datasets=datasets, ngff_version=ngff_version)
+        return
+    metadata = ngff_zarr.Metadata(
+        axes=[ngff_zarr.Axis(**dict(axis)) for axis in axes],
+        datasets=[ngff_zarr.Dataset(path=dataset['path'],
+                                    coordinateTransformations=[_ngff_transform(transform)
+                                                               for transform in dataset['coordinateTransformations']])
+                  for dataset in datasets],
+        coordinateTransformations=None, name=group.name)
+    group.attrs['ome'] = {'version': '0.6', 'multiscales': [_without_none(asdict(metadata.to_version('0.6')))]}
+
+
+def _ngff_transform(transform):
+    if transform['type'] == 'scale':
+        return ngff_zarr.Scale(scale=list(transform['scale']))
+    return ngff_zarr.Translation(translation=list(transform['translation']))
+
+
+def _without_none(value):
+    if isinstance(value, dict):
+        return {key: _without_none(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [_without_none(item) for item in value]
+    return value
 
 
 def _remove_existing(output_zarr_url, zarr_options):
@@ -326,8 +364,9 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
         level0_properties, [level['factors'] for level in levels],
         nsdims=list(si_utils.get_nonspatial_dims_from_sim(sim0)), time_transform=ngff_utils.get_ngff_time_transform(sim0))
-    group = zarr.open_group(output_zarr_url, mode='a', **ngff_utils.zarr_group_creation_kwargs_for_ngff_version(ngff_version))
-    ngff_utils.write_multiscales_metadata(
+    group = zarr.open_group(output_zarr_url, mode='a',
+                            **ngff_utils.zarr_group_creation_kwargs_for_ngff_version(storage_ngff_version(ngff_version)))
+    write_multiscales_metadata(
         group, axes=axes, ngff_version=ngff_version,
         datasets=[{'path': paths[index], 'coordinateTransformations': coordtfs[index]} for index in range(len(levels))])
     return ngff_utils.read_msim_from_ome_zarr(output_zarr_url, transform_key=transform_key, array_backend='dask')

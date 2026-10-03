@@ -81,3 +81,11 @@ def test_written_single_resolution_store_is_usable_at_a_coarse_preview_scale(tmp
     level, residual, _ = get_level_from_scale(source, 4)
     assert level > 0
     assert max(residual.values()) == 1
+
+
+def test_a_version_ome_zarr_py_cannot_write_is_refused_not_relabelled():
+    from muvis_align.image.ome_zarr_helper import get_ome_zarr_format
+
+    assert get_ome_zarr_format('0.5')[1].version == '0.5'
+    with pytest.raises(ValueError, match='0.6'):
+        get_ome_zarr_format('0.6')
