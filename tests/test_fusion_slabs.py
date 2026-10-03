@@ -1,0 +1,77 @@
+import glob
+import os
+
+import numpy as np
+import pytest
+from multiview_stitcher import msi_utils
+from multiview_stitcher import spatial_image_utils as si_utils
+
+from muvis_align.fusion_slabs import (fuse_native_levels_to_ome_zarr, native_level_spacings,
+                                      native_level_stack_properties, reached_blocks)
+
+
+@pytest.mark.parametrize('source_spacings, shape, expected', [
+    # tiles and overviews: doubling from the tiles, then a level at the overviews' own size
+    ([0.01] * 5 + [0.249] * 2, [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.16, 0.249]),
+    # a coarser source gets its level even below the size the doubling stops at
+    ([0.5, 2.0], [256, 256], [0.5, 1.0, 2.0]),
+    # sizes within the tolerance are one
+    ([0.01, 0.0102], [300, 400], [0.01, 0.02]),
+    # a step of under sqrt(2) to a source size replaces the level before it
+    ([0.01, 0.17], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.17, 0.34]),
+    # a single size: plain doubling, down to about 100 pixels
+    ([1.0], [1000, 800], [1.0, 2.0, 4.0, 8.0]),
+])
+def test_native_levels_never_upsample_and_meet_every_source_size(source_spacings, shape, expected):
+    assert native_level_spacings(source_spacings, shape) == pytest.approx(expected)
+
+
+def test_native_levels_share_one_extent_and_keep_an_unscaled_dim():
+    level0 = {'origin': {'z': 0.0, 'y': 0.0, 'x': 0.0}, 'spacing': {'z': 1.0, 'y': 0.5, 'x': 0.5},
+              'shape': {'z': 3, 'y': 256, 'x': 200}}
+
+    levels = native_level_stack_properties(level0, [0.5, 2.0], scaled_dims=['y', 'x'])
+
+    assert levels[1]['spacing'] == {'z': 1.0, 'y': 2.0, 'x': 2.0}
+    assert levels[1]['shape'] == {'z': 3, 'y': 64, 'x': 50}
+    # pixel centres: a 4x coarser pixel's centre sits 1.5 fine pixels in
+    assert levels[1]['origin'] == {'z': 0.0, 'y': 0.75, 'x': 0.75}
+
+
+def test_only_blocks_a_source_reaches_are_fused():
+    properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': 40, 'x': 40}}
+    bounds = np.array([[[12.0, 18.0], [25.0, 28.0]]])
+    block_ids = [(row, col) for row in range(4) for col in range(4)]
+
+    reached = reached_blocks(block_ids, bounds, properties, {'y': 10, 'x': 10}, ['y', 'x'], [0, 1])
+
+    assert reached == [(1, 2)]
+
+
+def flat_msim(value, size, spacing, origin):
+    sim = si_utils.get_sim_from_array(np.full((size, size), value, dtype=np.uint8), dims=['y', 'x'],
+                                      scale={'y': spacing, 'x': spacing},
+                                      translation={'y': origin, 'x': origin}, transform_key='source')
+    return msi_utils.get_msim_from_sim(sim, scale_factors=[])
+
+
+def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path):
+    """A tile (200, at 0.5) inside an overview (10, at 2.0): the finer levels hold the tile alone, written only
+    where it is; the overview's level holds both."""
+    overview, tile = flat_msim(10, 64, 2.0, 0.0), flat_msim(200, 64, 0.5, 40.0)
+    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
+    url = (tmp_path / 'fused.ome.zarr').as_posix()
+
+    fused = fuse_native_levels_to_ome_zarr([overview, tile], [2.0, 0.5], url, 'source', level0,
+                                           {'y': 64, 'x': 64}, ['y', 'x'], zarr_options={'ngff_version': '0.5'})
+
+    levels = [msi_utils.get_sim_from_msim(fused, scale=key) for key in msi_utils.get_sorted_scale_keys(fused)]
+    assert [si_utils.get_spacing_from_sim(level)['x'] for level in levels] == pytest.approx([0.5, 1.0, 2.0])
+    finest = np.asarray(levels[0].data).squeeze()
+    assert finest[100, 100] == 200 and finest[10, 10] == 0
+    # 4 of the 16 blocks reach the tile; the rest are never written
+    chunks = [path for path in glob.glob(os.path.join(url, '0', 'c', '**', '*'), recursive=True) if os.path.isfile(path)]
+    assert len(chunks) == 4
+    coarsest = np.asarray(levels[2].data).squeeze()
+    assert coarsest[5, 5] == 10
+    assert 10 < coarsest[28, 28] < 200

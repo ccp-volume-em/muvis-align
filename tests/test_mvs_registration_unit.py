@@ -869,7 +869,7 @@ def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp
     for by_slabs in (False, True):
         reg.fuse_by_z_slabs = by_slabs
         fused[by_slabs], saved = reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key,
-                                          output_filename=f'fused_{by_slabs}', ome_version='0.5')
+                                          output_spacing='mean', output_filename=f'fused_{by_slabs}', ome_version='0.5')
         assert saved
 
     for level in msi_utils.get_sorted_scale_keys(fused[False]):
