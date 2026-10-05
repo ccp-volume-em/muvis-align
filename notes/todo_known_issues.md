@@ -35,6 +35,66 @@ Nothing.
 
 ## TODO
 
+ESSENTIAL
+
+- [ ] created zarr: starting at 0.01 scale, but dont see 0.25 scale (overview pixel size), could cause expensive resample of overview. The proposed in native_level_spacing should result in: 0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.498..
+- [ ] occasional fatal error on startup (when trying to connect?):
+      2026-10-05 07:12:15,985 Warning: PyGObject 3.42.2 leaks memory with GObject-Introspection 1.74.0
+      2026-10-05 07:12:15,985  every GLib callback leaks an executable closure, PyGObject 3.44.2 or later fixes this
+      2026-10-05 07:12:15,985  xpra will use a workaround for `GLib.idle_add`, but other callbacks still leak
+      2026-10-05 07:12:15,985  see https://github.com/Xpra-org/xpra/issues/5044
+      2026-10-05 07:12:16,116 created tcp socket '0.0.0.0:9876'
+      _XSERVTransmkdir: ERROR: euid != 0,directory /tmp/.X11-unix will not be created.
+      The XKEYBOARD keymap compiler (xkbcomp) reports:
+      >   Error:            Cannot open "/var/lib/xkb/server-0.xkm" to write keyboard description
+      >                   Exiting
+      The XKEYBOARD keymap compiler (xkbcomp) reports:
+      >   Error:            Cannot open "/var/lib/xkb/server-0.xkm" to write keyboard description
+      >                   Exiting
+      XKB: Failed to compile keymap
+      Keyboard initialization failed. This could be a missing or incorrect setup of xkeyboard-config.
+      (EE) 
+      Fatal server error:
+      (EE) Failed to activate virtual core keyboard: 2(EE) 
+      xpra initialization error:
+      Xvfb: did not provide a display number using displayfd
+      [Mon  5 Oct 07:12:19 BST 2026] Session ended; password file removed.
+- [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
+      single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
+
+
+PERFORMANCE
+
+- [ ] refresh view after registration - very long time for low res output??
+- [ ] 19:30 CET time close napari - long time to acutally close node
+- [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
+      preview size cap (3.4 min on the HPC).
+
+MINOR
+
+- [ ] fusion size accurate for native mode? (reporting: 24.5TB, should be ~350GB - du zarr 260 GB)
+- [ ] fusion bar not indicative, not showing which level etc.
+- [ ] silence dask warning: the input dask array will be rechunked ... 
+- [ ] disabling plugin doesnt remove left had overview window
+- [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
+      shape steps.
+- [ ] **OME-Zarr 0.6 from 'mean'/'min'/'max' fusion** - refused before fusing (multiview_stitcher 0.1.62 writes 0.4/0.5
+      only); native fusion and convert write 0.6 (ngff-zarr >= 0.48). Ask upstream (see Upstream fixes).
+- [ ] **Faster opening of large projects** - napari's per-shape Python cost (~10s at 150k shapes, main viewer and
+      overview widget alike), ~39s untimed after init_data on the HPC (populating tables?), and init sources over
+      NFS (42ms CPU a file on the HPC vs 2.7ms locally: ~31 small reads a file by tifffile).
+- [ ] **Lazy overview: strided reads of single-level sources** - each tile is read whole at full res, then strided;
+      read only the strided rows (as the direct uncompressed-level reads do), and measure on a single-level set.
+- [ ] **Upstream fixes to multiview-stitcher** - phase correlation's spearman quality for every candidate shift
+      (only the kept one is needed), the O(nodes x edges) reference-node search, the HiGHS thread pool from
+      changing threads. Details in notes/multiview_stitcher.md. And to dask: linear fusion's key names (a 115-char
+      prefix + 4 hex digits of hash()) collide between similar chains in one graph (see Done).
+      To multiview_stitcher also: OME-Zarr 0.6 in its writers; zarr writing that fuses each level for multiscale input
+      (as its lazy path does, with custom levels and per-level sources - see native fusion); level names that sort as
+      text past 10 levels (its writer's '10' lands after '1' in napari's own reader).
+
+
+
 From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in all, no errors):
 - [ ] **The msims build in global registration** - 18 min on one core (GIL-bound) for the full per-source pyramids.
       Not skippable: save_mappings_csv, the view refresh (copy_transforms_to_msims), the metadata table and fusion
@@ -44,27 +104,6 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
 - [ ] **Faster refresh after registration** - left: composite overview 12.2 min, preview size cap 6.5 min. Check
       the new timers on the next HPC run (copy transforms to view msims, update_registered: tables).
 
-Other:
-- [ ] **OME-Zarr 0.6 from 'mean'/'min'/'max' fusion** - refused before fusing (multiview_stitcher 0.1.62 writes 0.4/0.5
-      only); native fusion and convert write 0.6 (ngff-zarr >= 0.48). Ask upstream (see Upstream fixes).
-- [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
-      shape steps.
-- [ ] **Faster opening of large projects** - napari's per-shape Python cost (~10s at 150k shapes, main viewer and
-      overview widget alike), ~39s untimed after init_data on the HPC (populating tables?), and init sources over
-      NFS (42ms CPU a file on the HPC vs 2.7ms locally: ~31 small reads a file by tifffile).
-- [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
-      preview size cap (3.4 min on the HPC).
-- [ ] **Lazy overview: strided reads of single-level sources** - each tile is read whole at full res, then strided;
-      read only the strided rows (as the direct uncompressed-level reads do), and measure on a single-level set.
-- [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
-      single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
-- [ ] **Upstream fixes to multiview-stitcher** - phase correlation's spearman quality for every candidate shift
-      (only the kept one is needed), the O(nodes x edges) reference-node search, the HiGHS thread pool from
-      changing threads. Details in notes/multiview_stitcher.md. And to dask: linear fusion's key names (a 115-char
-      prefix + 4 hex digits of hash()) collide between similar chains in one graph (see Done).
-      To multiview_stitcher also: OME-Zarr 0.6 in its writers; zarr writing that fuses each level for multiscale input
-      (as its lazy path does, with custom levels and per-level sources - see native fusion); level names that sort as
-      text past 10 levels (its writer's '10' lands after '1' in napari's own reader).
 
 ## Done
 
