@@ -725,7 +725,6 @@ class MVSRegistration:
             self.init_sources(progress_factory=progress_factory)
         sources = self.sources
         source0 = sources[0]
-        sims = []
         scales = []
         translations = []
         rotations = []

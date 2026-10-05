@@ -254,8 +254,8 @@ STAGE_TRAVEL_PATTERN = re.compile(r'(\d{1,4})x(\d{1,4})(?:x(\d{1,4}))?',
                                   re.IGNORECASE)
 
 # an axis written onto the end of a field name
-AXIS_SUFFIXES = (('x', 'x'), ('y', 'y'), ('z', 'z'),
-                 ('width', 'x'), ('height', 'y'), ('depth', 'z'))
+AXIS_SUFFIXES = (('x', 'x'), ('y', 'y'), ('z', 'z'), ('r', 'r'),
+                 ('width', 'x'), ('height', 'y'), ('depth', 'z'), ('rotation', 'r'))
 
 
 def normalise_name(key: Any) -> str:
@@ -537,16 +537,18 @@ def get_position_um(metadata: Dict) -> Dict[str, float]:
                 POSITION_CONTAINER_NAMES) and axis is None:
             for axis_key, axis_value in value.items():
                 axis = normalise_name(axis_key)
-                if axis in ('x', 'y', 'z'):
+                if axis in ('x', 'y', 'z', 'r'):
+                    unit = implied_position_unit(axis_value, travel_mm) if axis != 'r' else 'um'
                     coordinate = parse_quantity(
                         axis_value,
-                        implied_position_unit(axis_value, travel_mm))
+                        unit)
                     if coordinate is not None:
                         position.setdefault(axis, coordinate)
         elif axis is not None and name.endswith(POSITION_NAMES):
+            unit = implied_position_unit(value, travel_mm) if axis != 'r' else 'um'
             coordinate = parse_quantity(
-                value, sibling_unit(key, siblings)
-                or implied_position_unit(value, travel_mm))
+                value,
+                sibling_unit(key, siblings) or unit)
             if coordinate is not None:
                 position.setdefault(axis, coordinate)
     return position

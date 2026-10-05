@@ -764,6 +764,9 @@ class Interface:
         else:
             positions = [get_sim_position_final(sim, transform_keys=transform_keys) for sim in sims]
             scales = [get_sim_physical_size(sim) for sim in sims]
+        for position, rotation in zip(positions, self.reg.rotations):
+            if rotation is not None:
+                position['r'] = rotation
         order = sorted(range(len(positions)), key=lambda i: position_sort_key(positions[i]))
         data = [[print_dict_simple(positions[i]), print_dict_simple(scales[i])] for i in order]
         row_headers = [self.reg.file_labels[i] for i in order]

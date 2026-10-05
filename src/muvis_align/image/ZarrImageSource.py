@@ -25,6 +25,7 @@ class ZarrImageSource(ImageSource):
         self.pixel_sizes = metadata['pixel_sizes']
         self.pixel_size = self.pixel_sizes[0]
         self.position = metadata['position']
+        self.rotation = metadata['rotation']
 
         # the levels' own array paths within the store, for _load_data() - None whenever the
         # metadata read could not establish them, in which case _load_data() falls back to the
@@ -45,8 +46,6 @@ class ZarrImageSource(ImageSource):
             for channel, channel_metadata in zip(self.channels, omero.get('channels', [])):
                 if channel_metadata.get('color'):
                     channel['color'] = hexrgb_to_rgba(channel_metadata['color'])
-
-        self.rotation = 0
 
     def _load_data(self):
         """One dask array per level, opened straight off the store.

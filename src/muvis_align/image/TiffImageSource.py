@@ -32,11 +32,12 @@ class TiffImageSource(ImageSource):
         self.pixel_sizes = metadata['pixel_sizes']
         self.pixel_size = self.pixel_sizes[0]
         self.position = metadata['position']
+        if 'r' in metadata['position']:
+            self.rotation = metadata['position'].pop('r')
         self.channels = metadata['channels']
         self.creator = metadata['creator']
         # TODO: check with RGB image if better approach is possible
         self.is_rgb = (self.get_nchannels() in (3, 4))
-        self.rotation = 0
 
     def _read_metadata(self):
         # full OME-XML root dict, else every tag but the pixel layout - kept behind the lazy metadata property
@@ -93,7 +94,6 @@ class TiffImageSource(ImageSource):
         self.shape = self.shapes[0]
         self.is_rgb = (self.get_nchannels() in (3, 4))
         self.pixel_size = self.pixel_sizes[0]
-        self.rotation = 0
 
 
 def tags_to_dict(tags: tifffile.TiffTags) -> dict:

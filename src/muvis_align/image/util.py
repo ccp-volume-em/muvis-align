@@ -1769,9 +1769,6 @@ def get_properties_from_transform(transform):
 
 
 def get_data_mapping(data, transform_key=None, transform=None, translation0=None, rotation=None):
-    if rotation is None:
-        rotation = 0
-
     if isinstance(data, DataTree):
         sim = msi_utils.get_sim_from_msim(data)
     else:
@@ -1784,12 +1781,16 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
         translation1, rotation1, _ = get_properties_from_transform(transform)
         dims = set(list(translation) + list(translation1))
         translation = {dim: translation.get(dim, 0) + translation1.get(dim, 0) for dim in dims}
+        if rotation1 and not rotation:
+            rotation = 0
         rotation += rotation1
 
     if transform_key is not None:
         transform1 = sim.transforms.get(transform_key)
         if transform1 is not None:
             _, rotation1, _ = get_properties_from_transform(transform1)
+            if rotation1 and not rotation:
+                rotation = 0
             rotation += rotation1
 
     return translation, rotation

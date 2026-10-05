@@ -30,7 +30,7 @@ class ImageSource:
         self.pixel_size = {}
         self.scale_factors = []
         self.position = {}
-        self.rotation = 0
+        self.rotation = None
         self.channels = []
         self.creator = ''
         self._data = []
@@ -153,8 +153,8 @@ class ImageSource:
                         self.pixel_sizes[0]['z'] = eval_context(scale, 'z', 1, context)
             if 'rotation' in source_metadata:
                 if not check_contains_value(source_metadata['rotation'], 'source'):
-                    self.rotation = eval_context(source_metadata, 'rotation', 0, context)
-                if check_contains_value(source_metadata['rotation'], 'invert'):
+                    self.rotation = eval_context(source_metadata, 'rotation', None, context)
+                if check_contains_value(source_metadata['rotation'], 'invert') and self.rotation:
                     self.rotation = -self.rotation
             if 'channels' in source_metadata and source_metadata['channels']:
                 self.channels = source_metadata['channels']
