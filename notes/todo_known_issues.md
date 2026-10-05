@@ -37,8 +37,9 @@ Nothing.
 
 ESSENTIAL
 
-- [ ] created zarr: starting at 0.01 scale, but dont see 0.25 scale (overview pixel size), could cause expensive resample of overview. The proposed in native_level_spacing should result in: 0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.498..
-- [ ] occasional fatal error on startup (when trying to connect?):
+- [ ] created zarr: starting at 0.01 scale, but dont see 0.25 scale (overview pixel size), this could cause expensive resample of overview.
+      The proposed split saving in native_level_spacing() expected result would be: 0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.498..
+- [ ] occasional fatal error on startup (when trying to connect or independent?):
       2026-10-05 07:12:15,985 Warning: PyGObject 3.42.2 leaks memory with GObject-Introspection 1.74.0
       2026-10-05 07:12:15,985  every GLib callback leaks an executable closure, PyGObject 3.44.2 or later fixes this
       2026-10-05 07:12:15,985  xpra will use a workaround for `GLib.idle_add`, but other callbacks still leak
@@ -61,6 +62,7 @@ ESSENTIAL
       [Mon  5 Oct 07:12:19 BST 2026] Session ended; password file removed.
 - [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
       single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
+- [ ] reduce amount of tests in the tests folder, by removing/grouping redundant or very similar tests
 
 
 PERFORMANCE
@@ -72,10 +74,10 @@ PERFORMANCE
 
 MINOR
 
-- [ ] fusion size accurate for native mode? (reporting: 24.5TB, should be ~350GB - du zarr 260 GB)
-- [ ] fusion bar not indicative, not showing which level etc.
+- [ ] fusion size accurate for native mode with mixed-sizes? (reporting: 24.5TB, expected effectively around ~350GB)
+- [ ] fusion bar not indicative of progress, showing current pyramid level may also be informative
 - [ ] silence dask warning: the input dask array will be rechunked ... 
-- [ ] disabling plugin doesnt remove left had overview window
+- [ ] disabling plugin doesnt remove left had overview window, it should completely disable plugin
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
 - [ ] **OME-Zarr 0.6 from 'mean'/'min'/'max' fusion** - refused before fusing (multiview_stitcher 0.1.62 writes 0.4/0.5
@@ -92,8 +94,6 @@ MINOR
       To multiview_stitcher also: OME-Zarr 0.6 in its writers; zarr writing that fuses each level for multiscale input
       (as its lazy path does, with custom levels and per-level sources - see native fusion); level names that sort as
       text past 10 levels (its writer's '10' lands after '1' in napari's own reader).
-
-
 
 From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in all, no errors):
 - [ ] **The msims build in global registration** - 18 min on one core (GIL-bound) for the full per-source pyramids.
