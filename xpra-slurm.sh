@@ -135,12 +135,13 @@ cat <<EOF
       username:  ${USER}
       password:  ${XPRA_PASS}
 
-  STEP 4 - To finish: close the browser tab, press Ctrl+C in the ssh
-    terminal, then run:
+  STEP 4 - To finish:
 
-      scancel ${SLURM_JOB_ID}
+      Close the napari window inside the browser which should automatically disconnect the session, then close the browser tab
 
-  If something goes wrong, the xpra server log is at:
+      In case napari refuses to close, optionally manually kill the HPC task: scancel ${SLURM_JOB_ID}
+
+  In case something goes wrong, the xpra server log is at:
       ${RUN_DIR}/xpra.log
 
 ======================================================================
