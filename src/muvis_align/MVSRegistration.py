@@ -1909,8 +1909,8 @@ class MVSRegistration:
         if not is_channel_overlay:
             msims = unify_msim_channels(msims)
 
-        is_native = (output_spacing is None or str(output_spacing).lower() == 'native')
-        is_native = is_native and output_filename is not None and not is_channel_overlay
+        is_native = ((output_spacing is None or str(output_spacing).lower() == 'native')
+                     and output_filename is not None and not is_channel_overlay)
         if is_native:
             output_spacing = 'min'
         elif output_spacing is None or str(output_spacing).lower() == 'native':
