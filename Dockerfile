@@ -50,6 +50,7 @@ COPY requirements.txt .
 RUN python -m pip install --upgrade pip
 RUN pip install -r requirements.txt
 RUN pip install napari[all]
+RUN pip install napari-ome-zarr
 
 # Copy project files after dependencies have been installed.
 COPY run.py .
