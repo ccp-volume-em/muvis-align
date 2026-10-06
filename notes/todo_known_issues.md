@@ -104,6 +104,14 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
 - [ ] **Faster refresh after registration** - left: composite overview 12.2 min, preview size cap 6.5 min. Check
       the new timers on the next HPC run (copy transforms to view msims, update_registered: tables).
 
+REFACTORING
+
+- [ ] MVS.init_data and ImageSource functionality overlap - better code re-use
+- [ ] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
+      avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
+      create detailed plan first
+- [ ] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
+
 
 ## Done
 
