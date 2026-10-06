@@ -33,7 +33,7 @@ outputs:
     label: "Output data"
     description: "Output data"
     cli_tag: "--output_path"
-    cli_order: 13
+    cli_order: 14
     default: "output"
     optional: False
     format:
@@ -118,6 +118,17 @@ parameters:
     optional: True
     section_id: "input_output"
     mode: "advanced"
+  - name: normalise_rotated_positions
+    type: checkbox
+    label: "Normalise rotated positions"
+    description: "If enabled, positions/rotations are normalised"
+    default: False
+    cli_tag: "--normalise_rotated_positions"
+    cli_order: 8
+    optional: True
+    append_value: False
+    section_id: "input_output"
+    mode: "advanced"
   - name: registration_dimension
     type: dropdown
     label: "Registration dimension"
@@ -132,7 +143,7 @@ parameters:
       - label: T
         value: "t"
     default: "space"
-    cli_order: 11
+    cli_order: 12
     section_id: "input_output"
     mode: "advanced"
   - name: channels_table
@@ -140,7 +151,7 @@ parameters:
     label: " "
     default: []
     description: "Channels"
-    cli_order: 12
+    cli_order: 13
     section_id: "input_output"
     mode: "advanced"
 
@@ -150,7 +161,7 @@ parameters:
     description: "Preview resolution: a downscale factor (e.g. 16) or a pixel size with unit (e.g. 10um)"
     default: "16"
     cli_tag: "--preview_scale"
-    cli_order: 8
+    cli_order: 9
     optional: True
     section_id: "input_output"
     mode: "advanced"
@@ -161,7 +172,7 @@ parameters:
     description: "If enabled, any existing output data will be overwritten"
     default: True
     cli_tag: "--overwrite"
-    cli_order: 14
+    cli_order: 15
     optional: True
     append_value: False
     section_id: "input_output"
@@ -552,7 +563,7 @@ display_only:
     label: " "
     default: []
     description: "Metadata"
-    cli_order: 10
+    cli_order: 11
     section_id: "input_output"
 
   - name: metrics_table
