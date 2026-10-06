@@ -267,6 +267,13 @@ class Interface:
             set_dict_value(self.source_metadata, ['rotation'], value)
             self.need_source_reinit = True
 
+    def normalise_rotated_positions(self, value):
+        if value:
+            self.source_metadata['norm'] = True
+        else:
+            self.source_metadata.pop('norm', None)
+        self.need_source_reinit = True
+
     def registration_dimension(self, value):
         # Force reinitialization of extra metadata / channels when registration dimension changes
         self.extra_metadata.pop('channels', None)

@@ -1019,20 +1019,21 @@ def create_chunk_dict(chunk_size, dims):
     return chunk_dict
 
 
-def normalise_rotated_positions(centers0, rotations0, sizes, center, ndims):
+def normalise_rotated_positions(positions0, rotations0, sizes, center, ndims):
     # in [xy(z)]
-    centers = []
+    positions = []
     rotations = []
-    _, angles = get_pairs(centers0, sizes)
-    for center0, rotation in zip(centers0, rotations0):
-        if rotation is None and len(angles) > 0:
-            rotation = -float(np.mean(angles))
+    _, angles = get_pairs(positions0, sizes)
+    mean_angle = float(np.mean(angles)) if len(angles) > 0 else None
+    for position0, rotation in zip(positions0, rotations0):
+        if rotation is None and mean_angle is not None:
+            rotation = -mean_angle
         angle = -rotation if rotation is not None else None
         transform = create_transform(center=center, angle=angle, matrix_size=ndims + 1)
-        center = apply_transform_dict([center0], transform)[0]
-        centers.append(center)
+        position = apply_transform_dict([position0], transform)[0]
+        positions.append(position)
         rotations.append(rotation)
-    return centers, rotations
+    return positions, rotations
 
 
 def get_nn_distance(points0):

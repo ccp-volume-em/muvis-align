@@ -1,0 +1,37 @@
+general:
+  show_original: False
+  metadata_summary: False
+  chunk_size: [4096, 4096]
+  break_on_error: True
+  overwrite: False
+  logging:
+    filename: log/muvis-align.log
+    format: '%(asctime)s %(levelname)s: %(message)s'
+  output:
+    overwrite: True
+    format: ome.zarr
+    tile_size: [4096, 4096]
+    compression:
+    npyramid_add: 4
+    pyramid_downsample: 2
+
+operations:
+  - operation: register
+    input:
+      path: C:/Project/slides/Ciqtek/Automap/*Region1_r1*.tiff
+      source_metadata: source norm
+    preprocessing:
+      #normalisation: global  # normalise in custom registration function instead
+      scale: 4
+      #flatfield_quantiles: [0.5]
+    registration:
+      pairing: orthogonal
+      normalisation: True
+      transform_type: translation
+      name: sift
+      gaussian_sigma: 1
+      max_keypoints: 5000
+      inlier_threshold_factor: 0.05
+      max_trials: 1000
+      ransac_iterations: 3
+    output: output/
