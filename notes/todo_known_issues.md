@@ -113,9 +113,12 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
       properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
 - [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
-      composite overview 10ms (11.9 min on the HPC: NFS reads?), preview cap (below), sub-pyramid 0.7ms, image
-      shapes 1.3ms, tables 1.8 min. Next: the composite overview. (Promotion, the second transform copy and the
-      cap's size estimate: see Done.)
+      image shapes 1.3ms, tables 1.8 min; the preview cap and composite overview only where the lazy overview
+      declines (a rotation, 3D or multichannel sources). Check on the next HPC run. (Promotion, the second transform
+      copy, the cap's estimate and the lazy overview after registration: see Done.)
+- [ ] **Composite overview collapses sections spaced other than 1** - with the z spacing unknown (z_scale None) its
+      output z spacing is 1.0, so meatballs' sections 0.05 apart all land in its first plane. Now only a fallback
+      (a rotation, 3D or multichannel sources).
 - [ ] **Preview cap: one rebuild instead of three** - the HPC's 343GB -> 4GB cap ran 3 size estimates, 2 rounds
       dropping levels and 1 strided round, each rebuilding every msim's tree (~2ms a source of the 2.6 left on
       meatballs forced to the same 85x; ~11ms a source on the HPC). Choosing the levels from each level's geometry
@@ -135,6 +138,11 @@ REFACTORING
 
 ## Done
 
+- **Lazy per-section overview after registration** - the refresh pasted all 34k sources one by one before showing
+  any (11.9 min on the HPC, NFS reads); it now builds each section when viewed, as before registration, at the
+  registered transforms already on the sources' msims - no file opened for them (counted: 0 on meatballs). Meatballs:
+  created in 0.04s, a section in 0.28s, vs 1.8s for the composite; a single registered source lands within one
+  output pixel of its transform's box in both. The preview cap and composite are left as the fallback.
 - **Preview cap: not the sections, the reduction rounds** - the HPC's 6.3 min is ~11ms a source, the same per source
   as meatballs forced to the same 85x reduction (3.3ms locally): size estimates and msim rebuilds per round.
   promoted_geometry widened each affine through an xarray only to read it back (widened_affine_matrix now): an

@@ -1065,6 +1065,8 @@ def test_update_views_adds_enabled_preview_layers(
     shapes = [np.zeros((4, 2))]
     shape_data = (shapes, ["0"], ["image-0"], [(1, 1, 1)])
     image_data = object()
+    # no overview built: what this checks happens around it
+    bare_interface._create_lazy_overview = MagicMock(return_value=None)
     bare_interface._create_napari_shapes = MagicMock(
         return_value=shape_data
     )
@@ -1131,6 +1133,8 @@ def test_update_views_detects_multi_z_from_view_msims(
     bare_interface.overview = MagicMock()
     bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
     bare_interface.reg.positions = [{"z": 0}, {"z": 1}]
+    # no overview built: what this checks happens around it
+    bare_interface._create_lazy_overview = MagicMock(return_value=None)
     bare_interface._create_napari_shapes = MagicMock(
         return_value=([], [], [], [])
     )
@@ -2347,6 +2351,8 @@ def test_update_views_reports_into_the_callers_bar(bare_interface, monkeypatch):
     bare_interface.overview = MagicMock()
     bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
     bare_interface.reg.positions = [{"z": 0}]
+    # no overview built: what this checks happens around it
+    bare_interface._create_lazy_overview = MagicMock(return_value=None)
     bare_interface._create_napari_shapes = MagicMock(return_value=([], [], [], []))
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._update_view_add_shapes = MagicMock()
@@ -2593,19 +2599,37 @@ def test_phase_progress_does_not_recurse_when_the_bar_reports_back():
     assert len(updates) <= NapariPhaseProgress.ticks // 50 + 1
 
 
-def test_update_views_draws_the_pasted_overview_not_a_fusion(bare_interface, monkeypatch):
-    """The main view's image is the pasted overview (composite=True): fusing for it costs per
-    source however small the preview is made - 10.3 minutes for a 4733-source project."""
+def _registered_view_interface(bare_interface, lazy_overview):
     bare_interface.viewer = MagicMock()
     bare_interface.overview = MagicMock()
     bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
     bare_interface.reg.positions = [{"z": 0}]
     bare_interface.reg.fileset_label = "sample"
     bare_interface._create_napari_shapes = MagicMock(return_value=([], [], [], []))
+    bare_interface._create_lazy_overview = MagicMock(return_value=lazy_overview)
     bare_interface._create_napari_data = MagicMock(return_value="overview")
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._update_view_add_shapes = MagicMock()
     bare_interface._napari_view_add_fused_data = MagicMock()
+
+
+def test_update_views_draws_the_registered_sections_lazily(bare_interface):
+    """After registration the main view reads each section when viewed, as before it: pasting every source first took
+    11.9 minutes for 34k sources on the HPC."""
+    _registered_view_interface(bare_interface, lazy_overview="lazy")
+
+    bare_interface.update_views(transform_key="registered")
+
+    assert bare_interface._create_lazy_overview.call_args.args == ("registered",)
+    bare_interface._create_napari_data.assert_not_called()
+    assert bare_interface._napari_view_add_fused_data.call_args.args[1] == "lazy"
+
+
+def test_update_views_draws_the_pasted_overview_not_a_fusion(bare_interface):
+    """Where the lazy overview declines (a rotation, say), the main view's image is the pasted overview
+    (composite=True): fusing for it costs per source however small the preview is made - 10.3 minutes for a
+    4733-source project."""
+    _registered_view_interface(bare_interface, lazy_overview=None)
 
     bare_interface.update_views(transform_key="registered")
 

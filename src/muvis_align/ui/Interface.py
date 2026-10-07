@@ -3,7 +3,7 @@ from contextlib import contextmanager, nullcontext
 import logging
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
-from multiview_stitcher import spatial_image_utils as si_utils, param_utils
+from multiview_stitcher import msi_utils, spatial_image_utils as si_utils, param_utils
 from napari.qt.threading import create_worker
 from napari.utils import progress
 from napari.utils.notifications import notification_manager, show_info, show_warning
@@ -916,13 +916,12 @@ class Interface:
                         weight=shapes_weight),
                     factory)
 
-            # at the sources' own positions, each section built only when viewed: image data as soon as the shapes
-            data = None
-            if transform_key == self.reg.source_transform_key:
-                with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
-                    data = self._run_off_thread(
-                        lambda worker_factory: self._create_lazy_overview(show_preprocessed=show_preprocessed), factory)
-            # otherwise the fused preview, which needs every source's real msim built: not on opening a project
+            # each section built only when viewed: image data as soon as the shapes
+            with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
+                data = self._run_off_thread(
+                    lambda worker_factory: self._create_lazy_overview(transform_key,
+                                                                      show_preprocessed=show_preprocessed), factory)
+            # otherwise (a rotation, a 3D or multichannel source) the fused preview
             if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
@@ -957,11 +956,15 @@ class Interface:
                 pbar.update(1)
         self.view_mode = ViewMode.OVERVIEW
 
-    def _create_lazy_overview(self, show_preprocessed=False):
+    def _create_lazy_overview(self, transform_key, show_preprocessed=False):
         reg = self.reg
         transforms, output_order = getattr(reg, '_msim_transforms', None), getattr(reg, '_msim_output_order', None)
         if transforms is None or output_order is None:
             return None
+        if transform_key != reg.source_transform_key:
+            # the registered transforms, already on the sources' msims: no file is read again for them
+            transforms = [np.asarray(msi_utils.get_transform_from_msim(msim, transform_key)).squeeze()
+                          for msim in reg.msims]
         readers, label = None, 'Overview'
         if show_preprocessed and reg.register_msims is not None:
             # a source pre-processing dropped (filter_foreground) is left out, not shown raw
@@ -969,7 +972,7 @@ class Interface:
             for index, msim in zip(reg.register_indices, reg.register_msims):
                 readers[index] = MsimLevels(msim)
             label = 'Pre-processed overview'
-        return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, reg.source_transform_key,
+        return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, transform_key,
                                      z_scale=getattr(reg, '_msim_z_scale', None),
                                      preview_scale=self.params['input_output'].get('preview_scale'),
                                      readers=readers, label=f'{label} ({len(reg.sources)} images)')
