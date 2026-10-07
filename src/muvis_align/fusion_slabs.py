@@ -314,8 +314,9 @@ def native_level_spacings(source_spacings, finest_shape, min_shape=100, toleranc
     while pending or largest * levels[0] / (levels[-1] * 2) > min_shape:
         doubled = levels[-1] * 2
         if pending and doubled >= pending[0] * (1 - tolerance):
-            # a step of under sqrt(2) to a source's own size replaces the level before it instead
-            if len(levels) > 1 and pending[0] < levels[-1] * np.sqrt(2):
+            # a step of under sqrt(2) to a source's own size replaces a doubled level before it - never another
+            # source's size, whose sources would then be in no level at their own size
+            if len(levels) > 1 and levels[-1] not in sizes and pending[0] < levels[-1] * np.sqrt(2):
                 levels[-1] = pending.pop(0)
             else:
                 levels.append(pending.pop(0))
@@ -358,6 +359,9 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
     _remove_existing(output_zarr_url, zarr_options)
     level_spacings = native_level_spacings(source_spacings, [level0_properties['shape'][dim] for dim in scaled_dims],
                                            tolerance=tolerance)
+    sizes, counts = np.unique(np.round(source_spacings, 4), return_counts=True)
+    logging.info(f'Native fusion levels {[float(round(spacing, 4)) for spacing in level_spacings]}, sources by pixel'
+                 f' size {dict(zip(sizes.tolist(), counts.tolist()))}')
     levels = native_level_stack_properties(level0_properties, level_spacings, scaled_dims)
     paths = level_paths(len(levels))
     for index, (level_spacing, properties) in enumerate(zip(level_spacings, levels)):

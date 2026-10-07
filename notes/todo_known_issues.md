@@ -37,8 +37,6 @@ Nothing.
 
 ESSENTIAL
 
-- [ ] created zarr: starting at 0.01 scale, but dont see 0.25 scale (overview pixel size), this could cause expensive resample of overview.
-      The proposed split saving in native_level_spacing() expected result would be: 0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.498..
 - [ ] occasional fatal error on startup (when trying to connect or independent?):
       2026-10-05 07:12:15,985 Warning: PyGObject 3.42.2 leaks memory with GObject-Introspection 1.74.0
       2026-10-05 07:12:15,985  every GLib callback leaks an executable closure, PyGObject 3.44.2 or later fixes this
@@ -135,6 +133,11 @@ REFACTORING
 
 ## Done
 
+- **Native fusion lost the overviews' level** - the HPC output had 0.01..0.16, then 0.3322 doubling, no 0.249: some
+  sources are at 0.3322 (4/3 of 0.249), and a source size under sqrt(2) above the previous level replaced it, even
+  when that level was another source's size. Now only a doubled level is replaced (0.01..0.16, 0.249, 0.3322,
+  0.6644..). Tiles at half or double the usual size were already fine. Native fusion logs its levels and how many
+  sources have each pixel size - see which are at 0.3322 on the next HPC run.
 - **Composite overview collapsed sections spaced other than 1** - with no z scale given, calc_output_properties took
   a size-1 z's reported 1.0 as the output's z spacing, so meatballs' sections 0.05 apart all landed in the first
   plane (each pasted over the last). A stack of single-plane sections now takes the spacing between them, as

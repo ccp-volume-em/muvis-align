@@ -19,6 +19,9 @@ from muvis_align.fusion_slabs import (fuse_native_levels_to_ome_zarr, native_lev
     ([0.01, 0.0102], [300, 400], [0.01, 0.02]),
     # a step of under sqrt(2) to a source size replaces the level before it
     ([0.01, 0.17], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.17, 0.34]),
+    # ...when that level is a doubled one, never another source's size (the HPC's overviews at 0.249 and 0.3322)
+    ([0.01, 0.249, 0.3322], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.3322]),
+    ([0.01, 0.2, 0.249], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.2, 0.249]),
     # a single size: plain doubling, down to about 100 pixels
     ([1.0], [1000, 800], [1.0, 2.0, 4.0, 8.0]),
 ])
