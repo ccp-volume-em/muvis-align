@@ -1518,34 +1518,6 @@ def check_sim_dims(sim):
     return dims
 
 
-def copy_transforms(source_sims, target_sims, transform_key):
-    # source_sims accepts either sims or msims - a msim's transform is read directly
-    # (msi_utils.get_transform_from_msim), no sim round-trip needed (mirrors copy_transforms_to_msims)
-    dims = list(si_utils.get_origin_from_sim(target_sims[0]).keys())
-    for source_sim, target_sim in zip(source_sims, target_sims):
-        if isinstance(source_sim, DataTree):
-            transform = msi_utils.get_transform_from_msim(source_sim, transform_key)
-        else:
-            transform = si_utils.get_affine_from_sim(source_sim, transform_key=transform_key)
-        transform_dims = np.array(transform.coords['x_in'])
-        if len(transform_dims) - 1 != len(dims):
-            new_transform = param_utils.identity_transform(ndim=len(dims))
-            # Get common non-t dimensions for assignment
-            common_dims = [dim for dim in transform.dims if dim in new_transform.dims and dim != 't']
-            if len(common_dims) > 0:
-                # Select t=0 if it exists in transform, then assign
-                if 't' in transform.dims:
-                    transform_slice = transform.sel(t=0)
-                else:
-                    transform_slice = transform
-                new_transform.loc[{dim: transform_slice.coords[dim] for dim in common_dims}] = transform_slice
-            transform = new_transform
-        si_utils.set_sim_affine(
-            target_sim,
-            transform,
-            transform_key=transform_key)
-
-
 def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
     # accepts either a sim or a msim (its scale0 sim is used) - only position/transform metadata
     # is ever read here, never pixel data
