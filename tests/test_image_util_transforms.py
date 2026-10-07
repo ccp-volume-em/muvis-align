@@ -1,207 +1,75 @@
-"""
-Unit tests for image utility functions, particularly transform dimension handling.
-
-Tests focus on the fix for dimension mismatch when 2D images have 3D transforms.
-"""
-
+import dask.array as da
 import numpy as np
 import pytest
 import xarray as xr
+from multiview_stitcher import msi_utils, param_utils
 
-from muvis_align.image.util import (
-    _adapt_transform_to_image_dims,
-    draw_keypoints_matches_napari,
-    gaussian_filter_sim,
-    get_overlap_images,
-)
-
-
-def create_mock_sim_2d(shape=(400, 400), origin=(0.048, 0.048), spacing=(0.064, 0.064)):
-    """Create a mock 2D image (xarray DataArray) with spatial coordinates."""
-    y_coords = np.arange(shape[0]) * spacing[0] + origin[0]
-    x_coords = np.arange(shape[1]) * spacing[1] + origin[1]
-    
-    data = np.random.randint(0, 100, size=(1, 1, *shape), dtype=np.uint16)
-    
-    sim = xr.DataArray(
-        data,
-        dims=['t', 'c', 'y', 'x'],
-        coords={
-            't': [0],
-            'c': [''],
-            'y': y_coords,
-            'x': x_coords,
-        }
-    )
-    
-    return sim
+from muvis_align.image.util import (_adapt_transform_to_image_dims, copy_transforms_to_msims,
+                                    draw_keypoints_matches_napari, gaussian_filter_sim, get_msim_transform_keys,
+                                    get_overlap_images, grid_point_pairs, make_msims_3d, NoOverlapError,
+                                    restore_msims_transform, set_msim_affine, snapshot_msims_transform,
+                                    widen_xaffine_to_3d, widened_affine_matrix)
+from muvis_align.util import create_transform
+from tests.data_builders import make_msim, make_sim
 
 
-def create_3d_transform():
-    """Create a 4x4 3D affine transform matrix (for z, y, x, homogeneous)."""
-    transform_data = np.eye(4)
-    transform = xr.DataArray(
-        transform_data,
-        dims=['x_in', 'x_out'],
-        coords={
-            'x_in': ['z', 'y', 'x', '1'],
-            'x_out': ['z', 'y', 'x', '1'],
-        }
-    )
-    return transform
+def labelled_affine(matrix):
+    dims = ['z', 'y', 'x', '1'][-len(matrix):]
+    return xr.DataArray(np.asarray(matrix, dtype=float), dims=['x_in', 'x_out'], coords={'x_in': dims, 'x_out': dims})
 
 
-def create_2d_transform():
-    """Create a 3x3 2D affine transform matrix (for y, x, homogeneous)."""
-    transform_data = np.eye(3)
-    transform = xr.DataArray(
-        transform_data,
-        dims=['x_in', 'x_out'],
-        coords={
-            'x_in': ['y', 'x', '1'],
-            'x_out': ['y', 'x', '1'],
-        }
-    )
-    return transform
+TRANSLATED_3D = np.eye(4)
+TRANSLATED_3D[1, 3] = 5.0
 
 
-def test_adapt_transform_2d_image_with_3d_transform():
-    """Test that 3D transform is reduced to 3x3 for 2D images."""
-    sim = create_mock_sim_2d()
-    transform_3d = create_3d_transform()
-    
-    # Add 3D transform to sim
-    sim.attrs['transforms'] = {'source_metadata': transform_3d}
-    
-    # Adapt transform
-    adapted = _adapt_transform_to_image_dims(sim, transform_3d, 'source_metadata')
-    
-    # Should extract y, x, 1 from z, y, x, 1
-    assert adapted.shape == (3, 3)
-    assert list(adapted.coords['x_in'].values) == ['y', 'x', '1']
-    assert list(adapted.coords['x_out'].values) == ['y', 'x', '1']
+@pytest.mark.parametrize('image_dims, transform, expected_dims, expected', [
+    # a 3D transform on a 2D image keeps its y/x block, translation included
+    ('tcyx', TRANSLATED_3D, ['y', 'x', '1'], [[1.0, 0.0, 5.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+    ('tcyx', np.eye(3), ['y', 'x', '1'], np.eye(3)),
+    ('tczyx', np.eye(4), ['z', 'y', 'x', '1'], np.eye(4)),
+])
+def test_a_transform_is_adapted_to_the_images_own_dims(image_dims, transform, expected_dims, expected):
+    sim = make_sim(np.zeros((1, 1) + (4, 32, 32)[5 - len(image_dims):], dtype=np.uint16), image_dims)
+    sim.attrs['transforms'] = {'source_metadata': labelled_affine(transform)}
 
+    adapted = _adapt_transform_to_image_dims(sim, labelled_affine(transform), 'source_metadata')
 
-def test_adapt_transform_2d_image_with_2d_transform():
-    """Test that 2D transform stays 3x3 for 2D images (no-op)."""
-    sim = create_mock_sim_2d()
-    transform_2d = create_2d_transform()
-    
-    # Add 2D transform to sim
-    sim.attrs['transforms'] = {'source_metadata': transform_2d}
-    
-    # Adapt transform
-    adapted = _adapt_transform_to_image_dims(sim, transform_2d, 'source_metadata')
-    
-    # Should remain 3x3
-    assert adapted.shape == (3, 3)
-    assert list(adapted.coords['x_in'].values) == ['y', 'x', '1']
-    assert np.allclose(adapted.values, np.eye(3))
-
-
-def test_adapt_transform_3d_image_with_3d_transform():
-    """Test that 3D transform stays 4x4 for 3D images (no-op)."""
-    # Create 3D sim
-    sim = create_mock_sim_2d()
-    sim = sim.expand_dims(z=10)
-    
-    transform_3d = create_3d_transform()
-    
-    # Add 3D transform to sim
-    sim.attrs['transforms'] = {'source_metadata': transform_3d}
-    
-    # Adapt transform
-    adapted = _adapt_transform_to_image_dims(sim, transform_3d, 'source_metadata')
-    
-    # Should remain 4x4
-    assert adapted.shape == (4, 4)
-    assert list(adapted.coords['x_in'].values) == ['z', 'y', 'x', '1']
-
-
-def test_adapted_transform_values_are_identity_submatrix():
-    """Test that adapted transform preserves correct values from original."""
-    sim = create_mock_sim_2d()
-    
-    # Create 3D transform with non-trivial values
-    transform_3d_data = np.array([
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0, 5.0],
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ])
-    transform_3d = xr.DataArray(
-        transform_3d_data,
-        dims=['x_in', 'x_out'],
-        coords={
-            'x_in': ['z', 'y', 'x', '1'],
-            'x_out': ['z', 'y', 'x', '1'],
-        }
-    )
-    
-    sim.attrs['transforms'] = {'source_metadata': transform_3d}
-    
-    # Adapt - should extract rows/cols for y, x, 1
-    adapted = _adapt_transform_to_image_dims(sim, transform_3d, 'source_metadata')
-    
-    # Check that we got the right 3x3 submatrix
-    # Should be rows [y, x, 1] and cols [y, x, 1] from original
-    # y is index 1, x is index 2, 1 is index 3
-    expected = np.array([
-        [1.0, 0.0, 5.0],   # y row
-        [0.0, 1.0, 0.0],   # x row
-        [0.0, 0.0, 1.0],   # 1 row
-    ])
-    
-    assert np.allclose(adapted.values, expected)
+    assert list(adapted.coords['x_in'].values) == list(adapted.coords['x_out'].values) == expected_dims
+    np.testing.assert_allclose(adapted.values, expected)
 
 
 def test_gaussian_filter_sim_preserves_uint_range_for_multichannel_sim():
-    sim = create_mock_sim_2d(shape=(32, 32))
-    sim = xr.concat([sim, sim * 2], dim="c")
-    sim = sim.assign_coords(c=["ch0", "ch1"])
-    sim.attrs["transforms"] = {"source_metadata": create_2d_transform()}
+    base = np.random.default_rng(0).integers(0, 100, (32, 32), dtype=np.uint16)
+    sim = make_sim(np.stack([base, base * 2])[np.newaxis], 'tcyx', c_coords=['ch0', 'ch1'])
 
-    filtered = gaussian_filter_sim(sim, "source_metadata", sigma=2.0)
+    filtered = gaussian_filter_sim(sim, 'source_metadata', sigma=2.0)
 
     assert filtered.dtype == sim.dtype
     assert np.max(np.asarray(filtered)) > 1
 
 
-def test_draw_keypoints_matches_napari_splits_match_layers_by_inlier_state():
-    image = np.zeros((16, 16), dtype=np.uint16)
-    points1 = np.array([[2, 2], [4, 4]], dtype=float)
-    points2 = np.array([[2, 2], [4, 4]], dtype=float)
-    matches = np.array([[0, 0], [1, 1]], dtype=int)
-    inliers = np.array([False, True], dtype=bool)
+@pytest.mark.parametrize('side, point_size, line_width', [(60, 6, 1), (1600, 20, 4)])
+def test_preview_matches_split_by_inlier_state_and_scale_with_the_image_shown(side, point_size, line_width):
+    image = np.zeros((side, side // 2), np.float32)
+    points = np.array([[10.0, 10.0], [20.0, 20.0]])
 
-    layers = draw_keypoints_matches_napari(
-        image, points1, image, points2, matches=matches, inliers=inliers
-    )
-    layer_map = {kwargs["name"]: (data, kwargs, layer_type) for data, kwargs, layer_type in layers}
+    layers = {kwargs['name']: (data, kwargs, layer_type) for data, kwargs, layer_type in
+              draw_keypoints_matches_napari(image, points, image, points, matches=np.array([[0, 0], [1, 1]]),
+                                            inliers=np.array([False, True]))}
 
-    points_data, points_kwargs, points_type = layer_map["keypoints"]
-    non_inliers_data, non_inliers_kwargs, non_inliers_type = layer_map["matches"]
-    inliers_data, inliers_kwargs, inliers_type = layer_map["matches_inliers"]
+    assert [layers[name][2] for name in ('keypoints', 'matches', 'matches_inliers')] == ['points', 'shapes', 'shapes']
+    assert len(layers['matches'][0]) == len(layers['matches_inliers'][0]) == 1
+    assert layers['keypoints'][1]['size'] == point_size
+    assert layers['matches_inliers'][1]['edge_width'] == line_width
 
-    assert points_type == "points"
-    assert non_inliers_type == "shapes"
-    assert inliers_type == "shapes"
 
-    assert len(non_inliers_data) == 1
-    assert len(inliers_data) == 1
+def pyramid_msim(index=0):
+    return make_msim(da.zeros((1, 1, 64, 64), dtype=np.uint8, chunks=32), 'tcyx', scale_factors=[2, 4],
+                     translation={'y': 0.0, 'x': 10.0 * index})
 
 
 def test_restoring_a_transform_snapshot_puts_back_the_previous_value_or_removes_a_new_one():
-    import glob
-    from multiview_stitcher import msi_utils, param_utils
-    from muvis_align.MVSRegistration import MVSRegistration
-    from muvis_align.image.util import get_msim_transform_keys, restore_msims_transform, snapshot_msims_transform
-
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr'))[:2],
-             output_path='../../output/test_transform_snapshot/')
-    reg.init_data()
-    msims = reg.msims
+    msims = [pyramid_msim(0), pyramid_msim(1)]
 
     def shifted(shift):
         return param_utils.affine_to_xaffine(param_utils.affine_from_translation([0.0, shift]))
@@ -210,11 +78,11 @@ def test_restoring_a_transform_snapshot_puts_back_the_previous_value_or_removes_
         return float(np.asarray(msi_utils.get_transform_from_msim(msim, transform_key='registered')).squeeze()[1, 2])
 
     msi_utils.set_affine_transform(msims[0], shifted(1.0), transform_key='registered',
-                                   base_transform_key=reg.source_transform_key)
+                                   base_transform_key='source_metadata')
     snapshot = snapshot_msims_transform(msims, 'registered')
     for msim in msims:
         msi_utils.set_affine_transform(msim, shifted(5.0), transform_key='registered',
-                                       base_transform_key=reg.source_transform_key)
+                                       base_transform_key='source_metadata')
 
     restore_msims_transform(msims, 'registered', snapshot)
 
@@ -224,8 +92,6 @@ def test_restoring_a_transform_snapshot_puts_back_the_previous_value_or_removes_
 
 
 def test_grid_point_pairs_follow_the_transform_from_fixed_to_moving():
-    from muvis_align.image.util import grid_point_pairs
-
     # fixed p lies at p + (5, 10) in the moving image
     matrix = np.array([[1, 0, 5], [0, 1, 10], [0, 0, 1]], dtype=float)
 
@@ -239,8 +105,6 @@ def test_grid_point_pairs_follow_the_transform_from_fixed_to_moving():
 
 
 def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_keep_points_off_the_moving_image():
-    from muvis_align.image.util import grid_point_pairs
-
     # (t, c, y, x) as multiview-stitcher gives it: spatial dims last
     matrix = np.eye(5)
     matrix[2:4, 4] = [20, 0]
@@ -253,13 +117,16 @@ def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_keep_poi
     assert rows.max() > 60 - np.diff(rows)[0] and moving[:, 0].max() > 39
 
 
+@pytest.mark.parametrize('shape, expected', [((800, 50), (30, 3)), ((1407, 422), (30, 9)), ((62, 83), (4, 6))])
+def test_grid_point_pairs_put_30_along_the_longest_side_at_least_3_along_any_and_rings_apart(shape, expected):
+    fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
+
+    assert (len(np.unique(fixed[:, 0])), len(np.unique(fixed[:, 1]))) == expected
+
+
 @pytest.mark.parametrize('offset, overlaps, widen', [(1000.0, False, False), (60.0, True, False), (60.0, True, True)])
 def test_get_overlap_images_says_plainly_when_two_images_do_not_overlap(offset, overlaps, widen):
-    from multiview_stitcher import spatial_image_utils as si_utils
-    from muvis_align.image.util import NoOverlapError, widen_xaffine_to_3d
-
-    sims = [si_utils.get_sim_from_array(np.ones((100, 100), np.float32), dims=['y', 'x'], scale={'y': 1, 'x': 1},
-                                        translation={'y': 0.0, 'x': x_offset}, transform_key='source')
+    sims = [make_sim(np.ones((100, 100), np.float32), translation={'y': 0.0, 'x': x_offset}, transform_key='source')
             for x_offset in (0.0, offset)]
     if widen:
         # a 3D transform on a 2D image, as a promoted msim leaves it
@@ -274,42 +141,8 @@ def test_get_overlap_images_says_plainly_when_two_images_do_not_overlap(offset, 
             get_overlap_images(sims[0], sims[1], 'source')
 
 
-@pytest.mark.parametrize('side, point_size, line_width', [(60, 6, 1), (1600, 20, 4)])
-def test_preview_points_and_lines_scale_with_the_image_shown(side, point_size, line_width):
-    from muvis_align.image.util import draw_keypoints_matches_napari
-
-    image = np.zeros((side, side // 2), np.float32)
-    points = np.array([[10.0, 10.0]])
-    layers = {kwargs['name']: kwargs for _, kwargs, _ in
-              draw_keypoints_matches_napari(image, points, image, points, matches=[[0, 0]], inliers=[True])}
-
-    assert layers['keypoints']['size'] == point_size
-    assert layers['matches_inliers']['edge_width'] == line_width
-
-
-@pytest.mark.parametrize('shape, expected', [((800, 50), (30, 3)), ((1407, 422), (30, 9)), ((62, 83), (4, 6))])
-def test_grid_point_pairs_put_30_along_the_longest_side_at_least_3_along_any_and_rings_apart(shape, expected):
-    from muvis_align.image.util import grid_point_pairs
-
-    fixed, _, _, _ = grid_point_pairs(shape, shape, np.eye(3))
-
-    assert (len(np.unique(fixed[:, 0])), len(np.unique(fixed[:, 1]))) == expected
-
-def pyramid_msim(index=0):
-    import dask.array as da
-    from multiview_stitcher import msi_utils
-    from multiview_stitcher import spatial_image_utils as si_utils
-
-    sim = si_utils.get_sim_from_array(da.zeros((1, 1, 64, 64), dtype=np.uint8, chunks=32), dims=['t', 'c', 'y', 'x'],
-                                      translation={'y': 0.0, 'x': 10.0 * index}, transform_key='source_metadata')
-    return msi_utils.get_msim_from_sim(sim, scale_factors=[2, 4])
-
-
 @pytest.mark.parametrize('base_transform_key', [None, 'source_metadata'])
 def test_setting_a_msim_affine_matches_multiview_stitchers(base_transform_key):
-    from multiview_stitcher import msi_utils, param_utils
-    from muvis_align.image.util import set_msim_affine
-
     matrix = np.array([[0.9, -0.1, 5.0], [0.1, 0.9, -3.0], [0.0, 0.0, 1.0]])
     transform = param_utils.affine_to_xaffine(matrix, t_coords=[0])
     expected, msim = pyramid_msim(), pyramid_msim()
@@ -322,9 +155,6 @@ def test_setting_a_msim_affine_matches_multiview_stitchers(base_transform_key):
 
 
 def test_a_2d_transform_copied_onto_3d_msims_is_widened_as_before():
-    from multiview_stitcher import msi_utils, param_utils
-    from muvis_align.image.util import copy_transforms_to_msims, make_msims_3d
-
     matrix = np.array([[0.9, -0.1, 5.0], [0.1, 0.9, -3.0], [0.0, 0.0, 1.0]])
     source = pyramid_msim()
     msi_utils.set_affine_transform(source, param_utils.affine_to_xaffine(matrix, t_coords=[0]), transform_key='registered')
@@ -335,3 +165,27 @@ def test_a_2d_transform_copied_onto_3d_msims_is_widened_as_before():
     copy_transforms_to_msims([source], [target], 'registered')
 
     xr.testing.assert_identical(msi_utils.get_transform_from_msim(target, 'registered').rename(None), widened)
+
+
+def reference_widen(transform):
+    """The label-based implementation the numpy one replaces."""
+    if 4 in transform.shape:
+        return transform
+    transform_3d = param_utils.identity_transform(ndim=3)
+    if 't' in transform.dims:
+        transform = transform.sel(t=0)
+    transform_3d.loc[{dim: transform.coords[dim] for dim in transform.dims}] = transform
+    return transform_3d
+
+
+@pytest.mark.parametrize('transform', [
+    param_utils.identity_transform(ndim=2),
+    param_utils.affine_to_xaffine(create_transform({'x': 5.0, 'y': 7.0}, 0, matrix_size=3)),
+    param_utils.affine_to_xaffine(create_transform({'x': -3.5, 'y': 11.25}, 37, matrix_size=3)),
+    param_utils.identity_transform(ndim=3),
+], ids=['identity', 'translation', 'rotation + translation', 'already 3d'])
+def test_widening_matches_the_label_based_original(transform):
+    np.testing.assert_allclose(np.asarray(widen_xaffine_to_3d(transform)), np.asarray(reference_widen(transform)))
+    np.testing.assert_allclose(widened_affine_matrix(transform), np.asarray(reference_widen(transform)))
+    # an already 3D transform is returned as is
+    assert (widen_xaffine_to_3d(transform) is transform) == (4 in transform.shape)

@@ -964,3 +964,23 @@ def test_ome_zarr_06_is_refused_before_fusing_other_than_natively(tmp_path):
         reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key, output_spacing='mean',
                  output_filename='fused', ome_version='0.6')
     assert not glob.glob(tmp_path.as_posix() + '/fused*')
+
+
+def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused():
+    """A stack's sources carry no z of their own: fuse() promotes them, spacing the slices by index."""
+    source_metadata = {'scale': {'y': '0.032', 'x': '0.032'}}
+    reg = MVSRegistration()
+    reg.init(operation='register', pairing='stack',
+             input_path=['data/S000/000_000_0.tiff', 'data/S000/000_001_0.tiff'],
+             output_path='../../output/test_stack_promotion/', source_metadata=source_metadata)
+    reg.init_data(source_metadata=source_metadata)
+
+    assert reg.is_stack
+    assert not any('z' in position for position in reg.positions)
+    assert all('z' not in msim['scale0'].ds['image'].dims for msim in reg.msims)
+
+    fused_msim, _ = reg.fuse(reg.msims, transform_key=reg.source_transform_key)
+
+    # one plane per source, while the sources stay as stored
+    assert fused_msim['scale0'].ds['image'].sizes['z'] == 2
+    assert all('z' not in msim['scale0'].ds['image'].dims for msim in reg.msims)
