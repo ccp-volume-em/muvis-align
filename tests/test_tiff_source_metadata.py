@@ -1,28 +1,20 @@
-"""TiffImageSource must read metadata without building arrays - and get identical answers.
-
-Project load only reads per-level shapes and pixel sizes, dtype, dimension order, origin and
-channels. Obtaining those from ngff_zarr.tiff_file_to_ngff_images() costs ~8ms per source
-because it opens tif.aszarr() and wraps every pyramid level in a dask array (~18 round-trips
-through zarr's async/sync bridge), and for an OME-TIFF additionally DOM-parses the whole OME XML
-- which a multi-file OME-TIFF repeats in every file's header.
-
-The fast read must agree exactly with that reference, so the equivalence is asserted here across
-every file shape a source can arrive in, rather than argued from the TIFF/OME specs.
-"""
+"""TiffImageSource reads its metadata off tifffile without building arrays, and must get the same
+answers as the ngff_zarr path it replaced - asserted for every file shape a source can arrive in."""
 import numpy as np
 import pytest
 import tifffile
 
-from muvis_align.image.ome_tiff_helper import (extract_ome_image_metadata,
+from muvis_align.image.ome_tiff_helper import (extract_ome_image_metadata, extract_ome_translation_from_xml,
                                                read_tiff_source_metadata)
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.TiffImageSource import TiffImageSource
+from tests.data_builders import assert_same_metadata, write_tiff_pyramid
+
+METADATA_KEYS = ('dimension_order', 'shapes', 'dtype', 'pixel_sizes', 'channels')
 
 
 def reference_metadata(path):
-    """What init_metadata used to derive, via ngff_zarr."""
-    from muvis_align.util import convert_to_um
-
+    """What init_metadata derives via ngff_zarr, its fallback path."""
     source = TiffImageSource.__new__(TiffImageSource)
     source.filename = path
     source.channels = []
@@ -42,97 +34,62 @@ def reference_metadata(path):
             'is_rgb': source.is_rgb}
 
 
-def compare(fast, reference):
-    assert fast['dimension_order'] == reference['dimension_order']
-    assert [tuple(shape) for shape in fast['shapes']] == reference['shapes']
-    assert fast['dtype'] == reference['dtype']
-    assert len(fast['pixel_sizes']) == len(reference['pixel_sizes'])
-    for got, want in zip(fast['pixel_sizes'], reference['pixel_sizes']):
-        assert set(got) == set(want)
-        for dim in want:
-            assert got[dim] == pytest.approx(want[dim])
-    assert fast['channels'] == reference['channels']
+def ome_metadata(axes, unit='µm', **sizes):
+    metadata = {'axes': axes}
+    for dim, size in sizes.items():
+        metadata[f'PhysicalSize{dim.upper()}'] = size
+        metadata[f'PhysicalSize{dim.upper()}Unit'] = unit
+    return metadata
 
 
-def write_plain(path, shape, dtype=np.uint16, **kwargs):
-    tifffile.imwrite(str(path), np.zeros(shape, dtype=dtype), **kwargs)
-    return str(path)
+# (filename, shape, dtype, levels, write kwargs, level-0 pixel size or None)
+CASES = [
+    pytest.param('plain.tiff', (1024, 768), np.uint16, 1, {}, None, id='plain 2d'),
+    pytest.param('pyr.tiff', (2048, 2048), np.uint16, 3, {}, None, id='pyramidal 2d'),
+    pytest.param('uint8.tiff', (512, 512), np.uint8, 1, {}, None, id='uint8'),
+    pytest.param('float.tiff', (512, 512), np.float32, 1, {}, None, id='float32'),
+    pytest.param('multi.ome.tiff', (3, 256, 256), np.uint16, 1,
+                 {'metadata': {**ome_metadata('CYX', x=0.25, y=0.25), 'Channel': {'Name': ['DAPI', 'GFP', 'RFP']}}},
+                 {'y': 0.25, 'x': 0.25}, id='multichannel ome'),
+    pytest.param('z.ome.tiff', (4, 256, 256), np.uint16, 1, {'metadata': ome_metadata('ZYX', x=0.5, y=0.5, z=2.0)},
+                 {'z': 2.0, 'y': 0.5, 'x': 0.5}, id='3d ome'),
+    pytest.param('mm.ome.tiff', (256, 256), np.uint16, 1, {'metadata': ome_metadata('YX', 'mm', x=0.001, y=0.001)},
+                 {'y': 1.0, 'x': 1.0}, id='millimetre ome'),
+    pytest.param('pyr.ome.tiff', (2048, 2048), np.uint16, 3, {'metadata': ome_metadata('YX', x=0.5, y=0.5)},
+                 {'y': 0.5, 'x': 0.5}, id='pyramidal ome'),
+]
 
 
-def write_pyramid(path, shape, levels=3, dtype=np.uint16, **kwargs):
-    data = np.zeros(shape, dtype=dtype)
-    with tifffile.TiffWriter(str(path)) as writer:
-        writer.write(data, subifds=levels - 1, tile=(256, 256), **kwargs)
-        for level in range(1, levels):
-            step = 2 ** level
-            writer.write(data[..., ::step, ::step], subfiletype=1, tile=(256, 256))
-    return str(path)
+@pytest.mark.parametrize('filename, shape, dtype, levels, kwargs, pixel_size', CASES)
+def test_the_fast_read_matches_ngff_zarrs(tmp_path, filename, shape, dtype, levels, kwargs, pixel_size):
+    path = str(tmp_path / filename)
+    if levels > 1:
+        write_tiff_pyramid(path, shape, levels, dtype, **kwargs)
+    else:
+        tifffile.imwrite(path, np.zeros(shape, dtype=dtype), **kwargs)
 
-
-def test_plain_2d(tmp_path):
-    path = write_plain(tmp_path / 'plain.tiff', (1024, 768))
-    compare(read_tiff_source_metadata(path), reference_metadata(path))
-
-
-def test_pyramidal_2d(tmp_path):
-    path = write_pyramid(tmp_path / 'pyr.tiff', (2048, 2048))
     fast = read_tiff_source_metadata(path)
-    assert len(fast['shapes']) == 3
-    compare(fast, reference_metadata(path))
 
-
-def test_uint8_and_float_dtypes(tmp_path):
-    for index, dtype in enumerate((np.uint8, np.float32)):
-        path = write_plain(tmp_path / f'dt{index}.tiff', (512, 512), dtype=dtype)
-        compare(read_tiff_source_metadata(path), reference_metadata(path))
+    assert_same_metadata(fast, reference_metadata(path), METADATA_KEYS)
+    assert len(fast['shapes']) == levels
+    if pixel_size is not None:
+        # each level's pixel size scales with its downsampling
+        for level, level_pixel_size in enumerate(fast['pixel_sizes']):
+            assert level_pixel_size == pytest.approx({dim: size * 2 ** level for dim, size in pixel_size.items()})
+    if 'Channel' in kwargs.get('metadata', {}):
+        assert [channel['label'] for channel in fast['channels']] == kwargs['metadata']['Channel']['Name']
 
 
 def test_rgb_lands_on_a_channel_dim(tmp_path):
     # tifffile reports 'YXS' (samples); ngff_zarr maps S onto 'c', so is_rgb must still hold
-    path = write_plain(tmp_path / 'rgb.tiff', (512, 512, 3), dtype=np.uint8, photometric='rgb')
+    path = str(tmp_path / 'rgb.tiff')
+    tifffile.imwrite(path, np.zeros((512, 512, 3), dtype=np.uint8), photometric='rgb')
     reference = reference_metadata(path)
     fast = read_tiff_source_metadata(path)
-    compare(fast, reference)
+
+    assert_same_metadata(fast, reference, METADATA_KEYS)
     assert 'c' in fast['dimension_order']
-
-    source = create_image_source(path)
-    assert source.is_rgb is reference['is_rgb'] is True
-
-
-def test_multichannel_ome(tmp_path):
-    path = str(tmp_path / 'multi.ome.tiff')
-    data = np.zeros((3, 256, 256), dtype=np.uint16)
-    tifffile.imwrite(path, data, metadata={'axes': 'CYX',
-                                           'PhysicalSizeX': 0.25, 'PhysicalSizeXUnit': 'µm',
-                                           'PhysicalSizeY': 0.25, 'PhysicalSizeYUnit': 'µm',
-                                           'Channel': {'Name': ['DAPI', 'GFP', 'RFP']}})
-    compare(read_tiff_source_metadata(path), reference_metadata(path))
-    fast = read_tiff_source_metadata(path)
-    assert [channel['label'] for channel in fast['channels']] == ['DAPI', 'GFP', 'RFP']
-    assert fast['pixel_sizes'][0] == pytest.approx({'y': 0.25, 'x': 0.25})
-
-
-def test_3d_ome_with_z_spacing(tmp_path):
-    path = str(tmp_path / 'z.ome.tiff')
-    data = np.zeros((4, 256, 256), dtype=np.uint16)
-    tifffile.imwrite(path, data, metadata={'axes': 'ZYX',
-                                           'PhysicalSizeX': 0.5, 'PhysicalSizeXUnit': 'µm',
-                                           'PhysicalSizeY': 0.5, 'PhysicalSizeYUnit': 'µm',
-                                           'PhysicalSizeZ': 2.0, 'PhysicalSizeZUnit': 'µm'})
-    fast = read_tiff_source_metadata(path)
-    compare(fast, reference_metadata(path))
-    assert fast['pixel_sizes'][0] == pytest.approx({'z': 2.0, 'y': 0.5, 'x': 0.5})
-
-
-def test_millimetre_units_are_converted(tmp_path):
-    path = str(tmp_path / 'mm.ome.tiff')
-    tifffile.imwrite(path, np.zeros((256, 256), dtype=np.uint16),
-                     metadata={'axes': 'YX',
-                               'PhysicalSizeX': 0.001, 'PhysicalSizeXUnit': 'mm',
-                               'PhysicalSizeY': 0.001, 'PhysicalSizeYUnit': 'mm'})
-    fast = read_tiff_source_metadata(path)
-    compare(fast, reference_metadata(path))
-    assert fast['pixel_sizes'][0] == pytest.approx({'y': 1.0, 'x': 1.0})
+    assert create_image_source(path).is_rgb is reference['is_rgb'] is True
 
 
 def test_ome_plane_position_is_read(tmp_path):
@@ -146,57 +103,29 @@ def test_ome_plane_position_is_read(tmp_path):
     assert create_image_source(path).position == pytest.approx({'x': 12.0, 'y': -4.0})
 
 
-def test_pyramidal_ome_levels_scale_pixel_size(tmp_path):
-    path = write_pyramid(tmp_path / 'pyr.ome.tiff', (2048, 2048), levels=3,
-                         metadata={'axes': 'YX', 'PhysicalSizeX': 0.5, 'PhysicalSizeXUnit': 'µm',
-                                   'PhysicalSizeY': 0.5, 'PhysicalSizeYUnit': 'µm'})
-    fast = read_tiff_source_metadata(path)
-    compare(fast, reference_metadata(path))
-    assert [size['x'] for size in fast['pixel_sizes']] == pytest.approx([0.5, 1.0, 2.0])
-
-
-def test_source_builds_no_arrays_at_init_but_still_loads_them(tmp_path):
-    path = write_pyramid(tmp_path / 'pyr.tiff', (2048, 2048))
+def test_a_source_reports_the_reference_metadata_and_builds_its_arrays_only_when_read(tmp_path):
+    path = write_tiff_pyramid(tmp_path / 'pyr.ome.tiff', metadata=ome_metadata('YX', x=0.25, y=0.25))
     source = create_image_source(path)
 
     assert source._data_loaded is False
-    assert source.shapes == [tuple(shape) for shape in reference_metadata(path)['shapes']]
+    assert_same_metadata({key: getattr(source, key) for key in METADATA_KEYS}, reference_metadata(path), METADATA_KEYS)
 
     data = source.data
     assert source._data_loaded is True
-    assert [tuple(level.shape) for level in data] == [tuple(s) for s in source.shapes]
+    assert [tuple(level.shape) for level in data] == [tuple(shape) for shape in source.shapes]
     assert np.asarray(data[-1]).sum() == 0
 
 
-def test_source_matches_the_reference_end_to_end(tmp_path):
-    path = write_pyramid(tmp_path / 'pyr.ome.tiff', (2048, 2048), levels=3,
-                         metadata={'axes': 'YX', 'PhysicalSizeX': 0.25,
-                                   'PhysicalSizeXUnit': 'µm', 'PhysicalSizeY': 0.25,
-                                   'PhysicalSizeYUnit': 'µm'})
-    source = create_image_source(path)
-    reference = reference_metadata(path)
-
-    assert source.dimension_order == reference['dimension_order']
-    assert [tuple(s) for s in source.shapes] == reference['shapes']
-    assert source.dtype == reference['dtype']
-    assert source.channels == reference['channels']
-    for got, want in zip(source.pixel_sizes, reference['pixel_sizes']):
-        for dim in want:
-            assert got[dim] == pytest.approx(want[dim])
-
-
 def test_multi_image_ome_xml_parsing_stops_once_settled():
-    """The reason this exists: a multi-file OME-TIFF carries the whole dataset's XML per file,
-    so the parse must not scale with it. Proven structurally rather than by the clock (a
-    wall-time bound is flaky under load): the document is malformed well past the first fed
-    chunk, so reaching the end would raise."""
+    """A multi-file OME-TIFF carries the whole dataset's XML per file, so the parse must stop early:
+    the document is malformed past the first fed chunk, so reaching the end would raise."""
     def xml(count, tail=''):
         images = ''.join(
-            f'<Image ID="Image:{i}"><Pixels ID="Pixels:{i}" Type="uint16" SizeX="64" SizeY="64"'
+            f'<Image ID="Image:{index}"><Pixels ID="Pixels:{index}" Type="uint16" SizeX="64" SizeY="64"'
             f' SizeC="1" SizeZ="1" SizeT="1" PhysicalSizeX="0.5" PhysicalSizeY="0.5">'
-            f'<Channel ID="Channel:{i}:0" Name="ch{i}"/>'
-            f'<Plane TheC="0" TheZ="0" TheT="0" PositionX="{i}.0" PositionY="0.0"/>'
-            f'</Pixels></Image>' for i in range(count))
+            f'<Channel ID="Channel:{index}:0" Name="ch{index}"/>'
+            f'<Plane TheC="0" TheZ="0" TheT="0" PositionX="{index}.0" PositionY="0.0"/>'
+            f'</Pixels></Image>' for index in range(count))
         return ('<?xml version="1.0"?><OME xmlns="http://www.openmicroscopy.org/Schemas/OME/'
                 f'2016-06">{images}{tail}</OME>')
 
@@ -204,8 +133,7 @@ def test_multi_image_ome_xml_parsing_stops_once_settled():
     large = xml(4000, tail='<Unclosed>' * 5 + '<<<not xml&&&')
     assert len(large) > 512 * 1024
 
-    # scale and channels come from the first Image either way; position is voided for
-    # multi-Image - and the malformed tail is never reached, so nothing raises
+    # scale and channels come from the first Image either way; position is voided for multi-Image
     for document in (small, large):
         metadata = extract_ome_image_metadata(document)
         assert metadata['scale'] == {'x': 0.5, 'y': 0.5}
@@ -213,16 +141,72 @@ def test_multi_image_ome_xml_parsing_stops_once_settled():
         assert metadata['position'] == {}
 
 
+def ome_plane_xml(images):
+    """images: list of dicts of Plane attributes (or None for an Image with no Plane)."""
+    body = []
+    for index, plane in enumerate(images):
+        plane_xml = ''
+        if plane is not None:
+            attrs = ' '.join(f'{key}="{value}"' for key, value in plane.items())
+            plane_xml = f'<Plane TheC="0" TheZ="0" TheT="0" {attrs}/>'
+        body.append(f'<Image ID="Image:{index}"><Pixels ID="Pixels:{index}" Type="uint16"'
+                    f' SizeX="64" SizeY="64" SizeC="1" SizeZ="1" SizeT="1">'
+                    f'{plane_xml}</Pixels></Image>')
+    return ('<?xml version="1.0" encoding="UTF-8"?><OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06">'
+            + ''.join(body) + '</OME>')
+
+
+def xml2dict_translation(ome_metadata):
+    """The xml2dict version the streaming parse replaced, kept as the oracle."""
+    from muvis_align.util import convert_to_um
+
+    metadata = tifffile.xml2dict(ome_metadata)
+    if 'OME' in metadata:
+        metadata = metadata['OME']
+    if 'Image' in metadata and 'Pixels' in metadata['Image'] and 'Plane' in metadata['Image']['Pixels']:
+        plane_metadata = metadata['Image']['Pixels']['Plane']
+        if isinstance(plane_metadata, list):
+            plane_metadata = plane_metadata[0]
+        position = {}
+        for dim in ['X', 'Y', 'Z']:
+            key = f'Position{dim}'
+            if key in plane_metadata:
+                position[dim.lower()] = convert_to_um(float(plane_metadata[key]),
+                                                      plane_metadata.get(f'{key}Unit', 'um'))
+        return position
+    return {}
+
+
+@pytest.mark.parametrize('images', [
+    [{'PositionX': 12.5, 'PositionY': -3.25, 'PositionXUnit': 'um', 'PositionYUnit': 'um'}],
+    [{'PositionX': 1.0, 'PositionY': 2.0, 'PositionZ': 3.0,
+      'PositionXUnit': 'um', 'PositionYUnit': 'um', 'PositionZUnit': 'um'}],
+    [{'PositionX': 7.0, 'PositionY': 8.0}],
+    [{'PositionX': 1.5, 'PositionY': 2.5, 'PositionXUnit': 'mm', 'PositionYUnit': 'mm'}],
+    [{'PositionX': 4.0}],
+    [{}],
+    [None],
+    # multi-image: the historical behaviour is no position at all
+    [{'PositionX': 1.0, 'PositionY': 2.0}, {'PositionX': 3.0, 'PositionY': 4.0}],
+    [{'PositionX': float(index), 'PositionY': 0.0} for index in range(20)],
+], ids=['xy um', 'xyz', 'no unit attributes', 'millimetre units', 'x only', 'no positions', 'no plane',
+        'two images', 'many images'])
+def test_the_ome_translation_matches_the_xml2dict_implementation(images):
+    xml = ome_plane_xml(images)
+    assert extract_ome_translation_from_xml(xml) == xml2dict_translation(xml)
+
+
+def test_ome_translation_units_are_converted_to_um():
+    xml = ome_plane_xml([{'PositionX': 1.5, 'PositionY': 2.5, 'PositionXUnit': 'mm', 'PositionYUnit': 'mm'}])
+    assert extract_ome_translation_from_xml(xml) == pytest.approx({'x': 1500.0, 'y': 2500.0})
+
+
 def test_source_levels_pickle_and_read_the_same_pixels_after(tmp_path):
     """Worker processes are sent a source's levels pickled: each must reopen its file and read what it read here."""
     import pickle
     import dask
-    path = str(tmp_path / 'pyr.tiff')
     data = np.random.default_rng(0).integers(0, 1000, (1024, 1024), dtype=np.uint16)
-    with tifffile.TiffWriter(path) as writer:
-        writer.write(data, subifds=2, tile=(256, 256))
-        for level in (1, 2):
-            writer.write(data[::2 ** level, ::2 ** level], subfiletype=1, tile=(256, 256))
+    path = write_tiff_pyramid(tmp_path / 'pyr.tiff', data=data)
     levels = create_image_source(path).data
     expected = [np.asarray(level) for level in levels]
 
@@ -236,8 +220,7 @@ def test_source_levels_pickle_and_read_the_same_pixels_after(tmp_path):
 
 
 def test_an_unpickled_level_is_not_read_before_its_opening_file_is_closed(tmp_path, monkeypatch):
-    """A thread reading the level while another was opening it once kept the opener's file handle, closed right
-    after: every later read failed with 'I/O operation on closed file'."""
+    """A thread reading the level while another opened it once kept the opener's soon-closed file handle."""
     import threading
     from muvis_align.image.ome_tiff_helper import _unpickle_tiff_level
     path = str(tmp_path / 'tiles.tiff')
