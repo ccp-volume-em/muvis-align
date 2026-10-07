@@ -49,7 +49,6 @@ MINOR
 
 - [ ] fusion size accurate for native mode with mixed-sizes? (reporting: 24.5TB, expected effectively around ~350GB)
 - [ ] fusion bar not indicative of progress, showing current pyramid level may also be informative
-- [ ] silence dask warning: the input dask array will be rechunked ... 
 - [ ] disabling plugin doesnt remove left had overview window, it should completely disable plugin
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
@@ -214,6 +213,8 @@ REFACTORING
   and transform type (sift rigid handles the slides project's ~6 deg section rotations).
 
 ### Fusion
+- **Dask 'input Dask array will be rechunked' warning** - an output smaller than one chunk: dask's zarr
+  write check misses that the chunk is the whole axis. Chunks are now clipped to the output's extent.
 - **Export per z-slab** - fused from only the sources reaching each slab (was ~1.5 cores: fusion re-planned over all
   sources per block); direct reads of uncompressed TIFF levels; the plugin's bar no longer counts a save phase that
   never runs.

@@ -725,6 +725,8 @@ def test_a_cancel_stops_building_sources_without_building_the_rest():
     assert len(built) < 100
 
 
+# an output smaller than one chunk made dask warn of an unsafe zarr write
+@pytest.mark.filterwarnings('error:The input Dask array will be rechunked')
 def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp_path):
     """Each z-slab of blocks fused from only the sources reaching it, every pyramid level identical."""
     import glob

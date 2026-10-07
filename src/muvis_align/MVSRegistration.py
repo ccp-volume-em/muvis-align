@@ -2021,6 +2021,9 @@ class MVSRegistration:
                                 num_z_positions=num_z_positions)
                     else:
                         output_chunksize = dict(default_output_chunksize)
+                # a chunk past the output's extent also fails dask's zarr write-alignment check, with a warning
+                output_chunksize = {dim: min(int(size), output_stack_properties['shape'].get(dim, int(size)))
+                                    for dim, size in output_chunksize.items()}
                 if self.verbose:
                     # logged here, where it is finally settled: reported before the branches
                     # above it named the preview-budgeted default whatever the export went on
