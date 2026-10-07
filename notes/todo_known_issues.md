@@ -110,6 +110,8 @@ REFACTORING
 - [ ] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
       avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
       create detailed plan first
+- [ ] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
+- [ ] add option to these efficiency classes to run without threading using an input argument
 - [ ] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
 
 
