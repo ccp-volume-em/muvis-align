@@ -1414,13 +1414,16 @@ class MVSRegistration:
             # never a preprocessed/filtered register_msims subset). From each source's metadata, as
             # the shapes are: the same geometry as self.msims' finest level, which cost 14.5 minutes
             # to build at 34k sources just to be read here
-            shape_sims = [build_source_shape_sim(source, self._msim_output_order, position, transform,
-                                                 self.source_transform_key, z_scale=self._msim_z_scale)
-                          for source, position, transform in zip(self.sources, self.positions, self._msim_transforms)]
-            origins = np.array([get_sim_position_final(sim, position, get_center=True)
-                                for sim, position in zip(shape_sims, self.positions)])
-            sizes = [get_sim_physical_size(sim) for sim in shape_sims]
-            pairs, _ = get_pairs(origins, sizes)
+            with Timer('pair registration: source geometry', verbose=self.logging_time):
+                shape_sims = [build_source_shape_sim(source, self._msim_output_order, position, transform,
+                                                     self.source_transform_key, z_scale=self._msim_z_scale)
+                              for source, position, transform in zip(self.sources, self.positions,
+                                                                     self._msim_transforms)]
+                origins = np.array([get_sim_position_final(sim, position, get_center=True)
+                                    for sim, position in zip(shape_sims, self.positions)])
+                sizes = [get_sim_physical_size(sim) for sim in shape_sims]
+            with Timer('pair registration: get_pairs', verbose=self.logging_time):
+                pairs, _ = get_pairs(origins, sizes)
             if SPLIT in pairing:
                 # stage 1: each z-plane's (or channel's) tiles only; the groups are registered in register_global
                 pairs = within_group_pairs(pairs, self.split_groups())
@@ -1447,23 +1450,24 @@ class MVSRegistration:
 
         # "c" in dims is read straight off each register_msim's own scale0 image DataArray
         # (get_msim_dims) - no sim needs to be built just to ask
-        has_channel = ["c" in get_msim_dims(msim) for msim in register_msims]
-        if has_channel[0]:
-            if reg_channel is None and reg_channel_index is None:
-                raise Exception("Please choose a registration channel.")
-            requested = reg_channel_index if reg_channel is None else reg_channel
-            # each source by its own labels: one project's files need not all name it the same
-            chosen = {}
-            msims_reg = [
-                msi_utils.multiscale_sel_coords(
-                    msim, {"c": resolve_registration_channel(msim, requested, chosen)})
-                if has_channel[imsim]
-                else msim
-                for imsim, msim in enumerate(register_msims)
-            ]
-        else:
-            msims_reg = register_msims
-        
+        with Timer('pair registration: select channel', verbose=self.logging_time):
+            has_channel = ["c" in get_msim_dims(msim) for msim in register_msims]
+            if has_channel[0]:
+                if reg_channel is None and reg_channel_index is None:
+                    raise Exception("Please choose a registration channel.")
+                requested = reg_channel_index if reg_channel is None else reg_channel
+                # each source by its own labels: one project's files need not all name it the same
+                chosen = {}
+                msims_reg = [
+                    msi_utils.multiscale_sel_coords(
+                        msim, {"c": resolve_registration_channel(msim, requested, chosen)})
+                    if has_channel[imsim]
+                    else msim
+                    for imsim, msim in enumerate(register_msims)
+                ]
+            else:
+                msims_reg = register_msims
+
         # Normalize transforms to match image dimensions in each scale level
         # (handles mixed 3D/4D transforms in multiscale images)
         for msim in msims_reg:
@@ -1497,8 +1501,9 @@ class MVSRegistration:
                 if pairs is None:
                     logging.info(f'#candidate pairs: {len(graph_pairs)}')
                 raise_if_cancelled()
-                g_reg = build_view_adjacency_graph(msims_reg, self.source_transform_key, graph_pairs,
-                                                   overlap_tolerance=overlap_tolerance)
+                with Timer('pair registration: view adjacency graph', verbose=self.logging_time):
+                    g_reg = build_view_adjacency_graph(msims_reg, self.source_transform_key, graph_pairs,
+                                                       overlap_tolerance=overlap_tolerance)
                 raise_if_cancelled()
 
                 g_reg_computed = g_reg.copy()

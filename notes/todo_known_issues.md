@@ -112,7 +112,6 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
       spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
       properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
-- [ ] **7.6 min before the first pairs on the HPC** - pairing 2.8 min, first batch 85s.
 - [ ] **Faster refresh after registration** - 48 min in all: ~13 min untimed between the end of registration and
       'copy transforms to view msims', composite overview 11.9 min, preview size cap 6.3 min, transforms copied
       twice (4.3 + 1.4 min), create_image_shapes 1.5 min (8s before registration), create_overlap_shapes 3.4 min
@@ -132,6 +131,13 @@ REFACTORING
 
 ## Done
 
+- **7.6 min before the first pairs on the HPC** - per source on meatballs: pairing geometry ~2.6ms (a shape sim
+  each), channel selection ~2ms (multiscale_sel_coords), adjacency graph ~1.3ms (a sim each) - ~3.3 min at 34k
+  locally, the HPC's 2.8 + ~3.5 min. Now timed (pair registration: source geometry / get_pairs / select channel /
+  view adjacency graph). The first batch was mostly worker start-up: each worker imported napari and Qt through
+  the package's __init__ (MainWidget, now imported on use): 8 workers ready in 7.6s instead of 10.2s, every
+  respawn too. Left out as one-off gains (user decision): stack-props geometry, a leaner channel selection (1.70 ->
+  1.24ms a source), direct stack props for the graph, starting the pool before the setup.
 - **Pair registration 'slowed' towards the end: the cheap pairs came first** - a pair's cpu follows its overlap in
   pixels at the coarser of its two pixel sizes (r=0.97 on meatballs); in source order the overviews (indices 0-2)
   put every tile-overview pair (0.06s, at 0.498um) first and the tile-tile ones (0.3-7s) last - meatballs 42%,
