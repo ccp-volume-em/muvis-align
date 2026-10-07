@@ -429,7 +429,7 @@ def test_register_pairs_defers_link_quality_without_changing_results():
 def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
     """Each pair is its own compute on a thread (when a pair cannot go to a worker process); results must
     not depend on how many threads. A lone thread keeps the threads scheduler so a single pair still runs
-    its tasks in parallel."""
+    its tasks in parallel. Pairs go largest estimated cost first."""
     import dask
     import networkx as nx
     import muvis_align.MVSRegistration as mvs_registration_module
@@ -448,15 +448,24 @@ def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
     reg.init_data()
     reg.preprocess(reg.msims)
     original = mvs_registration_module.compute_pairwise_registrations
+    original_graph = mvs_registration_module.build_view_adjacency_graph
 
     def register(threads):
         seen = []
 
         def recording(msims, g_reg, **kwargs):
             seen.append((g_reg.number_of_edges(), dask.config.get('scheduler', None)))
+            order.append(tuple(sorted(g_reg.edges))[0])
             return original(msims, g_reg, **kwargs)
 
-        with patch.object(mvs_registration_module, 'compute_pairwise_registrations', recording),                 patch.object(mvs_registration_module, 'picklable', lambda value: False):
+        def unequal_overlaps(*args, **kwargs):
+            # the four tiles overlap their neighbours equally: the last pair in source order made the largest
+            graph = original_graph(*args, **kwargs)
+            graph.edges[2, 3]['overlap'] *= 10
+            graph.edges[0, 1]['overlap'] *= 0.1
+            return graph
+
+        with patch.object(mvs_registration_module, 'compute_pairwise_registrations', recording),                 patch.object(mvs_registration_module, 'build_view_adjacency_graph', unequal_overlaps),                 patch.object(mvs_registration_module, 'picklable', lambda value: False):
             reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
                                                            'n_parallel_pairwise_regs': threads})
         results = {edge: (float(np.asarray(quality).squeeze()),
@@ -464,7 +473,9 @@ def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
                    for edge, quality in nx.get_edge_attributes(reg.pairs_graph, 'quality').items()}
         return results, seen
 
+    order = []
     single, single_seen = register(1)
+    assert order[0] == (2, 3) and order[-1] == (0, 1)
     threaded, threaded_seen = register(3)
 
     assert len(single) > 1

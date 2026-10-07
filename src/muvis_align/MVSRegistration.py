@@ -103,6 +103,13 @@ def register_pair_in_worker(msims, graph, pairwise_reg_func, kwargs):
     return registered, time.perf_counter() - start, time.thread_time() - cpu_start
 
 
+def estimated_pair_cost(graph, edge):
+    """A pair's overlap in pixels at the coarser of its two sources' pixel sizes, which its registration time follows."""
+    spacings = [graph.nodes[node]['stack_props']['spacing'] for node in edge]
+    pixel_size = np.prod([max(spacing[dim] for spacing in spacings) for dim in spacings[0]])
+    return graph.edges[edge].get('overlap', 0) / pixel_size
+
+
 def resolve_registration_channel(msim, channel, chosen=None):
     """The 'c' label to register on in this msim, from `channel` as an index or a label. A label
     msim lacks - files that name their channel differently, even within one project - falls back
@@ -1503,7 +1510,9 @@ class MVSRegistration:
 
                 pair_kwargs = dict(transform_key=self.source_transform_key, overlap_tolerance=overlap_tolerance,
                                    pairwise_reg_func_kwargs=pairwise_reg_func_kwargs, n_parallel_pairwise_regs=1)
-                edges = list(g_reg.edges)
+                # largest first: in source order the cheap overview pairs came first and the costliest last,
+                # leaving workers idle at the end and the bar's estimate far too short
+                edges = sorted(g_reg.edges, key=lambda edge: estimated_pair_cost(g_reg, edge), reverse=True)
                 pool = None
                 # worker processes when a pair can be sent to one (its sources' arrays, the method)
                 if (workers > 1 and len(edges) > workers

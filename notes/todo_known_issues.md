@@ -112,15 +112,7 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
       spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
       properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
-- [ ] **Pair registration 'slows' towards the end: the cheap pairs come first** - a pair's cpu follows its overlap
-      in pixels at the coarser of its two pixel sizes (r=0.97 on meatballs). Tile-overview pairs register at the
-      overview's 0.498um (0.06s each) and the edge order puts them all first: meatballs 350 of 831 (42%), then
-      tile-tile pairs at 0.02um, 0.31s within a section, 1.0s across sections, up to 7s for whole-tile overlaps.
-      The HPC (the full meatballs set) turns slow at ~102k of 229.7k pairs (44%) - the same split. Not harder
-      work, but the bar's estimate is far too short early on, and workers idle (39.7 of 64 busy) while the 0.06s
-      pairs outrun dispatch and on the last whole-tile pairs. Fix to consider: interleave the pairs (largest
-      estimated overlap first, or shuffled) in register_pairs. Also 7.6 min before the first pairs on the HPC
-      (pairing 2.8 min, first batch 85s).
+- [ ] **7.6 min before the first pairs on the HPC** - pairing 2.8 min, first batch 85s.
 - [ ] **Faster refresh after registration** - 48 min in all: ~13 min untimed between the end of registration and
       'copy transforms to view msims', composite overview 11.9 min, preview size cap 6.3 min, transforms copied
       twice (4.3 + 1.4 min), create_image_shapes 1.5 min (8s before registration), create_overlap_shapes 3.4 min
@@ -140,6 +132,12 @@ REFACTORING
 
 ## Done
 
+- **Pair registration 'slowed' towards the end: the cheap pairs came first** - a pair's cpu follows its overlap in
+  pixels at the coarser of its two pixel sizes (r=0.97 on meatballs); in source order the overviews (indices 0-2)
+  put every tile-overview pair (0.06s, at 0.498um) first and the tile-tile ones (0.3-7s) last - meatballs 42%,
+  the HPC turning slow at 44%. register_pairs now submits the largest estimated overlap first (estimated_pair_cost).
+  Meatballs wall unchanged on 8 workers (91.5 vs 88.9s); check the bar's pace and workers busy on the next HPC run
+  (39.7 of 64 before).
 - **Fusion level 0 peaked at 11GB on meatballs** - a single-plane source's z spacing is a placeholder 1.0, so with
   sections 0.05 apart multiview_stitcher's interpolation padding made every section reach every other's blocks
   (busiest block 147 of 153 sources, each transformed in full for no weight): source_bounds no longer pads a
