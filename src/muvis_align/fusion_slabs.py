@@ -15,6 +15,7 @@ import multiview_stitcher.fusion._core as fusion_core
 from multiview_stitcher import msi_utils, mv_graph, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
+from muvis_align.Timer import Timer
 from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
 
 
@@ -268,17 +269,20 @@ def fuse_to_zarr_by_z_slabs(msims, output_zarr_url, transform_key, output_stack_
     ome_zarr, ngff_version, creation_kwargs = _zarr_options(zarr_options)
     store_url = os.path.join(output_zarr_url, '0') if ome_zarr else output_zarr_url
     _remove_existing(output_zarr_url, zarr_options)
-    dims, properties = fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize,
-                                            fusion_func=fusion_func, creation_kwargs=creation_kwargs,
-                                            batch_options=batch_options, interpolation_order=interpolation_order)
+    with Timer('fusion by z-slabs: level 0'):
+        dims, properties = fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties,
+                                                output_chunksize, fusion_func=fusion_func,
+                                                creation_kwargs=creation_kwargs, batch_options=batch_options,
+                                                interpolation_order=interpolation_order)
     fused = si_utils.get_sim_from_array(array=da.from_zarr(store_url), dims=dims, transform_key=transform_key,
                                         scale=properties['spacing'], translation=properties['origin'],
                                         c_coords=sims[0].coords['c'].values, t_coords=sims[0].coords['t'].values)
     ngff_utils.copy_ngff_time_transform(sims[0], fused)
     if ome_zarr:
-        ngff_utils.write_sim_to_ome_zarr(fused, output_zarr_url=output_zarr_url, overwrite=False,
-                                         batch_options=batch_options, zarr_array_creation_kwargs=creation_kwargs,
-                                         ngff_version=ngff_version)
+        with Timer('fusion by z-slabs: pyramid levels'):
+            ngff_utils.write_sim_to_ome_zarr(fused, output_zarr_url=output_zarr_url, overwrite=False,
+                                             batch_options=batch_options, zarr_array_creation_kwargs=creation_kwargs,
+                                             ngff_version=ngff_version)
         return ngff_utils.read_msim_from_ome_zarr(output_zarr_url, transform_key=transform_key, array_backend='dask')
     return msi_utils.get_msim_from_sim(fused, scale_factors=[])
 

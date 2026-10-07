@@ -76,8 +76,9 @@ def test_a_cancel_stops_the_robust_rounds():
 
 
 
-def scripted_solver(monkeypatch, residual_rounds):
-    """linear_two_pass replaced by one giving every edge the next round's residual: the list of solves it saw."""
+def scripted_solver(monkeypatch, residual_rounds, flipping_edge=None):
+    """linear_two_pass replaced by one giving every edge the next round's residual, bar `flipping_edge`, which
+    alternates between 0 and 1: the list of solves it saw."""
     from muvis_align import robust_resolution
 
     calls = []
@@ -86,8 +87,8 @@ def scripted_solver(monkeypatch, residual_rounds):
         residual = residual_rounds[min(len(calls), len(residual_rounds) - 1)]
         calls.append(residual)
         edges = list(graph.edges)
-        metrics = {'u': [edge[0] for edge in edges], 'v': [edge[1] for edge in edges],
-                   'residual': [residual] * len(edges)}
+        residuals = [float(len(calls) % 2) if tuple(sorted(edge)) == flipping_edge else residual for edge in edges]
+        metrics = {'u': [edge[0] for edge in edges], 'v': [edge[1] for edge in edges], 'residual': residuals}
         return {node: affine() for node in graph.nodes}, {'metrics': metrics}
 
     monkeypatch.setattr(robust_resolution, 'groupwise_resolution_linear_two_pass', solve)
@@ -111,3 +112,16 @@ def test_the_rounds_run_out_while_residuals_keep_moving(monkeypatch):
     groupwise_resolution_robust_linear(grid_graph(), transform='translation', scale=1.0, rounds=4)
 
     assert len(calls) == 4
+
+
+def test_one_flipping_edge_of_many_does_not_keep_the_rounds_going(monkeypatch):
+    """On a large graph a few edges flip every round, so the largest change never settles: the 99th percentile does."""
+    from muvis_align.robust_resolution import groupwise_resolution_robust_linear
+
+    calls = scripted_solver(monkeypatch, [0.5, 0.2, 0.195, 0.195], flipping_edge=(0, 1))
+    rounds = []
+    groupwise_resolution_robust_linear(grid_graph(rows=8, cols=8), transform='translation', scale=1.0, rounds=10,
+                                       progress=lambda: rounds.append(len(calls)))
+
+    assert calls == [0.5, 0.2, 0.195]
+    assert rounds == [1, 2, 3]

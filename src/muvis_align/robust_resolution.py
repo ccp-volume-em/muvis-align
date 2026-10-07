@@ -12,6 +12,8 @@ from muvis_align.util import raise_if_cancelled
 ROBUST_LINEAR = 'robust_linear'
 default_robust_rounds = 10
 default_robust_tolerance = 0.01
+# a few edges keep flipping between rounds on a large graph, so the largest change never settles
+default_robust_change_quantile = 0.99
 
 
 def scalar(value, default=1.0):
@@ -41,11 +43,13 @@ def voxel_diagonal(graph):
 
 
 def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, transform='rigid', scale=None,
-                                       rounds=default_robust_rounds, tolerance=default_robust_tolerance, **kwargs):
+                                       rounds=default_robust_rounds, tolerance=default_robust_tolerance,
+                                       change_quantile=default_robust_change_quantile, progress=None, **kwargs):
     """linear_two_pass re-solved up to `rounds` times, each edge weighted by its pair quality times a Cauchy weight
     of its last residual, 1 / (1 + (residual / scale)^2): bad pairs stop pulling the fit without being cut.
-    Stops early once no residual moved more than `tolerance * scale` in a round, as the weights then hardly change.
-    `scale` defaults to half the voxel diagonal. Per connected component and timepoint, as any resolver."""
+    Stops early once the `change_quantile` of the residuals' changes in a round is within `tolerance * scale`, as
+    the weights then hardly change. `scale` defaults to half the voxel diagonal. `progress` is called after each
+    round. Per connected component and timepoint, as any resolver."""
     graph = g_reg_component_tp.copy()
     if reference_view is None or reference_view not in graph:
         reference_view = find_reference_view(graph)
@@ -71,22 +75,27 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
                      for node1, node2, residual in zip(metrics['u'], metrics['v'], metrics['residual'])}
         weights = {edge: 1.0 / (1.0 + (residuals[edge] / scale) ** 2) if np.isfinite(residuals[edge]) else 0.0
                    for edge in edges}
-        change = largest_residual_change(last_residuals, residuals)
+        changes = residual_changes(last_residuals, residuals)
         last_residuals = residuals
+        change = np.quantile(changes, change_quantile) if len(changes) else np.inf
+        largest_change = max(changes, default=np.inf)
         logging.info(f'Robust linear resolution: round {round_index + 1}/{rounds}, {len(edges)} edges,'
-                     f' median residual {np.median(list(residuals.values())):.3g}, largest change {change:.3g}')
+                     f' median residual {np.median(list(residuals.values())):.3g},'
+                     f' change {change_quantile:.0%} {change:.3g} (largest {largest_change:.3g},'
+                     f' tolerance {tolerance * scale:.3g})')
+        if progress is not None:
+            progress()
         if change <= tolerance * scale:
             logging.info(f'Robust linear resolution: converged after {round_index + 1} rounds')
             break
     return params, info
 
 
-def largest_residual_change(last_residuals, residuals):
+def residual_changes(last_residuals, residuals):
     if last_residuals is None:
-        return np.inf
-    changes = [abs(residuals[edge] - last_residuals[edge]) for edge in residuals
-               if np.isfinite(residuals[edge]) and np.isfinite(last_residuals[edge])]
-    return max(changes, default=0.0)
+        return []
+    return [abs(residuals[edge] - last_residuals[edge]) for edge in residuals
+            if np.isfinite(residuals[edge]) and np.isfinite(last_residuals[edge])]
 
 
 register_groupwise_resolution_method(ROBUST_LINEAR, groupwise_resolution_robust_linear)

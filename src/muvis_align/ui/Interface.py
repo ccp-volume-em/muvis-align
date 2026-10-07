@@ -642,9 +642,11 @@ class Interface:
         # the same lazy build view_msims triggers, callable ahead of time with a progress_factory
         # so a caller forcing it can report per source - mirrors MVSRegistration.ensure_msims()
         if self._view_msims is None:
-            self._view_msims = self._build_view_msims(progress_factory=progress_factory)
+            with Timer('build view msims', verbose=self._timing_verbose()):
+                self._view_msims = self._build_view_msims(progress_factory=progress_factory)
             if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                self._view_msims = make_msims_3d(self._view_msims, positions=self.reg.positions)
+                with Timer('view msims: make_msims_3d', verbose=self._timing_verbose()):
+                    self._view_msims = make_msims_3d(self._view_msims, positions=self.reg.positions)
         return self._view_msims
 
     def _copy_transforms_to_view_msims(self, transform_key, progress_factory=None):
@@ -1636,10 +1638,11 @@ class Interface:
                     restore_msims_transform(msims, key, snapshot)
                 raise
 
-        self.reg.save_group_pair_mappings()
-        self.reg.save_mappings(results['mappings'])
-        self.reg.save_mappings_csv(results['mappings'])
-        self.reg.save_metrics(results['metrics'])
+        with Timer('save registration results', verbose=self._timing_verbose()):
+            self.reg.save_group_pair_mappings()
+            self.reg.save_mappings(results['mappings'])
+            self.reg.save_mappings_csv(results['mappings'])
+            self.reg.save_metrics(results['metrics'])
         return results
 
     def pair_registration(self):

@@ -107,23 +107,23 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       alignment, DataTree.from_dict, expand_dims); 31ms on the HPC.
 
 From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration 7.2h, fusion 9.7h, no errors):
-- [ ] **robust_linear never stops early** - the median residual settled at 0.104 by round 3, yet the largest change
-      stayed 1.6-3 up to round 10: the max over 229k edges never falls under 1% of the Cauchy scale, as a few edges
-      flip every round. ~9 min a round, so ~60 of the 2.6h for nothing. Stop on a high quantile (99th) of the
-      changes or the median's relative change instead; check which edges keep moving.
 - [ ] **Fusion pyramid levels: 5.5h at '100%', peak rss 249.5GB** - 'average' at 0.01um (z-slab path): after level 0,
       ngff_utils.write_sim_to_ome_zarr builds the lower levels from it; rss swung 32 -> 224GB within 30s and the bar
       doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
-      spacing don't. Also 14 min at 0% before 'Output stack'.
+      spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
+      properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
+- [ ] **Fusion level 0 peaks at 10GB on meatballs** - 'average' at 'max' spacing (0.249um, a 36MB output, 153
+      sources): z-slab level 0 took 22s with peak rss 10.3GB, up from 0.45GB. Not looked into.
 - [ ] **Pair registration slows ~14x towards the end** - 3s per 128 pairs at first, 42-45s at the end, rss flat (not
-      the old leak); 39.7 of 64 workers busy on average. Harder/larger sections last, or idle workers? Log pair
-      times per section. Also 7.6 min before the first pairs (pairing 2.8 min, first batch 85s).
-- [ ] **Global registration bar at 0% for 125 min** - through the msims build and every robust_linear round; report
-      per round.
+      the old leak); 39.7 of 64 workers busy on average. Also 7.6 min before the first pairs (pairing 2.8 min, first
+      batch 85s). Each batch line now has wall/cpu per pair and busy workers. Meatballs shows the same shape: cpu per
+      pair 0.06s for the first ~350 pairs, 0.6-1.5s after, 2-4.6s for the last ~50, workers ~7 of 8 busy - harder
+      pairs last, not idle workers. Which pairs (overview-tile, between sections)? Check on the HPC log too.
 - [ ] **Faster refresh after registration** - 48 min in all: ~13 min untimed between the end of registration and
       'copy transforms to view msims', composite overview 11.9 min, preview size cap 6.3 min, transforms copied
       twice (4.3 + 1.4 min), create_image_shapes 1.5 min (8s before registration), create_overlap_shapes 3.4 min
-      (clipping only 75s of it), tables 1.8 min.
+      (clipping only 75s of it), tables 1.8 min. The untimed part is now timed (build view msims, view msims:
+      make_msims_3d; and save registration results before it) - read them on the next HPC run.
 
 REFACTORING
 
@@ -138,6 +138,10 @@ REFACTORING
 
 ## Done
 
+- **robust_linear stops on the 99th percentile change** - the largest change never settled on the HPC (a few of
+  229k edges flip every round); each round logs both, and the tolerance. Meatballs: 9 rounds either way. Confirm
+  the early stop on the next HPC run.
+- **Global registration bar moves per robust_linear round** - it sat at 0% for the whole solve.
 - **Native-resolution fusion** (PR #60) - output_spacing 'native' (None when writing a file; default for new projects):
   levels at the sources' own pixel sizes, each from the sources at least that fine, tiles over the overview, every
   block from only the sources reaching it, blocks budgeted per level, level names zero-padded past 10. Meatballs

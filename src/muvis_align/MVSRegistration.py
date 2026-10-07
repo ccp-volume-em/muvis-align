@@ -36,7 +36,7 @@ from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.fusion_slabs import fuse_native_levels_to_ome_zarr, fuse_to_zarr_by_z_slabs
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
-from muvis_align.robust_resolution import ROBUST_LINEAR, find_reference_view
+from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
 from muvis_align.Timer import Timer
 from muvis_align.util import *
@@ -171,9 +171,10 @@ class MVSRegistration:
                     or normalisation_enabled(params.get('normalisation')))
 
     @staticmethod
-    def progress_phase(progress_factory, total=None, desc=None):
+    def progress_phase(progress_factory, total=None, desc=None, weight=1):
         """One reporting phase of the caller's operation, or nothing to report into."""
-        return progress_factory(total=total, desc=desc) if progress_factory is not None else nullcontext(None)
+        return (progress_factory(total=total, desc=desc, weight=weight) if progress_factory is not None
+                else nullcontext(None))
 
     def ensure_msims(self, progress_factory=None, target_scale=None, weight=1, ends_only=False):
         """The lazy build the msims property triggers, callable ahead of time with a
@@ -1542,8 +1543,16 @@ class MVSRegistration:
                         if count % log_every == 0 or count == g_reg.number_of_edges():
                             release_memory(generation=1)
                             if self.logging_time:
+                                # cpu per pair rising means harder pairs; wall alone rising means idle workers or I/O
+                                batch_wall = time.time() - log_start
+                                batch_times, batch_cpu_times = pair_times[-log_every:], pair_cpu_times[-log_every:]
+                                pair_timing = ''
+                                if batch_times and batch_cpu_times:
+                                    pair_timing = (f', a pair {np.mean(batch_times):.2f}s wall'
+                                                   f' {np.mean(batch_cpu_times):.2f}s cpu,'
+                                                   f' {sum(batch_times) / max(batch_wall, 1e-9):.1f} busy')
                                 logging.info(f'Pairs {count}/{g_reg.number_of_edges()}:'
-                                             f' last {log_every} in {time.time() - log_start:.1f}s'
+                                             f' last {log_every} in {batch_wall:.1f}s{pair_timing}'
                                              f'{print_memory_usage()}')
                             log_start = time.time()
                         if pbar is not None:
@@ -1696,11 +1705,16 @@ class MVSRegistration:
         if g_reg_computed.number_of_nodes() > 2 and nx.is_connected(g_reg_computed):
             groupwise_resolution_kwargs['reference_view'] = find_reference_view(g_reg_computed)
 
-        # not a plain progress phase: the call below has nothing to report into one, so
-        # GlobalOptProgress follows the optimiser's own log instead
-        with GlobalOptProgress(progress_factory, desc='Global registration',
-                               max_passes=g_reg_computed.number_of_edges(), weight=4), \
-                dask.config.set(scheduler='threads'):
+        if groupwise_resolution_method == ROBUST_LINEAR:
+            resolution_progress = self.progress_phase(progress_factory, total=default_robust_rounds,
+                                                      desc='Global registration', weight=4)
+        else:
+            # global_optimization has nothing to report into a phase: GlobalOptProgress follows its log instead
+            resolution_progress = GlobalOptProgress(progress_factory, desc='Global registration',
+                                                    max_passes=g_reg_computed.number_of_edges(), weight=4)
+        with resolution_progress as pbar, dask.config.set(scheduler='threads'):
+            if groupwise_resolution_method == ROBUST_LINEAR and pbar is not None:
+                groupwise_resolution_kwargs['progress'] = lambda: pbar.update(1)
             transforms_dict, groupwise_resolution_info_dict = groupwise_resolution(
                 g_reg_computed,
                 method=groupwise_resolution_method,
@@ -1904,9 +1918,11 @@ class MVSRegistration:
         # needs the stacked geometry (here, create_preview(), the positions plot in _run) asks
         # for it, rather than every level of every source being rebuilt up front
         if num_z_positions > 1 or self.is_stack:
-            msims = make_msims_3d(msims, z_scale=z_scale, positions=self.positions)
+            with Timer('fusion: make_msims_3d', verbose=self.logging_time):
+                msims = make_msims_3d(msims, z_scale=z_scale, positions=self.positions)
         if not is_channel_overlay:
-            msims = unify_msim_channels(msims)
+            with Timer('fusion: unify channels', verbose=self.logging_time):
+                msims = unify_msim_channels(msims)
 
         is_native = ((output_spacing is None or str(output_spacing).lower() == 'native')
                      and output_filename is not None and not is_channel_overlay)
@@ -1919,8 +1935,9 @@ class MVSRegistration:
             # before any work: multiview_stitcher's writer, which writes every other spacing, knows 0.4 and 0.5 only
             raise ValueError("OME-Zarr 0.6 is written with 'native' output spacing only; choose 0.5 for "
                              f"'{output_spacing}'")
-        output_stack_properties = calc_output_properties(msims, transform_key,
-                                                         output_spacing_method=output_spacing, z_scale=z_scale)
+        with Timer('fusion: output properties', verbose=self.logging_time):
+            output_stack_properties = calc_output_properties(msims, transform_key,
+                                                             output_spacing_method=output_spacing, z_scale=z_scale)
 
         if self.verbose:
             logging.info(f'Output stack: {numpy_to_native(output_stack_properties)}')
@@ -1984,9 +2001,10 @@ class MVSRegistration:
                     # no caller value and no configured tile_size: fall back to the memory budget,
                     # taken for an export at the export's own block size rather than a preview's
                     if saving_zarr:
-                        output_chunksize = get_export_chunk_sizes(
-                            sim0.dtype, output_stack_properties, msims,
-                            num_z_positions=num_z_positions)
+                        with Timer('fusion: export chunk sizes', verbose=self.logging_time):
+                            output_chunksize = get_export_chunk_sizes(
+                                sim0.dtype, output_stack_properties, msims,
+                                num_z_positions=num_z_positions)
                     else:
                         output_chunksize = dict(default_output_chunksize)
                 if self.verbose:
