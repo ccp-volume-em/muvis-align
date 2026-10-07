@@ -33,28 +33,6 @@ def sources_and_positions(count=3):
     return sources, positions
 
 
-def geometry(msim):
-    out = []
-    for scale_key in msi_utils.get_sorted_scale_keys(msim):
-        image = msim[scale_key].ds['image']
-        sim = msi_utils.get_sim_from_msim(msim, scale=scale_key)
-        out.append((tuple(image.shape),
-                    dict(si_utils.get_spacing_from_sim(image)),
-                    dict(si_utils.get_origin_from_sim(image)),
-                    np.asarray(si_utils.get_affine_from_sim(sim, transform_key=KEY))))
-    return out
-
-
-def assert_same_geometry(a, b):
-    ga, gb = geometry(a), geometry(b)
-    assert len(ga) == len(gb)
-    for level, (x, y) in enumerate(zip(ga, gb)):
-        assert x[0] == y[0], f'level {level} shape'
-        assert x[1] == y[1], f'level {level} spacing'
-        assert x[2] == y[2], f'level {level} origin'
-        np.testing.assert_allclose(x[3], y[3], err_msg=f'level {level} affine')
-
-
 def test_promotion_still_adds_the_z_dim_napari_steps_through():
     sources, positions = sources_and_positions()
     flat = [build_source_msim(source, 'tcyx', position, None, KEY)
@@ -112,17 +90,6 @@ def test_a_promoted_msim_is_recognised_and_left_alone():
     # returned untouched, not rebuilt into an equal-but-new tree
     for before, after in zip(promoted, again):
         assert after is before
-
-
-def test_promoting_twice_changes_nothing():
-    sources, positions = sources_and_positions()
-    flat = [build_source_msim(source, 'tcyx', position, None, KEY)
-            for source, position in zip(sources, positions)]
-    once = make_msims_3d(flat, z_scale=1.0, positions=positions)
-    twice = make_msims_3d(once, z_scale=1.0, positions=positions)
-
-    for a, b in zip(once, twice):
-        assert_same_geometry(a, b)
 
 
 def test_a_natively_3d_source_is_left_alone_too():

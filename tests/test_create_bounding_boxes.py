@@ -176,9 +176,6 @@ DATASETS = {
      [ 1102.64804062, 12000.,         25208.        ]])
 }
 
-DATASETS_2D = {
-    label: points[:, 1:] for label, points in DATASETS.items()
-}
 DATASET_CASES = [
     pytest.param(points, id=label) for label, points in DATASETS.items()
 ]
@@ -192,16 +189,18 @@ def test_minimal_bb_vertices_3d_always_has_eight_corners(points):
     assert np.unique(np.round(shape, decimals=8), axis=0).shape[0] == 8
 
 
-def test_create_image_shapes_matches_oriented_box_for_3d():
-    points = DATASETS["0"]
+@pytest.mark.parametrize("force_2d", [False, True])
+@pytest.mark.parametrize("points", DATASET_CASES)
+def test_create_image_shapes_matches_the_oriented_box(points, force_2d):
     stack_props = {'shape': {'z': 1, 'y': 4, 'x': 4}, 'spacing': {'z': 1.0, 'y': 1.0, 'x': 1.0},
                    'origin': {'z': 0, 'y': 0.0, 'x': 0.0}}
 
     with patch("muvis_align.image.util.mv_graph.get_vertices_from_stack_props", return_value=points):
-        shape = create_image_shapes([stack_props], transform_key=None, force_2d=False)[0]
+        shape = create_image_shapes([stack_props], transform_key=None, force_2d=force_2d)[0]
 
-    expected = _minimal_bb_vertices(points)
+    expected = _minimal_bb_vertices(points[:, 1:] if force_2d else points)
     np.testing.assert_allclose(shape, expected)
+    assert np.asarray(shape).shape == ((4, 2) if force_2d else (8, 3))
 
 
 def test_minimal_bb_vertices_3d_preserves_rotated_orientation():
@@ -252,43 +251,6 @@ def test_oriented_edge_path_is_applied_to_napari_layer():
     )
     bounding_box._set_meshes.assert_called_once()
     layer._data_view._update_mesh_vertices.assert_called_once_with(0, edge=True)
-
-
-def test_create_image_shapes_matches_oriented_box_for_force_2d():
-    points = DATASETS['0']
-    # create_image_shapes takes stack properties directly, so the geometry can be handed over
-    # as-is rather than mocked onto a sim
-    stack_props = {'shape': {'z': 1, 'y': 4, 'x': 4}, 'spacing': {'z': 1.0, 'y': 1.0, 'x': 1.0},
-                   'origin': {'z': 0, 'y': 0.0, 'x': 0.0}}
-
-    with patch("muvis_align.image.util.mv_graph.get_vertices_from_stack_props", return_value=points):
-        shape = create_image_shapes([stack_props], transform_key=None, force_2d=True)[0]
-
-    expected = _minimal_bb_vertices(points[:, 1:])
-    np.testing.assert_allclose(shape, expected)
-    assert shape.shape == (4, 2)
-
-
-@pytest.mark.parametrize("points", DATASET_CASES)
-def test_minimal_bb_vertices_2d_is_a_simple_non_crossing_rectangle(points):
-    """Regression test: force_2d shapes must be a proper (non-self-intersecting)
-    rectangle, not a bowtie caused by wrong corner ordering.
-    """
-    shape = _minimal_bb_vertices(points[:, 1:])
-
-    assert shape.shape == (4, 2)
-
-
-@pytest.mark.parametrize("points", DATASET_CASES)
-def test_create_image_shapes_force_2d_is_simple_non_crossing_rectangle(points):
-    stack_props = {'shape': {'z': 1, 'y': 4, 'x': 4}, 'spacing': {'z': 1.0, 'y': 1.0, 'x': 1.0},
-                   'origin': {'z': 0, 'y': 0.0, 'x': 0.0}}
-
-    with patch("muvis_align.image.util.mv_graph.get_vertices_from_stack_props", return_value=points):
-        shape = create_image_shapes([stack_props], transform_key=None, force_2d=True)[0]
-
-    shape = np.asarray(shape)
-    assert shape.shape == (4, 2)
 
 
 def _all_pairs_overlaps(mins, maxs):

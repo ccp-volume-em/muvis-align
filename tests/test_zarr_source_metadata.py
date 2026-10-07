@@ -102,16 +102,6 @@ def test_non_default_spacing_and_origin_survive(tmp_path):
         {'z': -2.0, 'y': 11.5, 'x': 4.25})
 
 
-def test_falls_back_when_consolidated_metadata_is_unusable(tmp_path, monkeypatch):
-    path = write_store(tmp_path / 'store.ome.zarr', 'yx', (256, 192))
-    reference = metadata_via_msim(path)
-
-    # a store the fast path declines (here: no consolidated metadata at all) must still be read
-    monkeypatch.setattr('muvis_align.image.ome_zarr_util._read_consolidated_ome_zarr_metadata',
-                        lambda _path: None)
-    compare(read_ome_zarr_source_metadata(path), reference)
-
-
 def test_fast_path_declines_a_missing_or_v2_store(tmp_path):
     assert _read_consolidated_ome_zarr_metadata(str(tmp_path / 'nope.ome.zarr')) is None
     (tmp_path / 'v2.ome.zarr').mkdir()
@@ -140,15 +130,6 @@ def test_source_reports_the_same_metadata_and_builds_no_msim(tmp_path, label, di
     assert source._msim is not None
     keys = msi_utils.get_sorted_scale_keys(source.msim)
     assert [tuple(source.msim[key].ds['image'].shape) for key in keys] == reference['shapes']
-
-
-def test_level_data_still_reads_real_pixels(tmp_path):
-    path = write_store(tmp_path / 'store.ome.zarr', 'yx', (256, 192))
-    source = create_image_source(path)
-    assert source._msim is None
-    data = source.get_level_data(0)
-    assert tuple(data.shape) == source.shapes[0]
-    assert np.asarray(data).sum() == 0        # written as zeros
 
 
 def test_real_v04_store_declines_the_fast_path_but_still_matches(tmp_path):

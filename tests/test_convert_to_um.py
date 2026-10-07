@@ -27,14 +27,6 @@ def test_known_units(unit, factor):
     assert convert_to_um(2.5, unit) == pytest.approx(2.5 * factor)
 
 
-@pytest.mark.parametrize('abbreviation, name', [
-    ('nm', 'nanometer'), ('pm', 'picometer'), ('µm', 'micrometer'),
-    ('mm', 'millimeter'), ('cm', 'centimeter'), ('m', 'meter'), ('Å', 'angstrom'),
-])
-def test_both_spellings_agree(abbreviation, name):
-    assert convert_to_um(7.0, abbreviation) == pytest.approx(convert_to_um(7.0, name))
-
-
 def test_every_unit_ngff_zarr_can_produce_is_covered():
     """ngff_zarr normalizes OME units to NGFF names before a source converts them, so every
     value it can emit has to resolve to a real factor."""

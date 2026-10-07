@@ -7,7 +7,6 @@ Tests focus on the fix for dimension mismatch when 2D images have 3D transforms.
 import numpy as np
 import pytest
 import xarray as xr
-from unittest.mock import MagicMock, patch
 
 from muvis_align.image.util import (
     _adapt_transform_to_image_dims,
@@ -117,41 +116,6 @@ def test_adapt_transform_3d_image_with_3d_transform():
     # Should remain 4x4
     assert adapted.shape == (4, 4)
     assert list(adapted.coords['x_in'].values) == ['z', 'y', 'x', '1']
-
-
-def test_get_overlap_images_adapts_transform_for_2d():
-    """Test that get_overlap_images adapts 3D transforms for 2D images."""
-    sim1 = create_mock_sim_2d(shape=(400, 400), origin=(0.048, 0.048))
-    sim2 = create_mock_sim_2d(shape=(400, 400), origin=(24.048, 0.048))
-    
-    transform_3d = create_3d_transform()
-    
-    # Add transforms to both sims
-    sim1.attrs['transforms'] = {'source_metadata': transform_3d}
-    sim2.attrs['transforms'] = {'source_metadata': transform_3d}
-    
-    # Mock the multiview_stitcher functions
-    with patch('muvis_align.image.util._get_overlap_bboxes') as mock_overlap:
-        with patch('muvis_align.image.util.si_utils.get_spatial_dims_from_sim') as mock_dims:
-            with patch('muvis_align.image.util.si_utils.get_spacing_from_sim') as mock_spacing:
-                mock_dims.return_value = ['y', 'x']
-                mock_spacing.return_value = {'y': 0.064, 'x': 0.064}
-                mock_overlap.return_value = {
-                    'lowers': np.array([0, 0]),
-                    'uppers': np.array([25.584, 25.584]),
-                }
-                
-                # This should not raise an error
-                try:
-                    get_overlap_images(sim1, sim2, 'source_metadata')
-                except Exception as e:
-                    # If we get a shape mismatch error from np.dot, the fix didn't work
-                    if "shapes" in str(e) and "not aligned" in str(e):
-                        raise AssertionError(
-                            f"Transform dimension mismatch still occurring: {e}"
-                        )
-                    # Other errors are OK for this mock test (we're only testing transform adaptation)
-                    pass
 
 
 def test_adapted_transform_values_are_identity_submatrix():
@@ -289,14 +253,18 @@ def test_grid_point_pairs_take_the_spatial_block_of_a_larger_matrix_and_keep_poi
     assert rows.max() > 60 - np.diff(rows)[0] and moving[:, 0].max() > 39
 
 
-@pytest.mark.parametrize('offset, overlaps', [(1000.0, False), (60.0, True)])
-def test_get_overlap_images_says_plainly_when_two_images_do_not_overlap(offset, overlaps):
+@pytest.mark.parametrize('offset, overlaps, widen', [(1000.0, False, False), (60.0, True, False), (60.0, True, True)])
+def test_get_overlap_images_says_plainly_when_two_images_do_not_overlap(offset, overlaps, widen):
     from multiview_stitcher import spatial_image_utils as si_utils
-    from muvis_align.image.util import NoOverlapError
+    from muvis_align.image.util import NoOverlapError, widen_xaffine_to_3d
 
     sims = [si_utils.get_sim_from_array(np.ones((100, 100), np.float32), dims=['y', 'x'], scale={'y': 1, 'x': 1},
-                                        translation={'y': 0.0, 'x': x}, transform_key='source')
-            for x in (0.0, offset)]
+                                        translation={'y': 0.0, 'x': x_offset}, transform_key='source')
+            for x_offset in (0.0, offset)]
+    if widen:
+        # a 3D transform on a 2D image, as a promoted msim leaves it
+        for sim in sims:
+            sim.attrs['transforms']['source'] = widen_xaffine_to_3d(sim.attrs['transforms']['source'])
 
     if overlaps:
         overlap1, overlap2, _ = get_overlap_images(sims[0], sims[1], 'source')

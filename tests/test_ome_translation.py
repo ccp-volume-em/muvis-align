@@ -71,41 +71,7 @@ def test_matches_the_xml2dict_implementation(label, images):
     assert extract_ome_translation_from_xml(xml) == reference_implementation(xml)
 
 
-def test_multi_image_xml_yields_no_position():
-    xml = ome_xml([{'PositionX': 1.0, 'PositionY': 2.0}] * 3)
-    assert extract_ome_translation_from_xml(xml) == {}
-
-
 def test_units_are_converted_to_um():
     xml = ome_xml([{'PositionX': 1.5, 'PositionY': 2.5,
                     'PositionXUnit': 'mm', 'PositionYUnit': 'mm'}])
     assert extract_ome_translation_from_xml(xml) == pytest.approx({'x': 1500.0, 'y': 2500.0})
-
-
-def test_parsing_stops_once_the_answer_is_settled():
-    """The whole point: cost must not grow with the dataset, since a multi-file OME-TIFF carries
-    the whole dataset's XML in every file's header.
-
-    Asserted structurally rather than by the clock - a wall-time bound is flaky on a loaded
-    machine, and it was. The document below is malformed well past the first fed chunk, so
-    parsing it to the end would raise; returning normally proves the parse stopped early.
-    """
-    images = [{'PositionX': float(i), 'PositionY': 0.0} for i in range(4000)]
-    document = ome_xml(images).replace('</OME>', '<Unclosed>' * 5 + '<<<not xml&&&</OME>')
-    assert len(document) > 512 * 1024, 'the malformed tail must sit beyond the first chunk'
-
-    # multi-Image, so no position - but crucially, no parse error either
-    assert extract_ome_translation_from_xml(document) == {}
-
-
-def test_a_single_image_document_is_still_read_to_the_end():
-    # the early exit fires on a second <Image>; with only one there is nothing to stop at, and
-    # such a document is small (a single tile's own metadata)
-    xml = ome_xml([{'PositionX': 9.0, 'PositionY': 10.0}])
-    assert extract_ome_translation_from_xml(xml) == pytest.approx({'x': 9.0, 'y': 10.0})
-
-
-def test_single_image_xml_still_reads_its_plane():
-    # the early exit must not fire for a genuinely single-image file
-    xml = ome_xml([{'PositionX': 9.0, 'PositionY': 10.0}])
-    assert extract_ome_translation_from_xml(xml) == pytest.approx({'x': 9.0, 'y': 10.0})

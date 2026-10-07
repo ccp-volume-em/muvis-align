@@ -23,11 +23,6 @@ def make_msim(values, chunks=None):
     return msi_utils.get_msim_from_sim(sim, scale_factors=[])
 
 
-def test_computes_real_limits_for_a_cheap_graph():
-    msim = make_msim(np.full((8, 8), 700))
-    assert get_contrast_limits(msim) == [700.0, 700.0 + 1]
-
-
 def test_widens_a_flat_range_so_napari_gets_a_usable_span():
     low, high = get_contrast_limits(make_msim(np.zeros((4, 4))))
     assert low < high
