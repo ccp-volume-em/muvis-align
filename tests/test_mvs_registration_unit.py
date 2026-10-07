@@ -1,4 +1,5 @@
 import glob
+import threading
 import logging
 import time
 import numpy as np
@@ -7,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from muvis_align.constants import default_fusion_workers
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration
 
@@ -884,3 +886,73 @@ def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):
     # one plane per source, while the sources stay as stored
     assert fused_msim['scale0'].ds['image'].sizes['z'] == 2
     assert all('z' not in msim['scale0'].ds['image'].dims for msim in reg.msims)
+
+
+# a zarr export runs its fusion blocks in batches; dask already parallelises the in-memory graph
+@pytest.mark.parametrize('saving_zarr, workers, expected', [
+    (False, None, None),    # the in-memory path builds a lazy graph dask already parallelises
+    (True, 1, None),
+    (True, 4, 4),
+    (True, None, default_fusion_workers if default_fusion_workers > 1 else None),
+])
+def test_only_a_zarr_export_batches_its_blocks(saving_zarr, workers, expected):
+    options = MVSRegistration._fusion_batch_options(saving_zarr, max_workers=workers)
+    assert (options['n_batch'] if options else None) == expected
+
+
+def test_a_batch_fuses_every_block_once_and_concurrently():
+    """Sequentially these would deadlock on the barrier, so reaching the assert is the test."""
+    workers = 4
+    barrier = threading.Barrier(workers, timeout=10)
+    fused, lock = [], threading.Lock()
+
+    def fuse_chunk(block_id):
+        barrier.wait()
+        with lock:
+            fused.append(block_id)
+
+    blocks = [(0, index) for index in range(workers)]
+    MVSRegistration._fusion_batch_options(True, max_workers=workers)['batch_func'](
+        fuse_chunk, blocks)
+
+    assert sorted(fused) == sorted(blocks)
+
+
+def test_a_failing_block_is_not_swallowed():
+    """A block that raises must fail the export, not leave a hole in the output."""
+    def fuse_chunk(block_id):
+        if block_id == 3:
+            raise ValueError('block 3')
+
+    options = MVSRegistration._fusion_batch_options(True, max_workers=4)
+    with pytest.raises(ValueError, match='block 3'):
+        options['batch_func'](fuse_chunk, list(range(8)))
+
+
+# pre-processing's bar reserves a phase for the msim build only when that build will run
+@pytest.mark.parametrize('msims, scaled, scale, coarser_level, expected', [
+    (None, {}, None, False, True),
+    (['msim'], {}, None, False, False),
+    (None, {'2': ['msim']}, 2, False, False),
+    (['msim'], {}, 2, True, True),
+], ids=['nothing built', 'already built', 'that scale cached', 'a coarser level exists for that scale'])
+def test_the_msims_build_is_pending_unless_built_or_cached(msims, scaled, scale, coarser_level, expected):
+    registration = MVSRegistration()
+    registration._msims = msims
+    registration._scaled_msims = scaled
+    registration.sources = [object()] if coarser_level else []
+
+    with patch('muvis_align.MVSRegistration.get_level_from_scale', return_value=(1, None)):
+        pending = registration.msims_build_pending(scale) if scale else registration.msims_build_pending()
+
+    assert pending is expected
+
+
+def test_eager_pre_processing_is_recognised_from_the_project_params():
+    eager = MVSRegistration.has_eager_pre_processing
+    assert eager({'scale': 8, 'gaussian_sigma': 2.0}) is False
+    # as a project file stores "no normalisation" - plain truthiness reads it as on
+    assert eager({'normalisation': 'none'}) is False
+    assert eager({'normalisation': 'global'}) is True
+    assert eager({'flatfield_quantiles': '0.05, 0.95'}) is True
+    assert eager({'filter_foreground': True}) is True

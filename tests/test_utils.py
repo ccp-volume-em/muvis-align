@@ -10,7 +10,7 @@ from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
     timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
-    eval_context, convert_to_um, get_unique_file_labels, strip_common_path_prefix
+    eval_context, convert_to_um, get_unique_file_labels, strip_common_path_prefix, format_phase_timing
 
 
 @pytest.mark.parametrize(
@@ -526,3 +526,60 @@ def test_get_unique_file_labels(filenames, expected):
 ])
 def test_strip_common_path_prefix(filenames, expected):
     assert strip_common_path_prefix(filenames) == expected
+
+
+# the timing line must say which regime a run is in: summed per-item wall time under a pool counts GIL waits
+CPU_BOUND = 'more workers will not help'
+IO_BOUND = 'more workers can overlap it'
+
+
+@pytest.mark.parametrize('label, wall, item_times, cpu_times, workers, expected', [
+    # summed per-item wall time far above wall, but CPU at wall: the threads only queued for the GIL
+    ('threads queued on the GIL', 16.64, [1027.9 / 328] * 328, [16.5 / 328] * 328, 64, CPU_BOUND),
+    # each item waits 3.0s but needs 0.05s of CPU, and 8 workers cannot overlap it all
+    ('under-parallelised I/O', 328 * 3.0 / 8, [3.0] * 328, [0.05] * 328, 8, IO_BOUND),
+    # the same work with enough workers reaches the CPU floor, which no arrangement of threads
+    # beats - so it must stop advising more
+    ('I/O at the floor', 16.4, [3.0] * 328, [0.05] * 328, 64, CPU_BOUND),
+    # a caller that cannot measure CPU time must not get a made-up regime
+    ('no cpu times', 5.0, [1.0, 3.0], [], 2, None),
+])
+def test_the_regime_is_named_from_wall_against_cpu(label, wall, item_times, cpu_times, workers,
+                                                   expected):
+    line = format_phase_timing(wall, item_times, cpu_times, workers)
+
+    assert [verdict for verdict in (CPU_BOUND, IO_BOUND) if verdict in line] == ([expected] if expected else [])
+
+
+def test_the_numbers_themselves_are_reported():
+    line = format_phase_timing(10.0, [1.0, 3.0, 1.0, 3.0], [0.5] * 4, 4)
+
+    assert 'wall 10.0s' in line
+    assert 'per-item total 8.0s' in line
+    assert 'cpu 2.0s' in line
+    assert 'with 4 workers' in line
+    assert 'mean 2000ms' in line and 'max 3000ms' in line    # from the wall times
+    assert 'process cpu' not in line                          # optional, and not given here
+
+
+def test_process_cpu_separates_this_phase_from_the_rest_of_the_process():
+    """time.thread_time counts only the thread running the item: without the process figure, CPU burnt
+    elsewhere in the process makes the phase look merely slow."""
+    busy = format_phase_timing(598.5, [38254.3 / 4733] * 4733, [468.5 / 4733] * 4733, 64,
+                               process_cpu_time=2268.0)
+    assert 'process cpu 2268.0s' in busy
+    assert '3.8 cores' in busy
+    assert 'the rest is elsewhere in the process' in busy
+
+    # ...and a process whose CPU is all this phase is not flagged as elsewhere
+    contained = format_phase_timing(20.0, [1.0] * 16, [1.0] * 16, 16, process_cpu_time=17.0)
+    assert 'process cpu 17.0s' in contained
+    assert 'the rest is elsewhere in the process' not in contained
+
+
+def test_items_in_worker_processes_report_busy_workers_not_a_gil_verdict():
+    """Worker processes share no GIL: the items' cpu over the wall is how many were busy."""
+    line = format_phase_timing(100.0, [8.0] * 100, [6.0] * 100, 8, process_cpu_time=5.0, processes=True)
+
+    assert '6.0 of 8 busy' in line
+    assert CPU_BOUND not in line and IO_BOUND not in line

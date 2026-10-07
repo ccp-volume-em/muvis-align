@@ -2885,3 +2885,48 @@ def test_replacing_the_main_view_clears_napari_dask_cache_but_the_overview_does_
         clear_cache.assert_not_called()
         bare_interface._clear_napari_view(bare_interface.viewer)
         clear_cache.assert_called_once_with()
+
+
+# pre-processing's bar is sized by the phases that will actually report
+def _run_pre_processing(build_pending, eager=False):
+    """Returns (phases reserved, weight the msim build was given)."""
+    from contextlib import contextmanager
+
+    interface = interface_module.Interface.__new__(interface_module.Interface)
+    interface.params = {'pre_processing': {'scale': 2}}
+    interface.reg = MagicMock()
+    interface.reg.msims_build_pending.return_value = build_pending
+    interface.reg.has_eager_pre_processing.return_value = eager
+    interface.reg.preprocess.return_value = (None, None, True)
+    interface._timing_verbose = lambda: False
+    interface._run_off_thread = lambda work, factory: work(factory)
+
+    declared = {}
+
+    class _Factory:
+        def __call__(self, *args, **kwargs):
+            raise AssertionError('no phase should be opened by the mocked work')
+
+    @contextmanager
+    def operation_progress(desc, progress_factory=None, phases=1):
+        declared['phases'] = phases
+        yield _Factory()
+
+    interface._operation_progress = operation_progress
+    interface.run_pre_processing()
+    return declared['phases'], interface.reg.ensure_msims.call_args.kwargs['weight']
+
+
+def test_only_the_phases_that_will_run_are_reserved():
+    assert _run_pre_processing(build_pending=False)[0] == 1
+
+
+def test_the_build_takes_the_bar_in_proportion_to_what_it_costs():
+    # opening every source is nearly all of a run whose only step is scaling - splitting the
+    # bar evenly with it left the work finishing at the halfway mark
+    phases, weight = _run_pre_processing(build_pending=True)
+    assert (phases, weight) == (9, 8)
+
+    # a step that computes over the data makes the rest of the run real work again
+    phases, weight = _run_pre_processing(build_pending=True, eager=True)
+    assert (phases, weight) == (3, 2)
