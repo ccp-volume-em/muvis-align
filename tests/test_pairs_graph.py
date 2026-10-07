@@ -31,8 +31,7 @@ def flatten(stack_props):
 def test_pairs_graph_has_the_nodes_edges_and_stack_props_the_graph_build_would_give():
     """What multiview_stitcher's build_view_adjacency_graph_from_msims() produces for a known
     set of pairs - a node per source carrying its stack properties, an edge per pair - without
-    the linear program per pair it runs to rediscover overlaps we already have. (Checked against
-    the real thing on a 328-source project: same nodes, same edges, same stack_props, 7x faster.)
+    the linear program per pair it runs to rediscover overlaps we already have.
     """
     msims = [make_source((0, 0)), make_source((0, 6)), make_source((6, 0))]
     pairs = [(0, 1), (0, 2)]

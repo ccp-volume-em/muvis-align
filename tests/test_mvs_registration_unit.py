@@ -172,9 +172,7 @@ def test_preprocess_reports_an_option_it_does_not_recognise(caplog):
 
 
 def test_preprocess_applies_scale_via_select_msim_subpyramid():
-    # preprocess()'s `scale` override selects a real (smaller) sub-pyramid directly from the
-    # msims it's given (every native level at or coarser than `scale`), rather than resizing to
-    # an exact match or re-running the whole init_data() pipeline a second time
+    # `scale` selects a sub-pyramid of the msims given, not a resize or a second init_data()
     registration = MVSRegistration()
     registration.scales = [{"x": 1.0, "y": 1.0}]
     registration.source_transform_key = "source_metadata"
@@ -691,7 +689,7 @@ def test_register_global_resolves_with_the_named_groupwise_method_and_reports_me
 
 
 def test_a_cancel_stops_building_sources_without_building_the_rest():
-    """The build used to submit every source at once, so a cancel waited for all of them (34k on the HPC)."""
+    """The build used to submit every source at once, so a cancel waited for all of them."""
     import threading
     import muvis_align.MVSRegistration as mvs_registration_module
     from muvis_align.util import OperationCancelled, cancellable, request_cancel

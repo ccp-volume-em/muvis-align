@@ -1,8 +1,7 @@
 """Progress for the global optimisation - GlobalOptProgress.
 
-The bar read 'Global registration: 0%' for a whole day, because the call it waits on says nothing
-a progress phase can hear; then, counting a phase per pass, 100% thirty seconds in and for the
-eighty-six minutes after. What the optimiser does say goes to its own logger, so these cover both
+The call it waits on says nothing a progress phase can hear, and counting a phase per pass filled
+the bar long before the end. What the optimiser does say goes to its own logger, so these cover both
 halves: that the records become a bar that keeps moving without filling, and
 (test_upstream_still_logs_its_iterations) that multiview_stitcher still emits them at all - the
 one thing here no local care can keep true.
@@ -33,9 +32,8 @@ def emit_pass(iterations=10):
 
 
 def test_the_bar_moves_while_the_call_is_still_running():
-    """It used to move only when groupwise_resolution() returned, so a run of many hours showed
-    0% throughout and then jumped straight to done. A pass is up to 500 iterations and minutes
-    long, so the bar has to move inside one too, not only at pass boundaries."""
+    """A pass is up to 500 iterations, so the bar has to move inside one too, not only when
+    groupwise_resolution() returns or at pass boundaries."""
     factory = make_factory()
     reached = []
     with factory:
@@ -52,9 +50,8 @@ def test_the_bar_moves_while_the_call_is_still_running():
 
 
 def test_many_passes_move_the_bar_without_filling_it():
-    """A 328-source run took 505 passes. Given a phase each - with no total to count them against
-    - every pass took most of what was left, and the bar read 100% thirty seconds in. They are
-    counted against the edges the optimiser can remove, and it cannot run more passes than that."""
+    """Given a phase each, with no total to count them against, every pass took most of what was left.
+    They are counted against the edges the optimiser can remove, and it cannot run more passes than that."""
     factory = make_factory()
     ends = []
     with factory:

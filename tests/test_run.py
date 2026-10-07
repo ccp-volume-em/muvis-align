@@ -87,10 +87,8 @@ def test_register_global_writes_every_level_and_fuses_as_a_trivial_wrap_does(tmp
 
 
 def test_fuse_channel_overlay_real_pyramid_matches_trivial_wrap():
-    # the is_channel_overlay path (fuse()'s per-source-as-channel branch, triggered by
-    # extra_metadata['channels'] having more than one entry) has its own separate combine-as-
-    # channels code path - verify it too produces byte-identical output whether fusing from the
-    # real pyramid or a trivial single-level wrap
+    # several extra_metadata channels take fuse()'s own combine-as-channels path: it too must not
+    # depend on fusing the real pyramid or a trivial single-level wrap
     with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
         params = yaml.safe_load(file)
     operation_params = params['operations'][0]
@@ -114,9 +112,8 @@ def test_fuse_channel_overlay_real_pyramid_matches_trivial_wrap():
 
 
 def test_preprocess_scale_selects_real_subpyramid_not_a_resize(tmp_path):
-    # preprocess()'s `scale` override should select every native level at or coarser than the
-    # requested scale as a genuine (smaller) sub-pyramid - not resize to one exact resolution
-    # (unnecessary for registration) and not disable msims/auto-resolution-selection entirely
+    # `scale` selects every native level at or coarser than it as a genuine sub-pyramid,
+    # not a resize to one exact resolution
     reg, _ = registration_from_resource('params_test_2d.yml', tmp_path)
     full_scale_keys = msi_utils.get_sorted_scale_keys(reg.msims[0])
 

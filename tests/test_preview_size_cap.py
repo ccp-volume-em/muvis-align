@@ -2,9 +2,8 @@
 
 preview_scale cannot enforce that on its own: it selects a level relative to each source's own
 pyramid, so the fused result still grows with the dataset, and the post-pre-processing preview
-is built from register_msims and never consults it at all. A run whose pre_processing scale was
-1 therefore fused 396.9GB over 55 minutes to show what an 8x-reduced one showed in 9. Bounding
-the fused size covers both routes.
+is built from register_msims and never consults it at all. Bounding the fused size covers both
+routes.
 """
 import numpy as np
 import pytest
@@ -65,9 +64,8 @@ def test_drop_finest_level_reports_a_single_level_msim_has_nothing_to_drop():
 @pytest.mark.parametrize('levels, divisor, expect_untouched', [
     (4, 2, True),      # already fits: returned as-is
     (4, 10, False),    # reduced by dropping levels
-    # the preprocessed preview arrives as a single level (pre-processing at scale 8 already
-    # reduced it), so there is nothing to drop - it must still reduce, by striding, or the cap
-    # would not apply on the path that needed it most
+    # a pre-processed preview arrives as a single level with nothing to drop: it must still
+    # reduce, by striding
     (1, 8, False),
 ])
 def test_a_preview_is_reduced_only_when_it_does_not_fit(levels, divisor, expect_untouched):
@@ -125,11 +123,11 @@ def test_reduction_stops_as_soon_as_it_fits_and_leaves_the_input_alone():
     """The cap is display-only: pre-processing's own scale is what registration uses, and must
     survive untouched."""
     msims = grid(levels=1)
-    before = [(len(msi_utils.get_sorted_scale_keys(m)), m['scale0'].ds['image'].shape)
-              for m in msims]
+    before = [(len(msi_utils.get_sorted_scale_keys(msim)), msim['scale0'].ds['image'].shape)
+              for msim in msims]
     reduce_msims_to_fused_size(msims, KEY, max_bytes=fused_bytes(msims) // 8)
-    assert [(len(msi_utils.get_sorted_scale_keys(m)), m['scale0'].ds['image'].shape)
-            for m in msims] == before
+    assert [(len(msi_utils.get_sorted_scale_keys(msim)), msim['scale0'].ds['image'].shape)
+            for msim in msims] == before
 
     # ...and it stops at the first level that fits rather than going to the coarsest
     msims = grid()
@@ -150,7 +148,7 @@ def test_estimate_counts_the_output_stack_not_the_sources():
 
 def test_reduction_reaches_the_budget_in_one_round_however_far_over_it_starts():
     """The reduction is computed from how far over budget the fusion is, not found by dropping
-    one level and asking again: re-estimating over every source is itself minutes at scale.
+    one level and asking again: re-estimating over every source is itself costly at scale.
     """
     msims = grid(levels=5)
     # far enough over that the one-at-a-time loop needed four rounds to get under

@@ -1,7 +1,7 @@
 """One bar per operation - NapariPhaseProgress.
 
-The cases here are the ones a 4733-source run got wrong: a bar that froze partway through an
-operation and one that sat on a single number for ten minutes.
+The cases here are a bar that froze partway through an operation and one that sat on a single
+number while most of the work ran.
 """
 import pytest
 
@@ -47,8 +47,8 @@ def test_a_twin_reports_into_its_owners_remaining_space():
 
 
 def test_a_heavy_phase_can_claim_more_of_the_bar_than_its_siblings():
-    """Equal slices for steps that are nothing like equal is what left a refresh at 18% for ten
-    minutes: building the view data is most of the work but was one step of five."""
+    """Equal slices for steps that are nothing like equal stall the bar: building the view data is
+    most of a refresh's work but was one step of five."""
     # five units, so the weighted phase below is not also the last one the operation expects -
     # that takes most of whatever is left (last_phase_share) regardless of its weight
     factory = make_phase_factory(phases=5)
