@@ -336,17 +336,17 @@ def _overlap_props_grid(nz, nrows, ncols, tile=16, overlap=0.25, with_z=False):
     return all_props
 
 
-@pytest.mark.parametrize("nz, with_z, force_2d", [
-    (1, False, False),
-    (4, True, True),
-    (1, True, True),
-])
-def test_vectorized_aabb_overlap_shapes_match_the_exact_path(nz, with_z, force_2d):
-    """The vectorized fast path is only allowed to be faster: passing the same pairs in
-    explicitly routes them through multiview_stitcher's exact intersection test instead, and
-    both must draw the same boxes for the same pairs.
+@pytest.mark.parametrize("make_props, force_2d", [
+    (lambda: _overlap_props_grid(1, 4, 5), False),
+    (lambda: _overlap_props_grid(4, 4, 5, with_z=True), True),
+    (lambda: _overlap_props_grid(1, 4, 5, with_z=True), True),
+    (lambda: [_rotated_tile(row, col, -45.0) for row in range(2) for col in range(3)], False),
+], ids=['2d', 'sections', 'one-section', 'rotated'])
+def test_overlap_shapes_without_pairs_match_the_exact_path(make_props, force_2d):
+    """The bounding-box shortcut taken without given pairs is only allowed to be faster: given the
+    same pairs, the exact test must draw the same shapes - for rotated sources too.
     """
-    all_props = _overlap_props_grid(nz, 4, 5, with_z=with_z)
+    all_props = make_props()
 
     shapes, pairs = create_overlap_shapes(all_props, 'source_metadata', force_2d=force_2d)
     candidates, _, _ = _filter_candidate_overlap_pairs(all_props)

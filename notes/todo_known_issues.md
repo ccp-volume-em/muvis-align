@@ -37,10 +37,6 @@ Nothing.
 
 ESSENTIAL
 
-- [ ] look at C:\Project\slides\Ciqtek\muvis_align_project_rotation.yml which now shows rotated tiles.
-      The napari viewer code for get shapes works perfectly, but not the code for get overlaps which is extremely elaborate and error-prone.
-      Shapes come from stack_props, can the overlap shapes also be constructed from stack_props, resulting in a rotated shapes,
-      instead of a number of coordinates forming arbitrary bounds?
 
 
 PERFORMANCE
@@ -261,6 +257,8 @@ REFACTORING
   fail (node-dependent mount/NFS behaviour?) is unknown; confirm no further failures on the HPC.
 
 ### Sources and metadata
+- **Rotated sources' overlap shapes** - on opening a project the overlaps were their tiles' bounding-box
+  intersections, wrong for a source_rotation (Ciqtek rotation project); rotated pairs now take the exact 2D clip.
 - **Vendor TIFF metadata** - pixel size and stage position from vendor tags (napari-meta-tiff's metadata module,
   ee05aeb); imagecodecs a dependency.
 - **Scales with units** - pre_processing scale and preview_scale accept a pixel size ('40nm') as well as a factor.

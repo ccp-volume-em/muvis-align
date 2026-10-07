@@ -2105,6 +2105,15 @@ def _aabb_overlap_shapes_2d(all_stack_props, pairs, mins, maxs, force_2d, is_mul
     return list(boxes), list(pairs)
 
 
+def _is_axis_aligned(stack_props):
+    """Whether a source's transform scales and shifts only, so its bounding box is the source itself."""
+    if 'transform' not in stack_props:
+        return True
+    matrix = np.asarray(stack_props['transform'])
+    linear = matrix.reshape(-1, *matrix.shape[-2:])[0][:-1, :-1]
+    return not np.any(linear - np.diag(np.diagonal(linear)))
+
+
 def _tile_polygon_2d(stack_props):
     """A source's yx footprint as a counter-clockwise polygon - a singleton z dropped."""
     points = np.asarray(mv_graph.get_vertices_from_stack_props(stack_props), dtype=float)[:, -2:]
@@ -2163,23 +2172,21 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
     shapes = []
     good_pairs = []
     is_multi_z_shapes = (len(set([props['origin'].get('z', 0) for props in all_stack_props])) > 1)
-    # aabbs is set only for the broad-phase-discovered case below (no pair_registration graph to
-    # restrict candidates to yet). There, sources still sit at their raw source_metadata
-    # transform with no rotation applied, so each pair's AABB intersection is exact rather than a
-    # bound - and using it skips _get_overlap_bboxes' linprog call, a few milliseconds each but
-    # the dominant cost across thousands of pairs. Given real pairs (post-registration, curated,
-    # and possibly rotated) the exact test is still used.
+    # without given pairs, a pair of unrotated sources overlaps exactly in its bounding boxes' intersection:
+    # that skips the exact test. A rotated source (e.g. by source_rotation) takes the exact test
     aabbs = None
     if pairs is None:
         broad_phase_start = time.time()
         pairs, mins, maxs = _filter_candidate_overlap_pairs(all_stack_props)
         aabbs = (mins, maxs)
+        axis_aligned = np.array([_is_axis_aligned(props) for props in all_stack_props], dtype=bool)
         logging.info(f'create_overlap_shapes: {len(pairs)} candidate pairs from'
                      f' {len(all_stack_props)} sims'
                      f' (broad phase: {time.time() - broad_phase_start:.1f}s)')
     # in 2D the AABB fast path is pure arithmetic per pair, so do every pair at once rather
     # than a Python iteration (and a convex hull) each - 3D and exact tests take the loop
-    if aabbs is not None and (force_2d or not any('z' in props['shape'] for props in all_stack_props)):
+    if aabbs is not None and axis_aligned.all() and (
+            force_2d or not any('z' in props['shape'] for props in all_stack_props)):
         shapes, good_pairs = _aabb_overlap_shapes_2d(all_stack_props, pairs, mins, maxs,
                                                      force_2d=force_2d,
                                                      is_multi_z_shapes=is_multi_z_shapes)
@@ -2212,7 +2219,7 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
         if not process_pair:
             continue
 
-        if aabbs is not None:
+        if aabbs is not None and axis_aligned[pair[0]] and axis_aligned[pair[1]]:
             mins, maxs = aabbs
             if force_2d:
                 # sim1/sim2 still carry their (size-1) 'z' dim here - mins/maxs column 0 is that
