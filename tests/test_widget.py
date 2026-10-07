@@ -37,3 +37,20 @@ def test_during_an_operation_only_the_process_buttons_work_and_read_cancel(make_
     assert pairing.enabled and main_widget.is_tab_enabled('fusion')
     # disabled before the operation, so still disabled after it
     assert not method.enabled
+
+
+def test_a_tab_enabled_out_of_sight_is_scrolled_into_view_but_not_selected(make_napari_viewer):
+    main_widget = MainWidget(make_napari_viewer())
+    main_widget.resize(200, 400)
+    main_widget.show()
+    registration, fusion = main_widget.tab_labels.index('registration'), main_widget.tab_labels.index('fusion')
+    main_widget.enable_tabs(True, registration)
+    main_widget.select_tab(registration)
+    changes = []
+    main_widget.currentChanged.connect(changes.append)
+
+    main_widget.enable_tabs(True, fusion)
+
+    tab_bar = main_widget.tabBar()
+    assert tab_bar.rect().contains(tab_bar.tabRect(fusion))
+    assert main_widget.currentIndex() == registration and not changes

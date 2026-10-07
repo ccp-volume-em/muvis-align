@@ -64,17 +64,31 @@ class MainWidget(QTabWidget):
         flush_paint_events()
 
     def enable_tabs(self, enabled=True, tab_index=-1):
+        newly_enabled = []
         for index in range(self.count()):
             if (
                 enabled and (tab_index < 0 or index <= tab_index)
             ) or (
                 not enabled and index >= tab_index
             ):
+                if enabled and not self.isTabEnabled(index):
+                    newly_enabled.append(index)
                 self.setTabEnabled(index, enabled)
+        if newly_enabled:
+            self.show_tab(newly_enabled[-1])
         # a tab enabled while hidden (e.g. fusion, right before a blocking QMessageBox) can be
         # left showing stale disabled styling under a slow/remote display (xpra) until the next
         # natural event-loop idle - flush immediately so it's interactive as soon as it's enabled
         flush_paint_events()
+
+    def show_tab(self, tab_index):
+        # the tab bar scrolls only to its current tab: select this one and back, unseen by tab_changed
+        current = self.currentIndex()
+        if tab_index != current:
+            self.blockSignals(True)
+            self.setCurrentIndex(tab_index)
+            self.setCurrentIndex(current)
+            self.blockSignals(False)
 
     def select_tab(self, tab_index):
         self.setCurrentIndex(tab_index)
