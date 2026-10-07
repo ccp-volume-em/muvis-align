@@ -1144,6 +1144,28 @@ def test_update_views_detects_multi_z_from_view_msims(
     )
 
 
+def test_registered_shapes_of_2d_view_msims_sit_at_their_sections_z(bare_interface):
+    """The view msims stay 2D: each source's shape takes its section's z from its position."""
+    from multiview_stitcher import msi_utils, spatial_image_utils as si_utils
+
+    def flat_msim(origin_x):
+        sim = si_utils.get_sim_from_array(np.zeros((8, 8), dtype=np.uint8), dims=["y", "x"],
+                                          scale={"y": 1.0, "x": 1.0}, translation={"y": 0.0, "x": origin_x},
+                                          transform_key="registered")
+        return msi_utils.get_msim_from_sim(sim, scale_factors=[])
+
+    bare_interface.view_msims = [flat_msim(0.0), flat_msim(4.0)]
+    bare_interface.reg.positions = [{"z": 0.0}, {"z": 5.0}]
+    bare_interface.reg.source_transform_key = "source_metadata"
+    bare_interface.reg.is_pairs_registered.return_value = False
+    bare_interface.reg.file_labels = ["a", "b"]
+
+    shapes, _, _, _ = bare_interface._create_napari_shapes("registered", force_2d=True)
+
+    assert [sorted({point[0] for point in shape}) for shape in shapes] == [[0.0], [5.0]]
+    assert min(point[2] for point in shapes[1]) == 4.0
+
+
 def test_create_napari_shapes_reports_per_source(bare_interface, monkeypatch):
     """Building the shapes is one geometry per source and then every overlapping pair - minutes
     on a large project, during which the refresh's bar used to show nothing at all. It now takes

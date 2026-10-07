@@ -31,12 +31,7 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-Refresh after registration (48 min on the HPC): measured, plan awaiting agreement (it touches the shapes code being
-changed alongside). Per source on registered meatballs: view msims to 3D (make_msims_3d) 11.8ms, transforms onto
-view msims 4.6ms, again onto the preview msims 2.0ms, composite overview 10ms, preview cap 1.1ms (6.3 min on the
-HPC: grows with sections?), sub-pyramid 0.7ms, image shapes 1.3ms. Plan: (1) no 3D promotion of view msims -
-z_positions to sub-pyramid/cap/composite as the preprocessed branch does, shapes' z from promoted_geometry;
-(2) transforms copied once; (3) the preview cap on its own; (4) composite overview (NFS reads?) last.
+Nothing.
 
 ## TODO
 
@@ -117,11 +112,10 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
       spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
       properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
-- [ ] **Faster refresh after registration** - 48 min in all: ~13 min untimed between the end of registration and
-      'copy transforms to view msims', composite overview 11.9 min, preview size cap 6.3 min, transforms copied
-      twice (4.3 + 1.4 min), create_image_shapes 1.5 min (8s before registration), create_overlap_shapes 3.4 min
-      (clipping only 75s of it), tables 1.8 min. The untimed part is now timed (build view msims, view msims:
-      make_msims_3d; and save registration results before it) - read them on the next HPC run.
+- [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
+      composite overview 10ms (11.9 min on the HPC: NFS reads?), preview cap 1.1ms (6.3 min on the HPC - grows with
+      sections, not sources?), sub-pyramid 0.7ms, image shapes 1.3ms, tables 1.8 min. Next: the preview cap, then
+      the composite overview. (Promotion and the second transform copy: see Done.)
 
 REFACTORING
 
@@ -136,6 +130,11 @@ REFACTORING
 
 ## Done
 
+- **Refresh after registration: view msims kept 2D, transforms copied once** - make_msims_3d promoted every level of
+  every view msim (11.8ms a source: the HPC's ~13 untimed minutes); the preview steps now take z_positions as the
+  pre-processed branch does, and shapes take each source's z from promoted_geometry. The preview msims no longer
+  get the transforms a second time (2.0ms a source, 1.4 min on the HPC): the view msims already carry them.
+  Meatballs: shapes and composite overview identical to before, these steps 5.6 -> 2.8s.
 - **7.6 min before the first pairs on the HPC** - per source on meatballs: pairing geometry ~2.6ms (a shape sim
   each), channel selection ~2ms (multiscale_sel_coords), adjacency graph ~1.3ms (a sim each) - ~3.3 min at 34k
   locally, the HPC's 2.8 + ~3.5 min. Now timed (pair registration: source geometry / get_pairs / select channel /

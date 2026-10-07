@@ -23,7 +23,7 @@ from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
     draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, NoOverlapError, \
-    make_msims_3d, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
+    promoted_geometry, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
     snapshot_msims_transform, restore_msims_transform, \
     select_msim_subpyramid_at_scale, reduce_msims_to_fused_size, composite_msims_overview
@@ -641,12 +641,11 @@ class Interface:
     def ensure_view_msims(self, progress_factory=None):
         # the same lazy build view_msims triggers, callable ahead of time with a progress_factory
         # so a caller forcing it can report per source - mirrors MVSRegistration.ensure_msims()
+        # kept 2D: sources at several heights are placed at their z by their consumers (z_positions,
+        # promoted_geometry) - promoting every level of every source took ~13 minutes at 34k
         if self._view_msims is None:
             with Timer('build view msims', verbose=self._timing_verbose()):
                 self._view_msims = self._build_view_msims(progress_factory=progress_factory)
-            if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                with Timer('view msims: make_msims_3d', verbose=self._timing_verbose()):
-                    self._view_msims = make_msims_3d(self._view_msims, positions=self.reg.positions)
         return self._view_msims
 
     def _copy_transforms_to_view_msims(self, transform_key, progress_factory=None):
@@ -1006,16 +1005,14 @@ class Interface:
             return self._progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
+        # with no native 'z' but sources at different heights, each source's z must become a real
+        # dim or it is silently dropped rather than drawn at its actual height
+        promote_z = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
         if transform_key == self.reg.source_transform_key:
             # not yet registered (or asked for original positions): build cheap single-level
             # sims from the resolved per-source geometry, never touching the expensive msim
             # build. Any other transform_key means registration has run, so view_msims is
             # legitimately available and already carries that transform.
-            #
-            # promote_z mirrors the make_msims_3d() promotion view_msims gets: with no native
-            # 'z' but sources at different heights, each source's z must become a real dim or it
-            # is silently dropped rather than drawn at its actual height.
-            promote_z = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
             with phase(3 / 5, total=len(self.reg.sources)) as pbar, \
                  Timer(f'_create_napari_shapes: build {len(self.reg.sources)} source shape geometries',
                       verbose=self._timing_verbose()):
@@ -1034,6 +1031,12 @@ class Interface:
             with phase(3 / 5, total=1) as pbar, \
                  Timer('_create_napari_shapes: get view_msims', verbose=self._timing_verbose()):
                 msims = self.view_msims
+                if promote_z:
+                    # the view msims stay 2D: each source's geometry as make_msims_3d() would promote it
+                    geometries = [promoted_geometry(msim, transform_key, position.get('z', index))
+                                  for index, (msim, position) in enumerate(zip(msims, self.reg.positions))]
+                    msims = [stack_props | {'transform': param_utils.affine_to_xaffine(affine)}
+                             for stack_props, affine in geometries]
                 if pbar is not None:
                     pbar.update(1)
 
@@ -1117,6 +1120,9 @@ class Interface:
                 msims = select_msim_subpyramid_at_scale(view_msims, self.reg.sources, preview_scale)
                 if pbar is not None:
                     pbar.update(1)
+            # the view msims stay 2D (see ensure_view_msims): placed at their z as in the branch above
+            if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
+                z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
         # Whichever branch produced them, cap what this preview will fuse. The show_preprocessed
         # branch takes its resolution from pre_processing's scale, never preview_scale, so at
         # scale 1 the "preview" is the whole dataset: one run fused 396.9GB over 55 minutes to
@@ -1135,10 +1141,11 @@ class Interface:
         with phase(1 / 12, total=1) as pbar, \
              Timer('_create_napari_data: copy_transforms_to_msims', verbose=self._timing_verbose()):
             # before registration there is no registered transform to copy, and reading
-            # self.reg.msims for it forces the full build get_best_transform_key() just avoided
-            if writes_transforms:
+            # self.reg.msims for it forces the full build get_best_transform_key() just avoided.
+            # The view msims got theirs already (_copy_transforms_to_view_msims)
+            if show_preprocessed and writes_transforms:
                 transform_msims = self.reg.msims
-                if show_preprocessed and self.reg.register_indices is not None:
+                if self.reg.register_indices is not None:
                     # pre-processing may have dropped sources (filter_foreground) - pair each
                     # target with the source it came from, not with whatever sits beside it
                     transform_msims = [self.reg.msims[index] for index in self.reg.register_indices]
