@@ -7,6 +7,7 @@ import copy
 import dask
 import functools
 import time
+from dask.array.core import PerformanceWarning
 from dask.diagnostics import ProgressBar
 from enum import Enum, auto
 import logging
@@ -21,6 +22,7 @@ import os.path
 from pathlib import Path
 import shutil
 from skimage.transform import resize
+import warnings
 import xarray as xr
 
 from muvis_align.constants import *
@@ -40,6 +42,10 @@ from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, 
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
 from muvis_align.Timer import Timer
 from muvis_align.util import *
+
+
+# fused blocks are whole zarr chunks, one writer each: dask flags every edge block, whose chunk the array ends in
+warnings.filterwarnings('ignore', message='The input Dask array will be rechunked', category=PerformanceWarning)
 
 
 class RegState(Enum):

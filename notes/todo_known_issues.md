@@ -213,8 +213,9 @@ REFACTORING
   and transform type (sift rigid handles the slides project's ~6 deg section rotations).
 
 ### Fusion
-- **Dask 'input Dask array will be rechunked' warning** - an output smaller than one chunk: dask's zarr
-  write check misses that the chunk is the whole axis. Chunks are now clipped to the output's extent.
+- **Dask 'input Dask array will be rechunked' warning** - raised for every fused block at the array's edge,
+  whose zarr chunk the array ends in: a false alarm, as each block is one chunk with one writer. Filtered in
+  MVSRegistration; chunks are also clipped to the output's extent.
 - **Export per z-slab** - fused from only the sources reaching each slab (was ~1.5 cores: fusion re-planned over all
   sources per block); direct reads of uncompressed TIFF levels; the plugin's bar no longer counts a save phase that
   never runs.
