@@ -1,10 +1,7 @@
 """Tests of ui/Interface.py; the test project files are loaded by test_project_config_loading."""
 
 import logging
-import os
-import tempfile
 import time
-import importlib
 from contextlib import nullcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +14,7 @@ from qtpy.QtWidgets import QMessageBox
 from muvis_align._widget import MainWidget
 from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
+import muvis_align.ui.Interface as interface_module
 from muvis_align.MVSRegistration import RegState
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, FakeBar, make_phase_factory, \
     prepared_registration, recording_phase_factory
@@ -33,11 +31,7 @@ def suppress_completion_dialogs():
 
 @pytest.fixture(autouse=True)
 def suppress_confirmation_dialogs():
-    """Keep a confirmation a test forgot to patch from opening a real modal dialog.
-
-    Tests that care about the answer patch question() themselves, which takes precedence;
-    answering No by default means a test that does not still cannot stall the run.
-    """
+    """Answer No to a confirmation a test did not patch itself, so none opens a real modal dialog."""
     with patch(
         'muvis_align.ui.Interface.QMessageBox.question',
         return_value=QMessageBox.No,
@@ -66,7 +60,7 @@ def template_options(name):
     return [option['value'] for option in parameter['options']]
 
 
-@pytest.fixture(params=get_project_configs(), ids=lambda p: p.name)
+@pytest.fixture(params=get_project_configs(), ids=lambda path: path.name)
 def project_config(request):
     """Fixture that provides path to each discovered project configuration file."""
     config_path = request.param
@@ -77,9 +71,8 @@ def project_config(request):
 @pytest.fixture
 def config_data(project_config):
     """Load and parse project configuration YAML."""
-    with open(project_config, 'r') as f:
-        data = yaml.safe_load(f)
-    return data
+    with open(project_config, 'r') as file:
+        return yaml.safe_load(file)
 
 
 def test_project_config_loading(make_napari_viewer, project_config, tmp_path):
@@ -156,17 +149,9 @@ def test_update_registered_refreshes_the_tables_and_the_view(make_napari_viewer)
     update_views.assert_called_once_with(transform_key=None, progress_factory=None)
 
 
-# Use the canonical package name for unit-level coverage.  The older integration
-# tests above intentionally retain their historical ``muvis_align`` imports.
-interface_module = importlib.import_module("muvis_align.ui.Interface")
-CanonicalInterface = interface_module.Interface
-CanonicalViewMode = interface_module.ViewMode
-CanonicalRegState = interface_module.RegState
-
-
 @pytest.fixture
 def bare_interface():
-    interface = CanonicalInterface.__new__(CanonicalInterface)
+    interface = Interface.__new__(Interface)
     interface.reg = MagicMock()
     interface.verbose = False
     interface.enable_plugin_widget = None
@@ -319,7 +304,7 @@ def test_input_output_process_cancelled_while_reading_sources_reads_them_again_n
     show_info.assert_called_once_with('Cancelled')
     bare_interface._show_loaded_project.assert_not_called()
     assert bare_interface.need_source_reinit
-    assert bare_interface.reg.state is CanonicalRegState.UNINIT
+    assert bare_interface.reg.state is RegState.UNINIT
 
 
 def test_get_all_widgets_excludes_widgets_on_disabled_tabs(bare_interface):
@@ -455,7 +440,7 @@ def test_modify_pair_registration_restores_state_when_pre_processing_fails(
     assert tab_states == {
         "project": True, "input_output": True, "registration": True, "fusion": True
     }
-    assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
+    assert bare_interface.view_mode is ViewMode.OVERVIEW
 
 
 def test_modify_pair_registration_restores_state_when_entering_raises(
@@ -473,12 +458,12 @@ def test_modify_pair_registration_restores_state_when_entering_raises(
     assert tab_states == {
         "project": True, "input_output": True, "registration": True, "fusion": True
     }
-    assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
+    assert bare_interface.view_mode is ViewMode.OVERVIEW
 
 
 def test_tab_changed_clears_feature_view_and_stops_timer(bare_interface):
     bare_interface.viewer = MagicMock()
-    bare_interface.view_mode = CanonicalViewMode.FEATURES
+    bare_interface.view_mode = ViewMode.FEATURES
     bare_interface.pair_metrics_timer = MagicMock()
     bare_interface._clear_napari_view = MagicMock()
 
@@ -539,9 +524,7 @@ def test_project_path_handles_existing_and_new_projects(
 
     bare_interface.reset.assert_called_once_with()
     assert bare_interface.params_path == "project.yml"
-    # update_input_output_path() must run for both an existing and a brand-new project - it
-    # resolves the stored (relative-to-project-dir) input/output paths for display, which
-    # update_widgets() deliberately skips
+    # for both: it shows the stored relative paths, which update_widgets() skips
     bare_interface.update_input_output_path.assert_called_once_with()
     if exists:
         bare_interface.update_widgets.assert_called_once_with()
@@ -683,7 +666,7 @@ def test_update_views_adds_enabled_preview_layers(
         show_labels=False,
     )
     assert bare_interface._update_view_add_shapes.call_count == 2
-    assert bare_interface.view_mode is CanonicalViewMode.OVERVIEW
+    assert bare_interface.view_mode is ViewMode.OVERVIEW
 
 
 def test_update_views_detects_multi_z_from_view_msims(
@@ -731,9 +714,8 @@ def test_registered_shapes_of_2d_view_msims_sit_at_their_sections_z(bare_interfa
 
 
 def test_create_napari_shapes_reports_per_source(bare_interface, monkeypatch):
-    """Building the shapes is one geometry per source and then every overlapping pair - minutes
-    on a large project, during which the refresh's bar used to show nothing at all. It now takes
-    a share of that bar and reports its own sub-steps, the per-source build counting each one."""
+    """Building the shapes (a geometry per source, then every overlapping pair) takes a share of the
+    refresh's bar and reports its own sub-steps, the per-source build counting each source."""
     sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10}) for _ in range(3)]
     bare_interface.reg.sources = sources
     bare_interface.reg.positions = [{"z": 0}] * 3
@@ -789,11 +771,8 @@ def test_create_napari_shapes_reports_per_source(bare_interface, monkeypatch):
 def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     bare_interface, monkeypatch
 ):
-    """A 3D box is shown as its own 6 flat quad faces (an opaque, quality-colored box - a
-    single 'polygon' can't represent a whole non-planar box) plus one edge-only 'path'
-    wireframe, since napari-bbox (which drew real 3D boxes) is incompatible with current
-    napari. Distinct per-corner values (rather than all-zeros/all-ones) so a face/wire
-    indexing mistake would actually be caught."""
+    """A 3D box is 6 quality-colored quad faces plus an edge-only 'path' wireframe; distinct
+    per-corner values so a face/wire indexing mistake is caught."""
     viewer = MagicMock()
     image_shape = np.arange(24, dtype=float).reshape(8, 3)
     overlap_shape = np.arange(24, 48, dtype=float).reshape(8, 3)
@@ -832,37 +811,28 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     ).max() * 0.005
 
     assert kwargs["shape_type"] == ["polygon"] * 12 + ["path"] * 2
-    # napari/napari#6860: a 3D 'polygon' face only renders if it's axis-orthogonal, so the
-    # fill is built from each box's own axis-aligned bounding box rather than its (possibly
-    # non-axis-aligned) true corners - check the 6 faces per box collectively bound the same
-    # extent as the box's real corners, rather than an exact per-vertex index match.
-    image_faces = np.concatenate([np.asarray(q) for q in shape_data_out[:6]])
-    overlap_faces = np.concatenate([np.asarray(q) for q in shape_data_out[6:12]])
+    # napari/napari#6860: faces come from each box's axis-aligned bounding box, so check their extent
+    image_faces = np.concatenate([np.asarray(quad) for quad in shape_data_out[:6]])
+    overlap_faces = np.concatenate([np.asarray(quad) for quad in shape_data_out[6:12]])
     np.testing.assert_allclose(image_faces.min(axis=0), image_shape.min(axis=0))
     np.testing.assert_allclose(image_faces.max(axis=0), image_shape.max(axis=0))
     np.testing.assert_allclose(overlap_faces.min(axis=0), overlap_shape.min(axis=0))
     np.testing.assert_allclose(overlap_faces.max(axis=0), overlap_shape.max(axis=0))
-    # the wireframe keeps the true (possibly non-axis-aligned) corners, since edges already
-    # render fine in 3D regardless of orientation.
+    # the wireframe keeps the true corners: edges render in 3D whatever their orientation
     np.testing.assert_allclose(shape_data_out[12], image_shape[edge_path])
     np.testing.assert_allclose(shape_data_out[13], overlap_shape[edge_path])
 
-    # the quality-based color is carried onto every face of its own box; the wireframe
-    # paths get a placeholder color, since a 'path' has no face to color and its edge is
-    # drawn regardless of face_color. face_color entries may be numpy arrays (metric_to_rgb's
-    # output) - compare by value rather than with == (ambiguous truth value for a list
-    # containing arrays).
+    # each box's quality color is on all its faces; a 'path' has no face, so gets a placeholder
     face_color = kwargs["face_color"]
-    for i in range(6):
-        np.testing.assert_allclose(face_color[i], (1, 1, 1))
-        np.testing.assert_allclose(face_color[6 + i], (0.1, 0.2, 0.3))
+    for face in range(6):
+        np.testing.assert_allclose(face_color[face], (1, 1, 1))
+        np.testing.assert_allclose(face_color[6 + face], (0.1, 0.2, 0.3))
     np.testing.assert_allclose(face_color[12], (0, 0, 0))
     np.testing.assert_allclose(face_color[13], (0, 0, 0))
-    # every entry must be the same length - napari can't build one color array from mixed
-    # 3- and 4-tuples and silently falls back to plain white for the whole layer instead
-    assert len({len(c) for c in face_color}) == 1
+    # mixed 3- and 4-tuples make napari fall back to plain white for the whole layer
+    assert len({len(color) for color in face_color}) == 1
     edge_color = kwargs["edge_color"]
-    assert len({len(c) for c in edge_color}) == 1
+    assert len({len(color) for color in edge_color}) == 1
     np.testing.assert_allclose(edge_color[:12], [(0, 0, 0)] * 12)
     np.testing.assert_allclose(edge_color[12:], [(0, 1, 1)] * 2)
     np.testing.assert_allclose(
@@ -875,13 +845,8 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
 def test_update_napari_shapes_3d_faces_are_axis_aligned_and_wind_outward(
     bare_interface, monkeypatch
 ):
-    """napari/napari#6860: napari's 3D Shapes layer only renders a polygon's face fill if
-    that face's own plane is axis-orthogonal - a genuinely oriented/rotated box (as global
-    registration can produce) gets no face fill at all except for whichever face happens to
-    be axis-aligned. The fill must therefore come from the box's axis-aligned bounding box,
-    never its own (here, rotated) corners. Separately, box_faces' index order alone doesn't
-    guarantee consistent outward winding even for an axis-aligned box - the per-face
-    flip-if-inward correction must still catch and fix that."""
+    """napari/napari#6860: a 3D face only fills when axis-orthogonal, so a rotated box's faces come
+    from its axis-aligned bounding box - and each must wind outward, or it is backface-culled."""
     viewer = MagicMock()
     bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"z": 2})]
     bare_interface.reg.positions = [{"z": 0}]
@@ -890,8 +855,8 @@ def test_update_napari_shapes_3d_faces_are_axis_aligned_and_wind_outward(
         [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
     ], dtype=float)
     theta = np.pi / 6
-    c, s = np.cos(theta), np.sin(theta)
-    rotation = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+    cosine, sine = np.cos(theta), np.sin(theta)
+    rotation = np.array([[cosine, -sine, 0], [sine, cosine, 0], [0, 0, 1]])
     rotated_box = unit_cube @ rotation.T + np.array([10.0, 20.0, 30.0])
 
     monkeypatch.setattr(
@@ -913,8 +878,8 @@ def test_update_napari_shapes_3d_faces_are_axis_aligned_and_wind_outward(
     assert viewer.add_shapes.call_count == 1
     args, kwargs = viewer.add_shapes.call_args
     shape_data_out = args[0]
-    face_quads = [np.asarray(s) for s, t in zip(shape_data_out, kwargs["shape_type"])
-                 if t == "polygon"]
+    face_quads = [np.asarray(shape) for shape, shape_type in zip(shape_data_out, kwargs["shape_type"])
+                  if shape_type == "polygon"]
     assert len(face_quads) == 6
 
     box_min, box_max = rotated_box.min(axis=0), rotated_box.max(axis=0)
@@ -1048,7 +1013,7 @@ def mocked_activity_contexts(monkeypatch):
         interface_module, "NapariDaskProgress", lambda **_: nullcontext()
     )
     monkeypatch.setattr(
-        CanonicalInterface,
+        Interface,
         "_operation_widgets",
         lambda _: nullcontext(),
     )
@@ -1406,8 +1371,8 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface._napari_view_add_fused_data.assert_called_once_with(
         bare_interface.viewer, "fused", "Fused"
     )
-    assert bare_interface.reg.state is CanonicalRegState.FUSED
-    assert bare_interface.view_mode is CanonicalViewMode.FUSED
+    assert bare_interface.reg.state is RegState.FUSED
+    assert bare_interface.view_mode is ViewMode.FUSED
 
 
 def test_build_view_msims_downscales_large_single_resolution_source():
@@ -1499,11 +1464,8 @@ def test_the_preprocessed_preview_is_3d_without_building_or_changing_the_msims(t
 
 
 def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer, tmp_path):
-    """update_views()'s 'data' preview layer (_create_napari_data -> _napari_view_add_fused_data)
-    must show a genuine napari multiscale layer sourced from msims end to end - no sims added to
-    the napari image layer - even for the pre-registration preview, not just the post-fusion
-    'Fused' export view."""
-    from muvis_align.MVSRegistration import MVSRegistration
+    """The preview's data layer (_create_napari_data -> _napari_view_add_fused_data) is a genuine
+    napari multiscale layer from msims end to end, as the fused export's is."""
     from multiview_stitcher import msi_utils
 
     reg = prepared_registration([(DATA_DIR / name).as_posix() for name in ZARR_FILES[:2]], tmp_path,
@@ -1535,7 +1497,7 @@ def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer, tmp_p
 def test_build_view_msims_keeps_native_pyramids_and_reports_per_source(with_factory):
     """A source with a native pyramid is shown as it is; building them reports one step per
     source when given a factory, and needs none."""
-    interface = CanonicalInterface.__new__(CanonicalInterface)
+    interface = Interface.__new__(Interface)
     interface.reg = MagicMock()
     interface.reg.sources = [SimpleNamespace(shapes=[0, 1]), SimpleNamespace(shapes=[0, 1])]
     interface.reg.msims = ['msim-0', 'msim-1']
@@ -1550,10 +1512,8 @@ def test_build_view_msims_keeps_native_pyramids_and_reports_per_source(with_fact
 def test_init_progress_reports_saved_project_load(
     bare_interface, monkeypatch, mocked_activity_contexts
 ):
-    """Resuming a saved project forces the per-source msim build and loads the saved
-    registration inside reg.init_progress() - the slowest part of a project load - so
-    Interface.init_progress() must hand it a progress factory to report that. Drawing the
-    view it ends on is a separate operation, and must not report into the load's bar."""
+    """reg.init_progress() (the msim build and the saved registration) reports into the load's bar;
+    drawing the view it ends on is a separate operation with its own."""
     bare_interface.viewer = MagicMock()
     bare_interface.params = {'registration': {'operation': 'register'}}
     bare_interface.reg.is_pairs_registered.return_value = False
@@ -1664,7 +1624,7 @@ def test_run_off_thread_runs_the_work_elsewhere_and_keeps_qt_free(make_napari_vi
     import threading
 
     viewer = make_napari_viewer()
-    interface = CanonicalInterface.__new__(CanonicalInterface)
+    interface = Interface.__new__(Interface)
     interface.viewer = viewer
     interface.enable_plugin_widget = None
 
@@ -1699,7 +1659,7 @@ def test_run_off_thread_propagates_failures_to_the_caller(make_napari_viewer):
     """A failure on the worker must surface where the call was made (and so reach
     @catch_run_errors), not be re-raised inside the Qt event loop where nothing catches it."""
     viewer = make_napari_viewer()
-    interface = CanonicalInterface.__new__(CanonicalInterface)
+    interface = Interface.__new__(Interface)
     interface.viewer = viewer
     interface.enable_plugin_widget = None
 
@@ -1735,8 +1695,7 @@ def _registered_view_interface(bare_interface, lazy_overview):
 
 
 def test_update_views_draws_the_registered_sections_lazily(bare_interface):
-    """After registration the main view reads each section when viewed, as before it: pasting every source first took
-    11.9 minutes for 34k sources on the HPC."""
+    """After registration the main view reads each section when viewed, as before it, rather than pasting every source."""
     _registered_view_interface(bare_interface, lazy_overview="lazy")
 
     bare_interface.update_views(transform_key="registered")

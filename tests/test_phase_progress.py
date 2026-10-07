@@ -92,7 +92,7 @@ def test_a_nested_operation_makes_room_for_its_own_phases():
                 phase.update(1)
             positions.append(percent(factory))
 
-    gaps = [b - a for a, b in zip([0] + positions, positions)]
+    gaps = [after - before for before, after in zip([0] + positions, positions)]
     assert max(gaps) < 2 * min(gaps), f'slices wildly uneven: {gaps}'
 
 
