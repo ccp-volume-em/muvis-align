@@ -81,6 +81,12 @@ def test_relativize_to_project_dir(path, base_dir, expected):
     assert relativize_to_project_dir(path, base_dir) == expected
 
 
+def test_path_param_to_text_forms():
+    assert path_param_to_text('a/*.tif') == 'a/*.tif'
+    assert path_param_to_text(['a/*.tif', ' b/*.tif']) == 'a/*.tif, b/*.tif'
+    assert path_param_to_text(None) == ''
+
+
 def test_relativize_to_project_dir_round_trips_with_resolve_to_project_dir():
     """The pair together must be idempotent: display-resolving a stored relative path and then
     relativizing the (now absolute) value the widget reports back must reproduce the original -
