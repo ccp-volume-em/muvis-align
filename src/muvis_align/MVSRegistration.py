@@ -44,10 +44,6 @@ from muvis_align.Timer import Timer
 from muvis_align.util import *
 
 
-# fused blocks are whole zarr chunks, one writer each: dask flags every edge block, whose chunk the array ends in
-warnings.filterwarnings('ignore', message='The input Dask array will be rechunked', category=PerformanceWarning)
-
-
 class RegState(Enum):
     UNINIT = auto()
     INIT = auto()
@@ -2043,7 +2039,11 @@ class MVSRegistration:
                     zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
                 else:
                     zarr_options = None
-                with dask.config.set(scheduler='threads'):
+                with dask.config.set(scheduler='threads'), warnings.catch_warnings():
+                    # fused blocks are whole zarr chunks, one writer each: dask flags every edge block, whose chunk
+                    # the array ends in. Set here, as a napari worker puts 'always' ahead of any module-level filter
+                    warnings.filterwarnings('ignore', message='The input Dask array will be rechunked',
+                                            category=PerformanceWarning)
                     if saving_zarr and is_native:
                         source_spacings = [min(si_utils.get_spacing_from_sim(get_msim_image0(msim))[dim]
                                                for dim in 'yx') for msim in msims]
