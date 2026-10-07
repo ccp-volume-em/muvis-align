@@ -877,16 +877,18 @@ def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp
                               np.asarray(msi_utils.get_sim_from_msim(fused[True], scale=level).data))
 
 
-def test_a_block_is_fused_from_only_the_planes_that_reach_it():
+# a section step other than 1 is not grid-aligned with a plane's placeholder z spacing of 1
+@pytest.mark.parametrize('z_step', [1.0, 0.05])
+def test_a_block_is_fused_from_only_the_planes_that_reach_it(z_step):
     from multiview_stitcher import spatial_image_utils as si_utils
     from muvis_align.fusion_slabs import block_sources, source_bounds
 
     def plane(z):
         return si_utils.get_sim_from_array(np.ones((1, 8, 8), dtype=np.uint16), dims=['z', 'y', 'x'],
                                            scale={'z': 1.0, 'y': 1.0, 'x': 1.0},
-                                           translation={'z': float(z), 'y': 0.0, 'x': 0.0}, transform_key='source')
+                                           translation={'z': z * z_step, 'y': 0.0, 'x': 0.0}, transform_key='source')
     sims = [plane(z) for z in (0, 0, 1, 2)]
-    properties = {'origin': {'z': 0.0, 'y': 0.0, 'x': 0.0}, 'spacing': {'z': 1.0, 'y': 1.0, 'x': 1.0},
+    properties = {'origin': {'z': 0.0, 'y': 0.0, 'x': 0.0}, 'spacing': {'z': z_step, 'y': 1.0, 'x': 1.0},
                   'shape': {'z': 3, 'y': 8, 'x': 8}}
     bounds = source_bounds(sims, 'source', properties)
 

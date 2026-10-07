@@ -112,8 +112,6 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
       spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
       properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
-- [ ] **Fusion level 0 peaks at 10GB on meatballs** - 'average' at 'max' spacing (0.249um, a 36MB output, 153
-      sources): z-slab level 0 took 22s with peak rss 10.3GB, up from 0.45GB. Not looked into.
 - [ ] **Pair registration slows ~14x towards the end** - 3s per 128 pairs at first, 42-45s at the end, rss flat (not
       the old leak); 39.7 of 64 workers busy on average. Also 7.6 min before the first pairs (pairing 2.8 min, first
       batch 85s). Each batch line now has wall/cpu per pair and busy workers. Meatballs shows the same shape: cpu per
@@ -138,6 +136,12 @@ REFACTORING
 
 ## Done
 
+- **Fusion level 0 peaked at 11GB on meatballs** - a single-plane source's z spacing is a placeholder 1.0, so with
+  sections 0.05 apart multiview_stitcher's interpolation padding made every section reach every other's blocks
+  (busiest block 147 of 153 sources, each transformed in full for no weight): source_bounds no longer pads a
+  single-plane dim. The z-slab path also budgets its blocks from the sources' bounds (budget_chunksize, as native
+  fusion does): clustered tiles beat the even-density estimate. 'average' at 'max': peak 11.4GB -> 1.0GB, level 0
+  20 -> 9s. The HPC's section step is 1.0 (aligned), so this was not its 250GB.
 - **robust_linear stops on the 99th percentile change** - the largest change never settled on the HPC (a few of
   229k edges flip every round); each round logs both, and the tolerance. Meatballs: 9 rounds either way. Confirm
   the early stop on the next HPC run.

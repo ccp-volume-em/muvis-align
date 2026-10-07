@@ -4,6 +4,7 @@ source count. The steps are its own zarr path's, prepare_block_fusion(create_out
 import copy
 from dataclasses import asdict
 import inspect
+import logging
 import os
 import shutil
 
@@ -21,7 +22,8 @@ from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stac
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):
     """Per source and spatial dim, the (low, high) physical bounds of what it reaches in the output: its box padded
-    for interpolation, by multiview_stitcher's own rule - except in a dim the sources are grid-aligned in."""
+    for interpolation, by multiview_stitcher's own rule - except in a dim the sources are grid-aligned in, or have
+    a single plane in."""
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
     params = [si_utils.get_affine_from_sim(sim, transform_key=transform_key) for sim in sims]
     # per time point, as multiview_stitcher's fuse() asks it
@@ -34,7 +36,9 @@ def source_bounds(sims, transform_key, output_stack_properties, interpolation_or
         vertices = mv_graph.get_vertices_from_stack_props(
             si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key))
         for axis, dim in enumerate(sdims):
-            padding = 0.0 if dim in aligned else interpolation_order * boxes[index]['spacing'][dim]
+            # a single plane's spacing is a placeholder 1.0: padded by it, a section reaches its neighbours' blocks
+            single_plane = boxes[index]['shape'][dim] == 1
+            padding = 0.0 if dim in aligned or single_plane else interpolation_order * boxes[index]['spacing'][dim]
             bounds[index, axis] = vertices[:, axis].min() - padding, vertices[:, axis].max() + padding
     return bounds
 
@@ -269,6 +273,15 @@ def fuse_to_zarr_by_z_slabs(msims, output_zarr_url, transform_key, output_stack_
     ome_zarr, ngff_version, creation_kwargs = _zarr_options(zarr_options)
     store_url = os.path.join(output_zarr_url, '0') if ome_zarr else output_zarr_url
     _remove_existing(output_zarr_url, zarr_options)
+    # the caller's size assumes sources spread evenly over a plane; clustered tiles put many more in one block
+    budgeted_chunksize = budget_chunksize(
+        source_bounds(sims, transform_key, output_stack_properties, interpolation_order), output_stack_properties,
+        output_chunksize, list(si_utils.get_spatial_dims_from_sim(sims[0])), default_export_fusion_chunk_bytes,
+        4 * fusion_stack_arrays)
+    if budgeted_chunksize != output_chunksize:
+        logging.info(f'Fusion output_chunksize {budgeted_chunksize}: its busiest block meets more sources than'
+                     f' {output_chunksize} allowed for')
+    output_chunksize = budgeted_chunksize
     with Timer('fusion by z-slabs: level 0'):
         dims, properties = fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties,
                                                 output_chunksize, fusion_func=fusion_func,
