@@ -31,7 +31,12 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-Nothing.
+Refresh after registration (48 min on the HPC): measured, plan awaiting agreement (it touches the shapes code being
+changed alongside). Per source on registered meatballs: view msims to 3D (make_msims_3d) 11.8ms, transforms onto
+view msims 4.6ms, again onto the preview msims 2.0ms, composite overview 10ms, preview cap 1.1ms (6.3 min on the
+HPC: grows with sections?), sub-pyramid 0.7ms, image shapes 1.3ms. Plan: (1) no 3D promotion of view msims -
+z_positions to sub-pyramid/cap/composite as the preprocessed branch does, shapes' z from promoted_geometry;
+(2) transforms copied once; (3) the preview cap on its own; (4) composite overview (NFS reads?) last.
 
 ## TODO
 
