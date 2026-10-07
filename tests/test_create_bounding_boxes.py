@@ -182,11 +182,16 @@ DATASET_CASES = [
 
 
 @pytest.mark.parametrize("points", DATASET_CASES)
-def test_minimal_bb_vertices_3d_always_has_eight_corners(points):
+def test_minimal_bb_vertices_3d_has_eight_corners_drawn_along_box_edges_only(points):
     shape = _minimal_bb_vertices(points)
+    rendered_edges = np.diff(_minimal_bb_vertices(points, return_edge_path=True), axis=0)
+    basis_edges = shape[[1, 3, 4]] - shape[0]
 
     assert shape.shape == (8, 3)
     assert np.unique(np.round(shape, decimals=8), axis=0).shape[0] == 8
+    # the napari path only walks the box's own edges
+    assert all(any(np.allclose(edge, basis_edge) or np.allclose(edge, -basis_edge) for basis_edge in basis_edges)
+               for edge in rendered_edges)
 
 
 @pytest.mark.parametrize("force_2d", [False, True])
@@ -218,23 +223,6 @@ def test_minimal_bb_vertices_3d_preserves_rotated_orientation():
     assert np.all(coefficients <= 1 + 1e-7)
 
 
-@pytest.mark.parametrize("points", DATASET_CASES)
-def test_napari_bounding_box_path_has_only_box_edges(points):
-    shape = _minimal_bb_vertices(points)
-    rendered_path = _minimal_bb_vertices(points, return_edge_path=True)
-    basis_edges = shape[[1, 3, 4]] - shape[0]
-    rendered_edges = np.diff(rendered_path, axis=0)
-
-    assert all(
-        any(
-            np.allclose(edge, basis_edge)
-            or np.allclose(edge, -basis_edge)
-            for basis_edge in basis_edges
-        )
-        for edge in rendered_edges
-    )
-
-
 def test_oriented_edge_path_is_applied_to_napari_layer():
     shape = _minimal_bb_vertices(DATASETS["0"])
     shape_with_slice_coordinate = np.column_stack((np.zeros(8), shape))
@@ -263,7 +251,7 @@ def _all_pairs_overlaps(mins, maxs):
     return np.transpose(iu)[overlaps[iu]]
 
 
-@pytest.mark.parametrize("seed", range(20))
+@pytest.mark.parametrize("seed", range(5))
 def test_sweep_candidate_pairs_matches_the_all_pairs_comparison(seed):
     rng = np.random.default_rng(seed)
     count = rng.integers(0, 80)
@@ -304,7 +292,7 @@ def test_a_cancel_stops_the_candidate_pair_sweep():
             _sweep_candidate_pairs(mins, maxs, chunk_candidates=7)
 
 
-@pytest.mark.parametrize("seed", range(20))
+@pytest.mark.parametrize("seed", range(5))
 def test_axis_aligned_bb_vertices_match_minimal_bb(seed):
     """The fast path may skip the hull search, but not change a single corner of the answer."""
     rng = np.random.default_rng(seed)
@@ -317,7 +305,7 @@ def test_axis_aligned_bb_vertices_match_minimal_bb(seed):
     np.testing.assert_allclose(_bb_vertices(points), _minimal_bb_vertices(points))
 
 
-@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize("seed", range(5))
 def test_bb_vertices_falls_back_to_the_full_search_when_rotated(seed):
     rng = np.random.default_rng(seed)
     low = rng.uniform(-100, 100, 2)

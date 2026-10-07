@@ -1,16 +1,12 @@
 """The Windows atomic-write retry must absorb a brief hold and nothing more.
 
-zarr renames each metadata document into place; on Windows that rename fails outright if
-anything holds the destination open for that instant. Measured: roughly one full test run in
-four failed that way inside the fusion export, and nine runs with this retry in place passed,
-four of them absorbing a retry. The hold is transient, so waiting it out is the fix - but a
-retry that waits forever would turn a real leak into a hang, so the bound matters too.
+zarr renames each metadata document into place; on Windows that rename fails outright if anything
+holds the destination open for that instant. The hold is transient, so waiting it out is the fix -
+but a retry that waits forever would turn a real leak into a hang, so the bound matters too.
 """
 import os
 import threading
 import time
-import uuid
-from pathlib import Path
 
 import pytest
 
@@ -46,21 +42,17 @@ def test_applying_twice_is_a_no_op(patched):
     assert zarr_local._atomic_write is patched
 
 
-def test_plain_write_still_works(tmp_path, patched):
+@pytest.mark.parametrize('exists', [True, False])
+def test_a_plain_write_replaces_or_creates_the_file_and_leaves_no_partials(tmp_path, patched, exists):
     target = tmp_path / 'zarr.json'
-    target.write_bytes(b'{"v": 1}')
+    if exists:
+        target.write_bytes(b'{"v": 1}')
 
-    write_through(patched, target)
+    for _ in range(3):
+        write_through(patched, target)
 
     assert target.read_bytes() == b'{"v": 2}'
-
-
-def test_creates_a_file_that_does_not_exist_yet(tmp_path, patched):
-    target = tmp_path / 'zarr.json'
-
-    write_through(patched, target)
-
-    assert target.read_bytes() == b'{"v": 2}'
+    assert [path.name for path in tmp_path.iterdir()] == ['zarr.json']
 
 
 def test_a_brief_hold_on_the_destination_is_absorbed(tmp_path, patched):
@@ -101,14 +93,6 @@ def test_a_hold_that_never_lets_go_still_raises(tmp_path, patched, monkeypatch):
     with target.open('rb'):
         with pytest.raises(PermissionError):
             write_through(zarr_local._atomic_write, target)
-
-
-def test_no_partial_files_are_left_behind(tmp_path, patched):
-    target = tmp_path / 'zarr.json'
-    for _ in range(3):
-        write_through(patched, target)
-
-    assert [p.name for p in tmp_path.iterdir()] == ['zarr.json']
 
 
 def test_partial_is_cleaned_up_when_the_body_raises(tmp_path, patched):
