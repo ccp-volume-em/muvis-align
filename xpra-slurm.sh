@@ -88,7 +88,7 @@ XPRA_HOME="${HOME}/.xpra"
 RUN_DIR="${XPRA_HOME}/job-${SLURM_JOB_ID}"
 PASSWORD_FILE="${RUN_DIR}/passwd"
 
-mkdir -p "${RUN_DIR}"
+mkdir -p "${RUN_DIR}/xkb"
 chmod 700 "${XPRA_HOME}" "${RUN_DIR}"
 
 # --- one-time password, readable only by you -------------------------------
@@ -152,6 +152,8 @@ EOF
 # napari with the plugin open, maximised: to the browser tab's size, as the screen follows it
 XPRA_START="python3 -c \"import napari; viewer = napari.Viewer(); viewer.window.add_plugin_dock_widget('muvis-align'); viewer.window._qt_window.showMaximized(); napari.run()\""
 
+# Xvfb writes its keymap to /var/lib/xkb when access() calls it writable (the user owns the sandbox's files),
+# but the image is read-only there: the keymap fails and Xvfb exits, so give it a writable directory.
 # Seamless mode exposes napari as an individual window.  A screen of fixed size
 # scaled into the browser tab put the pointer off target when maximised (Chrome 154).
 apptainer exec \
@@ -160,6 +162,7 @@ apptainer exec \
     --home "${RUN_DIR}" \
     --pwd "${RUN_DIR}" \
     --bind "${DATA_DIR}:${DATA_DIR}" \
+    --bind "${RUN_DIR}/xkb:/var/lib/xkb" \
     --env "USER=${USER}" \
     --env "XDG_RUNTIME_DIR=${RUN_DIR}" \
     --env "MUVIS_SOURCE_INIT_WORKERS=${SOURCE_INIT_WORKERS}" \

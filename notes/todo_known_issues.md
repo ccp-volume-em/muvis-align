@@ -37,27 +37,6 @@ Nothing.
 
 ESSENTIAL
 
-- [ ] occasional fatal error on startup (when trying to connect or independent?):
-      2026-10-05 07:12:15,985 Warning: PyGObject 3.42.2 leaks memory with GObject-Introspection 1.74.0
-      2026-10-05 07:12:15,985  every GLib callback leaks an executable closure, PyGObject 3.44.2 or later fixes this
-      2026-10-05 07:12:15,985  xpra will use a workaround for `GLib.idle_add`, but other callbacks still leak
-      2026-10-05 07:12:15,985  see https://github.com/Xpra-org/xpra/issues/5044
-      2026-10-05 07:12:16,116 created tcp socket '0.0.0.0:9876'
-      _XSERVTransmkdir: ERROR: euid != 0,directory /tmp/.X11-unix will not be created.
-      The XKEYBOARD keymap compiler (xkbcomp) reports:
-      >   Error:            Cannot open "/var/lib/xkb/server-0.xkm" to write keyboard description
-      >                   Exiting
-      The XKEYBOARD keymap compiler (xkbcomp) reports:
-      >   Error:            Cannot open "/var/lib/xkb/server-0.xkm" to write keyboard description
-      >                   Exiting
-      XKB: Failed to compile keymap
-      Keyboard initialization failed. This could be a missing or incorrect setup of xkeyboard-config.
-      (EE) 
-      Fatal server error:
-      (EE) Failed to activate virtual core keyboard: 2(EE) 
-      xpra initialization error:
-      Xvfb: did not provide a display number using displayfd
-      [Mon  5 Oct 07:12:19 BST 2026] Session ended; password file removed.
 - [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
       single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
 - [ ] reduce amount of tests in the tests folder, by removing/grouping redundant or very similar tests
@@ -70,7 +49,7 @@ ESSENTIAL
 PERFORMANCE
 
 - [ ] refresh view after registration - very long time for low res output??
-- [ ] 19:30 CET time close napari - long time to acutally close node
+- [ ] 19:30 CET time close napari - long time to actually close node
 - [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
       preview size cap (3.4 min on the HPC).
 
@@ -277,6 +256,10 @@ REFACTORING
   follow the tab, and napari starts maximised (c90d870). xpra.org no longer serves xpra-html5 21, so rebuilds get 19.
 - **Apptainer sandbox kept** - the HPC's Apptainer is unprivileged without squashfuse, so a SIF unpacks on every run
   (2m38s vs 10.5s from a sandbox): xpra-pull.sh's sandbox stays.
+- **Occasional Xvfb fatal error on startup** - "Cannot open /var/lib/xkb/server-0.xkm", "Failed to activate virtual
+  core keyboard". Xvfb uses /var/lib/xkb over /tmp when access() says it is writable, which the user-owned sandbox
+  passes, but the container's root is read-only. xpra-slurm.sh binds a per-job directory there. Why only some runs
+  fail (node-dependent mount/NFS behaviour?) is unknown; confirm no further failures on the HPC.
 
 ### Sources and metadata
 - **Vendor TIFF metadata** - pixel size and stage position from vendor tags (napari-meta-tiff's metadata module,
