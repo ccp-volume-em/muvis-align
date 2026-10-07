@@ -24,8 +24,8 @@ class ZarrImageSource(ImageSource):
 
         self.pixel_sizes = metadata['pixel_sizes']
         self.pixel_size = self.pixel_sizes[0]
-        self.position = metadata['position']
-        self.rotation = metadata['rotation']
+        self.position = metadata.get('position')
+        self.rotation = metadata.get('rotation')
 
         # the levels' own array paths within the store, for _load_data() - None whenever the
         # metadata read could not establish them, in which case _load_data() falls back to the
