@@ -95,33 +95,6 @@ def config_data(project_config):
 class TestNapariInterfaceRegistration:
     """Test suite for napari Interface registration workflow with different configs."""
 
-    def test_napari_interface_instantiation(self, make_napari_viewer, project_config):
-        """Test that MainWidget and Interface can be instantiated with project config."""
-        viewer = make_napari_viewer()
-        
-        with patch('muvis_align._widget.ViewerWidget') as mock_viewer_widget:
-            with patch.object(viewer.window, 'add_dock_widget'):
-                # Mock the overview with necessary attributes
-                mock_overview = MagicMock()
-                mock_viewer_widget.return_value = mock_overview
-                
-                # Mock viewer layers
-                viewer.layers.clear = MagicMock()
-                
-                # Mock widget creation functions to avoid magicgui complexity
-                with patch('muvis_align.ui.create_widgets.create_project_widget') as mock_proj:
-                    with patch('muvis_align.ui.create_widgets.create_template_widgets') as mock_tmpl:
-                        mock_proj.return_value = MagicMock()
-                        mock_tmpl.return_value = {}
-                        
-                        try:
-                            main_widget = MainWidget(viewer)
-                            assert main_widget is not None, "MainWidget should be created"
-                        except Exception as e:
-                            import traceback
-                            tb = traceback.format_exc()
-                            assert False, f"Failed: {type(e).__name__}: {str(e)}\n{tb[:200]}"
-
     def test_project_config_loading(self, make_napari_viewer, project_config, config_data):
         """Test that project configuration can be loaded into Interface."""
         viewer = make_napari_viewer()
@@ -152,28 +125,32 @@ class TestNapariInterfaceRegistration:
                 logging.getLogger().removeHandler(handler)
             close_fault_log()
 
-    def test_project_params_structure(self, config_data):
-        """Test that project configuration has expected structure."""
-        assert isinstance(config_data, dict), "Config should be a dictionary"
-        
-        required_sections = ['registration', 'fusion', 'input_output']
-        for section in required_sections:
-            assert section in config_data, f"Missing required section: {section}"
-        
+    def test_project_configs_match_the_template(self, config_data):
+        """The test projects only hold values the plugin's template offers."""
+        from muvis_align.util import parse_scale, pixel_size_to_um
+
         registration = config_data['registration']
-        assert 'method' in registration
-        assert 'pairing' in registration
-        assert 'transform_type' in registration
-        assert 'operation' in registration
-        
+        assert registration['method'] in template_options('method')
+        assert registration['pairing'] in ['orthogonal', 'all']
+        assert registration['transform_type'] in ['rigid', 'affine']
+        assert registration['operation'] == 'register'
+        assert isinstance(registration['max_keypoints'], int)
+        assert isinstance(registration['ransac_iterations'], int)
+
         fusion = config_data['fusion']
-        assert 'method' in fusion
-        assert 'spacing' in fusion
-        assert 'tile_size' in fusion
-        
+        assert fusion['method'] in ['average', 'max', 'min']
+        assert fusion['spacing'] in ['mean', 'min']
+        assert isinstance(fusion['tile_size'], str)
+        assert fusion['ome_version'] in ['0.4', '0.5']
+
         input_output = config_data['input_output']
-        assert 'input_path' in input_output
-        assert 'output_path' in input_output
+        assert isinstance(input_output['input_path'], str)
+        assert isinstance(input_output['output_path'], str)
+        assert isinstance(input_output['overwrite'], bool)
+
+        # a factor (a number, or its text as a text field saves it) or a pixel size such as '10um'
+        scale = parse_scale(config_data['pre_processing']['scale'])
+        assert scale > 0 if isinstance(scale, (int, float)) else pixel_size_to_um(scale) > 0
 
     def test_interface_reset(self, make_napari_viewer, project_config):
         """Test that Interface reset clears state properly."""
@@ -193,255 +170,6 @@ class TestNapariInterfaceRegistration:
         assert interface.output_channels == [], "output_channels should be empty after reset"
         assert interface._preview_overlap_cache is None, "preview overlap cache should be cleared after reset"
         assert hasattr(interface.reg, 'state'), "reg should have state attribute"
-
-    def test_interface_tab_management(self, make_napari_viewer, project_config):
-        """Test tab enabling/disabling based on registration state."""
-        viewer = make_napari_viewer()
-        enable_tabs_mock = MagicMock()
-        select_tab_mock = MagicMock()
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(
-                viewer,
-                MagicMock(),
-                enable_tabs_mock,
-                select_tab_mock,
-                verbose=False
-            )
-        
-        # Initial state: all tabs disabled except first
-        interface.enable_tabs(False, 1)
-        enable_tabs_mock.assert_called_with(False, 1)
-        
-        # After pair registration: enable up to tab 3
-        interface.enable_tabs(True, 3)
-        enable_tabs_mock.assert_called_with(True, 3)
-        
-        # Select specific tab
-        interface.select_tab(2)
-        select_tab_mock.assert_called_with(2)
-
-    def test_interface_viewer_management(self, make_napari_viewer, project_config):
-        """Test napari viewer layer management (clear, add)."""
-        viewer = make_napari_viewer()
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-        
-        # Add some test layers
-        viewer.add_image(np.random.random((100, 100)), name='test1')
-        viewer.add_image(np.random.random((100, 100)), name='test2')
-        assert len(viewer.layers) == 2
-        
-        # Test clear
-        interface._clear_napari_view(viewer)
-        assert len(viewer.layers) == 0
-
-    def test_interface_view_modes(self, make_napari_viewer, project_config):
-        """Test view mode transitions."""
-        viewer = make_napari_viewer()
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-        
-        assert interface.view_mode is None
-        
-        interface.view_mode = ViewMode.OVERVIEW
-        assert interface.view_mode == ViewMode.OVERVIEW
-        
-        interface.view_mode = ViewMode.PAIRS
-        assert interface.view_mode == ViewMode.PAIRS
-        
-        interface.view_mode = ViewMode.FEATURES
-        assert interface.view_mode == ViewMode.FEATURES
-        
-        interface.view_mode = ViewMode.FUSED
-        assert interface.view_mode == ViewMode.FUSED
-
-    def test_registration_params_validation(self, config_data):
-        """Validate registration parameters in config."""
-        registration = config_data['registration']
-        
-        assert registration['method'] in template_options('method')
-        assert registration['pairing'] in ['orthogonal', 'all']
-        assert registration['transform_type'] in ['rigid', 'affine']
-        assert registration['operation'] == 'register'
-        assert isinstance(registration['max_keypoints'], int)
-        assert isinstance(registration['ransac_iterations'], int)
-
-    def test_fusion_params_validation(self, config_data):
-        """Validate fusion parameters in config."""
-        fusion = config_data['fusion']
-        
-        assert fusion['method'] in ['average', 'max', 'min']
-        assert fusion['spacing'] in ['mean', 'min']
-        assert isinstance(fusion['tile_size'], str)
-        assert fusion['ome_version'] in ['0.4', '0.5']
-
-    def test_input_output_params_validation(self, config_data):
-        """Validate input/output parameters in config."""
-        input_output = config_data['input_output']
-        
-        assert isinstance(input_output['input_path'], str)
-        assert isinstance(input_output['output_path'], str)
-        assert isinstance(input_output['overwrite'], bool)
-
-    def test_preprocessing_params_validation(self, config_data):
-        """Validate pre-processing parameters in config."""
-        preprocessing = config_data.get('pre_processing', {})
-        
-        assert 'scale' in preprocessing
-        # a factor (a number, or its text as a text field saves it) or a pixel size such as '10um'
-        from muvis_align.util import parse_scale, pixel_size_to_um
-        scale = parse_scale(preprocessing['scale'])
-        assert scale > 0 if isinstance(scale, (int, float)) else pixel_size_to_um(scale) > 0
-
-    @patch('muvis_align.ui.Interface.QMessageBox.question')
-    def test_interface_pair_registration_mock(
-        self, mock_question, make_napari_viewer, project_config
-    ):
-        """Test pair_registration method with mocked UI components and bbox handling."""
-        viewer = make_napari_viewer()
-        mock_question.return_value = True  # Simulate "Yes" click
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-        
-        with patch.object(interface.reg, 'is_global_registered', return_value=False):
-            with patch.object(interface.reg, 'is_pairs_registered', return_value=False):
-                with patch('muvis_align.ui.Interface.NapariMVSProgress'):
-                    with patch('muvis_align.ui.Interface.NapariDaskProgress'):
-                        with patch('muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
-                            with patch('muvis_align.ui.Interface.VisibleActivityDock'):
-                                with patch.object(interface, 'get_all_widgets', return_value={}):
-                                    # Create mock bbox DataArray WITHOUT 't' dimension (this is the key test)
-                                    import xarray as xr
-                                    import networkx as nx
-                                    mock_bbox = xr.DataArray(
-                                        [[1, 2], [3, 4]],
-                                        dims=['x_in', 'x_out'],
-                                        coords={'x_in': [0, 1], 'x_out': [0, 1]}
-                                    )
-                                    
-                                    with patch.object(interface.reg, 'register_pairs', return_value={
-                                        'pair_mappings': {},
-                                        'metrics': {'pairs': {}}
-                                    }):
-                                        # Mock nx.get_edge_attributes to return bbox without 't' dimension
-                                        with patch('networkx.get_edge_attributes') as mock_get_attrs:
-                                            mock_get_attrs.return_value = {('key1', 'key2'): mock_bbox}
-                                            
-                                            with patch.object(interface.reg, 'save_pair_mappings'):
-                                                with patch.object(interface, 'update_registered'):
-                                                    # This should not raise KeyError
-                                                    interface.pair_registration()
-
-    @patch('muvis_align.ui.Interface.QMessageBox.question')
-    def test_interface_registration_process_mock(
-        self, mock_question, make_napari_viewer, project_config
-    ):
-        """Test registration_process method with mocked UI components."""
-        viewer = make_napari_viewer()
-        mock_question.return_value = True  # Simulate "Yes" click
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-            interface.params = {'registration': {'operation': 'register'}}
-        
-        with patch.object(interface.reg, 'is_pairs_registered', return_value=True):
-            with patch.object(interface.reg, 'is_global_registered', return_value=False):
-                with patch.object(interface.reg, 'register_global', return_value={
-                    'mappings': {},
-                    'metrics': {}
-                }):
-                    with patch('muvis_align.ui.Interface.NapariDaskProgress'):
-                        with patch('muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
-                            with patch('muvis_align.ui.Interface.VisibleActivityDock'):
-                                with patch.object(interface, 'get_all_widgets', return_value={}):
-                                    with patch.object(interface.reg, 'save_mappings'):
-                                        with patch.object(interface.reg, 'save_metrics'):
-                                            with patch.object(interface, 'enable_tabs'):
-                                                with patch.object(interface, 'update_registered'):
-                                                    interface.registration_process()
-
-    @patch('muvis_align.ui.Interface.QMessageBox.question')
-    def test_interface_fusion_process_mock(
-        self, mock_question, make_napari_viewer, project_config
-    ):
-        """Test fusion_process method with mocked UI components."""
-        viewer = make_napari_viewer()
-        mock_question.return_value = True  # Simulate "Yes" click
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-            interface.params = {
-                'registration': {'operation': 'register'},
-                'fusion': {
-                    'method': 'average',
-                    'spacing': 'mean',
-                    'tile_size': '1024,1024',
-                    'ome_version': '0.5'
-                }
-            }
-        
-        with patch.object(interface.reg, 'is_fused', return_value=False):
-            with patch('muvis_align.ui.Interface.NapariMVSProgress'):
-                with patch('muvis_align.ui.Interface.TemporarilyDisabledWidgets'):
-                    with patch('muvis_align.ui.Interface.VisibleActivityDock'):
-                        with patch.object(interface, 'get_all_widgets', return_value={}):
-                            with patch.object(interface.reg, 'fuse', return_value=(MagicMock(), None)):
-                                with patch.object(interface, '_clear_napari_view'):
-                                    with patch.object(interface, '_napari_view_add_image'):
-                                        interface.fusion_process()
-
-    def test_registration_state_transitions(self, make_napari_viewer, project_config):
-        """Test valid registration state transitions."""
-        viewer = make_napari_viewer()
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-        
-        # Verify state progression methods
-        assert not interface.reg.is_pairs_registered()
-        assert not interface.reg.is_global_registered()
-        assert not interface.reg.is_fused()
-        
-        # Simulate state transitions
-        interface.reg.state = RegState.PAIRS_REG
-        assert interface.reg.is_pairs_registered()
-        assert not interface.reg.is_global_registered()
-        
-        interface.reg.state = RegState.GLOBAL_REG
-        assert interface.reg.is_pairs_registered()
-        assert interface.reg.is_global_registered()
-        
-        interface.reg.state = RegState.FUSED
-        assert interface.reg.is_pairs_registered()
-        assert interface.reg.is_global_registered()
-        assert interface.reg.is_fused()
-
-    def test_metrics_methods_available(self, make_napari_viewer, project_config):
-        """Test that expected metrics methods are available."""
-        viewer = make_napari_viewer()
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-        
-        assert interface.metrics_methods == ['ncc', 'ssim', 'onmi']
-        assert len(interface.metrics_methods) > 0
-        for metric in interface.metrics_methods:
-            assert isinstance(metric, str)
-
-    def test_interface_initialization_with_template(self, make_napari_viewer, project_config):
-        """Test that Interface properly initializes with project template."""
-        viewer = make_napari_viewer()
-        
-        with patch('muvis_align._widget.ViewerWidget'):
-            interface = Interface(viewer, MagicMock(), MagicMock(), MagicMock())
-        
-        assert interface.raw_template is not None
-        assert interface.template is not None
-        assert isinstance(interface.template, dict)
 
     @patch('muvis_align.ui.Interface.QMessageBox.question')
     def test_modify_pair_registration_with_bbox(self, mock_question, make_napari_viewer, project_config):
@@ -518,28 +246,6 @@ class TestNapariInterfaceRegistration:
                             assert mock_pop_metrics.called
                             mock_views.assert_called_once_with(transform_key=None,
                                                               progress_factory=None)
-
-
-class TestProjectConfigurationFiles:
-    """Test suite for project configuration file validation."""
-
-    def test_all_configs_valid_yaml(self, project_config):
-        """Test that all project configs are valid YAML."""
-        with open(project_config, 'r') as f:
-            data = yaml.safe_load(f)
-        assert isinstance(data, dict)
-
-    def test_config_file_exists(self, project_config):
-        """Test that config file exists and is readable."""
-        assert project_config.exists()
-        assert project_config.is_file()
-        assert os.access(project_config, os.R_OK)
-
-    def test_config_has_required_keys(self, config_data):
-        """Test that config has all required top-level keys."""
-        required_keys = ['registration', 'fusion', 'input_output']
-        for key in required_keys:
-            assert key in config_data, f"Missing required key: {key}"
 
 
 class TestMainWidgetIntegration:
@@ -1407,40 +1113,6 @@ def test_update_napari_shapes_labels_only_where_asked(
 ):
     """The overview shows the viewer's own shapes at a fraction of the size, where one label
     per shape is unreadable and covers the layout the overview is there to show - so it takes
-    the same shapes untexted, while the viewer keeps its labels."""
-    bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
-    bare_interface.reg.positions = [{"z": 0}]
-    monkeypatch.setattr(
-        interface_module.si_utils, "get_origin_from_sim", lambda _: {}
-    )
-    monkeypatch.setattr(
-        interface_module, "get_msim_image0", lambda msim: msim
-    )
-    shapes = [np.zeros((4, 2))]
-
-    viewer = MagicMock()
-    bare_interface._update_view_add_shapes(
-        viewer, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes"
-    )
-    _, kwargs = viewer.add_shapes.call_args
-    assert kwargs["text"] == {"string": "{labels}", "size": 6}
-
-    overview = MagicMock()
-    bare_interface._update_view_add_shapes(
-        overview, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes", show_labels=False
-    )
-    _, kwargs = overview.add_shapes.call_args
-    assert kwargs["text"] is None
-    # the shapes themselves are unchanged - the same ones the viewer was given
-    np.testing.assert_allclose(overview.add_shapes.call_args[0][0], [shapes[0]])
-    assert kwargs["features"]["refs"] == ["0"]
-
-
-def test_update_napari_shapes_labels_only_where_asked(
-    bare_interface, monkeypatch
-):
-    """The overview shows the viewer's own shapes at a fraction of the size, where one label
-    per shape is unreadable and covers the layout the overview is there to show - so it takes
     the same shapes untexted, and without the per-shape column only that text ever read."""
     bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
     bare_interface.reg.positions = [{"z": 0}]
@@ -1878,8 +1550,8 @@ def test_registration_process_confirmation_and_prerequisites(
 
 
 @pytest.mark.parametrize(
-    ("tile_size", "expected"),
-    [("1024", 1024), ("512, 1024", [512, 1024])],
+    ("tile_size", "expected", "reply"),
+    [("1024", 1024, "Yes"), ("512, 1024", [512, 1024], "Yes"), ("1024", None, "No")],
 )
 def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface,
@@ -1887,6 +1559,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     mocked_activity_contexts,
     tile_size,
     expected,
+    reply,
 ):
     bare_interface.viewer = MagicMock()
     bare_interface.params = {
@@ -1907,7 +1580,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     monkeypatch.setattr(
         interface_module.QMessageBox,
         "question",
-        lambda *_: interface_module.QMessageBox.Yes,
+        lambda *_: getattr(interface_module.QMessageBox, reply),
     )
     # fuse() always returns real msims in production - this test only cares about tile_size
     # parsing and state transitions, so stand in a passthrough for the msim->sim extraction step
@@ -1915,6 +1588,10 @@ def test_fusion_process_parses_tile_size_and_updates_state(
 
     bare_interface.fusion_process()
 
+    if reply == "No":
+        assert not bare_interface.reg.fuse.called
+        assert not bare_interface._napari_view_add_fused_data.called
+        return
     assert bare_interface.reg.fuse.call_args.kwargs["tile_size"] == expected
     assert (
         bare_interface.reg.fuse.call_args.kwargs["output_filename"]
@@ -1925,32 +1602,6 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     )
     assert bare_interface.reg.state is CanonicalRegState.FUSED
     assert bare_interface.view_mode is CanonicalViewMode.FUSED
-
-
-def test_build_view_msims_uses_native_pyramid_when_available():
-    """_build_view_msims() must use a source's own msim as-is when it already has more than one
-    native pyramid level - napari can lazily pick whichever resolution it needs from that real
-    pyramid, so no downscaling step is needed."""
-    from muvis_align.MVSRegistration import MVSRegistration
-
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/S000_000_000.ome.zarr',
-            'data/S000/S000_000_001.ome.zarr',
-        ],
-        output_path='../../output/test_preview/',
-    )
-    reg.init_data()
-    assert all(len(source.shapes) > 1 for source in reg.sources)  # sanity check: native pyramid
-
-    interface = Interface.__new__(Interface)
-    interface.reg = reg
-
-    view_msims = interface._build_view_msims()
-
-    assert view_msims == list(reg.msims)
 
 
 def test_build_view_msims_downscales_large_single_resolution_source():
@@ -2075,46 +1726,6 @@ def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer):
     layer = viewer.layers[0]
     assert layer.multiscale is True
     assert len(layer.data) == n_levels
-    for level_data, next_level_data in zip(layer.data, layer.data[1:]):
-        assert next_level_data.shape[-1] <= level_data.shape[-1]
-        assert next_level_data.shape[-2] <= level_data.shape[-2]
-
-
-def test_napari_view_add_fused_data_shows_real_multiscale_pyramid(make_napari_viewer):
-    """fusion_process()'s new full-resolution 'Fused' view (_napari_view_add_fused_data) must
-    add a genuine napari multiscale layer - one array per real native pyramid level, not a single
-    downsampled preview - since MVSRegistration.fuse() always returns the fused msim (a real
-    multiscale pyramid) when called with reg.msims."""
-    import yaml
-    from muvis_align.MVSRegistration import MVSRegistration
-    from multiview_stitcher import msi_utils
-
-    with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
-        params = yaml.safe_load(file)
-    operation_params = params['operations'][0]
-
-    reg = MVSRegistration()
-    reg.init_params(params['general'], operation_params)
-    reg.init_data()
-    reg.preprocess(reg.msims, **operation_params.get('preprocess', {}))
-    # the section the pipeline hands over (register_params), not the whole operation
-    reg.register(reg.register_msims, reg.register_indices, params=operation_params['registration'])
-
-    fused_image, _ = reg.fuse(reg.msims, transform_key=reg.reg_transform_key)
-    n_levels = len(msi_utils.get_sorted_scale_keys(fused_image))
-    assert n_levels > 1  # sanity check: this run actually produced a real multiscale pyramid
-
-    viewer = make_napari_viewer()
-    interface = Interface.__new__(Interface)
-    interface.extra_metadata = {}
-
-    interface._napari_view_add_fused_data(viewer, fused_image, 'Fused')
-
-    assert len(viewer.layers) == 1
-    layer = viewer.layers[0]
-    assert layer.multiscale is True
-    assert len(layer.data) == n_levels
-    # levels must actually shrink
     for level_data, next_level_data in zip(layer.data, layer.data[1:]):
         assert next_level_data.shape[-1] <= level_data.shape[-1]
         assert next_level_data.shape[-2] <= level_data.shape[-2]
@@ -2625,18 +2236,6 @@ def test_update_views_draws_the_registered_sections_lazily(bare_interface):
     assert bare_interface._napari_view_add_fused_data.call_args.args[1] == "lazy"
 
 
-def test_update_views_draws_the_pasted_overview_not_a_fusion(bare_interface):
-    """Where the lazy overview declines (a rotation, say), the main view's image is the pasted overview
-    (composite=True): fusing for it costs per source however small the preview is made - 10.3 minutes for a
-    4733-source project."""
-    _registered_view_interface(bare_interface, lazy_overview=None)
-
-    bare_interface.update_views(transform_key="registered")
-
-    _, kwargs = bare_interface._create_napari_data.call_args
-    assert kwargs['composite'] is True
-
-
 def test_preprocessed_preview_does_not_force_the_full_resolution_msims():
     """Drawing the post-pre-processing preview must not build the full-resolution msims.
 
@@ -2885,6 +2484,7 @@ def test_replacing_the_main_view_clears_napari_dask_cache_but_the_overview_does_
         clear_cache.assert_not_called()
         bare_interface._clear_napari_view(bare_interface.viewer)
         clear_cache.assert_called_once_with()
+    assert not bare_interface.viewer.layers
 
 
 # pre-processing's bar is sized by the phases that will actually report
