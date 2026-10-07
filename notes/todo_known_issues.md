@@ -105,8 +105,25 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       all read them right after. The cost is the build itself (see Faster per-source xarray construction): ~10ms
       CPU a single-level source locally - a third opening the tiff as a zarr store, the rest xarray (assign_coords,
       alignment, DataTree.from_dict, expand_dims); 31ms on the HPC.
-- [ ] **Faster refresh after registration** - left: composite overview 12.2 min, preview size cap 6.5 min. Check
-      the new timers on the next HPC run (copy transforms to view msims, update_registered: tables).
+
+From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration 7.2h, fusion 9.7h, no errors):
+- [ ] **robust_linear never stops early** - the median residual settled at 0.104 by round 3, yet the largest change
+      stayed 1.6-3 up to round 10: the max over 229k edges never falls under 1% of the Cauchy scale, as a few edges
+      flip every round. ~9 min a round, so ~60 of the 2.6h for nothing. Stop on a high quantile (99th) of the
+      changes or the median's relative change instead; check which edges keep moving.
+- [ ] **Fusion pyramid levels: 5.5h at '100%', peak rss 249.5GB** - 'average' at 0.01um (z-slab path): after level 0,
+      ngff_utils.write_sim_to_ome_zarr builds the lower levels from it; rss swung 32 -> 224GB within 30s and the bar
+      doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
+      spacing don't. Also 14 min at 0% before 'Output stack'.
+- [ ] **Pair registration slows ~14x towards the end** - 3s per 128 pairs at first, 42-45s at the end, rss flat (not
+      the old leak); 39.7 of 64 workers busy on average. Harder/larger sections last, or idle workers? Log pair
+      times per section. Also 7.6 min before the first pairs (pairing 2.8 min, first batch 85s).
+- [ ] **Global registration bar at 0% for 125 min** - through the msims build and every robust_linear round; report
+      per round.
+- [ ] **Faster refresh after registration** - 48 min in all: ~13 min untimed between the end of registration and
+      'copy transforms to view msims', composite overview 11.9 min, preview size cap 6.3 min, transforms copied
+      twice (4.3 + 1.4 min), create_image_shapes 1.5 min (8s before registration), create_overlap_shapes 3.4 min
+      (clipping only 75s of it), tables 1.8 min.
 
 REFACTORING
 
@@ -135,12 +152,14 @@ REFACTORING
 - **Faster refresh after registration** (merged 2026-10-03) - set_msim_affine for every transform write (a third of
   msi_utils.set_affine_transform's cost), tables filled in linear time (Qt header signals held: 74s -> 7s at 229k
   rows), timers on the untimed steps, 2D overlap shapes by polygon clipping instead of linprog (4.7 -> ~0.3ms a pair).
-- **robust_linear stops once converged** - when no residual moved more than 1% of the Cauchy scale in a round; the
-  largest change is logged each round (check it on the next HPC run: 7 of 10 rounds were for nothing).
-- **Global registration metrics progress** - per registered pair, not one step for ~1h.
+- **Global registration metrics progress** - per registered pair, not one step for ~1h (44 min on the 2026-10-03
+  run, the bar moving throughout).
 - **Fusion on mixed channel labels** - the HPC fusion (2026-10-03) failed with KeyError '#0' after writing 471MB:
   fusion selects every source by the first one's 'c' labels. fuse() now gives a single-channel source named
   otherwise the common label (unify_msim_channels), and stops with an error on differing multichannel labels.
+  Confirmed on the next HPC run (137 sources relabelled, fusion completed).
+- **HPC pair registration speed** - 3.2h on 64 worker processes on the 2026-10-03 run (4.6h before), rss flat
+  16-18GB; the exact overlap test drops the ~3.6k of 233k candidates that only touch.
 
 ### Opening large projects (PR #56)
 - **Lazy per-section overview** - raw sources shown one plane per section, built when viewed from each source's
