@@ -1,7 +1,7 @@
 """A robust groupwise resolution method: multiview_stitcher's linear_two_pass as the solver of an iteratively
 reweighted least squares. See notes/multiview_stitcher.md."""
-import logging
 
+import logging
 import numpy as np
 import xarray as xr
 from multiview_stitcher.param_resolution import register_groupwise_resolution_method
