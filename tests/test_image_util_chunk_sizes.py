@@ -37,16 +37,12 @@ def worst_chunk_fusion_bytes(chunk_sizes, output_shape, num_sources, num_z_posit
     return worst
 
 
-# an explicit budget throughout: the production default (default_fusion_chunk_bytes) is derived
-# from the running machine's own CPU/memory allocation, so pinning it here is what keeps these
-# assertions the same on a laptop, in CI, and on an HPC node
+# the production default comes from this machine's allocation; a fixed budget keeps the assertions portable
 BUDGET = 256 * 1024 ** 2
 
 # (label, num_sources, num_z_positions, output shape)
 CASES = [
-    # the case that motivated this: ~4700 2D tiles stacked over 72 sections. Byte-budget-only
-    # sizing gave {'z': 32, 'y': 1024, 'x': 1024} here, whose coarse levels each fuse every
-    # source in 32 sections at once - over 500 GB for one chunk.
+    # byte-budget-only sizing gave this a deep z chunk whose coarse levels fuse every source in 32 sections
     ('sectioned stack', 4733, 72, {'z': 72, 'y': 6800, 'x': 6800}),
     ('small sectioned stack', 54, 6, {'z': 6, 'y': 2000, 'x': 2000}),
     ('single-plane mosaic', 200, 1, {'y': 20000, 'x': 20000}),

@@ -1000,7 +1000,7 @@ class MVSRegistration:
             else:
                 # write reg_transform_key onto self.msims (msim -> msim, every scale, no sim
                 # needed) - the persistent pyramid needs the same transform a fresh registration
-                # run would have written via register_global, or copy_transforms/get_transforms
+                # run would have written via register_global, or copy_transforms_to_msims/get_transforms
                 # downstream (Interface.py) won't find it there when resuming from saved state
                 progress_context = (
                     progress_factory(total=len(self.msims), desc='Loading global registration')
