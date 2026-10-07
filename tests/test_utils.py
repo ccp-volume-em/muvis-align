@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import sys
@@ -8,7 +9,8 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, eval_context
+    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
+    eval_context, convert_to_um, get_unique_file_labels, strip_common_path_prefix
 
 
 @pytest.mark.parametrize(
@@ -51,47 +53,31 @@ def test_calculate_rigid_difference(transform1, transform2, expected):
     np.testing.assert_allclose(calculate_rigid_difference(transform1, transform2), expected)
 
 
-def test_resolve_to_project_dir_joins_relative_path():
-    base_dir = os.path.abspath('project')
-    resolved = resolve_to_project_dir('data/input', base_dir)
-    assert resolved == os.path.normpath(os.path.join(base_dir, 'data/input')).replace('\\', '/')
+BASE_DIR = os.path.abspath('project')
+ELSEWHERE = os.path.abspath('somewhere/else')
+JOINED = os.path.normpath(os.path.join(BASE_DIR, 'data/input')).replace(os.sep, '/')
 
 
-def test_resolve_to_project_dir_leaves_absolute_path_unchanged():
-    absolute = os.path.abspath('somewhere/else')
-    assert resolve_to_project_dir(absolute, os.path.abspath('project')) == absolute.replace('\\', '/')
+@pytest.mark.parametrize('path, base_dir, expected', [
+    ('data/input', BASE_DIR, JOINED),
+    (ELSEWHERE, BASE_DIR, ELSEWHERE.replace(os.sep, '/')),
+    (f'data/input, {ELSEWHERE}', BASE_DIR, f"{JOINED}, {ELSEWHERE.replace(os.sep, '/')}"),
+    ('', BASE_DIR, ''),
+    ('data/input', None, 'data/input'),
+    # nothing to resolve against (an unsaved project), but the separators are still ours
+    ('C:\\proj\\data', None, 'C:/proj/data'),
+])
+def test_resolve_to_project_dir(path, base_dir, expected):
+    assert resolve_to_project_dir(path, base_dir) == expected
 
 
-def test_resolve_to_project_dir_handles_multiple_comma_separated_paths():
-    base_dir = os.path.abspath('project')
-    absolute = os.path.abspath('somewhere/else')
-    resolved = resolve_to_project_dir(f'data/a, {absolute}', base_dir)
-    expected_joined = os.path.normpath(os.path.join(base_dir, "data/a")).replace('\\', '/')
-    assert resolved == f'{expected_joined}, {absolute.replace(chr(92), "/")}'
-
-
-def test_resolve_to_project_dir_always_returns_forward_slashes():
-    """Even on Windows, os.path.join()/normpath() naturally produce backslashes - the result
-    must be normalised to forward slashes so the same value is safe to show in the UI and to
-    store in the (OS-portable) project file."""
-    base_dir = os.path.abspath('project')
-    resolved = resolve_to_project_dir('data/input', base_dir)
-    assert '\\' not in resolved
-
-
-@pytest.mark.parametrize('path, base_dir', [('', os.path.abspath('project')), ('data/input', None)])
-def test_resolve_to_project_dir_no_op_without_path_or_base_dir(path, base_dir):
-    assert resolve_to_project_dir(path, base_dir) == path
-
-
-def test_relativize_to_project_dir_converts_absolute_path_under_base_dir():
-    base_dir = os.path.abspath('project')
-    absolute = os.path.join(base_dir, 'data', 'input')
-    assert relativize_to_project_dir(absolute, base_dir) == 'data/input'
-
-
-def test_relativize_to_project_dir_leaves_relative_path_unchanged():
-    assert relativize_to_project_dir('data/input', os.path.abspath('project')) == 'data/input'
+@pytest.mark.parametrize('path, base_dir, expected', [
+    (os.path.join(BASE_DIR, 'data', 'input'), BASE_DIR, 'data/input'),
+    ('data/input', BASE_DIR, 'data/input'),
+    ('C:\\proj\\data', None, 'C:/proj/data'),
+])
+def test_relativize_to_project_dir(path, base_dir, expected):
+    assert relativize_to_project_dir(path, base_dir) == expected
 
 
 def test_relativize_to_project_dir_round_trips_with_resolve_to_project_dir():
@@ -163,15 +149,6 @@ def test_to_posix_path_converts_separators_and_keeps_a_trailing_one(path, expect
 def test_to_posix_path_passes_non_strings_through(value):
     # a path param can hold a list (a comma-separated input_path, once eval_path has split it)
     assert to_posix_path(value) is value
-
-
-def test_resolve_to_project_dir_normalises_separators_without_a_base_dir():
-    # nothing to resolve against (an unsaved project), but the separators are still ours
-    assert resolve_to_project_dir('C:\\proj\\data', None) == 'C:/proj/data'
-
-
-def test_relativize_to_project_dir_normalises_separators_without_a_base_dir():
-    assert relativize_to_project_dir('C:\\proj\\data', None) == 'C:/proj/data'
 
 
 def test_process_memory_tracks_an_allocation_or_says_it_cannot():
@@ -271,8 +248,8 @@ def _get_pairs_every_pair(positions, sizes):
     z_positions = [position['z'] for position in positions if 'z' in position]
     ordered_z = sorted(set(z_positions))
     is_mixed_3dstack = len(ordered_z) < len(z_positions)
-    for i, j in np.transpose(np.triu_indices(len(positions), 1)):
-        posi, posj, sizei, sizej = positions[i], positions[j], sizes[i], sizes[j]
+    for first, second in np.transpose(np.triu_indices(len(positions), 1)):
+        posi, posj, sizei, sizej = positions[first], positions[second], sizes[first], sizes[second]
         if is_mixed_3dstack:
             distance = math.dist([posi[dim] for dim in 'xy'], [posj[dim] for dim in 'xy'])
             min_distance = max([size[dim] for size in [sizei, sizej] for dim in 'xy'])
@@ -284,7 +261,7 @@ def _get_pairs_every_pair(positions, sizes):
             distance = math.dist(posi.values(), posj.values())
             min_distance = max(list(sizei.values()) + list(sizej.values()))
         if distance < min_distance:
-            pairs.append((int(i), int(j)))
+            pairs.append((int(first), int(second)))
             vector = np.array(list(posi.values())) - np.array(list(posj.values()))
             angle = math.degrees(math.atan2(vector[1], vector[0]))
             if distance < min(list(sizei.values()) + list(sizej.values())):
@@ -330,15 +307,15 @@ def test_get_pairs_matches_testing_every_pair(positions, sizes):
 
 
 def test_get_pairs_scales_with_neighbours_not_all_pairs():
-    import time
-    from muvis_align.util import get_pairs
+    from muvis_align.util import _get_pairs_candidates
 
-    positions, sizes = _tile_stack(sections=400)
-    start = time.time()
-    pairs, _ = get_pairs(positions, sizes)
-    # 8400 sources: all pairs would be 35M iterations, several minutes
-    assert time.time() - start < 30
-    assert len(pairs) > 8400
+    def candidate_count(sections):
+        positions, sizes = _tile_stack(sections=sections)
+        z_index = {z_value: index for index, z_value in enumerate(sorted({position['z'] for position in positions}))}
+        return len(_get_pairs_candidates(positions, sizes, True, z_index))
+
+    # twice the sections, about twice the candidates: all pairs would be four times as many
+    assert candidate_count(40) < 2.2 * candidate_count(20)
 
 
 @pytest.mark.parametrize('value, expected', [
@@ -489,3 +466,63 @@ def test_workers_start_with_one_blas_thread_and_leave_the_parent_as_it_was():
 
     assert seen == [('1', '1'), ('1', '1')]
     assert os.environ.get('OPENBLAS_NUM_THREADS') == before
+
+
+# (unit, um per unit): readers hand over either an OME abbreviation or ngff_zarr's spelled-out NGFF name
+@pytest.mark.parametrize('unit, factor', [
+    ('Å', 1e-4), ('A', 1e-4), ('angstrom', 1e-4),
+    ('pm', 1e-6), ('picometer', 1e-6),
+    ('nm', 1e-3), ('nanometer', 1e-3), ('NM', 1e-3),
+    ('µm', 1.0), ('um', 1.0), ('micrometer', 1.0), ('Micrometer', 1.0), ('micron', 1.0),
+    ('mm', 1e3), ('millimeter', 1e3),
+    ('cm', 1e4), ('centimeter', 1e4),
+    ('m', 1e6), ('meter', 1e6),
+])
+def test_convert_to_um_knows_every_spelling_of_a_unit(unit, factor):
+    assert convert_to_um(1.0, unit) == pytest.approx(factor)
+    assert convert_to_um(2.5, unit) == pytest.approx(2.5 * factor)
+
+
+def test_convert_to_um_covers_every_unit_ngff_zarr_can_produce():
+    from ngff_zarr.tiff_to_ngff_image import OME_UNIT_TO_NGFF
+    from muvis_align.util import um_conversions
+
+    for ome_unit, ngff_name in OME_UNIT_TO_NGFF.items():
+        assert ngff_name in um_conversions, f'{ngff_name!r} (from OME {ome_unit!r}) is unhandled'
+        assert ome_unit in um_conversions, f'OME unit {ome_unit!r} is unhandled'
+        assert convert_to_um(1.0, ome_unit) == pytest.approx(convert_to_um(1.0, ngff_name))
+
+
+@pytest.mark.parametrize('unit, logged', [(None, False), ('', False), ('furlong', True)])
+def test_convert_to_um_leaves_an_unknown_unit_unscaled_and_logs_only_a_named_one(unit, logged, caplog):
+    # an unscaled unit silently mis-sizes the image, so a named one it does not know is logged
+    with caplog.at_level(logging.WARNING):
+        assert convert_to_um(3.0, unit) == 3.0
+    assert ('Unrecognised' in caplog.text) == logged
+
+
+@pytest.mark.parametrize('filenames, expected', [
+    (['/data/proj/subset/sample_ov000_s00400.ome.tif',
+      '/data/proj/subset/sample_r0005_t0002_s00400.ome.tif',
+      '/data/proj/subset/sample_r0005_t0003_s00400.ome.tif'],
+     ['ov000', 'r0005_t0002', 'r0005_t0003']),
+    # same basenames, no digits in the subdirectory names: the fallback is the relative path
+    ([f'/nemo/proj/EM04652_02_slice017/{subdir}/EM04652-02_slice17_ov000_s00400.ome.tif'
+      for subdir in ['subset', 'tiles', 'stitched', 'stitched_hpc']],
+     [f'{subdir}/EM04652-02_slice17_ov000_s00400.ome.tif' for subdir in ['subset', 'tiles', 'stitched', 'stitched_hpc']]),
+    # 's' first appears in the overview's label; it must not move ahead of 'r'/'t' in the tiles' own
+    (['overviews/sample_ov000_s00025.ome.tif',
+      'tiles/r0004/t0000/sample_r0004_t0000_s00823.ome.tif',
+      'tiles/r0004/t0001/sample_r0004_t0001_s00824.ome.tif'],
+     ['ov000_s00025', 'r0004_t0000_s00823', 'r0004_t0001_s00824']),
+])
+def test_get_unique_file_labels(filenames, expected):
+    assert get_unique_file_labels(filenames) == expected
+
+
+@pytest.mark.parametrize('filenames, expected', [
+    (['/a/b/c/x.tif', '/a/b/c/y.tif', '/a/b/d/x.tif'], ['c/x.tif', 'c/y.tif', 'd/x.tif']),
+    (['a/x.tif', 'b/x.tif'], ['a/x.tif', 'b/x.tif']),
+])
+def test_strip_common_path_prefix(filenames, expected):
+    assert strip_common_path_prefix(filenames) == expected
