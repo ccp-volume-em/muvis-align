@@ -1045,11 +1045,10 @@ class MVSRegistration:
         if self.group_pairs and self.metrics:
             self.metrics['group_pairs'] = self.group_pair_metrics()
 
-    def validate_overlap(self, sims, labels, is_stack=False, expect_large_overlap=False):
-        # accepts either sims or msims (each msim's scale0 sim is used) - only position/size
-        # metadata is ever read here, never pixel data
+    def validate_overlap(self, items, labels, is_stack=False, expect_large_overlap=False):
+        # sims or msims (each msim's scale0 sim is used) - only position/size metadata is ever read here
         sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-               for item in sims]
+               for item in items]
         min_dists = []
         has_overlaps = []
         n = len(sims)

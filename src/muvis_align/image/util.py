@@ -1499,12 +1499,11 @@ def detect_volume_points(data):
     return blobs
 
 
-def get_transforms(sims):
-    # accepts either sims or msims - a msim's transform keys are read directly off its data_vars
-    # (get_msim_transform_keys), no sim needs to be built at all just to enumerate them
+def get_transforms(items):
+    # sims or msims - a msim's transform keys are read directly off its data_vars, no sim built to enumerate them
     groups = [get_msim_transform_keys(item) if isinstance(item, DataTree)
              else si_utils.get_tranform_keys_from_sim(item)
-             for item in sims]
+             for item in items]
     return list({a for group in groups for a in group})
 
 
@@ -1518,11 +1517,9 @@ def check_sim_dims(sim):
     return dims
 
 
-def get_sim_position_final(sim, position=None, transform_keys=None, get_center=False):
-    # accepts either a sim or a msim (its scale0 sim is used) - only position/transform metadata
-    # is ever read here, never pixel data
-    if isinstance(sim, DataTree):
-        sim = msi_utils.get_sim_from_msim(sim, scale='scale0')
+def get_sim_position_final(data, position=None, transform_keys=None, get_center=False):
+    # a sim or a msim (its scale0 sim is used) - only position/transform metadata is ever read here
+    sim = msi_utils.get_sim_from_msim(data, scale='scale0') if isinstance(data, DataTree) else data
     if position is None:
         position = si_utils.get_origin_from_sim(sim)
     if transform_keys is None or len(transform_keys) == 0:
@@ -1566,12 +1563,10 @@ def group_sims_by_z(sims, positions=None):
     return grouped_sims
 
 
-def calc_foreground_map(sims):
-    # accepts either sims or msims (each msim's scale0 sim is used) - this genuinely needs
-    # concrete pixel data (a median-image comparison across all sources), unlike the cheap
-    # metadata-only helpers above, but the caller still shouldn't have to pre-extract a sims list
+def calc_foreground_map(items):
+    # sims or msims (each msim's scale0 sim is used): pixel data, a median-image comparison across all sources
     sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-           for item in sims]
+           for item in items]
     if len(sims) <= 2:
         return [True] * len(sims)
     sims = [sim.squeeze().astype(np.float32) for sim in sims]
@@ -1603,14 +1598,13 @@ def normalise_sim(sim, transform_key, min, range, dtype):
     )
 
 
-def calc_normalise_stats(sims, use_global=True):
-    """Per-source (mean, stddev) normalisation stats and dtype - accepts either sims or msims
-    (each msim's scale0 sim is used). Split out from normalise_sims so a caller that only wants
-    the statistics (e.g. to then apply them separately across a whole pyramid via map_msim_levels)
-    doesn't have to build - and immediately discard - a full set of already-normalised sims.
+def calc_normalise_stats(items, use_global=True):
+    """Per-source (mean, stddev) normalisation stats and dtype of sims or msims (each msim's scale0 sim is used).
+    Split out from normalise_sims so a caller that only wants the statistics (e.g. to then apply them separately
+    across a whole pyramid via map_msim_levels) doesn't have to build a full set of already-normalised sims.
     """
     sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-           for item in sims]
+           for item in items]
     dtype = sims[0].dtype
     # global mean and stddev
     if use_global:
@@ -1649,12 +1643,11 @@ def gaussian_filter_sim(sim, transform_key, sigma):
     return new_sim
 
 
-def get_sim_physical_size(sim):
-    # accepts a sim, a msim (its scale0 sim is used) or stack properties
-    if isinstance(sim, dict):
-        return {dim: size * sim['spacing'].get(dim, 1) for dim, size in sim['shape'].items()}
-    if isinstance(sim, DataTree):
-        sim = msi_utils.get_sim_from_msim(sim, scale='scale0')
+def get_sim_physical_size(data):
+    # a sim, a msim (its scale0 sim is used) or stack properties
+    if isinstance(data, dict):
+        return {dim: size * data['spacing'].get(dim, 1) for dim, size in data['shape'].items()}
+    sim = msi_utils.get_sim_from_msim(data, scale='scale0') if isinstance(data, DataTree) else data
     size = si_utils.get_shape_from_sim(sim)
     spacing = si_utils.get_spacing_from_sim(sim)
     physical_size = {dim: size[dim] * spacing.get(dim, 1) for dim in size}
@@ -1679,14 +1672,14 @@ def promoted_geometry(item, transform_key, z_position):
     return {'shape': shape, 'spacing': spacing, 'origin': origin}, widened_affine_matrix(affine)
 
 
-def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
-    # accepts either sims or msims, reading only their scale0 geometry. z_positions: sources at several heights,
-    # not promoted to 3D - taken as make_msims_3d() would make them (see promoted_geometry), with the same result
+def calc_output_properties(items, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
+    # sims or msims, reading only their scale0 geometry. z_positions: sources at several heights, not promoted to
+    # 3D - taken as make_msims_3d() would make them (see promoted_geometry), with the same result
     if z_positions is not None:
-        views = [promoted_geometry(item, transform_key, z) for item, z in zip(sims, z_positions)]
+        views = [promoted_geometry(item, transform_key, z) for item, z in zip(items, z_positions)]
     else:
         views = []
-        for item in sims:
+        for item in items:
             sim = msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
             affine = si_utils.get_affine_from_sim(sim, transform_key)
             views.append((si_utils.get_stack_properties_from_sim(sim),
@@ -2732,7 +2725,7 @@ def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scal
     return int(np.prod([int(size) for size in properties['shape'].values()]) * itemsize), properties
 
 
-def composite_msims_overview(msims, transform_key, z_scale=None,
+def composite_msims_overview(items, transform_key, z_scale=None,
                              max_bytes=default_overview_max_bytes, label='Overview',
                              progress=None, z_positions=None):
     """Every source pasted into one array at its registered position - the on-screen overview.
@@ -2756,8 +2749,9 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
     drawing the view, and the one with something real to report. `z_positions`: 2D sources at
     several heights, each pasted into its own section's plane, as if promoted to 3D.
     """
-    sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') if isinstance(msim, DataTree) else msim
-            for msim in msims]
+    # sims or msims (each msim's scale0 sim is used)
+    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
+            for item in items]
     if not sims:
         return None
     source_dims = si_utils.get_spatial_dims_from_sim(sims[0])
@@ -2784,7 +2778,7 @@ def composite_msims_overview(msims, transform_key, z_scale=None,
             return None
         translations.append(matrix[:ndim, ndim])
 
-    properties = calc_output_properties(msims, transform_key, output_spacing_method='mean',
+    properties = calc_output_properties(items, transform_key, output_spacing_method='mean',
                                         z_scale=z_scale, z_positions=z_positions)
     spacing = dict(properties['spacing'])
     origin = dict(properties['origin'])
