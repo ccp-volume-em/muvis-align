@@ -878,3 +878,32 @@ def test_eager_pre_processing_is_recognised_from_the_project_params():
     assert eager({'normalisation': 'global'}) is True
     assert eager({'flatfield_quantiles': '0.05, 0.95'}) is True
     assert eager({'filter_foreground': True}) is True
+
+
+def test_init_progress_builds_the_msims_with_progress(monkeypatch, tmp_path):
+    """Both load branches read self.msims: that build reports per source through
+    ensure_msims(progress_factory=...), and the whole-set steps after it report as steps of one bar."""
+    import networkx as nx
+    from unittest.mock import MagicMock, call
+    from muvis_align import MVSRegistration as mvs_module
+
+    (tmp_path / 'pair_mappings.json').write_text('{}', encoding='utf8')
+    reg = MVSRegistration.__new__(MVSRegistration)
+    reg.output = tmp_path.as_posix() + '/'
+    reg.output_params = {}
+    reg.state = RegState.PAIRS_REG
+    reg.sources = [SimpleNamespace(get_size=lambda: {'y': 10, 'x': 10})]
+    reg.filenames = ['file-0']
+    reg.source_transform_key = 'source_metadata'
+    reg._msims = None
+    reg.ensure_msims = MagicMock(return_value=['msim-0'])
+    reg.msims = ['msim-0']
+    monkeypatch.setattr(mvs_module, 'make_msims_2d', lambda msims: msims)
+    monkeypatch.setattr(mvs_module, 'build_pairs_graph', lambda *_, **__: nx.Graph())
+    factory, records = recording_phase_factory()
+
+    reg.init_progress('registered', 'zarr', progress_factory=factory)
+
+    # ensure_msims is mocked, so later reads reach it too: the first, building call carries the factory
+    assert reg.ensure_msims.call_args_list[0] == call(progress_factory=factory)
+    assert [(record['total'], record['done']) for record in records] == [(2, 2)]

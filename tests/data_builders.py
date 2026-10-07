@@ -167,15 +167,22 @@ def registration_from_resource(resource_file, output_path=None):
 
 
 class FakeBar:
-    """Stands in for napari's progress bar - no Qt needed."""
+    """Stands in for napari's progress bar - no Qt needed. Every bar made is kept in FakeBar.instances."""
+
+    instances = []
 
     def __init__(self, **kwargs):
         self.total = kwargs.get('total')
+        self.descriptions = [kwargs.get('desc')]
         self.n = 0
         self.closed = False
+        FakeBar.instances.append(self)
 
     def update(self, step=1):
         self.n += step
+
+    def set_description(self, desc):
+        self.descriptions.append(desc)
 
     def close(self):
         self.closed = True

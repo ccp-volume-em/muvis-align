@@ -18,6 +18,7 @@ from muvis_align._widget import MainWidget
 from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
 from muvis_align.MVSRegistration import RegState
+from tests.data_builders import FakeBar, make_phase_factory, recording_phase_factory
 
 
 @pytest.fixture(autouse=True)
@@ -177,19 +178,6 @@ def test_update_registered_refreshes_the_tables_and_the_view(make_napari_viewer)
     update_views.assert_called_once_with(transform_key=None, progress_factory=None)
 
 
-def test_main_widget_creation(make_napari_viewer):
-    viewer = make_napari_viewer()
-    with patch('muvis_align._widget.ViewerWidget'), patch.object(viewer.window, 'add_dock_widget'):
-        widget = MainWidget(viewer)
-
-    assert widget.viewer is viewer
-    assert widget.interface is not None
-    assert 'project' in widget.tab_labels
-    # only the project tab is enabled until a project is open
-    assert widget.isTabEnabled(0)
-    assert not widget.isTabEnabled(1)
-
-
 # Use the canonical package name for unit-level coverage.  The older integration
 # tests above intentionally retain their historical ``muvis_align`` imports.
 interface_module = importlib.import_module("muvis_align.ui.Interface")
@@ -254,14 +242,22 @@ def test_get_project_dir_returns_none_before_project_loaded(bare_interface):
     assert bare_interface.get_project_dir() is None
 
 
-def test_update_input_output_path_displays_stored_value_as_is(bare_interface, tmp_path):
-    """input/output paths are stored relative to the project directory - the widgets must
-    display that exact relative text, not an absolute path, so a loaded project still looks
-    relative in the UI. FileEdit.set_value() would force it absolute, so the display path must
-    be written straight into the widget's inner line edit instead."""
+@pytest.mark.parametrize(
+    ("input_path", "shown"),
+    [
+        ("data/input", "data/input"),
+        # several globs are one valid path value, and were left blank
+        ("tiles/**/*.tif, overviews/**/*.tif", "tiles/**/*.tif, overviews/**/*.tif"),
+        (["tiles/**/*.tif", "overviews/**/*.tif"], "tiles/**/*.tif, overviews/**/*.tif"),
+    ],
+    ids=["relative", "globs", "yaml-list"],
+)
+def test_update_input_output_path_displays_stored_value_as_is(bare_interface, tmp_path, input_path, shown):
+    """Shown as stored (relative to the project directory): FileEdit.set_value() would force it
+    absolute, so the text goes straight into the widget's inner line edit."""
     bare_interface.params_path = str(tmp_path / "project.yml")
     bare_interface.params = {
-        "input_output": {"input_path": "data/input", "output_path": "results"}
+        "input_output": {"input_path": input_path, "output_path": "results"}
     }
     input_widget = MagicMock()
     output_widget = MagicMock()
@@ -272,7 +268,7 @@ def test_update_input_output_path_displays_stored_value_as_is(bare_interface, tm
 
     bare_interface.update_input_output_path()
 
-    assert input_widget.widget.line_edit.value == "data/input"
+    assert input_widget.widget.line_edit.value == shown
     assert output_widget.widget.line_edit.value == "results"
     input_widget.set_value.assert_not_called()
     output_widget.set_value.assert_not_called()
@@ -1629,62 +1625,20 @@ def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer):
         assert next_level_data.shape[-2] <= level_data.shape[-2]
 
 
-class _RecordingProgressBar:
-    """Stands in for a napari progress bar, recording how a phase reported itself."""
-
-    def __init__(self, total=None, desc=None):
-        self.total = total
-        self.descriptions = [desc]
-        self.updates = 0
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_):
-        return False
-
-    def update(self, n=1):
-        self.updates += n
-
-    def set_description(self, desc):
-        self.descriptions.append(desc)
-
-
-class _RecordingProgressFactory:
-    def __init__(self):
-        self.bars = []
-
-    def __call__(self, total=None, desc=None):
-        bar = _RecordingProgressBar(total=total, desc=desc)
-        self.bars.append(bar)
-        return bar
-
-
-def test_build_view_msims_reports_progress_per_source():
-    """Forcing view_msims builds one msim per source - tens of seconds for a few hundred - so it
-    must report per-source progress when given a factory, instead of running silently."""
+@pytest.mark.parametrize('with_factory', [True, False], ids=['factory', 'no-factory'])
+def test_build_view_msims_keeps_native_pyramids_and_reports_per_source(with_factory):
+    """A source with a native pyramid is shown as it is; building them reports one step per
+    source when given a factory, and needs none."""
     interface = CanonicalInterface.__new__(CanonicalInterface)
     interface.reg = MagicMock()
     interface.reg.sources = [SimpleNamespace(shapes=[0, 1]), SimpleNamespace(shapes=[0, 1])]
     interface.reg.msims = ['msim-0', 'msim-1']
-    factory = _RecordingProgressFactory()
+    factory, records = recording_phase_factory()
 
-    view_msims = interface._build_view_msims(progress_factory=factory)
+    view_msims = interface._build_view_msims(progress_factory=factory if with_factory else None)
 
     assert view_msims == ['msim-0', 'msim-1']
-    assert len(factory.bars) == 1
-    bar = factory.bars[0]
-    assert bar.total == 2
-    assert bar.updates == 2
-
-
-def test_build_view_msims_without_factory_needs_no_progress():
-    interface = CanonicalInterface.__new__(CanonicalInterface)
-    interface.reg = MagicMock()
-    interface.reg.sources = [SimpleNamespace(shapes=[0, 1])]
-    interface.reg.msims = ['msim-0']
-
-    assert interface._build_view_msims() == ['msim-0']
+    assert records == ([{'desc': 'Building views', 'total': 2, 'done': 2}] if with_factory else [])
 
 
 def test_init_progress_reports_saved_project_load(
@@ -1710,152 +1664,9 @@ def test_init_progress_reports_saved_project_load(
     bare_interface.update_views.assert_called_once_with(show_images=False)
 
 
-def test_reg_init_progress_builds_msims_with_progress(monkeypatch, tmp_path):
-    """MVSRegistration.init_progress() reads self.msims in both of its load branches - that lazy
-    build (~15s for 328 sources) must go through ensure_msims(progress_factory=...) so it is
-    reported per source, and the whole-set steps that follow it must report themselves too,
-    rather than all of it happening silently while a resumed project appears to hang."""
-    import networkx as nx
-    from muvis_align import MVSRegistration as mvs_module
-    from muvis_align.MVSRegistration import MVSRegistration, RegState
-
-    pair_mappings_filename = tmp_path / 'pair_mappings.json'
-    pair_mappings_filename.write_text('{}', encoding='utf8')
-
-    reg = MVSRegistration.__new__(MVSRegistration)
-    reg.output = str(tmp_path).replace(os.sep, '/') + '/'
-    reg.output_params = {}
-    reg.state = RegState.PAIRS_REG
-    reg.sources = [SimpleNamespace(get_size=lambda: {'y': 10, 'x': 10})]
-    reg.filenames = ['file-0']
-    reg.source_transform_key = 'source_metadata'
-    reg._msims = None
-    reg.ensure_msims = MagicMock(return_value=['msim-0'])
-    reg.msims = ['msim-0']
-    monkeypatch.setattr(mvs_module, 'make_msims_2d', lambda msims: msims)
-    # the pairs graph is built directly now (no linear program per pair) - stand in for it, as
-    # this test is about the msim build being reported, not about graph building
-    monkeypatch.setattr(mvs_module, 'build_pairs_graph', lambda *_, **__: nx.Graph())
-    factory = _RecordingProgressFactory()
-
-    reg.init_progress('registered', 'zarr', progress_factory=factory)
-
-    # the later `self.msims` reads hit the cached build (ensure_msims is mocked here, so they
-    # still reach it) - what matters is that the first, actually-building call carries the factory
-    assert reg.ensure_msims.call_args_list[0] == call(progress_factory=factory)
-    # the msim build reports itself per source (inside ensure_msims, mocked here); the two
-    # whole-set steps left in this branch report as named steps of one bar
-    assert len(factory.bars) == 1
-    bar = factory.bars[0]
-    assert bar.total == 2
-    assert bar.updates == 2
-
-
-class _FakeNapariProgress:
-    """Stands in for napari's progress bar, recording everything a shared bar would show."""
-
-    instances = []
-
-    def __init__(self, total=None, desc=None, **kwargs):
-        self.total = total
-        self.descriptions = [desc]
-        self.value = 0
-        self.closed = False
-        self.kwargs = kwargs
-        _FakeNapariProgress.instances.append(self)
-
-    def update(self, n=1):
-        self.value += n
-
-    def set_description(self, desc):
-        self.descriptions.append(desc)
-
-    def close(self):
-        self.closed = True
-
-
-def test_phase_progress_fills_one_bar_once_across_phases():
-    """Every phase of one operation reports into a single bar that fills once: each phase moves
-    it across its own slice, so the bar never restarts. (Phases that instead added to the bar's
-    total made 2/2 become 2/330, which reads as a new bar starting, not as progress.)"""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress, desc='Loading project',
-                             phases=2) as factory:
-        with factory(total=3, desc='Building sources') as pbar:
-            for _ in range(3):
-                pbar.update(1)
-            after_first_phase = _FakeNapariProgress.instances[0].value
-        with factory(total=2, desc='Loading pair registration') as pbar:
-            pbar.update(1)
-            pbar.set_description('Building pair graph')
-            pbar.update(1)
-
-    assert len(_FakeNapariProgress.instances) == 1
-    bar = _FakeNapariProgress.instances[0]
-    # the total is fixed for the whole operation, and the first of two phases leaves the bar
-    # half full rather than full
-    assert bar.total == NapariPhaseProgress.ticks
-    assert after_first_phase == NapariPhaseProgress.ticks // 2
-    assert bar.value == NapariPhaseProgress.ticks
-    # one description for the whole operation - phases naming themselves would turn one bar
-    # into a flicker of labels
-    assert bar.descriptions == ['Loading project']
-    assert bar.closed
-
-
-def test_phase_progress_never_moves_backwards():
-    """Whatever the phases report, the bar only advances - an unexpected extra phase takes what
-    is left rather than resizing the bar under the user."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    values = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress, phases=2) as factory:
-        for total, desc in [(4, 'Building sources'), (300, 'Building views'), (2, 'Extra')]:
-            with factory(total=total, desc=desc) as pbar:
-                for _ in range(total):
-                    pbar.update(1)
-                    values.append(_FakeNapariProgress.instances[0].value)
-
-    assert values == sorted(values)
-    assert _FakeNapariProgress.instances[0].value == NapariPhaseProgress.ticks
-
-
-def test_phase_progress_shows_its_bar_before_any_phase_reports():
-    """The bar must go up when the operation starts, not when its first phase reports: global
-    registration spends most of itself inside one blocking call that reports nothing, and used
-    to show no bar at all until it was nearly done."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress, desc='Global registration'):
-        assert len(_FakeNapariProgress.instances) == 1
-        assert _FakeNapariProgress.instances[0].descriptions == ['Global registration']
-
-    assert _FakeNapariProgress.instances[0].closed
-
-
-def test_phase_progress_completes_a_phase_that_undercounts():
-    """A phase that declares steps it does not spend (a whole-set step counted as one) must not
-    leave the shared bar permanently short of its own total."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress) as factory:
-        with factory(total=4, desc='Building views'):
-            pass
-
-    bar = _FakeNapariProgress.instances[0]
-    assert (bar.value, bar.total) == (NapariPhaseProgress.ticks, NapariPhaseProgress.ticks)
-
-
 def test_update_views_reports_into_the_callers_bar(bare_interface, monkeypatch):
     """A refresh that is part of a larger operation (loading a saved project) must report as
     phases of that operation's bar, and leave the activity dock / widget state to it."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
     bare_interface.viewer = MagicMock()
     bare_interface.overview = MagicMock()
     bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
@@ -1868,8 +1679,9 @@ def test_update_views_reports_into_the_callers_bar(bare_interface, monkeypatch):
     dock = MagicMock()
     monkeypatch.setattr(interface_module, "VisibleActivityDock", dock)
 
-    _FakeNapariProgress.instances = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress, desc='Loading project') as factory:
+    FakeBar.instances.clear()
+    factory = make_phase_factory(desc='Loading project')
+    with factory:
         with factory(total=1, desc='Loading pair registration') as pbar:
             pbar.update(1)
         bare_interface.update_views(transform_key="source_metadata", show_images=False,
@@ -1877,45 +1689,10 @@ def test_update_views_reports_into_the_callers_bar(bare_interface, monkeypatch):
 
     dock.assert_not_called()
     # one bar, still the caller's - the refresh opened none of its own, and did not rename it
-    assert len(_FakeNapariProgress.instances) == 1
-    bar = _FakeNapariProgress.instances[0]
-    assert bar.total == NapariPhaseProgress.ticks
+    assert len(FakeBar.instances) == 1
+    bar = FakeBar.instances[0]
+    assert bar.total == factory.ticks
     assert bar.descriptions == ['Loading project']
-
-
-def test_phase_progress_tqdm_class_reports_into_the_same_bar():
-    """A library's own tqdm loop (multiview_stitcher's fusion, patched in by NapariMVSProgress)
-    must land on the operation's bar as one more phase, not open a bar beside it."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress, desc='Fusion',
-                             phases=2) as factory:
-        with factory(total=1, desc='Preparing fusion') as pbar:
-            pbar.update(1)
-        for _ in factory.tqdm_class(range(3), desc='Fusing blocks'):
-            pass
-
-    assert len(_FakeNapariProgress.instances) == 1
-    bar = _FakeNapariProgress.instances[0]
-    assert (bar.value, bar.total) == (NapariPhaseProgress.ticks, NapariPhaseProgress.ticks)
-    assert bar.descriptions == ['Fusion']
-
-
-def test_phase_progress_tqdm_class_tolerates_the_rest_of_tqdm():
-    """tqdm's surface is wide and a library may touch any of it mid-loop - the stand-in must no-op
-    rather than raise from inside someone else's fusion."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress) as factory:
-        pbar = factory.tqdm_class(total=2, desc='Fusing blocks')
-        pbar.set_postfix(loss=1)
-        pbar.refresh()
-        pbar.update(2)
-        pbar.close()
-
-    assert _FakeNapariProgress.instances[0].value == NapariPhaseProgress.ticks
 
 
 def test_pre_processing_process_reports_work_and_view_separately(bare_interface):
@@ -1954,30 +1731,6 @@ def test_only_one_operation_bar_at_a_time(bare_interface, monkeypatch):
     assert bare_interface._running_operation is None
 
 
-def test_phase_progress_leaves_room_for_work_after_its_phases():
-    """A phase must never fill the bar: the operation is still running, and an unexpected extra
-    phase (another dask compute, a second registration) still needs somewhere to go. Only the
-    end of the operation fills it."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    with NapariPhaseProgress(progress_class=_FakeNapariProgress, phases=1) as factory:
-        with factory(total=2, desc='Declared phase') as pbar:
-            pbar.update(1)
-            pbar.update(1)
-        after_declared_phases = _FakeNapariProgress.instances[0].value
-        with factory(total=2, desc='Unexpected extra phase') as pbar:
-            pbar.update(1)
-            pbar.update(1)
-        after_extra_phase = _FakeNapariProgress.instances[0].value
-
-    bar = _FakeNapariProgress.instances[0]
-    assert after_declared_phases < NapariPhaseProgress.ticks
-    assert after_extra_phase > after_declared_phases
-    assert after_extra_phase < NapariPhaseProgress.ticks
-    assert bar.value == NapariPhaseProgress.ticks  # ...and finishing the operation fills it
-
-
 def test_update_metadata_source_refresh_reports_its_own_bar(bare_interface, monkeypatch):
     """The refresh at the end of update_metadata_source() must open its own bar. It used to be
     handed the source-initialisation factory, which by then belonged to a finished operation -
@@ -1996,26 +1749,6 @@ def test_update_metadata_source_refresh_reports_its_own_bar(bare_interface, monk
     assert bare_interface.update_metadata_source() is True
 
     bare_interface.update_views.assert_called_once_with(show_images=False)
-
-
-def test_phase_progress_reused_after_its_operation_opens_a_new_bar():
-    """A factory that outlives its operation (handed on to work that runs after it) must report
-    on a new bar - reporting on the closed one would be reporting nowhere."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    _FakeNapariProgress.instances = []
-    factory = NapariPhaseProgress(progress_class=_FakeNapariProgress, desc='Initialising sources')
-    with factory:
-        with factory(total=2) as pbar:
-            pbar.update(2)
-    with factory:
-        with factory(total=2) as pbar:
-            pbar.update(2)
-
-    assert len(_FakeNapariProgress.instances) == 2
-    first, second = _FakeNapariProgress.instances
-    assert first.closed
-    assert second.value > 0
 
 
 def test_run_off_thread_runs_the_work_elsewhere_and_keeps_qt_free(make_napari_viewer):
@@ -2079,33 +1812,6 @@ def test_run_off_thread_runs_inline_without_a_qt_application(bare_interface, mon
 
     assert bare_interface._run_off_thread(lambda factory: (factory, 'ran'), 'the-factory') == (
         'the-factory', 'ran')
-
-
-def test_phase_progress_does_not_recurse_when_the_bar_reports_back():
-    """Updating a napari bar repaints it, and repainting pumps the Qt event loop - which can
-    deliver the next position a worker reported straight back into the bar, mid-update. Left to
-    recurse that runs the stack out, which is what crashed a 328-source project load."""
-    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-    updates = []
-
-    class _ReportsBackWhileUpdating(_FakeNapariProgress):
-        def update(self, n=1):
-            super().update(n)
-            updates.append(self.value)
-            if self.value < NapariPhaseProgress.ticks:
-                # as a queued position from the worker would arrive, inside processEvents()
-                factory.set_position(self.value + 50)
-
-    _FakeNapariProgress.instances = []
-    factory = NapariPhaseProgress(progress_class=_ReportsBackWhileUpdating, phases=1)
-    with factory:
-        factory.set_position(50)
-
-    bar = _FakeNapariProgress.instances[0]
-    assert bar.value == NapariPhaseProgress.ticks
-    # each position was applied by the loop, not by re-entering it
-    assert len(updates) <= NapariPhaseProgress.ticks // 50 + 1
 
 
 def _registered_view_interface(bare_interface, lazy_overview):

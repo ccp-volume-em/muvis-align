@@ -10,7 +10,8 @@ from muvis_align.util import calculate_rigid_difference, create_transform, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
     timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
-    eval_context, convert_to_um, get_unique_file_labels, strip_common_path_prefix, format_phase_timing
+    eval_context, convert_to_um, get_unique_file_labels, strip_common_path_prefix, format_phase_timing, \
+    path_param_to_text
 
 
 @pytest.mark.parametrize(

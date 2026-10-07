@@ -1,25 +1,19 @@
-import numpy as np
+from unittest.mock import patch
 
-from muvis_align._widget import (
-    MainWidget,
-)
+from muvis_align._widget import MainWidget
 
 
-# make_napari_viewer is a pytest fixture that returns a napari viewer object
-# you don't need to import it, as long as napari is installed
-# in your testing environment
-# capsys is a pytest fixture that captures stdout and stderr output streams
-def test_widget(make_napari_viewer, capsys):
-    # make viewer and add an image layer using our fixture
+def test_main_widget_creation(make_napari_viewer):
     viewer = make_napari_viewer()
-    viewer.add_image(np.random.random((100, 100)))
+    with patch('muvis_align._widget.ViewerWidget'), patch.object(viewer.window, 'add_dock_widget'):
+        widget = MainWidget(viewer)
 
-    # create our widget, passing in the viewer
-    main_widget = MainWidget(viewer)
-
-    # read captured output and check that it's as we expected
-    #captured = capsys.readouterr()
-    #assert captured.out == "napari has 1 layers\n"
+    assert widget.viewer is viewer
+    assert widget.interface is not None
+    assert 'project' in widget.tab_labels
+    # only the project tab is enabled until a project is open
+    assert widget.isTabEnabled(0)
+    assert not widget.isTabEnabled(1)
 
 
 def test_during_an_operation_only_the_process_buttons_work_and_read_cancel(make_napari_viewer):

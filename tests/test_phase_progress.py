@@ -96,31 +96,35 @@ def test_a_nested_operation_makes_room_for_its_own_phases():
     assert max(gaps) < 2 * min(gaps), f'slices wildly uneven: {gaps}'
 
 
-def test_the_bar_is_filled_before_it_closes():
+@pytest.mark.parametrize(('phases', 'steps_done'), [(2, 4), (1, 0)], ids=['phase-left-unused', 'phase-undercounts'])
+def test_the_bar_is_filled_before_it_closes(phases, steps_done):
     """An operation that only ever showed part-done and then vanished reads as having given up."""
-    bars = []
-
-    class RecordingBar(FakeBar):
-        def __init__(self, **kwargs):
-            super().__init__(**kwargs)
-            bars.append(self)
-
-    factory = make_phase_factory(phases=2, progress_class=RecordingBar)
+    FakeBar.instances.clear()
+    factory = make_phase_factory(phases=phases)
     with factory:
-        with factory(total=1) as phase:
-            phase.update(1)
+        with factory(total=4) as phase:
+            phase.update(steps_done)
 
-    assert bars[0].n == bars[0].total
-    assert bars[0].closed
+    bar = FakeBar.instances[0]
+    assert (bar.n, bar.total) == (factory.ticks, factory.ticks)
+    assert bar.closed
 
 
-def test_a_finished_factory_starts_over_but_a_twin_keeps_its_state():
+def test_a_finished_factory_starts_over_on_a_new_bar_but_a_twin_keeps_its_state():
+    """A factory handed on to work that runs after its operation must report on a new bar, not the closed one."""
+    FakeBar.instances.clear()
     factory = make_phase_factory(phases=2)
     with factory:
         with factory(total=1) as phase:
             phase.update(1)
     assert factory._position == 0
     assert factory.phases_left == factory.phases
+    with factory:
+        with factory(total=2) as phase:
+            phase.update(2)
+    first, second = FakeBar.instances
+    assert first.closed
+    assert second.n > 0
 
     owner = make_phase_factory(phases=2)
     with owner:
@@ -151,3 +155,109 @@ def test_a_cancel_stops_work_reporting_off_thread_but_never_the_bar_itself():
                     phase.update(1)
         with owner(total=2) as phase:
             phase.update(2)
+
+
+def test_phases_fill_one_bar_once():
+    """Every phase of one operation moves a single bar across its own slice, so the bar never
+    restarts - phases adding to its total made 2/2 become 2/330, which reads as a new bar."""
+    FakeBar.instances.clear()
+    factory = make_phase_factory(phases=2, desc='Loading project')
+    with factory:
+        with factory(total=3, desc='Building sources') as phase:
+            for _ in range(3):
+                phase.update(1)
+            after_first_phase = FakeBar.instances[0].n
+        with factory(total=2, desc='Loading pair registration') as phase:
+            phase.update(1)
+            phase.set_description('Building pair graph')
+            phase.update(1)
+
+    assert len(FakeBar.instances) == 1
+    bar = FakeBar.instances[0]
+    assert bar.total == factory.ticks
+    assert after_first_phase == factory.ticks // 2
+    # one description for the whole operation - phases naming themselves would make it flicker
+    assert bar.descriptions == ['Loading project']
+
+
+def test_an_unexpected_extra_phase_moves_the_bar_on_without_filling_it():
+    """The bar only advances, and no phase fills it: an extra phase (another dask compute, a second
+    registration) still needs somewhere to go. Only the end of the operation fills it."""
+    FakeBar.instances.clear()
+    values, after_phases = [], []
+    factory = make_phase_factory(phases=2)
+    with factory:
+        for total in [4, 300, 2]:
+            with factory(total=total) as phase:
+                for _ in range(total):
+                    phase.update(1)
+                    values.append(FakeBar.instances[0].n)
+            after_phases.append(FakeBar.instances[0].n)
+
+    assert values == sorted(values)
+    assert after_phases[1] < after_phases[2] < factory.ticks
+    assert FakeBar.instances[0].n == factory.ticks
+
+
+def test_the_bar_shows_before_any_phase_reports():
+    """Global registration spends most of itself inside one blocking call that reports nothing,
+    and showed no bar at all until it was nearly done."""
+    FakeBar.instances.clear()
+    with make_phase_factory(desc='Global registration'):
+        assert len(FakeBar.instances) == 1
+        assert FakeBar.instances[0].descriptions == ['Global registration']
+
+    assert FakeBar.instances[0].closed
+
+
+def test_a_library_tqdm_loop_reports_into_the_same_bar():
+    """multiview_stitcher's fusion loop (patched in by NapariMVSProgress) is one more phase, not a bar beside it."""
+    FakeBar.instances.clear()
+    factory = make_phase_factory(phases=2, desc='Fusion')
+    with factory:
+        with factory(total=1, desc='Preparing fusion') as phase:
+            phase.update(1)
+        for _ in factory.tqdm_class(range(3), desc='Fusing blocks'):
+            pass
+
+    assert len(FakeBar.instances) == 1
+    bar = FakeBar.instances[0]
+    assert (bar.n, bar.total) == (factory.ticks, factory.ticks)
+    assert bar.descriptions == ['Fusion']
+
+
+def test_the_tqdm_stand_in_tolerates_the_rest_of_tqdm():
+    """A library may touch any of tqdm's wide surface mid-loop - the stand-in must no-op, not raise."""
+    FakeBar.instances.clear()
+    factory = make_phase_factory()
+    with factory:
+        tqdm_bar = factory.tqdm_class(total=2, desc='Fusing blocks')
+        tqdm_bar.set_postfix(loss=1)
+        tqdm_bar.refresh()
+        tqdm_bar.update(2)
+        tqdm_bar.close()
+
+    assert FakeBar.instances[0].n == factory.ticks
+
+
+def test_the_bar_does_not_recurse_when_it_reports_back():
+    """Repainting a napari bar pumps the Qt event loop, which can deliver the worker's next position
+    back into the bar mid-update - left to recurse that runs the stack out."""
+    updates = []
+
+    class ReportsBackWhileUpdating(FakeBar):
+        def update(self, step=1):
+            super().update(step)
+            updates.append(self.n)
+            if self.n < factory.ticks:
+                # as a queued position from the worker would arrive, inside processEvents()
+                factory.set_position(self.n + 50)
+
+    FakeBar.instances.clear()
+    factory = make_phase_factory(progress_class=ReportsBackWhileUpdating)
+    with factory:
+        factory.set_position(50)
+
+    assert FakeBar.instances[0].n == factory.ticks
+    # each position was applied by the loop, not by re-entering it
+    assert len(updates) <= factory.ticks // 50 + 1
