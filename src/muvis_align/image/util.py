@@ -1750,9 +1750,13 @@ def calc_output_properties(sims, transform_key, output_spacing_method=None, z_sc
             mode='union',
         )
     if 'z' in output_properties['shape'] and not is_3d:
-        z_shape = len(set(z_origins))
+        z_values = sorted({round(float(z_origin), 9) for z_origin in z_origins})
+        z_shape = len(z_values)
         if z_shape <= 1:
             z_shape = len(z_origins)
+        elif not z_scale:
+            # a size-1 z reports a spacing of 1.0: sections closer than that would all land in the first plane
+            output_properties['spacing']['z'] = float(np.min(np.diff(z_values)))
         output_properties['shape']['z'] = z_shape
     return output_properties
 

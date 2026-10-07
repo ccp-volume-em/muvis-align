@@ -116,9 +116,6 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       image shapes 1.3ms, tables 1.8 min; the preview cap and composite overview only where the lazy overview
       declines (a rotation, 3D or multichannel sources). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
-- [ ] **Composite overview collapses sections spaced other than 1** - with the z spacing unknown (z_scale None) its
-      output z spacing is 1.0, so meatballs' sections 0.05 apart all land in its first plane. Now only a fallback
-      (a rotation, 3D or multichannel sources).
 - [ ] **Preview cap: one rebuild instead of three** - the HPC's 343GB -> 4GB cap ran 3 size estimates, 2 rounds
       dropping levels and 1 strided round, each rebuilding every msim's tree (~2ms a source of the 2.6 left on
       meatballs forced to the same 85x; ~11ms a source on the HPC). Choosing the levels from each level's geometry
@@ -138,6 +135,10 @@ REFACTORING
 
 ## Done
 
+- **Composite overview collapsed sections spaced other than 1** - with no z scale given, calc_output_properties took
+  a size-1 z's reported 1.0 as the output's z spacing, so meatballs' sections 0.05 apart all landed in the first
+  plane (each pasted over the last). A stack of single-plane sections now takes the spacing between them, as
+  extract_z_scale and the lazy overview do; fusion and the preview cap share it.
 - **Lazy per-section overview after registration** - the refresh pasted all 34k sources one by one before showing
   any (11.9 min on the HPC, NFS reads); it now builds each section when viewed, as before registration, at the
   registered transforms already on the sources' msims - no file opened for them (counted: 0 on meatballs). Meatballs:

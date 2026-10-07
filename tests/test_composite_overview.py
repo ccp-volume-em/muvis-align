@@ -149,3 +149,16 @@ def test_sources_at_several_heights_need_not_be_promoted():
     assert np.array_equal(np.asarray(flat.data), np.asarray(expected.data))
     assert si_utils.get_spacing_from_sim(flat) == si_utils.get_spacing_from_sim(expected)
     assert si_utils.get_origin_from_sim(flat) == si_utils.get_origin_from_sim(expected)
+
+
+def test_sections_spaced_other_than_one_keep_their_own_planes():
+    """With no z scale given, sections 0.05 apart (as meatballs') each fill their own plane at their own spacing: at
+    the 1.0 a size-1 z reports, every section landed in the first plane."""
+    msims = [make_msim(value, (0, 0)) for value in (10, 20, 30)]
+    z_positions = [66.07, 66.12, 66.17]
+
+    flat = msi_utils.get_sim_from_msim(composite_msims_overview(msims, TRANSFORM_KEY, z_positions=z_positions))
+
+    planes = np.asarray(flat.data).squeeze()
+    assert [int(plane.max()) for plane in planes] == [10, 20, 30]
+    assert si_utils.get_spacing_from_sim(flat)['z'] == pytest.approx(0.05)
