@@ -1650,7 +1650,9 @@ def gaussian_filter_sim(sim, transform_key, sigma):
 
 
 def get_sim_physical_size(sim):
-    # accepts either a sim or a msim (its scale0 sim is used)
+    # accepts a sim, a msim (its scale0 sim is used) or stack properties
+    if isinstance(sim, dict):
+        return {dim: size * sim['spacing'].get(dim, 1) for dim, size in sim['shape'].items()}
     if isinstance(sim, DataTree):
         sim = msi_utils.get_sim_from_msim(sim, scale='scale0')
     size = si_utils.get_shape_from_sim(sim)
@@ -1678,25 +1680,26 @@ def promoted_geometry(item, transform_key, z_position):
 
 
 def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
-    # accepts either sims or msims - each msim is converted to its scale0 sim right where needed
-    # below (spacing/affine/origin metadata reads only, never pixel data - fusion.calc_fusion_
-    # stack_properties itself only reads this same cheap per-sim metadata) instead of requiring
-    # the caller to have already built a separate sims list just to call this function.
-    # z_positions: sources at several heights, not promoted to 3D - taken as make_msims_3d()
-    # would make them (see promoted_geometry), with the same result
+    # accepts either sims or msims, reading only their scale0 geometry. z_positions: sources at several heights,
+    # not promoted to 3D - taken as make_msims_3d() would make them (see promoted_geometry), with the same result
     if z_positions is not None:
         views = [promoted_geometry(item, transform_key, z) for item, z in zip(sims, z_positions)]
-        spacings = [view[0]['spacing'] for view in views]
-        dims = list(spacings[0])
-        is_3d = views[0][0]['shape'].get('z', 0) > 1
-        z_origins = [view[0]['origin'].get('z', 0) for view in views]
     else:
-        sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-                for item in sims]
-        spacings = [si_utils.get_spacing_from_sim(sim) for sim in sims]
-        dims = list(spacings[0])
-        is_3d = (sims[0].sizes.get('z', 0) > 1)
-        z_origins = [si_utils.get_origin_from_sim(sim).get('z', 0) for sim in sims]
+        views = []
+        for item in sims:
+            sim = msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
+            affine = si_utils.get_affine_from_sim(sim, transform_key)
+            views.append((si_utils.get_stack_properties_from_sim(sim),
+                          np.asarray(affine.sel(t=0) if 't' in affine.dims else affine, dtype=float)))
+    return calc_output_properties_from_views(views, output_spacing_method=output_spacing_method, z_scale=z_scale)
+
+
+def calc_output_properties_from_views(views, output_spacing_method=None, z_scale=None):
+    """The fused output's stack properties from each source's (stack properties, affine matrix) - geometry only."""
+    spacings = [stack['spacing'] for stack, _ in views]
+    dims = list(spacings[0])
+    is_3d = views[0][0]['shape'].get('z', 0) > 1
+    z_origins = [stack['origin'].get('z', 0) for stack, _ in views]
     output_spacing = {}
 
     if output_spacing_method:
@@ -1710,17 +1713,9 @@ def calc_output_properties(sims, transform_key, output_spacing_method=None, z_sc
 
     if z_scale and 'z' in dims and not is_3d:
         output_spacing['z'] = z_scale
-    if z_positions is not None:
-        stack = fusion.calc_stack_properties_from_view_properties_and_params(
-            [view[0] for view in views], [view[1] for view in views], spacing=output_spacing, mode='union')
-        output_properties = {key: {dim: value[index] for index, dim in enumerate(dims)} for key, value in stack.items()}
-    else:
-        output_properties = fusion.calc_fusion_stack_properties(
-            sims,
-            [si_utils.get_affine_from_sim(sim, transform_key) for sim in sims],
-            output_spacing,
-            mode='union',
-        )
+    stack = fusion.calc_stack_properties_from_view_properties_and_params(
+        [view[0] for view in views], [view[1] for view in views], spacing=output_spacing, mode='union')
+    output_properties = {key: {dim: value[index] for index, dim in enumerate(dims)} for key, value in stack.items()}
     if 'z' in output_properties['shape'] and not is_3d:
         z_values = sorted({round(float(z_origin), 9) for z_origin in z_origins})
         z_shape = len(z_values)

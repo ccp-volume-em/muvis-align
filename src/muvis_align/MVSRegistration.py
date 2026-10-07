@@ -36,7 +36,8 @@ from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
-from muvis_align.fusion_slabs import fuse_native_levels_to_ome_zarr, fuse_to_zarr_by_z_slabs
+from muvis_align.fusion_slabs import fuse_native_levels_to_ome_zarr, fuse_to_zarr_by_z_slabs, level_blocks, \
+    native_levels, written_voxels
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
@@ -1888,6 +1889,117 @@ class MVSRegistration:
         result it returns, which is where the work is then done."""
         return not self.is_channel_overlay(dimension, extra_metadata) and 'compos' not in (fusion_method or '')
 
+    def _fusion_z_geometry(self, extra_metadata):
+        """(z scale, number of distinct z positions, whether 2D sources become a 3D stack) as fusion takes them: a
+        stack's slices have no z position of their own, and make_msims_3d() spaces them by index."""
+        z_scale = get_metadata_z_scale(self.source_metadata) or get_metadata_z_scale(extra_metadata)
+        if z_scale is None:
+            z_scale = extract_z_scale(self.positions, self.scales)
+        num_z_positions = len({position.get('z') for position in self.positions if 'z' in position})
+        return z_scale, num_z_positions, num_z_positions > 1 or self.is_stack
+
+    @staticmethod
+    def _output_spacing_method(output_spacing, exports):
+        """(native, the spacing method for calc_output_properties): 'native' only for an export of fused sources."""
+        is_native = (output_spacing is None or str(output_spacing).lower() == 'native') and exports
+        if is_native:
+            return True, 'min'
+        if output_spacing is None or str(output_spacing).lower() == 'native':
+            return False, 'mean'
+        return False, output_spacing
+
+    @staticmethod
+    def _export_chunksize(dtype, output_stack_properties, sources, num_z_positions, tile_size=None):
+        """The block an export fuses and writes: a configured tile_size, else the memory budget's, for `sources`'
+        (msims' or stack properties') extents."""
+        if not tile_size:
+            return get_export_chunk_sizes(dtype, output_stack_properties, sources, num_z_positions=num_z_positions)
+        if not isinstance(tile_size, (list, tuple)):
+            tile_size = [tile_size] * 2
+        chunksize = xyz_to_dict(tile_size)
+        if 'z' in output_stack_properties['shape'] and 'z' not in chunksize:
+            # tile_size says nothing about z, so the budget decides it
+            chunksize['z'] = get_chunk_sizes(dtype, list(output_stack_properties['shape']), num_sources=len(sources),
+                                             num_z_positions=num_z_positions).get('z', 1)
+        return chunksize
+
+    def estimate_fusion_size(self, fusion_method=None, output_spacing=None, transform_key=None, dimension=None,
+                             tile_size=None, extra_metadata=None):
+        """Uncompressed bytes per level of the OME-Zarr fuse() would write, from source geometry alone (no msims):
+        {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}, or None for an export fuse() does not write.
+        Native fusion writes only the blocks some source reaches - exactly these; other spacings are dense."""
+        if extra_metadata is None:
+            extra_metadata = self.extra_metadata
+        if not self.sources or not self.fuses_to_zarr(fusion_method, dimension, extra_metadata):
+            return None
+        if transform_key is None:
+            transform_key = self.reg_transform_key
+        z_scale, num_z_positions, promote_z = self._fusion_z_geometry(extra_metadata)
+        is_native, spacing_method = self._output_spacing_method(output_spacing, True)
+        dtype = np.dtype(self.sources[0].dtype)
+        nonspatial = int(np.prod([size for dim, size in self.sources[0].get_size().items() if dim not in 'zyx']))
+        voxel_bytes = nonspatial * dtype.itemsize
+
+        translations, matrices = [], []
+        for index, (source, position, transform) in enumerate(zip(self.sources, self.positions,
+                                                                   self._msim_transforms)):
+            translation = dict(position)
+            if promote_z and 'z' not in translation:
+                translation['z'] = index * (z_scale or 1)
+            translations.append(translation)
+            matrix = np.asarray(build_source_stack_props(
+                source, self._msim_output_order, translation, transform, self.source_transform_key,
+                z_scale=self._msim_z_scale, promote_z=promote_z)['transform'], dtype=float)
+            if transform_key == self.reg_transform_key:
+                # as registering writes it: the correction chained onto the source transform, identity without one
+                mapping = (self.mappings or {}).get(index)
+                if mapping is None:
+                    matrix = np.eye(len(matrix))
+                else:
+                    mapping_matrix = widened_affine_matrix(mapping) if len(matrix) == 4 else np.asarray(
+                        mapping.sel(t=0) if 't' in mapping.dims else mapping, dtype=float)
+                    matrix = mapping_matrix @ matrix
+            matrices.append(matrix)
+
+        stacks = {}
+
+        def stack(index, level):
+            if (index, level) not in stacks:
+                stacks[index, level] = build_source_stack_props(
+                    self.sources[index], self._msim_output_order, translations[index], None, None,
+                    z_scale=self._msim_z_scale, level=level, promote_z=promote_z)
+            return stacks[index, level]
+
+        views0 = [(stack(index, 0), matrix) for index, matrix in enumerate(matrices)]
+        level0 = calc_output_properties_from_views(views0, output_spacing_method=spacing_method, z_scale=z_scale)
+        levels = []
+        if is_native:
+            source_spacings = [min(view[0]['spacing'][dim] for dim in 'yx') for view in views0]
+            scaled_dims = ['y', 'x'] + (['z'] if views0[0][0]['shape'].get('z', 1) > 1 else [])
+            chunksize = self._export_chunksize(dtype, level0, [view[0] for view in views0], num_z_positions,
+                                               tile_size)
+            for level_spacing, properties, selected in native_levels(source_spacings, level0, scaled_dims):
+                output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
+                views = []
+                for index in selected:
+                    # as msi_utils.get_res_level_from_spacing: the coarsest source level no coarser than the output
+                    level = 0
+                    while (level + 1 < len(self.sources[index].shapes)
+                           and all(stack(index, level + 1)['spacing'][dim] <= spacing
+                                   for dim, spacing in output_properties['spacing'].items())):
+                        level += 1
+                    views.append((stack(index, level), matrices[index]))
+                chunk, groups = level_blocks(views, output_properties, chunksize)
+                levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],
+                               'bytes': written_voxels(groups, output_properties, chunk) * voxel_bytes})
+        else:
+            shapes, _, _ = msi_utils.calc_resolution_levels(level0['shape'])
+            for shape in shapes:
+                factor = level0['shape']['x'] / shape['x']
+                levels.append({'spacing': float(level0['spacing']['x'] * factor), 'shape': shape,
+                               'bytes': int(np.prod(list(shape.values()))) * voxel_bytes})
+        return {'levels': levels, 'bytes': sum(level['bytes'] for level in levels), 'native': is_native}
+
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
              dimension=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
@@ -1928,31 +2040,18 @@ class MVSRegistration:
         if transform_key is None:
             transform_key = self.reg_transform_key
 
-        z_scale = get_metadata_z_scale(self.source_metadata) or get_metadata_z_scale(extra_metadata)
-
-        if z_scale is None:
-            z_scale = extract_z_scale(self.positions, self.scales)
-
-        z_positions = [position.get('z') for position in self.positions if 'z' in position]
-        num_z_positions = len(set(z_positions))
-        # a stack's sources are slices with no z position of their own, so num_z_positions is 0
-        # for exactly the case that most needs promoting - make_msims_3d() spaces them by index.
-        # This is the one place a stack becomes 3D: msims are stored 2D, and each consumer that
-        # needs the stacked geometry (here, create_preview(), the positions plot in _run) asks
-        # for it, rather than every level of every source being rebuilt up front
-        if num_z_positions > 1 or self.is_stack:
+        z_scale, num_z_positions, promote_z = self._fusion_z_geometry(extra_metadata)
+        # the one place a stack becomes 3D: msims are stored 2D, and each consumer that needs the stacked geometry
+        # asks for it, rather than every level of every source being rebuilt up front
+        if promote_z:
             with Timer('fusion: make_msims_3d', verbose=self.logging_time):
                 msims = make_msims_3d(msims, z_scale=z_scale, positions=self.positions)
         if not is_channel_overlay:
             with Timer('fusion: unify channels', verbose=self.logging_time):
                 msims = unify_msim_channels(msims)
 
-        is_native = ((output_spacing is None or str(output_spacing).lower() == 'native')
-                     and output_filename is not None and not is_channel_overlay)
-        if is_native:
-            output_spacing = 'min'
-        elif output_spacing is None or str(output_spacing).lower() == 'native':
-            output_spacing = 'mean'
+        is_native, output_spacing = self._output_spacing_method(
+            output_spacing, output_filename is not None and not is_channel_overlay)
         if (output_filename is not None and not is_native and not is_channel_overlay
                 and str(ome_version).startswith('0.6')):
             # before any work: multiview_stitcher's writer, which writes every other spacing, knows 0.4 and 0.5 only
@@ -1965,7 +2064,8 @@ class MVSRegistration:
         if self.verbose:
             logging.info(f'Output stack: {numpy_to_native(output_stack_properties)}')
         data_size = np.prod(list(output_stack_properties['shape'].values())) * sim0.dtype.itemsize
-        logging.info(f'Fusing {print_hbytes(data_size)}')
+        # the bounding box, not what is written: see estimate_fusion_size()
+        logging.info(f'Fusion output bounding box at full resolution: {print_hbytes(data_size)}')
 
         # Peak memory while fusing is set by how many sources land in one output chunk, not by
         # the output's size: every source overlapping a chunk is transformed into a full-chunk
@@ -2013,23 +2113,12 @@ class MVSRegistration:
             fuse_func = self.create_fusion_method(fusion_method, sim0)
             if fuse_func:
                 saving_zarr = output_filename is not None
-                if output_chunksize is None and saving_zarr and tile_size:
-                    if not isinstance(tile_size, (list, tuple)):
-                        tile_size = [tile_size] * 2
-                    output_chunksize = xyz_to_dict(tile_size)
-                    if 'z' in output_stack_properties['shape'] and 'z' not in output_chunksize:
-                        # tile_size says nothing about z, so the budget decides it
-                        output_chunksize['z'] = default_output_chunksize.get('z', 1)
+                if output_chunksize is None and saving_zarr:
+                    with Timer('fusion: export chunk sizes', verbose=self.logging_time):
+                        output_chunksize = self._export_chunksize(sim0.dtype, output_stack_properties, msims,
+                                                                  num_z_positions, tile_size)
                 if output_chunksize is None:
-                    # no caller value and no configured tile_size: fall back to the memory budget,
-                    # taken for an export at the export's own block size rather than a preview's
-                    if saving_zarr:
-                        with Timer('fusion: export chunk sizes', verbose=self.logging_time):
-                            output_chunksize = get_export_chunk_sizes(
-                                sim0.dtype, output_stack_properties, msims,
-                                num_z_positions=num_z_positions)
-                    else:
-                        output_chunksize = dict(default_output_chunksize)
+                    output_chunksize = dict(default_output_chunksize)
                 # a chunk past the output's extent also fails dask's zarr write-alignment check, with a warning
                 output_chunksize = {dim: min(int(size), output_stack_properties['shape'].get(dim, int(size)))
                                     for dim, size in output_chunksize.items()}

@@ -47,7 +47,6 @@ PERFORMANCE
 
 MINOR
 
-- [ ] fusion size accurate for native mode with mixed-sizes? (reporting: 24.5TB, expected effectively around ~350GB)
 - [ ] fusion bar not indicative of progress, showing current pyramid level may also be informative
 - [ ] disabling plugin doesnt remove left had overview window, it should completely disable plugin
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
@@ -213,6 +212,9 @@ REFACTORING
   and transform type (sift rigid handles the slides project's ~6 deg section rotations).
 
 ### Fusion
+- **Output size in the export question** - 'Export fused data?' shows the uncompressed output, per level in
+  the log, from source geometry and the registration's mappings (no msims; 0.1s for meatballs). Native fusion's
+  is exactly the blocks it writes (meatballs 2.0GB, where 'Fusing 21.8GB' was the full-resolution bounding box).
 - **Dask 'input Dask array will be rechunked' warning** - raised for every fused block at the array's edge,
   whose zarr chunk the array ends in: a false alarm, as each block is one chunk with one writer. Filtered around
   the fusion call: a napari worker (superqt) puts 'always' ahead of module-level filters. Chunks are also clipped

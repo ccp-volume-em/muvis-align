@@ -909,3 +909,48 @@ def test_init_progress_builds_the_msims_with_progress(monkeypatch, tmp_path):
     # ensure_msims is mocked, so later reads reach it too: the first, building call carries the factory
     assert reg.ensure_msims.call_args_list[0] == call(progress_factory=factory)
     assert [(record['total'], record['done']) for record in records] == [(2, 2)]
+
+
+@pytest.mark.parametrize('spacing, registered', [('native', False), ('native', True), ('mean', False)],
+                         ids=['native', 'native-registered', 'dense'])
+def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, spacing, registered):
+    """From source geometry alone: native fusion's written blocks level by level, or the dense pyramid's shapes."""
+    from multiview_stitcher import msi_utils, param_utils
+    from muvis_align import fusion_slabs
+    from muvis_align.image.util import get_msim_image0
+
+    reg = prepared_registration(ALL_TILES, tmp_path, preprocess=False)
+    transform_key = reg.source_transform_key
+    if registered:
+        angle = np.deg2rad(5)
+        correction = param_utils.affine_to_xaffine(np.array([[np.cos(angle), -np.sin(angle), 3.0],
+                                                             [np.sin(angle), np.cos(angle), -2.0], [0, 0, 1]]))
+        reg.mappings = {index: correction for index in range(len(reg.msims))}
+        for msim in reg.msims:
+            msi_utils.set_affine_transform(msim, correction, transform_key=reg.reg_transform_key,
+                                           base_transform_key=reg.source_transform_key)
+        transform_key = reg.reg_transform_key
+    written = []
+    fuse_into_zarr_array = fusion_slabs.fuse_into_zarr_array
+
+    def recording(sims, store_url, key, output_properties, chunk, **kwargs):
+        if kwargs.get('groups') is not None:
+            written.append(fusion_slabs.written_voxels(kwargs['groups'], output_properties, chunk))
+        return fuse_into_zarr_array(sims, store_url, key, output_properties, chunk, **kwargs)
+
+    monkeypatch.setattr(fusion_slabs, 'fuse_into_zarr_array', recording)
+
+    estimate = reg.estimate_fusion_size('average', spacing, transform_key=transform_key)
+    fused, _ = reg.fuse(reg.msims, fusion_method='average', output_spacing=spacing, transform_key=transform_key,
+                        output_filename='fused', ome_version='0.5')
+
+    image = get_msim_image0(reg.msims[0])
+    voxel_bytes = image.sizes['c'] * image.sizes.get('t', 1) * image.dtype.itemsize
+    if spacing == 'native':
+        assert estimate['native']
+        assert [level['bytes'] for level in estimate['levels']] == [voxels * voxel_bytes for voxels in written]
+    else:
+        shapes = [dict(msi_utils.get_sim_from_msim(fused, scale=key).sizes)
+                  for key in msi_utils.get_sorted_scale_keys(fused)]
+        assert [level['shape'] for level in estimate['levels']] == [
+            {dim: size for dim, size in shape.items() if dim in 'zyx'} for shape in shapes]

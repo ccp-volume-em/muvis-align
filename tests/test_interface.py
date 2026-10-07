@@ -11,6 +11,7 @@ import yaml
 import numpy as np
 from qtpy.QtWidgets import QMessageBox
 
+from muvis_align.util import print_hbytes
 from muvis_align._widget import MainWidget
 from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
@@ -1348,21 +1349,28 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._napari_view_add_fused_data = MagicMock()
-    monkeypatch.setattr(
-        interface_module.QMessageBox,
-        "question",
-        lambda *_: getattr(interface_module.QMessageBox, reply),
-    )
+    bare_interface.reg.estimate_fusion_size.return_value = {
+        "levels": [{"spacing": 0.01, "bytes": 1500}, {"spacing": 0.02, "bytes": 500}], "bytes": 2000, "native": True}
+    messages = []
+
+    def question(_parent, _title, message, *_):
+        messages.append(message)
+        return getattr(interface_module.QMessageBox, reply)
+
+    monkeypatch.setattr(interface_module.QMessageBox, "question", question)
     # fuse() always returns real msims in production - this test only cares about tile_size
     # parsing and state transitions, so stand in a passthrough for the msim->sim extraction step
     monkeypatch.setattr(interface_module, "extract_sims_from_fused", lambda result: result)
 
     bare_interface.fusion_process()
 
+    # the question carries the estimate, made for the fusion about to run
+    assert f"Estimated output: {print_hbytes(2000)} uncompressed in 2 resolution levels" in messages[0]
     if reply == "No":
         assert not bare_interface.reg.fuse.called
         assert not bare_interface._napari_view_add_fused_data.called
         return
+    assert bare_interface.reg.estimate_fusion_size.call_args.kwargs["tile_size"] == expected
     assert bare_interface.reg.fuse.call_args.kwargs["tile_size"] == expected
     assert (
         bare_interface.reg.fuse.call_args.kwargs["output_filename"]

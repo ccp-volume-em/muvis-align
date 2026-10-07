@@ -13,7 +13,7 @@ import numpy as np
 import ngff_zarr
 import zarr
 import multiview_stitcher.fusion._core as fusion_core
-from multiview_stitcher import msi_utils, mv_graph, ngff_utils
+from multiview_stitcher import msi_utils, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.Timer import Timer
@@ -21,26 +21,54 @@ from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stac
 
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):
-    """Per source and spatial dim, the (low, high) physical bounds of what it reaches in the output: its box padded
-    for interpolation, by multiview_stitcher's own rule - except in a dim the sources are grid-aligned in, or have
-    a single plane in."""
-    sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
-    params = [si_utils.get_affine_from_sim(sim, transform_key=transform_key) for sim in sims]
-    # per time point, as multiview_stitcher's fuse() asks it
-    params = [param.isel(t=0) if 't' in param.dims else param for param in params]
-    boxes = [si_utils.get_stack_properties_from_sim(sim) for sim in sims]
-    aligned = fusion_core._get_grid_aligned_translation_dims(
-        sparams=params, views_bb=boxes, output_stack_properties=output_stack_properties, sdims=sdims)
-    bounds = np.empty((len(sims), len(sdims), 2))
-    for index, sim in enumerate(sims):
-        vertices = mv_graph.get_vertices_from_stack_props(
-            si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key))
-        for axis, dim in enumerate(sdims):
-            # a single plane's spacing is a placeholder 1.0: padded by it, a section reaches its neighbours' blocks
-            single_plane = boxes[index]['shape'][dim] == 1
-            padding = 0.0 if dim in aligned or single_plane else interpolation_order * boxes[index]['spacing'][dim]
-            bounds[index, axis] = vertices[:, axis].min() - padding, vertices[:, axis].max() + padding
-    return bounds
+    """view_bounds() of sims, each at its own geometry and transform."""
+    views = []
+    for sim in sims:
+        param = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+        # per time point, as multiview_stitcher's fuse() asks it
+        param = param.isel(t=0) if 't' in param.dims else param
+        views.append((si_utils.get_stack_properties_from_sim(sim), np.asarray(param, dtype=float)))
+    return view_bounds(views, output_stack_properties, interpolation_order)
+
+
+def _grid_aligned_dims(stacks, matrices, output_stack_properties, sdims, tol=1e-6):
+    """multiview_stitcher's _get_grid_aligned_translation_dims on plain arrays: the dims every view only translates
+    in, at the output's spacing, by whole pixels."""
+    ndim = len(sdims)
+    linear = matrices[:, :ndim, :ndim]
+    aligned = []
+    for axis, dim in enumerate(sdims):
+        others = [other for other in range(ndim) if other != axis]
+        spacing = np.array([stack['spacing'][dim] for stack in stacks])
+        offsets = (output_stack_properties['origin'][dim] - matrices[:, axis, ndim]
+                   - np.array([stack['origin'][dim] for stack in stacks]))
+        pixel_offsets = offsets / np.where(spacing == 0, np.nan, spacing)
+        if (np.allclose(linear[:, axis, axis], 1, atol=tol)
+                and np.allclose(linear[:, axis, others], 0, atol=tol) and np.allclose(linear[:, others, axis], 0, atol=tol)
+                and np.allclose(spacing, output_stack_properties['spacing'][dim], atol=tol)
+                and np.all(np.isclose(pixel_offsets, np.round(pixel_offsets), atol=tol))):
+            aligned.append(dim)
+    return aligned
+
+
+def view_bounds(views, output_stack_properties, interpolation_order=1):
+    """Per view - (stack properties, affine matrix) - and spatial dim, the (low, high) physical bounds of what it
+    reaches in the output: its box padded for interpolation, by multiview_stitcher's own rule - except in a dim the
+    views are grid-aligned in, or have a single plane in."""
+    stacks = [stack for stack, _ in views]
+    sdims = list(stacks[0]['shape'])
+    ndim = len(sdims)
+    matrices = np.stack([matrix for _, matrix in views]).astype(float)
+    shape = np.array([[stack['shape'][dim] for dim in sdims] for stack in stacks], dtype=float)
+    spacing = np.array([[stack['spacing'][dim] for dim in sdims] for stack in stacks], dtype=float)
+    origin = np.array([[stack['origin'][dim] for dim in sdims] for stack in stacks], dtype=float)
+    corners = np.array(list(np.ndindex(*[2] * ndim)), dtype=float)
+    local = corners[None] * ((shape - 1) * spacing)[:, None] + origin[:, None]
+    vertices = np.einsum('nij,nkj->nki', matrices[:, :ndim, :ndim], local) + matrices[:, None, :ndim, ndim]
+    aligned = _grid_aligned_dims(stacks, matrices, output_stack_properties, sdims)
+    # a single plane's spacing is a placeholder 1.0: padded by it, a section reaches its neighbours' blocks
+    padding = np.where((shape == 1) | np.isin(sdims, aligned)[None], 0.0, interpolation_order * spacing)
+    return np.stack([vertices.min(axis=1) - padding, vertices.max(axis=1) + padding], axis=-1)
 
 
 def _block_overlaps(bounds, origin, spacing, chunk, nblocks):
@@ -150,7 +178,8 @@ def prioritise_finer_views(fusion_func, group_params, group_ranks):
 
 
 def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize, fusion_func=None,
-                         creation_kwargs=None, batch_options=None, interpolation_order=1, desc=None, ranks=None):
+                         creation_kwargs=None, batch_options=None, interpolation_order=1, desc=None, ranks=None,
+                         groups=None):
     """Fuse `sims` into a new zarr array at store_url: only the blocks some source reaches, each from only the sources
     reaching it (one prepare_block_fusion per set of them, ~2ms). With `ranks` (lower first, e.g. pixel sizes), a
     block whose sources differ in rank fuses only the lowest-ranked at each pixel. Returns dims and properties."""
@@ -158,8 +187,9 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     dims = list(sims[0].dims)
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
     block_axes = [dims.index(dim) for dim in sdims]
-    bounds = source_bounds(sims, transform_key, output_stack_properties, interpolation_order)
-    groups = block_sources(bounds, output_stack_properties, output_chunksize, sdims)
+    if groups is None:
+        bounds = source_bounds(sims, transform_key, output_stack_properties, interpolation_order)
+        groups = block_sources(bounds, output_stack_properties, output_chunksize, sdims)
     batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
 
     def prepare(sources, create_output):
@@ -342,6 +372,37 @@ def native_level_stack_properties(level0_properties, level_spacings, scaled_dims
     return levels
 
 
+def native_levels(source_spacings, level0_properties, scaled_dims, tolerance=0.05):
+    """(pixel size, its native_level_stack_properties, indices of the sources fused into it) per level of a native
+    fusion."""
+    level_spacings = native_level_spacings(source_spacings, [level0_properties['shape'][dim] for dim in scaled_dims],
+                                           tolerance=tolerance)
+    levels = native_level_stack_properties(level0_properties, level_spacings, scaled_dims)
+    return [(level_spacing, properties,
+             [index for index, spacing in enumerate(source_spacings) if spacing <= level_spacing * (1 + tolerance)])
+            for level_spacing, properties in zip(level_spacings, levels)]
+
+
+def level_blocks(views, output_properties, output_chunksize, interpolation_order=1):
+    """(chunk size, {source group: blocks}) of one fused level, its views - (stack properties, affine matrix) - at
+    the source levels read for it: the chunk clipped to the level, then shrunk to the memory budget."""
+    sdims = list(views[0][0]['shape'])
+    bounds = view_bounds(views, output_properties, interpolation_order)
+    chunk = {dim: min(int(output_chunksize[dim]), output_properties['shape'][dim]) for dim in output_chunksize}
+    chunk = budget_chunksize(bounds, output_properties, chunk, sdims, default_export_fusion_chunk_bytes,
+                             4 * fusion_stack_arrays)
+    return chunk, block_sources(bounds, output_properties, chunk, sdims)
+
+
+def written_voxels(groups, output_properties, chunk):
+    """Spatial voxels in the blocks some source reaches, edge blocks clipped to the output."""
+    sdims = list(output_properties['shape'])
+    blocks = np.array([block for group_blocks in groups.values() for block in group_blocks]).reshape(-1, len(sdims))
+    chunks = np.array([chunk[dim] for dim in sdims])
+    shape = np.array([output_properties['shape'][dim] for dim in sdims])
+    return int(np.prod(np.minimum(chunks, shape - blocks * chunks), axis=1).sum())
+
+
 def level_paths(count):
     """'0'..'9', zero-padded from 11 levels on: readers that list a group's arrays by name (napari's own) sort them
     as text, putting '10' after '1' - the multiscales metadata, which names them, has them in order either way."""
@@ -357,33 +418,32 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
     zarr_options = (zarr_options or {}) | {'ome_zarr': True}
     _, ngff_version, creation_kwargs = _zarr_options(zarr_options)
     _remove_existing(output_zarr_url, zarr_options)
-    level_spacings = native_level_spacings(source_spacings, [level0_properties['shape'][dim] for dim in scaled_dims],
-                                           tolerance=tolerance)
+    levels = native_levels(source_spacings, level0_properties, scaled_dims, tolerance=tolerance)
     sizes, counts = np.unique(np.round(source_spacings, 4), return_counts=True)
-    logging.info(f'Native fusion levels {[float(round(spacing, 4)) for spacing in level_spacings]}, sources by pixel'
+    logging.info(f'Native fusion levels {[float(round(level[0], 4)) for level in levels]}, sources by pixel'
                  f' size {dict(zip(sizes.tolist(), counts.tolist()))}')
-    levels = native_level_stack_properties(level0_properties, level_spacings, scaled_dims)
     paths = level_paths(len(levels))
-    for index, (level_spacing, properties) in enumerate(zip(level_spacings, levels)):
+    for index, (level_spacing, properties, selected) in enumerate(levels):
         output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
-        selected = [msim for msim, spacing in zip(msims, source_spacings) if spacing <= level_spacing * (1 + tolerance)]
         sims = [msi_utils.get_sim_from_msim(
-            msim, scale='scale%s' % msi_utils.get_res_level_from_spacing(msim, output_properties['spacing']))
-            for msim in selected]
-        level_chunksize = {dim: min(int(output_chunksize[dim]), properties['shape'][dim]) for dim in output_chunksize}
-        level_chunksize = budget_chunksize(
-            source_bounds(sims, transform_key, output_properties, interpolation_order), output_properties,
-            level_chunksize, list(si_utils.get_spatial_dims_from_sim(sims[0])), default_export_fusion_chunk_bytes,
-            4 * fusion_stack_arrays)
+            msims[source], scale='scale%s' % msi_utils.get_res_level_from_spacing(msims[source],
+                                                                                 output_properties['spacing']))
+            for source in selected]
+        views = []
+        for sim in sims:
+            param = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+            views.append((si_utils.get_stack_properties_from_sim(sim),
+                          np.asarray(param.isel(t=0) if 't' in param.dims else param, dtype=float)))
+        level_chunksize, groups = level_blocks(views, output_properties, output_chunksize, interpolation_order)
         # tiles over the overview: where a finer source covers a pixel, the coarser one under it is left out
         fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key, output_properties,
                              level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
                              batch_options=batch_options, interpolation_order=interpolation_order,
                              desc=f'Level {index} at {level_spacing:.4g} ({len(sims)} sources)',
-                             ranks=[spacing for spacing in source_spacings if spacing <= level_spacing * (1 + tolerance)])
+                             ranks=[source_spacings[source] for source in selected], groups=groups)
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
-        level0_properties, [level['factors'] for level in levels],
+        level0_properties, [properties['factors'] for _, properties, _ in levels],
         nsdims=list(si_utils.get_nonspatial_dims_from_sim(sim0)), time_transform=ngff_utils.get_ngff_time_transform(sim0))
     group = zarr.open_group(output_zarr_url, mode='a',
                             **ngff_utils.zarr_group_creation_kwargs_for_ngff_version(storage_ngff_version(ngff_version)))

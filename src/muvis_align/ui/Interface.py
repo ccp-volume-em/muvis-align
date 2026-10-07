@@ -42,7 +42,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle
+    resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle, print_hbytes
 
 
 patch_shapes_text_coords()
@@ -1872,13 +1872,8 @@ class Interface:
                     pbar.update(1)
         return True
 
-    @catch_run_errors
-    def run_fusion(self, progress_factory=None):
-        operation = self.params['registration']['operation']
-        output_filename = operation_to_past_participle(operation)
-        # empty means 'size it automatically': fuse() then blocks the export against what one
-        # block costs in memory, rather than against a number picked for the on-disk layout. The
-        # saves below are on-disk layout only, with no per-block cost, so they keep tiling.
+    def _fusion_tile_size(self):
+        """The configured tile size, or None: fuse() then sizes the export's blocks by what one costs in memory."""
         tile_size = self.params['fusion'].get('tile_size')
         if isinstance(tile_size, str):
             tile_size = tile_size.strip()
@@ -1888,6 +1883,35 @@ class Interface:
                 tile_size = [int(size.strip()) for size in tile_size.split(',')]
             else:
                 tile_size = int(tile_size)
+        return tile_size
+
+    def _fusion_size_text(self):
+        """' Estimated output: ...' for the export question, logged per level; empty if it cannot be estimated."""
+        try:
+            with Timer('fusion size estimate', verbose=self._timing_verbose()):
+                estimate = self.reg.estimate_fusion_size(
+                    self.params['fusion']['method'], output_spacing=self.params['fusion']['spacing'],
+                    transform_key=self.get_best_transform_key(),
+                    dimension=self.params['input_output']['registration_dimension'],
+                    tile_size=self._fusion_tile_size(), extra_metadata=self.extra_metadata)
+        except Exception as error:
+            # the question still stands without a size
+            logging.warning(f'Could not estimate the fusion size: {error}')
+            return ''
+        if estimate is None:
+            return ''
+        levels = estimate['levels']
+        logging.info(f'Fusion size estimate: {print_hbytes(estimate["bytes"])} uncompressed, per level '
+                     + ', '.join(f'{level["spacing"]:.4g}: {print_hbytes(level["bytes"])}' for level in levels))
+        return (f'\nEstimated output: {print_hbytes(estimate["bytes"])} uncompressed'
+                f' in {len(levels)} resolution level{"s" if len(levels) != 1 else ""}.')
+
+    @catch_run_errors
+    def run_fusion(self, progress_factory=None):
+        operation = self.params['registration']['operation']
+        output_filename = operation_to_past_participle(operation)
+        tile_size = self._fusion_tile_size()
+        # the saves below are on-disk layout only, with no per-block cost, so they keep tiling
         save_tile_size = tile_size or default_chunk_size
 
         # written straight to zarr, the fusion is the whole export: a second phase would hold its bar at half
@@ -1946,7 +1970,7 @@ class Interface:
     def fusion_process(self):
         self.copy_params_to_output()
         message = 'Fusion was already performed. ' if self.reg.is_fused() else ''
-        message += 'Export fused data?'
+        message += 'Export fused data?' + self._fusion_size_text()
         reply = QMessageBox.question(None, 'muvis-align', message,
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
