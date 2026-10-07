@@ -1,51 +1,28 @@
-"""ZarrImageSource must read metadata without building a msim - and get identical answers.
-
-Project load only ever reads shapes, pixel sizes, origin, dtype and channels off a source, but
-init_metadata used to build the whole msim (one xarray sim per pyramid level, plus one
-zarr.json read per level) to obtain them: ~100ms per source, minutes across a few thousand.
-The metadata now comes off the store's own consolidated metadata in a single read, with
-ngff_zarr's version-aware parse as the fallback.
-
-Both paths must agree exactly with what the msim would have reported - that equivalence is what
-makes the fast path safe, so it is asserted here rather than argued from the NGFF spec.
-"""
-import numpy as np
+"""ZarrImageSource reads its metadata off the store's consolidated metadata (ngff_zarr's parse as the
+fallback) without building a msim, and must get the same answers the msim would report."""
 import pytest
 from multiview_stitcher import msi_utils, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_zarr_util import (_read_consolidated_ome_zarr_metadata,
                                              _read_ngff_ome_zarr_metadata,
                                              read_ome_zarr_source_metadata)
 from muvis_align.image.source_helper import create_image_source
+from tests.data_builders import assert_same_metadata, write_ome_zarr
 
-# (label, dim_order, shape) - the layouts a source can actually arrive in
+METADATA_KEYS = ('dimension_order', 'shapes', 'dtype', 'nchannels', 'pixel_sizes', 'position')
+
+# (dim_order, shape, pixel size, translation) - the layouts a source can actually arrive in
 LAYOUTS = [
-    ('2d', 'yx', (256, 192)),
-    ('2d forced t/c', 'tcyx', (1, 1, 256, 192)),
-    ('multichannel', 'cyx', (3, 256, 192)),
-    ('3d', 'zyx', (4, 256, 192)),
-    ('3d multichannel', 'czyx', (2, 4, 256, 192)),
-    ('full', 'tczyx', (1, 2, 4, 256, 192)),
+    pytest.param('yx', (256, 192), None, None, id='2d'),
+    pytest.param('tcyx', (1, 1, 256, 192), None, None, id='2d forced t/c'),
+    pytest.param('cyx', (3, 256, 192), None, None, id='multichannel'),
+    pytest.param('zyx', (4, 256, 192), None, None, id='3d'),
+    pytest.param('czyx', (2, 4, 256, 192), None, None, id='3d multichannel'),
+    pytest.param('tczyx', (1, 2, 4, 256, 192), None, None, id='full'),
+    pytest.param('zyx', (4, 256, 192), {'z': 7.0, 'y': 0.25, 'x': 0.125}, {'z': -2.0, 'y': 11.5, 'x': 4.25},
+                 id='non-default spacing and origin'),
 ]
-
-
-def write_store(path, dim_order, shape, pixel_size=None, translation=None, levels=2):
-    """A real multi-level OME-Zarr, written the way convert writes one."""
-    spatial = [dim for dim in dim_order if dim in 'zyx']
-    pixel_size = pixel_size or {dim: 0.5 for dim in spatial}
-    translation = translation or {dim: 3.0 for dim in spatial}
-    data = np.zeros(shape, dtype=np.uint16)
-    written = []
-    for level in range(levels):
-        factor = 2 ** level
-        slicing = tuple(slice(None, None, factor if dim in 'yx' else 1) for dim in dim_order)
-        written.append((data[slicing],
-                        {dim: pixel_size[dim] * (factor if dim in 'yx' else 1)
-                         for dim in spatial}))
-    save_ome_multiscale_levels(str(path), written, dim_order, [], translation)
-    return str(path)
 
 
 def metadata_via_msim(path):
@@ -62,44 +39,26 @@ def metadata_via_msim(path):
             'nchannels': image0.sizes.get('c', 1)}
 
 
-def compare(fast, reference):
-    assert fast['dimension_order'] == reference['dimension_order']
-    assert [tuple(shape) for shape in fast['shapes']] == reference['shapes']
-    assert fast['dtype'] == reference['dtype']
-    assert fast['nchannels'] == reference['nchannels']
-    assert len(fast['pixel_sizes']) == len(reference['pixel_sizes'])
-    for got, want in zip(fast['pixel_sizes'], reference['pixel_sizes']):
-        assert set(got) == set(want)
-        for dim in want:
-            assert got[dim] == pytest.approx(float(want[dim]))
-    assert set(fast['position']) == set(reference['position'])
-    for dim in reference['position']:
-        assert fast['position'][dim] == pytest.approx(float(reference['position'][dim]))
-
-
-@pytest.mark.parametrize('label, dim_order, shape', LAYOUTS)
-def test_consolidated_fast_path_matches_the_msim(tmp_path, label, dim_order, shape):
-    path = write_store(tmp_path / 'store.ome.zarr', dim_order, shape)
-    fast = _read_consolidated_ome_zarr_metadata(path)
-    assert fast is not None, 'consolidated fast path should apply to a freshly written v0.5 store'
-    compare(fast, metadata_via_msim(path))
-
-
-@pytest.mark.parametrize('label, dim_order, shape', LAYOUTS)
-def test_ngff_fallback_path_matches_the_msim(tmp_path, label, dim_order, shape):
-    path = write_store(tmp_path / 'store.ome.zarr', dim_order, shape)
-    compare(_read_ngff_ome_zarr_metadata(path), metadata_via_msim(path))
-
-
-def test_non_default_spacing_and_origin_survive(tmp_path):
-    path = write_store(tmp_path / 'store.ome.zarr', 'zyx', (4, 256, 192),
-                       pixel_size={'z': 7.0, 'y': 0.25, 'x': 0.125},
-                       translation={'z': -2.0, 'y': 11.5, 'x': 4.25})
+@pytest.mark.parametrize('dim_order, shape, pixel_size, translation', LAYOUTS)
+def test_both_read_paths_and_the_source_match_the_msim(tmp_path, dim_order, shape, pixel_size, translation):
+    path = write_ome_zarr(tmp_path / 'store.ome.zarr', dim_order, shape, pixel_size, translation, levels=2)
     reference = metadata_via_msim(path)
-    compare(_read_consolidated_ome_zarr_metadata(path), reference)
-    compare(_read_ngff_ome_zarr_metadata(path), reference)
-    assert _read_consolidated_ome_zarr_metadata(path)['position'] == pytest.approx(
-        {'z': -2.0, 'y': 11.5, 'x': 4.25})
+
+    consolidated = _read_consolidated_ome_zarr_metadata(path)
+    assert consolidated is not None, 'the consolidated fast path should apply to a freshly written v0.5 store'
+    assert_same_metadata(consolidated, reference, METADATA_KEYS)
+    assert_same_metadata(_read_ngff_ome_zarr_metadata(path), reference, METADATA_KEYS)
+    if translation is not None:
+        assert consolidated['position'] == pytest.approx(translation)
+
+    source = create_image_source(path)
+    source_metadata = {'dimension_order': source.dimension_order, 'shapes': source.shapes, 'dtype': source.dtype,
+                       'nchannels': len(source.channels), 'pixel_sizes': source.pixel_sizes}
+    assert_same_metadata(source_metadata, reference, METADATA_KEYS[:-1])
+    # no msim during init, and it still builds correctly on first access
+    assert source._msim is None
+    keys = msi_utils.get_sorted_scale_keys(source.msim)
+    assert [tuple(source.msim[key].ds['image'].shape) for key in keys] == reference['shapes']
 
 
 def test_fast_path_declines_a_missing_or_v2_store(tmp_path):
@@ -109,40 +68,30 @@ def test_fast_path_declines_a_missing_or_v2_store(tmp_path):
     assert _read_consolidated_ome_zarr_metadata(str(tmp_path / 'v2.ome.zarr')) is None
 
 
-@pytest.mark.parametrize('label, dim_order, shape', LAYOUTS)
-def test_source_reports_the_same_metadata_and_builds_no_msim(tmp_path, label, dim_order, shape):
-    path = write_store(tmp_path / 'store.ome.zarr', dim_order, shape)
-    source = create_image_source(path)
-    reference = metadata_via_msim(path)
-
-    assert source.dimension_order == reference['dimension_order']
-    assert [tuple(s) for s in source.shapes] == reference['shapes']
-    assert source.dtype == reference['dtype']
-    assert len(source.channels) == reference['nchannels']
-    for got, want in zip(source.pixel_sizes, reference['pixel_sizes']):
-        for dim in want:
-            assert got[dim] == pytest.approx(float(want[dim]))
-
-    # the whole point: no msim was constructed during init
-    assert source._msim is None
-    # and it still builds correctly, with this run's own transform re-stamped, on first access
-    assert source.msim is not None
-    assert source._msim is not None
-    keys = msi_utils.get_sorted_scale_keys(source.msim)
-    assert [tuple(source.msim[key].ds['image'].shape) for key in keys] == reference['shapes']
-
-
 def test_real_v04_store_declines_the_fast_path_but_still_matches(tmp_path):
-    """v0.4 stores have no consolidated zarr-v3 root, so they must take ngff_zarr's own parse -
-    still without building the msim, and still with identical answers."""
-    path = str(tmp_path / 'v04.ome.zarr')
-    data = np.zeros((256, 192), dtype=np.uint16)
-    save_ome_multiscale_levels(path, [(data, {'y': 0.5, 'x': 0.5}),
-                                      (data[::2, ::2], {'y': 1.0, 'x': 1.0})],
-                               'yx', [], {'y': 3.0, 'x': 3.0}, ome_version='0.4')
+    """v0.4 stores have no consolidated zarr-v3 root, so they take ngff_zarr's own parse - still without a msim."""
+    path = write_ome_zarr(tmp_path / 'v04.ome.zarr', levels=2, ome_version='0.4')
 
     assert _read_consolidated_ome_zarr_metadata(path) is None
-    compare(read_ome_zarr_source_metadata(path), metadata_via_msim(path))
+    assert_same_metadata(read_ome_zarr_source_metadata(path), metadata_via_msim(path), METADATA_KEYS)
 
     source = create_image_source(path)
     assert source._msim is None
+
+
+def test_a_written_store_is_padded_down_to_min_length(tmp_path):
+    # already below default_chunk_size (e.g. a scaled convert output), yet it still gets a pyramid
+    path = write_ome_zarr(tmp_path / 'small.ome.zarr', 'yx', (512, 768), min_length=128)
+
+    source = create_image_source(path)
+
+    sizes = [max(size for dim, size in zip(source.dimension_order, shape) if dim in 'xyz') for shape in source.shapes]
+    assert sizes == [768, 384, 192, 96]
+
+
+def test_a_version_ome_zarr_py_cannot_write_is_refused_not_relabelled():
+    from muvis_align.image.ome_zarr_helper import get_ome_zarr_format
+
+    assert get_ome_zarr_format('0.5')[1].version == '0.5'
+    with pytest.raises(ValueError, match='0.6'):
+        get_ome_zarr_format('0.6')
