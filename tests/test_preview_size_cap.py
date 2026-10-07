@@ -40,20 +40,26 @@ def fused_bytes(msims):
     return estimate_fused_size(msims, KEY)[0]
 
 
-def test_drop_finest_level_removes_one_level_or_reports_it_cannot():
-    msims = grid()
-    assert len(msi_utils.get_sorted_scale_keys(msims[0])) == 4
+@pytest.mark.parametrize('levels, drop_levels, expected_levels', [
+    (4, 1, 3),
+    # several levels cost one rebuild, not one each
+    (4, 2, 2),
+    # asking for more than there are leaves the coarsest level rather than emptying the msim
+    (3, 9, 1),
+])
+def test_drop_finest_level_removes_levels_down_to_the_coarsest(levels, drop_levels, expected_levels):
+    msims = grid(levels=levels)
 
-    reduced, changed = drop_finest_msim_level(msims)
+    reduced, changed = drop_finest_msim_level(msims, levels=drop_levels)
 
     assert changed is True
-    assert len(msi_utils.get_sorted_scale_keys(reduced[0])) == 3
-    # and the new finest level is the old second one
-    assert reduced[0]['scale0'].ds['image'].shape == msims[0]['scale1'].ds['image'].shape
+    assert len(msi_utils.get_sorted_scale_keys(reduced[0])) == expected_levels
+    # the new finest level is the old one that many levels down
+    assert reduced[0]['scale0'].ds['image'].shape == msims[0][f'scale{levels - expected_levels}'].ds['image'].shape
 
-    # a single-level msim has nothing to drop, and says so rather than returning a copy
-    single, changed = drop_finest_msim_level(grid(levels=1))
-    assert changed is False
+
+def test_drop_finest_level_reports_a_single_level_msim_has_nothing_to_drop():
+    assert drop_finest_msim_level(grid(levels=1))[1] is False
 
 
 @pytest.mark.parametrize('levels, divisor, expect_untouched', [
@@ -140,35 +146,6 @@ def test_estimate_counts_the_output_stack_not_the_sources():
 
     # 4 tiles of 512x512 uint16 laid out with 10% overlap: under 4 separate tiles' worth
     assert 512 * 512 * 2 < size < 4 * 512 * 512 * 2
-
-
-@pytest.mark.parametrize('budget_gb', [0.001, 0.01, 0.1])
-def test_result_is_always_within_budget_or_as_coarse_as_possible(budget_gb):
-    msims = grid(count=3, size=1024, levels=5)
-    budget = int(budget_gb * 1024 ** 3)
-
-    capped = reduce_msims_to_fused_size(msims, KEY, max_bytes=budget)
-
-    levels = len(msi_utils.get_sorted_scale_keys(capped[0]))
-    assert fused_bytes(capped) <= budget or levels == 1
-
-
-def test_drop_finest_level_takes_several_levels_at_once():
-    """Dropping N levels must cost one rebuild, not N - each pass rebuilds every msim, which
-    on a large project is minutes per level dropped.
-    """
-    msims = grid(levels=4)
-
-    reduced, changed = drop_finest_msim_level(msims, levels=2)
-
-    assert changed is True
-    assert len(msi_utils.get_sorted_scale_keys(reduced[0])) == 2
-    assert reduced[0]['scale0'].ds['image'].shape == msims[0]['scale2'].ds['image'].shape
-
-    # asking for more than there are leaves the coarsest level rather than emptying the msim
-    floored, changed = drop_finest_msim_level(grid(levels=3), levels=9)
-    assert changed is True
-    assert len(msi_utils.get_sorted_scale_keys(floored[0])) == 1
 
 
 def test_reduction_reaches_the_budget_in_one_round_however_far_over_it_starts():

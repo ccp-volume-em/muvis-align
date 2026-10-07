@@ -26,27 +26,19 @@ def overview_array(msim):
     return np.asarray(msi_utils.get_sim_from_msim(msim).data)[0, 0]
 
 
-def test_composite_places_each_source_at_its_own_position():
-    """Two sources side by side land side by side, each keeping its own values."""
-    msims = [make_source(10, (0, 0)), make_source(20, (0, 8))]
+@pytest.mark.parametrize('second_x, shape, first_columns', [
+    (8, (8, 16), 8),
+    # plain overwrite where they overlap: an overview, not the fused result
+    (4, (8, 12), 4),
+], ids=['side by side', 'overlapping'])
+def test_composite_places_each_source_at_its_own_position(second_x, shape, first_columns):
+    msims = [make_source(10, (0, 0)), make_source(20, (0, second_x))]
 
     overview = overview_array(composite_msims_overview(msims, TRANSFORM_KEY))
 
-    assert overview.shape == (8, 16)
-    assert np.all(overview[:, :8] == 10)
-    assert np.all(overview[:, 8:] == 20)
-
-
-def test_composite_overwrites_where_sources_overlap():
-    """Plain overwrite, deliberately: this is an overview, not the fused result, and the last
-    source in is as good a choice as any for a picture of where things sit."""
-    msims = [make_source(10, (0, 0)), make_source(20, (0, 4))]
-
-    overview = overview_array(composite_msims_overview(msims, TRANSFORM_KEY))
-
-    assert overview.shape == (8, 12)
-    assert np.all(overview[:, :4] == 10)      # only the first source
-    assert np.all(overview[:, 4:] == 20)      # the second, over the overlap and beyond
+    assert overview.shape == shape
+    assert np.all(overview[:, :first_columns] == 10)
+    assert np.all(overview[:, first_columns:] == 20)
 
 
 def test_composite_keeps_the_geometry_the_fusion_would_have_had():
@@ -75,15 +67,13 @@ def test_composite_coarsens_rather_than_allocating_more_than_its_budget():
     assert np.all(small[:, small.shape[1] // 2:] == 20)
 
 
-def test_composite_declines_a_transform_it_cannot_paste():
-    """A rotation needs resampling rather than a paste - the caller falls back to fusing."""
-    msims = [make_source(10, (0, 0)), make_source(20, (0, 8), rotate=True)]
-
+@pytest.mark.parametrize('msims', [
+    # a rotation needs resampling rather than a paste - the caller falls back to fusing
+    [make_source(10, (0, 0)), make_source(20, (0, 8), rotate=True)],
+    [],
+], ids=['rotated', 'nothing'])
+def test_composite_declines_what_it_cannot_paste(msims):
     assert composite_msims_overview(msims, TRANSFORM_KEY) is None
-
-
-def test_composite_of_nothing_is_nothing():
-    assert composite_msims_overview([], TRANSFORM_KEY) is None
 
 
 def test_composite_computes_each_source_without_dask_threads():

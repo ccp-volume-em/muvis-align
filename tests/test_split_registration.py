@@ -8,6 +8,8 @@ from multiview_stitcher import msi_utils
 from muvis_align.split_registration import register_groups, split_groups, within_group_pairs
 from tests.data_builders import make_msim, prepared_registration, translation_affine
 
+ALL_TILES = sorted(glob.glob('data/S*/*.ome.zarr'))
+
 
 def test_groups_are_z_planes_or_for_channel_registration_channels():
     positions = [{'z': 0.1, 'y': 0, 'x': 0}, {'z': 0.0, 'y': 0, 'x': 5}, {'z': 0.1, 'y': 5, 'x': 0}]
@@ -79,20 +81,6 @@ def test_a_fused_plane_is_smoothed_with_its_background_filled_by_its_mean():
     assert np.all(smoothed > 0)
 
 
-def test_split_pairing_registers_no_pairs_across_planes(tmp_path):
-    reg = prepared_registration(sorted(glob.glob('data/S*/*.ome.zarr')), tmp_path)
-    params = {'method': 'phase_correlation', 'pairing': 'split', 'transform_type': 'translation', 'metrics': [],
-              'n_parallel_pairwise_regs': 1}
-
-    reg.register_pairs(reg.register_msims, params=params)
-    groups = reg.split_groups()
-    assert reg.pairs_graph.number_of_edges() > 0
-    assert all(groups[first] == groups[second] for first, second in reg.pairs_graph.edges)
-
-    results = reg.register_global(reg.pair_msims, params=params)
-    assert len(results['mappings']) == len(reg.pair_msims)
-
-
 def test_group_pairs_are_registered_binned_by_multiview_stitcher(monkeypatch):
     import muvis_align.split_registration as split_registration
     seen = {}
@@ -120,30 +108,25 @@ def test_a_group_is_labelled_by_its_sources_common_prefix_up_to_a_separator():
     assert group_label(['tile1', 'tile2']) == ''
 
 
-def test_split_group_pairs_are_saved_with_the_tile_pairs_and_restored_apart_from_them(tmp_path):
+def test_split_pairing_registers_within_planes_and_saves_group_pairs_apart_from_tile_pairs(tmp_path):
     import json
-    from muvis_align.MVSRegistration import MVSRegistration
 
-    def open_registration():
-        reg = MVSRegistration()
-        reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
-                 output_path=tmp_path.as_posix() + '/')
-        reg.init_data()
-        return reg
-
-    reg = open_registration()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(ALL_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'split', 'transform_type': 'translation', 'metrics': [],
               'n_parallel_pairwise_regs': 1}
-    reg.register(reg.register_msims, params=params)
+    results = reg.register(reg.register_msims, params=params)
 
+    groups = reg.split_groups()
+    assert reg.pairs_graph.number_of_edges() > 0
+    assert all(groups[first] == groups[second] for first, second in reg.pairs_graph.edges)
+    assert len(results['mappings']) == len(reg.pair_msims)
     saved = json.load(open(reg.output + 'pair_mappings.json'))
     group_entries = {key: value for key, value in saved.items() if value.get('kind') == 'split_group'}
     assert list(group_entries) == [json.dumps(['S000', 'S001'])]
     assert {'mapping', 'quality'} <= set(group_entries[json.dumps(['S000', 'S001'])])
     assert len(saved) - len(group_entries) == reg.pairs_graph.number_of_edges()
 
-    resumed = open_registration()
+    resumed = prepared_registration(ALL_TILES, tmp_path, preprocess=False)
     resumed.init_progress('registered', 'ome.zarr')
     # the labels match files under S000/ and S001/ - they must not come back as tile pairs
     assert resumed.pairs_graph.number_of_edges() == reg.pairs_graph.number_of_edges()

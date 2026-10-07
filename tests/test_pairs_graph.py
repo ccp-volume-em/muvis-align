@@ -71,25 +71,16 @@ def test_pairs_graph_has_a_node_per_source_even_with_no_pairs():
     assert not graph.edges
 
 
-def test_make_msims_2d_leaves_an_already_2d_msim_alone():
-    """Rebuilding a msim's DataTree is minutes of xarray construction for a few thousand
-    sources, so what is already 2D is passed through untouched."""
-    msims = [make_source((0, 0)), make_source((0, 6))]
-    assert all(msim_is_2d(msim) for msim in msims)
+def test_make_msims_2d_converts_only_what_is_not_already_2d():
+    """Rebuilding a msim's DataTree is slow for a few thousand sources, so what is already 2D is passed through."""
+    flat = [make_source((0, 0)), make_source((0, 6))]
+    deep = make_source((0, 0, 0), spatial_dims=('z', 'y', 'x'))
+    assert all(msim_is_2d(msim) for msim in flat) and not msim_is_2d(deep)
 
-    converted = make_msims_2d(msims)
+    converted = make_msims_2d(flat + [deep])
 
-    assert [id(msim) for msim in converted] == [id(msim) for msim in msims]
-
-
-def test_make_msims_2d_still_converts_a_3d_msim():
-    msims = [make_source((0, 0, 0), spatial_dims=('z', 'y', 'x'))]
-    assert not msim_is_2d(msims[0])
-
-    converted = make_msims_2d(msims)
-
-    assert converted[0] is not msims[0]
-    assert msim_is_2d(converted[0])
+    assert [id(msim) for msim in converted[:2]] == [id(msim) for msim in flat]
+    assert converted[2] is not deep and msim_is_2d(converted[2])
 
 
 def test_view_adjacency_graph_of_translated_sources_matches_multiview_stitchers():

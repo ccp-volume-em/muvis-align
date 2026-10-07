@@ -8,27 +8,17 @@ from muvis_align.metrics import calc_pair_metrics, quality_to_scalar
 from tests.data_builders import DATA_DIR, ZARR_FILES, prepared_registration
 
 
-def test_quality_to_scalar_selects_t0_from_dataarray_with_t_dim():
-    quality = xr.DataArray([0.75], dims=['t'], coords={'t': [0]})
-
+@pytest.mark.parametrize('quality, expected', [
+    (xr.DataArray([0.75], dims=['t'], coords={'t': [0]}), 0.75),
+    (xr.DataArray(0.5), 0.5),
+    (0.3, 0.3),
+    (None, None),
+], ids=['t0 of a t dim', 'dataarray without t', 'plain scalar', 'none'])
+def test_quality_to_scalar(quality, expected):
     result = quality_to_scalar(quality)
 
-    assert result == 0.75
-    assert isinstance(result, float)
-
-
-def test_quality_to_scalar_reduces_dataarray_without_t_dim():
-    quality = xr.DataArray(0.5)
-
-    result = quality_to_scalar(quality)
-
-    assert result == 0.5
-    assert isinstance(result, float)
-
-
-def test_quality_to_scalar_passes_through_plain_scalar():
-    assert quality_to_scalar(0.3) == 0.3
-    assert quality_to_scalar(None) is None
+    assert result == expected
+    assert expected is None or isinstance(result, float)
 
 
 @pytest.fixture(scope='module')

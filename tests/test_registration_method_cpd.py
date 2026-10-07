@@ -9,23 +9,22 @@ from muvis_align.registration_methods.RegistrationMethodCPD import (
 )
 from tests.data_builders import make_dummy_blob_spatial_image
 
-def test_detect_points_flips_2d_contour_centers_to_yx_order(monkeypatch):
+@pytest.mark.parametrize('areas, expected', [
+    ([(np.array([11.0, 7.0], dtype=np.float32), 10.0), (np.array([5.5, 2.0], dtype=np.float32), 4.0)],
+     [[7.0, 11.0], [2.0, 5.5]]),
+    ([], []),
+], ids=['contour centres flipped', 'no areas found'])
+def test_detect_points_flips_2d_contour_centers_to_yx_order(monkeypatch, areas, expected):
     data = make_dummy_blob_spatial_image((32, 48), [(7, 11), (2, 6)], 'yx')
     method = RegistrationMethodCPD(data, params={})
 
-    monkeypatch.setattr(
-        'muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
-        lambda data: [
-            (np.array([11.0, 7.0], dtype=np.float32), 10.0),
-            (np.array([5.5, 2.0], dtype=np.float32), 4.0),
-        ],
-    )
+    monkeypatch.setattr('muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
+                        lambda data: areas)
 
     points = method.detect_points(data)
 
-    assert len(points) == 2
-    assert np.allclose(points[0], [7.0, 11.0])
-    assert np.allclose(points[1], [2.0, 5.5])
+    assert len(points) == len(expected)
+    assert np.allclose(points, expected) if expected else points == []
 
 
 def test_detect_points_keeps_3d_blob_coordinates_unchanged(monkeypatch):
@@ -43,20 +42,6 @@ def test_detect_points_keeps_3d_blob_coordinates_unchanged(monkeypatch):
     points = method.detect_points(data)
 
     assert np.allclose(points, [[1.0, 6.0, 11.0], [3.0, 8.0, 5.0]])
-
-
-def test_detect_points_returns_empty_list_when_no_2d_areas_are_found(monkeypatch):
-    data = make_dummy_blob_spatial_image((32, 48), [(7, 11)], 'yx')
-    method = RegistrationMethodCPD(data, params={})
-
-    monkeypatch.setattr(
-        'muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
-        lambda data: [],
-    )
-
-    points = method.detect_points(data)
-
-    assert points == []
 
 
 def test_registration_reports_consistent_matches_and_inliers_for_translated_points(monkeypatch):

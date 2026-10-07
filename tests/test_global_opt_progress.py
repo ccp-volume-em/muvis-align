@@ -71,34 +71,25 @@ def test_many_passes_move_the_bar_without_filling_it():
     assert ends[-1] < 50, 'the passes filled a phase they had not finished'
 
 
-@pytest.mark.parametrize('emit, expected_pass', [
+@pytest.mark.parametrize('emit, expected_pass, most_while_running', [
     # converged early: the phase is still done with, so the bar crosses the rest of it
-    (lambda: emit_pass(iterations=7), 1),
+    (lambda: emit_pass(iterations=7), 1, 50),
     # more passes than there are edges to remove, and iterations past max_iter
-    (lambda: [emit_pass(iterations=600) for _ in range(5)], 5),
+    (lambda: [emit_pass(iterations=600) for _ in range(5)], 5, 50),
     # upstream saying it has finished completes the last pass
     (lambda: (emit_pass(iterations=3),
-              logging.getLogger(GLOBAL_OPT_LOGGER).info(FINISHED_MESSAGE, 0.05, 0.01)), 1),
-])
-def test_the_phase_finishes_however_far_the_passes_got(emit, expected_pass):
+              logging.getLogger(GLOBAL_OPT_LOGGER).info(FINISHED_MESSAGE, 0.05, 0.01)), 1, 50),
+    # upstream silent, or writing other lines: one phase that moves when the call returns, not an error
+    (lambda: (logging.getLogger(GLOBAL_OPT_LOGGER).debug('Glob opt iter %s', 3),
+              logging.getLogger(GLOBAL_OPT_LOGGER).debug('something else entirely')), 1, 0),
+], ids=['converged early', 'more passes than edges', 'upstream finished', 'upstream silent'])
+def test_the_phase_finishes_however_far_the_passes_got(emit, expected_pass, most_while_running):
     factory = make_factory()
     with factory:
         with GlobalOptProgress(factory, max_passes=4, heartbeat_seconds=0) as progress:
             emit()
-            assert percent(factory) <= 50, 'a pass ran past its own phase'
+            assert percent(factory) <= most_while_running, 'a pass ran past its own phase'
             assert progress._pass == expected_pass
-        assert percent(factory) == pytest.approx(50, abs=2)
-
-
-def test_silence_degrades_to_one_phase():
-    """If upstream stops writing the line, or writes a different one, this falls back to what
-    there was before - a phase that moves when the call returns - and not to an error."""
-    factory = make_factory()
-    with factory:
-        with GlobalOptProgress(factory, max_passes=831, heartbeat_seconds=0):
-            logging.getLogger(GLOBAL_OPT_LOGGER).debug('Glob opt iter %s', 3)    # the outer line
-            logging.getLogger(GLOBAL_OPT_LOGGER).debug('something else entirely')
-            assert percent(factory) == 0
         assert percent(factory) == pytest.approx(50, abs=2)
 
 

@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from muvis_align.constants import default_fusion_workers
 from muvis_align.MVSRegistration import MVSRegistration, RegState
-from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration
+from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration, recording_phase_factory
 
 S000_TILES = [(DATA_DIR / name).as_posix() for name in ZARR_FILES]
 TWO_TILES = S000_TILES[:2]
@@ -48,6 +48,8 @@ def test_reset_clears_registration_state():
     registration.state = RegState.FUSED
     registration.msims = [object()]
     registration.metrics = {"quality": 1}
+    # a per-scale build is as stale as the full one once positions/transforms are rebuilt
+    registration._scaled_msims = {'4': ['msim0']}
 
     registration.reset()
 
@@ -57,6 +59,7 @@ def test_reset_clears_registration_state():
     assert registration.sources == []
     assert registration.metrics == {}
     assert registration.register_indices is None
+    assert registration._scaled_msims == {}
 
 
 def test_init_with_explicit_files_sets_labels_and_output(tmp_path):
@@ -644,15 +647,6 @@ def test_ensure_msims_builds_each_scale_once_and_keeps_the_full_pyramid_shared()
     assert sorted(registration._scaled_msims) == ['2', '4']
 
 
-def test_re_resolving_geometry_drops_the_per_scale_msims_too():
-    """A per-scale build is as stale as the full one once positions/transforms are rebuilt."""
-    registration = MVSRegistration()
-    registration._scaled_msims = {'4': ['msim0']}
-    registration.reset()
-
-    assert registration._scaled_msims == {}
-
-
 def test_register_pairs_in_worker_processes_matches_registering_in_this_process(tmp_path):
     """Pairs sent to worker processes (their sources pickled, reopened there) must register as they do
     here - compared with one native thread here too, as the workers run: threading changes BLAS sums."""
@@ -687,9 +681,10 @@ def test_register_pairs_in_worker_processes_matches_registering_in_this_process(
         assert here[edge][0] == in_workers[edge][0] or (np.isnan(here[edge][0]) and np.isnan(in_workers[edge][0]))
 
 
-def test_register_global_resolves_with_the_groupwise_method_named_in_its_params(monkeypatch, tmp_path):
+def test_register_global_resolves_with_the_named_groupwise_method_and_reports_metrics_by_pair(monkeypatch, tmp_path):
     """The robust linear method is selectable by name: register_global hands it to multiview_stitcher's resolution
-    and maps every tile - not how close its fit comes to another method's, which is not this code's to decide."""
+    and maps every tile - not how close its fit comes to another method's, which is not this code's to decide.
+    Its metrics count the registered pairs rather than being one bar step."""
     import muvis_align.MVSRegistration as mvs_module
     reg = prepared_registration(S000_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid',
@@ -702,40 +697,16 @@ def test_register_global_resolves_with_the_groupwise_method_named_in_its_params(
         methods.append((method, kwargs.get('transform')))
         return original(graph, method=method, **kwargs)
     monkeypatch.setattr(mvs_module, 'groupwise_resolution', recorded)
+    progress_factory, phases = recording_phase_factory()
 
-    results = reg.register_global(reg.pair_msims, params=params)
+    results = reg.register_global(reg.pair_msims, params=params, progress_factory=progress_factory)
 
     assert methods == [('robust_linear', 'rigid')]
     assert sorted(results['mappings']) == list(range(len(reg.pair_msims)))
-
-
-
-def test_register_global_reports_its_metrics_pair_by_pair(tmp_path):
-    """The metrics took 56 minutes on the HPC as a single bar step: they now count the registered pairs."""
-    reg = prepared_registration(S000_TILES, tmp_path)
-    params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid'}
-    reg.register_pairs(reg.register_msims, params=params)
-    phases = []
-
-    class RecordingPhase:
-        def __init__(self, total=None, desc=None, **_):
-            self.record = {'desc': desc, 'total': total, 'done': 0}
-            phases.append(self.record)
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
-
-        def update(self, count=1):
-            self.record['done'] += count
-
-    reg.register_global(reg.pair_msims, params=params, progress_factory=RecordingPhase)
-
     metrics_phases = [phase for phase in phases if 'metrics' in phase['desc'].lower()]
     assert metrics_phases == [{'desc': 'Global metrics', 'total': reg.pairs_graph.number_of_edges(),
                                'done': reg.pairs_graph.number_of_edges()}]
+
 
 def test_a_cancel_stops_building_sources_without_building_the_rest():
     """The build used to submit every source at once, so a cancel waited for all of them (34k on the HPC)."""
@@ -793,28 +764,6 @@ def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp
                               np.asarray(msi_utils.get_sim_from_msim(fused[True], scale=level).data))
 
 
-# a section step other than 1 is not grid-aligned with a plane's placeholder z spacing of 1
-@pytest.mark.parametrize('z_step', [1.0, 0.05])
-def test_a_block_is_fused_from_only_the_planes_that_reach_it(z_step):
-    from multiview_stitcher import spatial_image_utils as si_utils
-    from muvis_align.fusion_slabs import block_sources, source_bounds
-
-    def plane(z):
-        return si_utils.get_sim_from_array(np.ones((1, 8, 8), dtype=np.uint16), dims=['z', 'y', 'x'],
-                                           scale={'z': 1.0, 'y': 1.0, 'x': 1.0},
-                                           translation={'z': z * z_step, 'y': 0.0, 'x': 0.0}, transform_key='source')
-    sims = [plane(z) for z in (0, 0, 1, 2)]
-    properties = {'origin': {'z': 0.0, 'y': 0.0, 'x': 0.0}, 'spacing': {'z': z_step, 'y': 1.0, 'x': 1.0},
-                  'shape': {'z': 3, 'y': 8, 'x': 8}}
-    bounds = source_bounds(sims, 'source', properties)
-
-    by_plane = block_sources(bounds, properties, {'z': 1, 'y': 8, 'x': 8}, ['z', 'y', 'x'])
-    by_two_planes = block_sources(bounds, properties, {'z': 2, 'y': 8, 'x': 8}, ['z', 'y', 'x'])
-
-    assert by_plane == {(0, 1): [(0, 0, 0)], (2,): [(1, 0, 0)], (3,): [(2, 0, 0)]}
-    assert by_two_planes == {(0, 1, 2): [(0, 0, 0)], (3,): [(1, 0, 0)]}
-
-
 def test_the_middle_section_is_the_middle_folders_files_registered_as_the_whole_labels_them(tmp_path):
     reg = MVSRegistration()
     reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
@@ -829,14 +778,6 @@ def test_the_middle_section_is_the_middle_folders_files_registered_as_the_whole_
     assert section.output == reg.output
 
 
-def test_files_in_one_folder_have_no_middle_section_to_show_before_the_rest(tmp_path):
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
-             output_path=tmp_path.as_posix() + '/')
-
-    assert reg.middle_section_indices() is None
-
-
 @pytest.mark.parametrize('filenames, expected', [
     # SBEMimage: a folder per tile, the overviews of every slice in one folder
     (['ov/ov000/x_ov000_s00538.tif', 'ov/ov000/x_ov000_s00539.tif',
@@ -847,6 +788,7 @@ def test_files_in_one_folder_have_no_middle_section_to_show_before_the_rest(tmp_
       'S001/S001_000_000.ome.zarr', 'S001/S001_000_001.ome.zarr'], [0, 1]),
     (['a/tile_0.tif', 'a/tile_1.tif', 'b/tile_0.tif'], [0, 1]),
     (['a/S000_0.tif', 'a/S000_1.tif'], None),
+    (['S000/S000_000_000.ome.zarr', 'S000/S000_000_001.ome.zarr'], None),
     # the step napari's dims start on: sections sorted by number, int((n - 1) / 2)
     (['S002_0.tif', 'S000_0.tif', 'S001_0.tif', 'S001_1.tif'], [2, 3]),
     (['S010_0.tif', 'S003_0.tif', 'S007_0.tif', 'S004_0.tif'], [3]),

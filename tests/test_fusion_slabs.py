@@ -8,7 +8,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.fusion_slabs import (fuse_native_levels_to_ome_zarr, native_level_spacings,
                                       native_level_stack_properties, block_sources)
-from tests.data_builders import make_msim
+from tests.data_builders import make_msim, make_sim
 
 
 @pytest.mark.parametrize('source_spacings, shape, expected', [
@@ -52,22 +52,50 @@ def test_each_block_is_fused_from_only_the_sources_reaching_it():
     assert groups == {(1,): [(0, 0), (0, 1)], (0,): [(1, 2)]}
 
 
+# a section step other than 1 is not grid-aligned with a plane's placeholder z spacing of 1
+@pytest.mark.parametrize('z_step', [1.0, 0.05])
+def test_a_block_is_fused_from_only_the_planes_that_reach_it(z_step):
+    from muvis_align.fusion_slabs import source_bounds
+
+    sims = [make_sim(np.ones((1, 8, 8), dtype=np.uint16), 'zyx', translation={'z': plane * z_step, 'y': 0.0, 'x': 0.0},
+                     transform_key='source') for plane in (0, 0, 1, 2)]
+    properties = {'origin': {'z': 0.0, 'y': 0.0, 'x': 0.0}, 'spacing': {'z': z_step, 'y': 1.0, 'x': 1.0},
+                  'shape': {'z': 3, 'y': 8, 'x': 8}}
+    bounds = source_bounds(sims, 'source', properties)
+
+    by_plane = block_sources(bounds, properties, {'z': 1, 'y': 8, 'x': 8}, ['z', 'y', 'x'])
+    by_two_planes = block_sources(bounds, properties, {'z': 2, 'y': 8, 'x': 8}, ['z', 'y', 'x'])
+
+    assert by_plane == {(0, 1): [(0, 0, 0)], (2,): [(1, 0, 0)], (3,): [(2, 0, 0)]}
+    assert by_two_planes == {(0, 1, 2): [(0, 0, 0)], (3,): [(1, 0, 0)]}
+
+
 def flat_msim(value, size, spacing, origin):
     return make_msim(np.full((size, size), value, dtype=np.uint8), scale={'y': spacing, 'x': spacing},
                      translation={'y': origin, 'x': origin}, transform_key='source')
 
 
-def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path):
+@pytest.mark.parametrize('ngff_version', ['0.5', '0.6'])
+def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff_version):
     """A tile (200, at 0.5) inside an overview (10, at 2.0): the finer levels hold the tile alone, written only
-    where it is; the overview's level holds both, the tile over the overview where it covers it."""
+    where it is; the overview's level holds both. 0.6 stores its arrays as 0.5 does, its metadata naming a
+    coordinate system each level's transforms lead into."""
+    import json
+    from multiview_stitcher import ngff_utils
+
     overview, tile = flat_msim(10, 64, 2.0, 0.0), flat_msim(200, 64, 0.5, 40.0)
     level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
     url = (tmp_path / 'fused.ome.zarr').as_posix()
 
-    fused = fuse_native_levels_to_ome_zarr([overview, tile], [2.0, 0.5], url, 'source', level0,
-                                           {'y': 64, 'x': 64}, ['y', 'x'], zarr_options={'ngff_version': '0.5'})
+    fuse_native_levels_to_ome_zarr([overview, tile], [2.0, 0.5], url, 'source', level0, {'y': 64, 'x': 64},
+                                   ['y', 'x'], zarr_options={'ngff_version': ngff_version})
 
-    levels = [msi_utils.get_sim_from_msim(fused, scale=key) for key in msi_utils.get_sorted_scale_keys(fused)]
+    group = json.load(open(os.path.join(url, 'zarr.json')))
+    assert group['zarr_format'] == 3
+    assert group['attributes']['ome']['version'] == ngff_version
+    assert ('coordinateSystems' in group['attributes']['ome']['multiscales'][0]) == (ngff_version == '0.6')
+    read = ngff_utils.read_msim_from_ome_zarr(url, transform_key='read', array_backend='dask')
+    levels = [msi_utils.get_sim_from_msim(read, scale=key) for key in msi_utils.get_sorted_scale_keys(read)]
     assert [si_utils.get_spacing_from_sim(level)['x'] for level in levels] == pytest.approx([0.5, 1.0, 2.0])
     finest = np.asarray(levels[0].data).squeeze()
     assert finest[100, 100] == 200 and finest[10, 10] == 0
@@ -79,34 +107,22 @@ def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path):
     assert coarsest[28, 28] == 200
 
 
-def test_a_block_meeting_many_sources_is_made_smaller():
-    """Ten sources stacked in one corner: a block holding them all must shrink, wherever else is empty."""
-    from muvis_align.fusion_slabs import budget_chunksize
-
-    properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': 4096, 'x': 4096}}
-    bounds = np.array([[[0.0, 300.0], [0.0, 300.0]]] * 10)
-    budget = 10 * 512 * 512 * 12
-
-    chunk = budget_chunksize(bounds, properties, {'y': 4096, 'x': 4096}, ['y', 'x'], budget, 12)
-
-    assert chunk == {'y': 512, 'x': 512}
+@pytest.mark.parametrize('bounds, side, chunk_side, budget, expected', [
+    # ten sources stacked in one corner: a block holding them all must shrink, wherever else is empty
+    ([[[0.0, 300.0], [0.0, 300.0]]] * 10, 4096, 4096, 10 * 512 * 512 * 12, 512),
     # one source alone keeps the full size
-    assert budget_chunksize(bounds[:1], properties, {'y': 4096, 'x': 4096}, ['y', 'x'], 4096 * 4096 * 12, 12) == \
-        {'y': 4096, 'x': 4096}
-
-
-def test_a_block_just_over_budget_shrinks_a_little_not_by_half():
-    """12 sources over every block, at 1600px a little over budget: 1472 fits, where halving went to 800."""
+    ([[[0.0, 300.0], [0.0, 300.0]]], 4096, 4096, 4096 * 4096 * 12, 4096),
+    # 12 sources over every block, a little over budget: 1472 fits, where halving went to 800
+    ([[[0.0, 6400.0], [0.0, 6400.0]]] * 12, 6400, 1600, 352 * 1000 ** 2, 1472),
+])
+def test_a_block_meeting_many_sources_shrinks_just_enough(bounds, side, chunk_side, budget, expected):
     from muvis_align.fusion_slabs import budget_chunksize
 
-    properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': 6400, 'x': 6400}}
-    bounds = np.array([[[0.0, 6400.0], [0.0, 6400.0]]] * 12)
-    budget = 352 * 1000 ** 2
+    properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': side, 'x': side}}
 
-    chunk = budget_chunksize(bounds, properties, {'y': 1600, 'x': 1600}, ['y', 'x'], budget, 12)
+    chunk = budget_chunksize(np.array(bounds), properties, {'y': chunk_side, 'x': chunk_side}, ['y', 'x'], budget, 12)
 
-    assert chunk == {'y': 1472, 'x': 1472}
-    assert 12 * 1472 * 1472 * 12 <= budget < 12 * 1600 * 1600 * 12
+    assert chunk == {'y': expected, 'x': expected}
 
 
 def test_where_a_finer_view_covers_a_pixel_the_coarser_ones_are_left_out():
@@ -129,20 +145,16 @@ def test_where_a_finer_view_covers_a_pixel_the_coarser_ones_are_left_out():
     np.testing.assert_allclose(fused, [10, 25, 60, 5])
 
 
-def test_views_are_ranked_when_only_some_of_a_blocks_sources_reach_it():
+@pytest.mark.parametrize('params, group_params, group_ranks, expected', [
+    # only some of a block's sources reach it
+    ([np.eye(3), np.eye(3) * 3], [np.eye(3) * scale for scale in (1, 2, 3)], [1, 1, 2], [1, 2]),
+    # a view passed without its singleton z
+    ([np.diag([2.0, 2.0, 1.0])], [np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 2.0, 2.0, 1.0])], [1, 2], [2]),
+])
+def test_views_are_ranked_by_the_group_source_they_come_from(params, group_params, group_ranks, expected):
     from muvis_align.fusion_slabs import _view_ranks
 
-    group_params = [np.eye(3) * scale for scale in (1, 2, 3)]
-
-    assert _view_ranks([group_params[0], group_params[2]], group_params, [1, 1, 2]).tolist() == [1, 2]
-
-
-def test_a_view_passed_without_its_singleton_z_is_still_ranked():
-    from muvis_align.fusion_slabs import _view_ranks
-
-    group_params = [np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 2.0, 2.0, 1.0])]
-
-    assert _view_ranks([np.diag([2.0, 2.0, 1.0])], group_params, [1, 2]).tolist() == [2]
+    assert _view_ranks(params, group_params, group_ranks).tolist() == expected
 
 
 def test_level_names_sort_as_text_in_level_order():
@@ -152,25 +164,3 @@ def test_level_names_sort_as_text_in_level_order():
     eleven = level_paths(11)
     assert eleven[0] == '00' and eleven[-1] == '10'
     assert sorted(eleven) == eleven
-
-
-def test_native_fusion_writes_ome_zarr_06_that_reads_back(tmp_path):
-    """0.6 stores its arrays as 0.5 does; its metadata names a coordinate system each level's transforms lead into."""
-    import json
-    from multiview_stitcher import ngff_utils
-
-    overview, tile = flat_msim(10, 64, 2.0, 0.0), flat_msim(200, 64, 0.5, 40.0)
-    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
-    url = (tmp_path / 'fused.ome.zarr').as_posix()
-
-    fuse_native_levels_to_ome_zarr([overview, tile], [2.0, 0.5], url, 'source', level0, {'y': 64, 'x': 64},
-                                   ['y', 'x'], zarr_options={'ngff_version': '0.6'})
-
-    group = json.load(open(os.path.join(url, 'zarr.json')))
-    assert group['zarr_format'] == 3
-    assert group['attributes']['ome']['version'] == '0.6'
-    assert 'coordinateSystems' in group['attributes']['ome']['multiscales'][0]
-    read = ngff_utils.read_msim_from_ome_zarr(url, transform_key='read', array_backend='dask')
-    levels = [msi_utils.get_sim_from_msim(read, scale=key) for key in msi_utils.get_sorted_scale_keys(read)]
-    assert [si_utils.get_spacing_from_sim(level)['x'] for level in levels] == pytest.approx([0.5, 1.0, 2.0])
-    assert int(np.asarray(levels[0].data).squeeze()[100, 100]) == 200
