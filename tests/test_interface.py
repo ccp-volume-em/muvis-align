@@ -18,7 +18,8 @@ from muvis_align._widget import MainWidget
 from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
 from muvis_align.MVSRegistration import RegState
-from tests.data_builders import FakeBar, make_phase_factory, recording_phase_factory
+from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, FakeBar, make_phase_factory, \
+    prepared_registration, recording_phase_factory
 
 
 @pytest.fixture(autouse=True)
@@ -144,29 +145,6 @@ def test_interface_reset(make_napari_viewer):
     assert interface.reg.state is RegState.UNINIT
 
 
-@patch('muvis_align.ui.Interface.QMessageBox.question', return_value=QMessageBox.Yes)
-def test_modify_pair_registration_with_bbox(_question, make_napari_viewer):
-    """Storing a modified pair saves a bbox without a 't' dim as it is."""
-    import xarray as xr
-
-    with patch('muvis_align._widget.ViewerWidget'):
-        interface = Interface(make_napari_viewer(), MagicMock(), MagicMock(), MagicMock())
-    interface.view_mode = ViewMode.PAIRS
-    interface.pair_indices = ('key1', 'key2')
-    interface.reg.pairs_graph = object()
-    interface.reg.source_transform_key = 'source_metadata'
-    interface.temp_widget_state = MagicMock()
-    bbox = xr.DataArray([[1, 2], [3, 4]], dims=['x_in', 'x_out'], coords={'x_in': [0, 1], 'x_out': [0, 1]})
-    transform = xr.DataArray([[[1, 0], [0, 1], [0, 0]]], dims=['t', 'rows', 'cols'], coords={'t': [0]})
-
-    with patch.object(interface, 'calc_mod_pair_transform', return_value=transform.sel(t=0)),             patch('networkx.get_edge_attributes', side_effect=[
-                {interface.pair_indices: transform}, {interface.pair_indices: 0.95},
-                {interface.pair_indices: bbox}]),             patch('networkx.set_edge_attributes'),             patch.object(interface.reg, 'save_pair_mappings') as save,             patch.object(interface, 'update_registered'):
-        interface.modify_pair_registration()
-
-    assert save.called
-
-
 def test_update_registered_refreshes_the_tables_and_the_view(make_napari_viewer):
     with patch('muvis_align._widget.ViewerWidget'):
         interface = Interface(make_napari_viewer(), MagicMock(), MagicMock(), MagicMock())
@@ -201,40 +179,26 @@ def bare_interface():
     return interface
 
 
-def test_change_param_updates_nested_value_and_writes(bare_interface):
+@pytest.mark.parametrize(
+    ("param", "value", "stored"),
+    [
+        ("registration.method", "phase", "phase"),
+        # a file dialog reports an absolute path: stored relative to the project, to stay portable
+        ("input_output.input_path", "{project}/data/input", "data/input"),
+        ("registration.method", "{project}/not-a-path-param", "{project_posix}/not-a-path-param"),
+    ],
+    ids=["value", "path-relativized", "other-param-as-is"],
+)
+def test_change_param_stores_the_value_and_writes(bare_interface, tmp_path, param, value, stored):
     bare_interface.params = {}
     bare_interface.write_params = MagicMock()
+    bare_interface.params_path = str(tmp_path / "project.yml")
 
-    bare_interface.change_param("registration.method", "phase")
+    bare_interface.change_param(param, value.format(project=str(tmp_path)))
 
-    assert bare_interface.params == {
-        "registration": {"method": "phase"}
-    }
+    section, name = param.split(".")
+    assert bare_interface.params == {section: {name: stored.format(project_posix=tmp_path.as_posix())}}
     bare_interface.write_params.assert_called_once_with()
-
-
-def test_change_param_relativizes_input_output_paths(bare_interface, tmp_path):
-    """A file dialog (or the FileEdit widget itself) always reports an absolute path -
-    change_param() must convert it back to relative-to-project-dir before storing it, so the
-    project file keeps portable relative paths instead of being silently rewritten absolute."""
-    bare_interface.params = {}
-    bare_interface.write_params = MagicMock()
-    bare_interface.params_path = str(tmp_path / "project.yml")
-    absolute_input = str(tmp_path / "data" / "input")
-
-    bare_interface.change_param("input_output.input_path", absolute_input)
-
-    assert bare_interface.params["input_output"]["input_path"] == "data/input"
-
-
-def test_change_param_leaves_other_params_untouched_by_relativizing(bare_interface, tmp_path):
-    bare_interface.params = {}
-    bare_interface.write_params = MagicMock()
-    bare_interface.params_path = str(tmp_path / "project.yml")
-
-    bare_interface.change_param("registration.method", str(tmp_path / "not-a-path-param"))
-
-    assert bare_interface.params["registration"]["method"] == str(tmp_path / "not-a-path-param").replace('\\', '/')
 
 
 def test_get_project_dir_returns_none_before_project_loaded(bare_interface):
@@ -373,12 +337,12 @@ def test_get_all_widgets_excludes_widgets_on_disabled_tabs(bare_interface):
     assert all_widgets == {"registration.method": "reg-widget"}
 
 
+@pytest.mark.parametrize("store", [True, False], ids=["store", "discard"])
 def test_modify_pair_registration_disables_other_tabs_and_restores_them(
-    bare_interface, monkeypatch
+    bare_interface, monkeypatch, store
 ):
-    """Entering pair-modification mode must disable every other tab (not registration - its own
-    widgets are already disabled via get_all_widgets) so the user can't navigate away
-    mid-adjustment, and restore each tab's prior enabled state on exit."""
+    """Entering pair-modification mode disables every other tab (registration's own widgets are
+    disabled via get_all_widgets) and leaving restores them, saving the pair only when asked to."""
     import xarray as xr
 
     bare_interface.view_mode = None
@@ -404,9 +368,12 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     transform = xr.DataArray(
         np.eye(3).reshape(1, 3, 3), dims=["t", "x_in", "x_out"], coords={"t": [0]}
     )
+    bbox = xr.DataArray([[1, 2], [3, 4]], dims=["x_in", "x_out"])
     monkeypatch.setattr(
-        interface_module.nx, "get_edge_attributes", lambda *_: {(0, 0): transform}
+        interface_module.nx, "get_edge_attributes",
+        lambda _graph, key: {(0, 0): bbox if key == "bbox" else transform}
     )
+    monkeypatch.setattr(interface_module.nx, "set_edge_attributes", MagicMock())
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._napari_view_add_image = MagicMock()
     bare_interface.update_pair_metrics = MagicMock()
@@ -422,9 +389,9 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
 
     bare_interface.enable_tab.reset_mock()
     bare_interface.update_registered = MagicMock()
-    monkeypatch.setattr(
-        interface_module.QMessageBox, "question", lambda *_: interface_module.QMessageBox.No
-    )
+    bare_interface.calc_mod_pair_transform = MagicMock(return_value=transform.sel(t=0))
+    reply = interface_module.QMessageBox.Yes if store else interface_module.QMessageBox.No
+    monkeypatch.setattr(interface_module.QMessageBox, "question", lambda *_: reply)
 
     bare_interface.modify_pair_registration()
 
@@ -432,6 +399,10 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
         "project": True, "input_output": True, "pre_processing": True,
         "registration": True, "fusion": False,
     }
+    assert bare_interface.reg.save_pair_mappings.called is store
+    if store:
+        # a bbox without a 't' dim is saved as it is
+        assert bare_interface.reg.save_pair_mappings.call_args.args[2] == {(0, 0): [[1, 2], [3, 4]]}
 
 
 def _arm_pair_modify_entry(bare_interface, monkeypatch):
@@ -521,32 +492,23 @@ def test_tab_changed_clears_feature_view_and_stops_timer(bare_interface):
 
 
 @pytest.mark.parametrize(
-    ("method_name", "section", "axis"),
+    ("method_name", "expected"),
     [
-        ("source_position_z", "position", "z"),
-        ("source_position_y", "position", "y"),
-        ("source_position_x", "position", "x"),
-        ("source_scale_z", "scale", "z"),
-        ("source_scale_y", "scale", "y"),
-        ("source_scale_x", "scale", "x"),
+        ("source_position_z", {"position": {"z": 2.5}}),
+        ("source_position_y", {"position": {"y": 2.5}}),
+        ("source_position_x", {"position": {"x": 2.5}}),
+        ("source_scale_z", {"scale": {"z": 2.5}}),
+        ("source_scale_y", {"scale": {"y": 2.5}}),
+        ("source_scale_x", {"scale": {"x": 2.5}}),
+        ("source_rotation", {"rotation": 2.5}),
     ],
 )
-def test_source_metadata_setters(
-    bare_interface, method_name, section, axis
-):
+def test_source_metadata_setters(bare_interface, method_name, expected):
     bare_interface.source_metadata = {}
 
     getattr(bare_interface, method_name)(2.5)
 
-    assert bare_interface.source_metadata[section][axis] == 2.5
-
-
-def test_source_rotation_sets_valid_value(bare_interface):
-    bare_interface.source_metadata = {}
-
-    bare_interface.source_rotation(12.5)
-
-    assert bare_interface.source_metadata["rotation"] == 12.5
+    assert bare_interface.source_metadata == expected
 
 
 @pytest.mark.parametrize("exists", [True, False], ids=["existing", "new"])
@@ -605,7 +567,8 @@ def test_populate_choices_and_image_selection(bare_interface):
             get_channels=lambda: [{"label": "red"}, {"label": "green"}]
         )
     ]
-    bare_interface.reg.file_labels = ["left", "right"]
+    bare_interface.reg.file_labels = ["b", "a", "c"]
+    bare_interface.reg.positions = [{"z": 0, "y": 5, "x": 0}, {"z": 0, "y": 0, "x": 0}, {"z": 1, "y": 0, "x": 0}]
 
     bare_interface.populate_channels()
     bare_interface.populate_coordinate_systems(
@@ -621,12 +584,9 @@ def test_populate_choices_and_image_selection(bare_interface):
         "source_metadata": "Source metadata",
         "registered": "Registered",
     }
-    image1_widget.set_value.assert_called_once_with(
-        "left", choices=["left", "right"]
-    )
-    image2_widget.set_value.assert_called_once_with(
-        "right", choices=["left", "right"]
-    )
+    # sorted by position (z, y, x), as the metadata and metrics tables are, not by file order
+    image1_widget.set_value.assert_called_once_with("a", choices=["a", "b", "c"])
+    image2_widget.set_value.assert_called_once_with("b", choices=["a", "b", "c"])
 
 
 @pytest.mark.parametrize(
@@ -973,35 +933,6 @@ def test_update_napari_shapes_3d_faces_are_axis_aligned_and_wind_outward(
     np.testing.assert_allclose(all_face_points.max(axis=0), box_max)
 
 
-def test_update_napari_shapes_uses_shapes_layer_for_2d(
-    bare_interface, monkeypatch
-):
-    bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
-    bare_interface.reg.positions = [{"z": 0}]
-    viewer = MagicMock()
-    shape = np.zeros((4, 2))
-    monkeypatch.setattr(
-        interface_module.si_utils, "get_origin_from_sim", lambda _: {}
-    )
-    monkeypatch.setattr(
-        interface_module, "get_msim_image0", lambda msim: msim
-    )
-    monkeypatch.setattr(
-        interface_module, "create_image_shapes", lambda *_, **__: [shape]
-    )
-
-    shapes = [shape]
-    bare_interface._update_view_add_shapes(
-        viewer, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes"
-    )
-
-    args, kwargs = viewer.add_shapes.call_args
-    np.testing.assert_allclose(args[0], [shape])
-    assert kwargs["shape_type"] == "polygon"
-    assert kwargs["edge_width"] == 0.1
-    assert kwargs["features"]["refs"] == ["0"]
-
-
 def test_update_napari_shapes_labels_only_where_asked(
     bare_interface, monkeypatch
 ):
@@ -1023,6 +954,8 @@ def test_update_napari_shapes_labels_only_where_asked(
         viewer, shapes, ["0"], ["image-0"], [(1, 1, 1)], "boxes"
     )
     _, kwargs = viewer.add_shapes.call_args
+    assert kwargs["shape_type"] == "polygon"
+    assert kwargs["edge_width"] == 0.1
     assert kwargs["text"] == {"string": "{labels}", "size": 6}
     assert kwargs["features"]["labels"] == ["image-0"]
 
@@ -1124,8 +1057,9 @@ def mocked_activity_contexts(monkeypatch):
     )
 
 
+@pytest.mark.parametrize("with_t", [True, False], ids=["bbox-with-t", "bbox-without-t"])
 def test_run_pair_registration_serializes_quality_and_time_bbox(
-    bare_interface, monkeypatch, mocked_activity_contexts
+    bare_interface, monkeypatch, mocked_activity_contexts, with_t
 ):
     import xarray as xr
 
@@ -1148,11 +1082,9 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
         },
     }
     bare_interface.reg.register_pairs.return_value = results
-    bbox = xr.DataArray(
-        [[[1, 2], [3, 4]]],
-        dims=("t", "corner", "axis"),
-        coords={"t": [0]},
-    )
+    bbox = xr.DataArray([[1, 2], [3, 4]], dims=("corner", "axis"))
+    if with_t:
+        bbox = bbox.expand_dims({"t": [0]})
     monkeypatch.setattr(
         interface_module.nx,
         "get_edge_attributes",
@@ -1228,67 +1160,47 @@ def _stub_preview_registration_deps(bare_interface, monkeypatch, label1="image-0
     bare_interface.params = {"registration": {"method": "orb"}}
 
 
-def test_run_preview_registration_reuses_cached_overlap_across_param_changes(
-    bare_interface, monkeypatch, mocked_activity_contexts
+@pytest.mark.parametrize(("change", "selections"), [("method", 1), ("pair", 2), ("register_msims", 2)])
+def test_run_preview_registration_reuses_the_overlap_until_its_data_or_pair_changes(
+    bare_interface, monkeypatch, mocked_activity_contexts, change, selections
 ):
-    """The overlap crop depends only on source data and the selected pair/channel - not on
-    registration method/tuning - so select_pair_overlap() must run once and register_overlap()
-    must reuse the cached crop across parameter-only changes."""
+    """The overlap crop depends only on the source data (a new register_msims list whenever
+    pre-processing changes something) and the selected pair, never on the registration method."""
     _stub_preview_registration_deps(bare_interface, monkeypatch)
+    assert bare_interface.run_preview_registration() is not None
 
-    bare_interface.params = {"registration": {"method": "orb"}}
-    result1 = bare_interface.run_preview_registration()
-    bare_interface.params = {"registration": {"method": "sift"}}
-    result2 = bare_interface.run_preview_registration()
+    if change == "method":
+        bare_interface.params = {"registration": {"method": "sift"}}
+    elif change == "pair":
+        bare_interface.param_widgets["registration.reg_preview_image2"] = SimpleNamespace(get_value=lambda: "image-2")
+    else:
+        bare_interface.reg.register_msims = ["msim-0-reprocessed", "msim-1-reprocessed", "msim-2-reprocessed"]
+    assert bare_interface.run_preview_registration() is not None
 
-    assert result1 is not None and result2 is not None
-    assert bare_interface.reg.select_pair_overlap.call_count == 1
+    assert bare_interface.reg.select_pair_overlap.call_count == selections
     assert bare_interface.reg.register_overlap.call_count == 2
 
 
-def test_run_preview_registration_cache_invalidated_on_pair_change(
-    bare_interface, monkeypatch, mocked_activity_contexts
-):
-    """Selecting a different image pair must invalidate the cached overlap crop."""
-    _stub_preview_registration_deps(bare_interface, monkeypatch, label1="image-0", label2="image-1")
+@pytest.mark.parametrize("overlaps", [True, False], ids=["failure", "no-overlap"])
+def test_a_failed_preview_registration_returns_none(bare_interface, monkeypatch, mocked_activity_contexts, overlaps):
+    """None lets preview_registration() bail out; two images that do not overlap are a warning
+    naming them rather than a failure."""
+    from muvis_align.image.util import NoOverlapError
 
-    bare_interface.run_preview_registration()
-
-    bare_interface.param_widgets["registration.reg_preview_image2"] = SimpleNamespace(
-        get_value=lambda: "image-2"
-    )
-    bare_interface.run_preview_registration()
-
-    assert bare_interface.reg.select_pair_overlap.call_count == 2
-
-
-def test_run_preview_registration_cache_invalidated_when_register_msims_changes(
-    bare_interface, monkeypatch, mocked_activity_contexts
-):
-    """preprocess() assigns a new register_msims list object whenever pre-processing actually
-    changes something - the cached overlap crop must be invalidated when that identity changes."""
     _stub_preview_registration_deps(bare_interface, monkeypatch)
+    bare_interface.reg.select_pair_overlap.side_effect = (
+        ValueError("boom") if overlaps else NoOverlapError("the images do not overlap"))
+    report_failure = MagicMock()
+    monkeypatch.setattr("muvis_align.ui._utils.report_failure", report_failure)
 
-    bare_interface.run_preview_registration()
+    with patch.object(interface_module, "show_warning") as show_warning:
+        assert bare_interface.run_preview_registration() is None
 
-    bare_interface.reg.register_msims = ["msim-0-reprocessed", "msim-1-reprocessed", "msim-2-reprocessed"]
-    bare_interface.run_preview_registration()
-
-    assert bare_interface.reg.select_pair_overlap.call_count == 2
-
-
-def test_run_preview_registration_returns_none_on_failure(
-    bare_interface, monkeypatch, mocked_activity_contexts
-):
-    """@catch_run_errors must turn an internal failure into a None return instead of an
-    unhandled exception, so preview_registration() can bail out cleanly."""
-    _stub_preview_registration_deps(bare_interface, monkeypatch)
-    bare_interface.reg.select_pair_overlap.side_effect = ValueError("boom")
-    monkeypatch.setattr("muvis_align.ui._utils.report_failure", MagicMock())
-
-    result = bare_interface.run_preview_registration()
-
-    assert result is None
+    assert report_failure.called is overlaps
+    if overlaps:
+        show_warning.assert_not_called()
+    else:
+        show_warning.assert_called_once_with("image-0 and image-1 do not overlap: choose two images that do")
 
 
 @pytest.mark.parametrize(
@@ -1542,13 +1454,11 @@ def test_build_view_msims_downscales_large_single_resolution_source():
     assert small_image0.sizes['y'] == 500
 
 
-def test_create_napari_data_show_preprocessed_handles_fuse_internal_3d_promotion(make_napari_viewer):
-    """MVSRegistration.fuse() promotes msims to 3D internally (make_msims_3d) whenever sources
-    sit at more than one distinct z position - regardless of whether register_msims (used when
-    show_preprocessed=True) already has a 'z' dim, which it doesn't for a plain 'register'
-    operation (is_stack=False) with every source individually 2D. _create_napari_data() must
-    still hand fuse() an output_chunksize that already accounts for the z dim fuse() is about to
-    add, or multiview_stitcher's own chunk-bbox computation crashes with KeyError('z')."""
+def test_the_preprocessed_preview_is_3d_without_building_or_changing_the_msims(tmp_path):
+    """fuse() promotes 2D msims at several z positions to 3D itself, so the chunk size it is handed
+    must already have z. The preview must neither build the full-resolution msims nor write into
+    reg.register_msims, which the steps in between hand on as they are when they change nothing."""
+    from multiview_stitcher import msi_utils
     from muvis_align.MVSRegistration import MVSRegistration
 
     source_metadata = {
@@ -1558,33 +1468,37 @@ def test_create_napari_data_show_preprocessed_handles_fuse_internal_3d_promotion
     reg = MVSRegistration()
     reg.init(
         operation='register',
-        input_path=[
-            'data/S000/000_000_0.tiff',
-            'data/S000/000_001_0.tiff',
-        ],
-        output_path='../../output/test_fuse_3d_promotion/',
+        input_path=[(DATA_DIR / name).as_posix() for name in TIFF_FILES[:2]],
+        output_path=tmp_path.as_posix() + '/',
         source_metadata=source_metadata,
     )
     reg.init_data(source_metadata=source_metadata)
-    assert len(set(p.get('z') for p in reg.positions)) > 1  # sanity check: genuinely multi-z
+    assert len(set(position.get('z') for position in reg.positions)) > 1
     reg.preprocess(reg.msims, scale=None, flatfield_quantiles='', normalisation='none',
                    filter_foreground=False)
-    assert 'z' not in reg.register_msims[0]['scale0'].ds['image'].dims  # sanity check: not yet 3D
+    assert 'z' not in reg.register_msims[0]['scale0'].ds['image'].dims
+    # deferred, as in a real run: pre-processing works off msims built for its own scale
+    reg._msims = None
 
+    def stored_transforms():
+        return [np.asarray(msi_utils.get_transform_from_msim(msim, reg.source_transform_key))
+                for msim in reg.register_msims]
+
+    before = stored_transforms()
     interface = Interface.__new__(Interface)
     interface.reg = reg
     interface.params = {'input_output': {'registration_dimension': 'space'}}
     interface.extra_metadata = {}
 
-    fused_msim = interface._create_napari_data(
-        reg.source_transform_key, show_preprocessed=True
-    )
+    fused_msim = interface._create_napari_data(reg.source_transform_key, show_preprocessed=True)
 
-    assert 'z' in fused_msim['scale0'].ds['image'].dims
     assert fused_msim['scale0'].ds['image'].sizes['z'] == 2
+    assert reg._msims is None
+    for original, current in zip(before, stored_transforms()):
+        np.testing.assert_array_equal(original, current)
 
 
-def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer):
+def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer, tmp_path):
     """update_views()'s 'data' preview layer (_create_napari_data -> _napari_view_add_fused_data)
     must show a genuine napari multiscale layer sourced from msims end to end - no sims added to
     the napari image layer - even for the pre-registration preview, not just the post-fusion
@@ -1592,16 +1506,8 @@ def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer):
     from muvis_align.MVSRegistration import MVSRegistration
     from multiview_stitcher import msi_utils
 
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/S000_000_000.ome.zarr',
-            'data/S000/S000_000_001.ome.zarr',
-        ],
-        output_path='../../output/test_preview/',
-    )
-    reg.init_data()
+    reg = prepared_registration([(DATA_DIR / name).as_posix() for name in ZARR_FILES[:2]], tmp_path,
+                                preprocess=False)
 
     interface = Interface.__new__(Interface)
     interface.reg = reg
@@ -1840,86 +1746,6 @@ def test_update_views_draws_the_registered_sections_lazily(bare_interface):
     assert bare_interface._napari_view_add_fused_data.call_args.args[1] == "lazy"
 
 
-def test_preprocessed_preview_does_not_force_the_full_resolution_msims():
-    """Drawing the post-pre-processing preview must not build the full-resolution msims.
-
-    get_best_transform_key() returns the source transform without touching reg.msims precisely
-    to avoid that build; copying transforms onto the preview then forced it anyway, rebuilding
-    every source at full resolution (14 minutes for 34k) for a transform the preview's own msims
-    already carry.
-    """
-    from muvis_align.MVSRegistration import MVSRegistration
-
-    source_metadata = {
-        'position': {'z': 'fn[-2]', 'y': 0.0, 'x': 'fn[-2]*30'},
-        'scale': {'z': '1', 'y': '0.032', 'x': '0.032'},
-    }
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=['data/S000/000_000_0.tiff', 'data/S000/000_001_0.tiff'],
-        output_path='../../output/test_preprocessed_preview_no_full_build/',
-        source_metadata=source_metadata,
-    )
-    reg.init_data(source_metadata=source_metadata)
-    reg.preprocess(reg.msims, scale=None, flatfield_quantiles='', normalisation='none',
-                   filter_foreground=False)
-    # back to the deferred state a real run is in here: pre-processing works off the msims built
-    # for its own scale, leaving the full-resolution ones unbuilt
-    reg._msims = None
-
-    interface = Interface.__new__(Interface)
-    interface.reg = reg
-    interface.params = {'input_output': {'registration_dimension': 'space'}}
-    interface.extra_metadata = {}
-
-    interface._create_napari_data(reg.source_transform_key, show_preprocessed=True)
-
-    assert reg._msims is None
-
-
-def test_preprocessed_preview_leaves_the_stored_register_msims_alone():
-    """Skipping the defensive copy is only safe while nothing writes into these msims.
-
-    The steps between hand back the very objects they were given whenever they have nothing to
-    change - make_msims_3d returns an already-3D msim as-is, and the size cap returns its input
-    untouched when it already fits - so a transform written afterwards would land in
-    reg.register_msims itself.
-    """
-    from multiview_stitcher import msi_utils
-    from muvis_align.MVSRegistration import MVSRegistration
-
-    source_metadata = {
-        'position': {'z': 'fn[-2]', 'y': 0.0, 'x': 'fn[-2]*30'},
-        'scale': {'z': '1', 'y': '0.032', 'x': '0.032'},
-    }
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=['data/S000/000_000_0.tiff', 'data/S000/000_001_0.tiff'],
-        output_path='../../output/test_preprocessed_preview_no_mutation/',
-        source_metadata=source_metadata,
-    )
-    reg.init_data(source_metadata=source_metadata)
-    reg.preprocess(reg.msims, scale=None, flatfield_quantiles='', normalisation='none',
-                   filter_foreground=False)
-
-    def stored_transforms():
-        return [np.asarray(msi_utils.get_transform_from_msim(msim, reg.source_transform_key))
-                for msim in reg.register_msims]
-
-    before = stored_transforms()
-
-    interface = Interface.__new__(Interface)
-    interface.reg = reg
-    interface.params = {'input_output': {'registration_dimension': 'space'}}
-    interface.extra_metadata = {}
-    interface._create_napari_data(reg.source_transform_key, show_preprocessed=True)
-
-    for original, current in zip(before, stored_transforms()):
-        np.testing.assert_array_equal(original, current)
-
-
 @pytest.mark.parametrize('running, reply, expect_process, expect_cancel', [
     (False, None, True, False),
     (True, QMessageBox.Yes, False, True),
@@ -1982,20 +1808,6 @@ def test_a_cancelled_fusion_removes_its_partial_output(bare_interface, monkeypat
     assert not partial.exists()
 
 
-def test_preview_image_lists_follow_the_tables_order(bare_interface):
-    """Sorted by position (z, y, x), as the metadata and metrics tables are, not by file order."""
-    image1_widget, image2_widget = MagicMock(), MagicMock()
-    bare_interface.param_widgets = {"registration.reg_preview_image1": image1_widget,
-                                    "registration.reg_preview_image2": image2_widget}
-    bare_interface.reg.file_labels = ["b", "a", "c"]
-    bare_interface.reg.positions = [{"z": 0, "y": 5, "x": 0}, {"z": 0, "y": 0, "x": 0}, {"z": 1, "y": 0, "x": 0}]
-
-    bare_interface.populate_image_selection()
-
-    image1_widget.set_value.assert_called_once_with("a", choices=["a", "b", "c"])
-    image2_widget.set_value.assert_called_once_with("b", choices=["a", "b", "c"])
-
-
 def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interface):
     bare_interface.reg.file_labels = ['S000_000', 'S000_001']
     bare_interface.reg.positions = [{'y': 0, 'x': 0}, {'y': 0, 'x': 1}]
@@ -2024,57 +1836,31 @@ def test_the_project_file_is_copied_into_the_output_folder_as_an_action_starts(b
     assert (tmp_path / "output" / "project.yml").read_text() == project.read_text()
 
 
-def test_the_view_stays_on_the_section_shown_while_the_rest_were_read(bare_interface):
+@pytest.mark.parametrize(
+    ("size", "positions", "shown", "expected_z"),
+    [
+        ({'y': 10, 'x': 10}, [0.0, 2.5, 2.5], [1, 2], 2.5),
+        ({'y': 10, 'x': 10}, [0.0, 2.5, 2.5], None, None),
+        ({'z': 5, 'y': 10, 'x': 10}, [2.5], [0], None),
+    ],
+    ids=["section-shown", "no-section-shown", "z-stack"],
+)
+def test_the_view_stays_on_the_section_shown_while_the_rest_were_read(bare_interface, size, positions, shown,
+                                                                      expected_z):
+    """Without a section shown, or for z-stacks, the view is left where napari put it."""
     bare_interface.viewer = MagicMock()
     bare_interface.viewer.dims.ndim = 3
-    bare_interface.reg.sources = [MagicMock()] * 3
-    bare_interface.reg.sources[0].get_size.return_value = {'y': 10, 'x': 10}
-    bare_interface.reg.positions = [{'z': 0.0}, {'z': 2.5}, {'z': 2.5}]
-    bare_interface._shown_section_indices = [1, 2]
+    bare_interface.reg.sources = [MagicMock()] * len(positions)
+    bare_interface.reg.sources[0].get_size.return_value = size
+    bare_interface.reg.positions = [{'z': z_position} for z_position in positions]
+    bare_interface._shown_section_indices = shown
 
     bare_interface._go_to_shown_section()
 
-    bare_interface.viewer.dims.set_point.assert_called_once_with(0, 2.5)
-
-
-def test_the_view_is_left_where_napari_put_it_without_a_section_shown_or_for_z_stacks(bare_interface):
-    bare_interface.viewer = MagicMock()
-    bare_interface.viewer.dims.ndim = 3
-    bare_interface.reg.sources = [MagicMock()]
-    bare_interface.reg.sources[0].get_size.return_value = {'z': 5, 'y': 10, 'x': 10}
-    bare_interface.reg.positions = [{'z': 2.5}]
-
-    bare_interface._shown_section_indices = None
-    bare_interface._go_to_shown_section()
-    bare_interface._shown_section_indices = [0]
-    bare_interface._go_to_shown_section()
-
-    bare_interface.viewer.dims.set_point.assert_not_called()
-
-
-def test_a_preview_of_two_images_that_do_not_overlap_warns_instead_of_failing(bare_interface):
-    from contextlib import contextmanager
-    from muvis_align.image.util import NoOverlapError
-
-    labels = {'registration.reg_preview_image1': 'S000_000_000', 'registration.reg_preview_image2': 'S000_007_007'}
-    bare_interface.param_widgets = {name: MagicMock(get_value=MagicMock(return_value=value)) for name, value in labels.items()}
-    bare_interface.reg.file_labels = ['S000_000_000', 'S000_007_007']
-    bare_interface.reg.register_msims = [object(), object()]
-
-    @contextmanager
-    def operation_progress(*args, **kwargs):
-        yield MagicMock()
-
-    bare_interface._operation_progress = operation_progress
-    bare_interface._run_off_thread = MagicMock(side_effect=NoOverlapError('the images do not overlap'))
-
-    with patch.object(interface_module, 'show_warning') as show_warning, \
-            patch('muvis_align.ui._utils.show_error') as show_error:
-        result = bare_interface.run_preview_registration()
-
-    assert result is None
-    show_warning.assert_called_once_with('S000_000_000 and S000_007_007 do not overlap: choose two images that do')
-    show_error.assert_not_called()
+    if expected_z is None:
+        bare_interface.viewer.dims.set_point.assert_not_called()
+    else:
+        bare_interface.viewer.dims.set_point.assert_called_once_with(0, expected_z)
 
 
 def test_replacing_the_main_view_clears_napari_dask_cache_but_the_overview_does_not(bare_interface):
