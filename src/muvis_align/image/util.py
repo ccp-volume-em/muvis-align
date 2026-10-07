@@ -1759,7 +1759,7 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
         translation = {dim: translation.get(dim, 0) + translation1.get(dim, 0) for dim in dims}
         if rotation1 and not rotation:
             rotation = 0
-        rotation += rotation1
+            rotation += rotation1
 
     if transform_key is not None:
         transform1 = sim.transforms.get(transform_key)
@@ -1767,7 +1767,7 @@ def get_data_mapping(data, transform_key=None, transform=None, translation0=None
             _, rotation1, _ = get_properties_from_transform(transform1)
             if rotation1 and not rotation:
                 rotation = 0
-            rotation += rotation1
+                rotation += rotation1
 
     return translation, rotation
 
