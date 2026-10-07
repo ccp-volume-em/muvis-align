@@ -8,6 +8,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from muvis_align.MVSRegistration import MVSRegistration, RegState
+from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration
+
+S000_TILES = [(DATA_DIR / name).as_posix() for name in ZARR_FILES]
+TWO_TILES = S000_TILES[:2]
+TWO_TIFFS = [(DATA_DIR / name).as_posix() for name in TIFF_FILES[:2]]
+ALL_TILES = sorted(glob.glob('data/S*/*.ome.zarr'))
 
 
 @pytest.mark.parametrize(
@@ -115,18 +121,10 @@ def test_init_params_normalises_sections_and_forwards_options():
     assert init.call_args.kwargs["label"] == "sample"
 
 
-def _make_msims(n=1, size=8, pixel_size=1.0):
-    # small, real (not mocked) single-level msims - cheap enough that preprocess()'s actual
-    # per-level operations (gaussian, normalisation) can just run for real instead of being mocked
-    from multiview_stitcher import msi_utils, spatial_image_utils as si_utils
-    msims = []
-    for i in range(n):
-        data = np.full((size, size), i + 1, dtype=np.uint16)
-        sim = si_utils.get_sim_from_array(
-            data, dims=['y', 'x'], scale={'x': pixel_size, 'y': pixel_size},
-            translation={'x': 0, 'y': 0}, transform_key='source_metadata')
-        msims.append(msi_utils.get_msim_from_sim(sim, scale_factors=[]))
-    return msims
+def _make_msims(count=1, size=8, pixel_size=1.0):
+    # small single-level msims, cheap enough for preprocess() to really run its per-level steps
+    return [make_msim(np.full((size, size), index + 1, dtype=np.uint16),
+                      scale={'x': pixel_size, 'y': pixel_size}) for index in range(count)]
 
 
 @pytest.mark.parametrize(
@@ -272,20 +270,11 @@ def test_check_progress_uses_most_advanced_available_state(
     assert registration.state is expected_state
 
 
-def test_init_data_defers_msim_construction_to_first_msims_read():
+def test_init_data_defers_msim_construction_to_first_msims_read(tmp_path):
     """init_data() should only resolve cheap per-source metadata (position/scale/rotation) -
     the expensive per-source msim build (build_source_msim(), the actual bottleneck when
     loading many tiles) must not run until something genuinely reads reg.msims."""
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/000_000_0.tiff',
-            'data/S000/000_001_0.tiff',
-        ],
-        output_path='../../output/test_init_data_defers_msims/',
-    )
-    reg.init_data()
+    reg = prepared_registration(TWO_TIFFS, tmp_path, preprocess=False)
 
     # cheap metadata is already fully resolved...
     assert reg._msims is None  # ... but the expensive msims list is not built yet
@@ -303,22 +292,12 @@ def test_init_data_defers_msim_construction_to_first_msims_read():
     assert all(source._msim is None for source in reg.sources)
 
 
-def test_select_pair_overlap_then_register_overlap_matches_register_pairs():
+def test_select_pair_overlap_then_register_overlap_matches_register_pairs(tmp_path):
     """select_pair_overlap()/register_overlap() together replace the old single register_pair()
     call, split so a caller (e.g. a UI preview) can cache the overlap crop select_pair_overlap()
     returns and re-run register_overlap() on it for parameter-only changes, without re-selecting
     resolution or re-cropping from the (possibly large) source data every time."""
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/S000_000_000.ome.zarr',
-            'data/S000/S000_000_001.ome.zarr',
-        ],
-        output_path='../../output/test_select_pair_overlap/',
-    )
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(TWO_TILES, tmp_path)
 
     params = {'method': 'orb', 'pairing': 'orthogonal'}
     msim1, msim2 = reg.register_msims[0], reg.register_msims[1]
@@ -340,7 +319,7 @@ def test_select_pair_overlap_then_register_overlap_matches_register_pairs():
     assert 'moving_points' in result
 
 
-def test_register_pairs_computes_without_linear_fusion():
+def test_register_pairs_computes_without_linear_fusion(tmp_path):
     """dask's linear fusion can give two pairs' fused chains one key (a 115-char prefix plus 4 hash
     digits), handing a pair another pair's crop - so both computes of register_pairs() run without it.
     The metrics run on threads with OpenBLAS at one thread: its own pool, started from many threads,
@@ -364,17 +343,7 @@ def test_register_pairs_computes_without_linear_fusion():
             return func(*args, **kwargs)
         return wrapper
 
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/S000_000_000.ome.zarr',
-            'data/S000/S000_000_001.ome.zarr',
-        ],
-        output_path='../../output/test_register_pairs_fusion/',
-    )
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(TWO_TILES, tmp_path)
     with patch.object(mvs_registration_module, 'compute_pairwise_registrations',
                       recording('pairs', mvs_registration_module.compute_pairwise_registrations)),             patch.object(multiview_stitcher.metrics, 'tile_pair_image_metrics',
                          recording('metrics', multiview_stitcher.metrics.tile_pair_image_metrics)):
@@ -387,7 +356,7 @@ def test_register_pairs_computes_without_linear_fusion():
     assert seen['metrics']['openblas_threads'] <= {1}
 
 
-def test_register_pairs_defers_link_quality_without_changing_results():
+def test_register_pairs_defers_link_quality_without_changing_results(tmp_path):
     """Only the chosen candidate's spearman quality is computed; the result must match computing
     all of them, and multiview_stitcher's function is put back afterwards."""
     import contextlib
@@ -395,17 +364,7 @@ def test_register_pairs_defers_link_quality_without_changing_results():
     from multiview_stitcher import registration
     import muvis_align.MVSRegistration as mvs_registration_module
 
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/S000_000_000.ome.zarr',
-            'data/S000/S000_000_001.ome.zarr',
-        ],
-        output_path='../../output/test_register_pairs_deferred_quality/',
-    )
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(TWO_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal'}
     original = registration.link_quality_metric_func
 
@@ -426,7 +385,7 @@ def test_register_pairs_defers_link_quality_without_changing_results():
         np.testing.assert_array_equal(deferred[edge][1], transform)
 
 
-def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
+def test_register_pairs_one_compute_a_pair_matches_across_thread_counts(tmp_path):
     """Each pair is its own compute on a thread (when a pair cannot go to a worker process); results must
     not depend on how many threads. A lone thread keeps the threads scheduler so a single pair still runs
     its tasks in parallel. Pairs go largest estimated cost first."""
@@ -434,19 +393,7 @@ def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
     import networkx as nx
     import muvis_align.MVSRegistration as mvs_registration_module
 
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/S000_000_000.ome.zarr',
-            'data/S000/S000_000_001.ome.zarr',
-            'data/S000/S000_001_000.ome.zarr',
-            'data/S000/S000_001_001.ome.zarr',
-        ],
-        output_path='../../output/test_register_pairs_rolling/',
-    )
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(S000_TILES, tmp_path)
     original = mvs_registration_module.compute_pairwise_registrations
     original_graph = mvs_registration_module.build_view_adjacency_graph
 
@@ -487,7 +434,7 @@ def test_register_pairs_one_compute_a_pair_matches_across_thread_counts():
         np.testing.assert_array_equal(threaded[edge][1], transform)
 
 
-def test_register_pairs_default_pairing_hands_over_candidates_for_the_same_graph():
+def test_register_pairs_default_pairing_hands_over_candidates_for_the_same_graph(tmp_path):
     """Left to search itself, multiview_stitcher pairs every source within the largest one's
     diameter - with overview images among tiles, nearly every pair. It gets the bounding-box
     candidates instead, and must end up with the graph its own search gives."""
@@ -495,14 +442,7 @@ def test_register_pairs_default_pairing_hands_over_candidates_for_the_same_graph
     from multiview_stitcher import mv_graph
     import muvis_align.MVSRegistration as mvs_registration_module
 
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[f'data/S000/S000_00{y}_00{x}.ome.zarr' for y in range(2) for x in range(2)],
-        output_path='../../output/test_register_pairs_default_pairing/',
-    )
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(S000_TILES, tmp_path)
     original = mvs_registration_module.build_view_adjacency_graph
     handed = []
 
@@ -521,12 +461,7 @@ def test_register_pairs_default_pairing_hands_over_candidates_for_the_same_graph
 
 
 def _channel_msim(labels):
-    from multiview_stitcher import spatial_image_utils as si_utils
-    from muvis_align.image.util import wrap_sims_as_msims
-
-    sim = si_utils.get_sim_from_array(np.zeros((1, len(labels), 4, 4), dtype=np.uint8), dims=['t', 'c', 'y', 'x'],
-                                      c_coords=list(labels))
-    return wrap_sims_as_msims([sim])[0]
+    return make_msim(np.zeros((1, len(labels), 4, 4), dtype=np.uint8), dims='tcyx', c_coords=list(labels))
 
 
 def test_registration_channel_by_index_by_label_or_the_only_one():
@@ -552,17 +487,10 @@ def test_registration_channel_is_chosen_once_per_set_of_labels(caplog):
     assert sum('not found' in message for message in caplog.messages) == 2
 
 
-def test_register_pairs_registers_on_the_only_channel_whatever_it_is_called(caplog):
+def test_register_pairs_registers_on_the_only_channel_whatever_it_is_called(caplog, tmp_path):
     import networkx as nx
 
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=['data/S000/S000_000_000.ome.zarr', 'data/S000/S000_000_001.ome.zarr'],
-        output_path='../../output/test_register_pairs_channel/',
-    )
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(TWO_TILES, tmp_path)
 
     def register(channel):
         reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
@@ -591,21 +519,11 @@ def test_register_pairs_registers_on_the_only_channel_whatever_it_is_called(capl
             np.testing.assert_array_equal(mixed[edge], transform)
 
 
-def test_register_overlap_reuses_cached_overlap_across_param_changes():
+def test_register_overlap_reuses_cached_overlap_across_param_changes(tmp_path):
     """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
     crop can be registered again with different registration parameters, without recomputing the
     crop - the two calls below reuse the exact same overlap1/overlap2/sims_pixel_space."""
-    reg = MVSRegistration()
-    reg.init(
-        operation='register',
-        input_path=[
-            'data/S000/S000_000_000.ome.zarr',
-            'data/S000/S000_000_001.ome.zarr',
-        ],
-        output_path='../../output/test_register_overlap_cache/',
-    )
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(TWO_TILES, tmp_path)
 
     msim1, msim2 = reg.register_msims[0], reg.register_msims[1]
     overlap1, overlap2, sims_pixel_space = reg.select_pair_overlap(
@@ -733,18 +651,14 @@ def test_re_resolving_geometry_drops_the_per_scale_msims_too():
     assert registration._scaled_msims == {}
 
 
-def test_register_pairs_in_worker_processes_matches_registering_in_this_process():
+def test_register_pairs_in_worker_processes_matches_registering_in_this_process(tmp_path):
     """Pairs sent to worker processes (their sources pickled, reopened there) must register as they do
     here - compared with one native thread here too, as the workers run: threading changes BLAS sums."""
     import cv2
     from threadpoolctl import threadpool_limits
     import muvis_align.MVSRegistration as mvs_registration_module
 
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
-             output_path='../../output/test_register_pairs_processes/')
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(S000_TILES, tmp_path)
 
     def register(workers):
         reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
@@ -771,15 +685,11 @@ def test_register_pairs_in_worker_processes_matches_registering_in_this_process(
         assert here[edge][0] == in_workers[edge][0] or (np.isnan(here[edge][0]) and np.isnan(in_workers[edge][0]))
 
 
-def test_register_global_resolves_with_the_groupwise_method_named_in_its_params(monkeypatch):
+def test_register_global_resolves_with_the_groupwise_method_named_in_its_params(monkeypatch, tmp_path):
     """The robust linear method is selectable by name: register_global hands it to multiview_stitcher's resolution
     and maps every tile - not how close its fit comes to another method's, which is not this code's to decide."""
     import muvis_align.MVSRegistration as mvs_module
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
-             output_path='../../output/test_register_global_robust/')
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(S000_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid',
               'groupwise_resolution_method': 'robust_linear'}
     reg.register_pairs(reg.register_msims, params=params)
@@ -798,13 +708,9 @@ def test_register_global_resolves_with_the_groupwise_method_named_in_its_params(
 
 
 
-def test_register_global_reports_its_metrics_pair_by_pair():
+def test_register_global_reports_its_metrics_pair_by_pair(tmp_path):
     """The metrics took 56 minutes on the HPC as a single bar step: they now count the registered pairs."""
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
-             output_path='../../output/test_register_global_metrics_progress/')
-    reg.init_data()
-    reg.preprocess(reg.msims)
+    reg = prepared_registration(S000_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid'}
     reg.register_pairs(reg.register_msims, params=params)
     phases = []
@@ -872,10 +778,7 @@ def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp
     from multiview_stitcher import msi_utils
     from muvis_align.MVSRegistration import MVSRegistration
 
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
-             output_path=tmp_path.as_posix() + '/')
-    reg.init_data()
+    reg = prepared_registration(ALL_TILES, tmp_path, preprocess=False)
     fused = {}
     for by_slabs in (False, True):
         reg.fuse_by_z_slabs = by_slabs
@@ -955,10 +858,7 @@ def test_the_middle_section_is_found_by_the_labelled_section_number_else_the_fol
 
 def test_ome_zarr_06_is_refused_before_fusing_other_than_natively(tmp_path):
     import pytest
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S000/*.ome.zarr')),
-             output_path=tmp_path.as_posix() + '/')
-    reg.init_data()
+    reg = prepared_registration(S000_TILES, tmp_path, preprocess=False)
 
     with pytest.raises(ValueError, match="'native' output spacing only"):
         reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key, output_spacing='mean',
@@ -966,13 +866,13 @@ def test_ome_zarr_06_is_refused_before_fusing_other_than_natively(tmp_path):
     assert not glob.glob(tmp_path.as_posix() + '/fused*')
 
 
-def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused():
+def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):
     """A stack's sources carry no z of their own: fuse() promotes them, spacing the slices by index."""
     source_metadata = {'scale': {'y': '0.032', 'x': '0.032'}}
     reg = MVSRegistration()
     reg.init(operation='register', pairing='stack',
              input_path=['data/S000/000_000_0.tiff', 'data/S000/000_001_0.tiff'],
-             output_path='../../output/test_stack_promotion/', source_metadata=source_metadata)
+             output_path=tmp_path.as_posix() + '/', source_metadata=source_metadata)
     reg.init_data(source_metadata=source_metadata)
 
     assert reg.is_stack

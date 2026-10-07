@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 import numpy as np
 import xarray as xr
-from multiview_stitcher import msi_utils, param_utils
-from multiview_stitcher import spatial_image_utils as si_utils
+from multiview_stitcher import msi_utils
 
 from muvis_align.split_registration import register_groups, split_groups, within_group_pairs
+from tests.data_builders import make_msim, prepared_registration, translation_affine
 
 
 def test_groups_are_z_planes_or_for_channel_registration_channels():
@@ -19,16 +19,8 @@ def test_groups_are_z_planes_or_for_channel_registration_channels():
 
 
 def textured_msim(image, origin_x):
-    sim = si_utils.get_sim_from_array(image, dims=['y', 'x'], scale={'y': 1.0, 'x': 1.0},
-                                      translation={'y': 0.0, 'x': origin_x}, transform_key='source')
-    msim = msi_utils.get_msim_from_sim(sim, scale_factors=[])
-    return msi_utils.multiscale_sel_coords(msim, {'c': sim.coords['c'].values[0]})
-
-
-def translation_xparam(shift_yx):
-    matrix = np.eye(3)
-    matrix[:2, 2] = shift_yx
-    return param_utils.affine_to_xaffine(matrix, t_coords=[0])
+    msim = make_msim(image, translation={'y': 0.0, 'x': origin_x}, transform_key='source')
+    return msi_utils.multiscale_sel_coords(msim, {'c': msim['scale0/image'].coords['c'].values[0]})
 
 
 def test_each_group_is_corrected_by_its_group_pair_registration_on_top_of_stage1(monkeypatch):
@@ -38,15 +30,15 @@ def test_each_group_is_corrected_by_its_group_pair_registration_on_top_of_stage1
 
     def registered(msims, graph, **kwargs):
         for edge in graph.edges:
-            graph.edges[edge]['transform'] = translation_xparam([0, 7.0])
-            graph.edges[edge]['quality'] = translation_xparam([0, 0]).isel(x_in=0, x_out=0).copy(data=[1.0])
+            graph.edges[edge]['transform'] = translation_affine(0, 7.0, t_coords=[0])
+            graph.edges[edge]['quality'] = translation_affine(t_coords=[0]).isel(x_in=0, x_out=0).copy(data=[1.0])
             graph.edges[edge]['bbox'] = xr.DataArray([[[0.0, 0.0], [40.0, 40.0]]], dims=['t', 'point_index', 'dim'],
                                                      coords={'t': [0]})
         return graph
     monkeypatch.setattr(split_registration, 'compute_pairwise_registrations', registered)
     image = np.ones((40, 40), dtype=np.float32)
     msims = [textured_msim(image, 0.0), textured_msim(image, 0.0), textured_msim(image, 0.0)]
-    stage1 = [translation_xparam(shift) for shift in ([0, 0], [0, 0], [3.0, 2.0])]
+    stage1 = [translation_affine(*shift, t_coords=[0]) for shift in ([0, 0], [0, 0], [3.0, 2.0])]
 
     transforms, graph = register_groups(msims, stage1, [0, 1, 1], 'source', None,
                                         resolution_kwargs={'transform': 'translation'}, binning=1)
@@ -87,14 +79,8 @@ def test_a_fused_plane_is_smoothed_with_its_background_filled_by_its_mean():
     assert np.all(smoothed > 0)
 
 
-def test_split_pairing_registers_no_pairs_across_planes():
-    from muvis_align.MVSRegistration import MVSRegistration
-
-    reg = MVSRegistration()
-    reg.init(operation='register', input_path=sorted(glob.glob('data/S*/*.ome.zarr')),
-             output_path='../../output/test_split_pairing/')
-    reg.init_data()
-    reg.preprocess(reg.msims)
+def test_split_pairing_registers_no_pairs_across_planes(tmp_path):
+    reg = prepared_registration(sorted(glob.glob('data/S*/*.ome.zarr')), tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'split', 'transform_type': 'translation', 'metrics': [],
               'n_parallel_pairwise_regs': 1}
 
@@ -118,7 +104,7 @@ def test_group_pairs_are_registered_binned_by_multiview_stitcher(monkeypatch):
     image = np.ones((64, 64), dtype=np.float32)
     msims = [textured_msim(image, 0.0), textured_msim(image, 0.0)]
     for msim in msims:
-        msi_utils.set_affine_transform(msim, param_utils.affine_to_xaffine(np.eye(3), t_coords=[0]),
+        msi_utils.set_affine_transform(msim, translation_affine(t_coords=[0]),
                                        transform_key=split_registration.GROUP_KEY, base_transform_key='source')
 
     split_registration.register_group_pair(msims[0], msims[1], 0, None, binning=4)

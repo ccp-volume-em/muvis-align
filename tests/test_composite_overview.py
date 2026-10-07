@@ -6,29 +6,20 @@ from multiview_stitcher import param_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.image.util import composite_msims_overview, wrap_sims_as_msims
+from tests.data_builders import make_msim
 
 TRANSFORM_KEY = 'affine_metadata'
 
 
-def make_msim(value, translation, size=8, spacing=1.0, rotate=False):
-    array = np.full((1, 1, size, size), value, dtype=np.uint16)
-    sim = si_utils.get_sim_from_array(
-        array,
-        dims=['t', 'c', 'y', 'x'],
-        scale={'y': spacing, 'x': spacing},
-        translation={'y': 0.0, 'x': 0.0},
-        transform_key=TRANSFORM_KEY,
-    )
-    affine = si_utils.get_affine_from_sim(sim, TRANSFORM_KEY)
-    matrix = np.asarray(affine.sel(t=0) if 't' in affine.dims else affine, dtype=float).copy()
-    matrix[0, 2] = translation[0]
-    matrix[1, 2] = translation[1]
+def make_source(value, translation, size=8, spacing=1.0, rotate=False):
+    matrix = np.eye(3)
+    matrix[:2, 2] = translation
     if rotate:
         # a rotation cannot be pasted - it needs resampling
-        matrix[0, 0], matrix[0, 1] = 0.0, -1.0
-        matrix[1, 0], matrix[1, 1] = 1.0, 0.0
-    si_utils.set_sim_affine(sim, param_utils.affine_to_xaffine(matrix), transform_key=TRANSFORM_KEY)
-    return wrap_sims_as_msims([sim])[0]
+        matrix[:2, :2] = [[0.0, -1.0], [1.0, 0.0]]
+    return make_msim(np.full((1, 1, size, size), value, dtype=np.uint16), dims='tcyx',
+                     scale={'y': spacing, 'x': spacing}, affine=param_utils.affine_to_xaffine(matrix),
+                     transform_key=TRANSFORM_KEY)
 
 
 def overview_array(msim):
@@ -37,7 +28,7 @@ def overview_array(msim):
 
 def test_composite_places_each_source_at_its_own_position():
     """Two sources side by side land side by side, each keeping its own values."""
-    msims = [make_msim(10, (0, 0)), make_msim(20, (0, 8))]
+    msims = [make_source(10, (0, 0)), make_source(20, (0, 8))]
 
     overview = overview_array(composite_msims_overview(msims, TRANSFORM_KEY))
 
@@ -49,7 +40,7 @@ def test_composite_places_each_source_at_its_own_position():
 def test_composite_overwrites_where_sources_overlap():
     """Plain overwrite, deliberately: this is an overview, not the fused result, and the last
     source in is as good a choice as any for a picture of where things sit."""
-    msims = [make_msim(10, (0, 0)), make_msim(20, (0, 4))]
+    msims = [make_source(10, (0, 0)), make_source(20, (0, 4))]
 
     overview = overview_array(composite_msims_overview(msims, TRANSFORM_KEY))
 
@@ -59,7 +50,7 @@ def test_composite_overwrites_where_sources_overlap():
 
 
 def test_composite_keeps_the_geometry_the_fusion_would_have_had():
-    msims = [make_msim(10, (0, 0), spacing=2.0), make_msim(20, (0, 16), spacing=2.0)]
+    msims = [make_source(10, (0, 0), spacing=2.0), make_source(20, (0, 16), spacing=2.0)]
 
     overview = composite_msims_overview(msims, TRANSFORM_KEY)
 
@@ -71,7 +62,7 @@ def test_composite_keeps_the_geometry_the_fusion_would_have_had():
 def test_composite_coarsens_rather_than_allocating_more_than_its_budget():
     """The overview is pasted eagerly into one array, so its size is real memory - it is
     coarsened in-plane to fit, not left to allocate whatever the fused geometry implies."""
-    msims = [make_msim(10, (0, 0), size=512), make_msim(20, (0, 512), size=512)]
+    msims = [make_source(10, (0, 0), size=512), make_source(20, (0, 512), size=512)]
 
     full = overview_array(composite_msims_overview(msims, TRANSFORM_KEY))
     small = overview_array(composite_msims_overview(msims, TRANSFORM_KEY, max_bytes=64 * 1024))
@@ -86,7 +77,7 @@ def test_composite_coarsens_rather_than_allocating_more_than_its_budget():
 
 def test_composite_declines_a_transform_it_cannot_paste():
     """A rotation needs resampling rather than a paste - the caller falls back to fusing."""
-    msims = [make_msim(10, (0, 0)), make_msim(20, (0, 8), rotate=True)]
+    msims = [make_source(10, (0, 0)), make_source(20, (0, 8), rotate=True)]
 
     assert composite_msims_overview(msims, TRANSFORM_KEY) is None
 
@@ -106,7 +97,7 @@ def test_composite_computes_each_source_without_dask_threads():
         schedulers.append(dask.config.get('scheduler', None))
         return block
 
-    sims = [msi_utils.get_sim_from_msim(make_msim(value, translation))
+    sims = [msi_utils.get_sim_from_msim(make_source(value, translation))
             for value, translation in ((10, (0, 0)), (20, (0, 8)))]
     # meta given, so map_blocks does not call record() itself to infer it
     msims = wrap_sims_as_msims([sim.copy(data=da.asarray(sim.data).map_blocks(record, meta=np.array((), sim.dtype)))
@@ -135,7 +126,7 @@ def test_sources_at_several_heights_need_not_be_promoted():
     properties, and the same overview, as promoting them first - without building the 3D trees."""
     from muvis_align.image.util import calc_output_properties, make_msims_3d
 
-    msims = [make_msim(10, (0, 0)), make_msim(20, (0, 8)), make_msim(30, (0, 0)), make_msim(40, (4, 4), spacing=2.0)]
+    msims = [make_source(10, (0, 0)), make_source(20, (0, 8)), make_source(30, (0, 0)), make_source(40, (4, 4), spacing=2.0)]
     positions = [{'z': 0.0}, {'z': 0.0}, {'z': 5.0}, {'z': 10.0}]
     z_positions = [position['z'] for position in positions]
     promoted = make_msims_3d(msims, positions=positions)
@@ -154,7 +145,7 @@ def test_sources_at_several_heights_need_not_be_promoted():
 def test_sections_spaced_other_than_one_keep_their_own_planes():
     """With no z scale given, sections 0.05 apart (as meatballs') each fill their own plane at their own spacing: at
     the 1.0 a size-1 z reports, every section landed in the first plane."""
-    msims = [make_msim(value, (0, 0)) for value in (10, 20, 30)]
+    msims = [make_source(value, (0, 0)) for value in (10, 20, 30)]
     z_positions = [66.07, 66.12, 66.17]
 
     flat = msi_utils.get_sim_from_msim(composite_msims_overview(msims, TRANSFORM_KEY, z_positions=z_positions))

@@ -5,22 +5,17 @@ from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.image.util import build_pairs_graph, make_msims_2d, msim_is_2d, wrap_sims_as_msims
+from tests.data_builders import make_msim
 
 TRANSFORM_KEY = 'affine_metadata'
 
 
-def make_msim(translation, size=8, spatial_dims=('y', 'x'), z_size=1):
+def make_source(translation, size=8, spatial_dims=('y', 'x'), z_size=1):
     """A source shaped like the real ones: t and c dims, then the spatial dims."""
     shape = [1, 1] + [z_size if dim == 'z' else size for dim in spatial_dims]
-    array = np.zeros(shape, dtype=np.uint16)
-    sim = si_utils.get_sim_from_array(
-        array,
-        dims=['t', 'c'] + list(spatial_dims),
-        scale={dim: 1.0 for dim in spatial_dims},
-        translation={dim: float(value) for dim, value in zip(spatial_dims, translation)},
-        transform_key=TRANSFORM_KEY,
-    )
-    return wrap_sims_as_msims([sim])[0]
+    return make_msim(np.zeros(shape, dtype=np.uint16), dims=['t', 'c'] + list(spatial_dims),
+                     translation={dim: float(value) for dim, value in zip(spatial_dims, translation)},
+                     transform_key=TRANSFORM_KEY)
 
 
 def flatten(stack_props):
@@ -39,7 +34,7 @@ def test_pairs_graph_has_the_nodes_edges_and_stack_props_the_graph_build_would_g
     the linear program per pair it runs to rediscover overlaps we already have. (Checked against
     the real thing on a 328-source project: same nodes, same edges, same stack_props, 7x faster.)
     """
-    msims = [make_msim((0, 0)), make_msim((0, 6)), make_msim((6, 0))]
+    msims = [make_source((0, 0)), make_source((0, 6)), make_source((6, 0))]
     pairs = [(0, 1), (0, 2)]
 
     graph = build_pairs_graph(msims, pairs, TRANSFORM_KEY)
@@ -57,7 +52,7 @@ def test_pairs_graph_has_the_nodes_edges_and_stack_props_the_graph_build_would_g
 def test_pairs_graph_carries_an_overlap_weight_when_one_is_known():
     """Downstream reads the weight as .get('overlap', 1.0), so it is optional - but the saved
     bboxes give it for nothing, and passing it keeps the resolution methods that use it honest."""
-    msims = [make_msim((0, 0)), make_msim((0, 6))]
+    msims = [make_source((0, 0)), make_source((0, 6))]
 
     graph = build_pairs_graph(msims, [(0, 1)], TRANSFORM_KEY, overlaps={(0, 1): 16.0})
     without = build_pairs_graph(msims, [(0, 1)], TRANSFORM_KEY)
@@ -67,7 +62,7 @@ def test_pairs_graph_carries_an_overlap_weight_when_one_is_known():
 
 
 def test_pairs_graph_has_a_node_per_source_even_with_no_pairs():
-    msims = [make_msim((0, 0)), make_msim((0, 6))]
+    msims = [make_source((0, 0)), make_source((0, 6))]
 
     graph = build_pairs_graph(msims, [], TRANSFORM_KEY)
 
@@ -79,7 +74,7 @@ def test_pairs_graph_has_a_node_per_source_even_with_no_pairs():
 def test_make_msims_2d_leaves_an_already_2d_msim_alone():
     """Rebuilding a msim's DataTree is minutes of xarray construction for a few thousand
     sources, so what is already 2D is passed through untouched."""
-    msims = [make_msim((0, 0)), make_msim((0, 6))]
+    msims = [make_source((0, 0)), make_source((0, 6))]
     assert all(msim_is_2d(msim) for msim in msims)
 
     converted = make_msims_2d(msims)
@@ -88,7 +83,7 @@ def test_make_msims_2d_leaves_an_already_2d_msim_alone():
 
 
 def test_make_msims_2d_still_converts_a_3d_msim():
-    msims = [make_msim((0, 0, 0), spatial_dims=('z', 'y', 'x'))]
+    msims = [make_source((0, 0, 0), spatial_dims=('z', 'y', 'x'))]
     assert not msim_is_2d(msims[0])
 
     converted = make_msims_2d(msims)
@@ -104,7 +99,7 @@ def test_view_adjacency_graph_of_translated_sources_matches_multiview_stitchers(
     from multiview_stitcher import mv_graph
     from muvis_align.image.util import build_view_adjacency_graph
 
-    msims = [make_msim((0, 0)), make_msim((0, 6)), make_msim((5, 3)), make_msim((0, 8)), make_msim((40, 40))]
+    msims = [make_source((0, 0)), make_source((0, 6)), make_source((5, 3)), make_source((0, 8)), make_source((40, 40))]
     pairs = [(0, 1), (0, 2), (1, 2), (0, 3), (0, 4), (1, 3)]
 
     fast = build_view_adjacency_graph(msims, TRANSFORM_KEY, pairs, overlap_tolerance=0)
@@ -125,7 +120,7 @@ def test_a_cancel_stops_building_the_view_adjacency_graph():
     import pytest
     from muvis_align.image.util import build_view_adjacency_graph
     from muvis_align.util import OperationCancelled, cancellable, request_cancel
-    msims = [make_msim((0, 0)), make_msim((0, 6))]
+    msims = [make_source((0, 0)), make_source((0, 6))]
 
     with cancellable():
         request_cancel()
@@ -138,7 +133,7 @@ def test_view_adjacency_graph_hands_rotated_sources_to_multiview_stitcher():
     from multiview_stitcher import mv_graph, param_utils
     from muvis_align.image.util import build_view_adjacency_graph
 
-    msims = [make_msim((0, 0)), make_msim((0, 6))]
+    msims = [make_source((0, 0)), make_source((0, 6))]
     sim = msi_utils.get_sim_from_msim(msims[1])
     angle = np.radians(20)
     matrix = np.array([[np.cos(angle), -np.sin(angle), 0], [np.sin(angle), np.cos(angle), 6], [0, 0, 1]])

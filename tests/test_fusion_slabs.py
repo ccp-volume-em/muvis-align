@@ -8,6 +8,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.fusion_slabs import (fuse_native_levels_to_ome_zarr, native_level_spacings,
                                       native_level_stack_properties, block_sources)
+from tests.data_builders import make_msim
 
 
 @pytest.mark.parametrize('source_spacings, shape, expected', [
@@ -52,10 +53,8 @@ def test_each_block_is_fused_from_only_the_sources_reaching_it():
 
 
 def flat_msim(value, size, spacing, origin):
-    sim = si_utils.get_sim_from_array(np.full((size, size), value, dtype=np.uint8), dims=['y', 'x'],
-                                      scale={'y': spacing, 'x': spacing},
-                                      translation={'y': origin, 'x': origin}, transform_key='source')
-    return msi_utils.get_msim_from_sim(sim, scale_factors=[])
+    return make_msim(np.full((size, size), value, dtype=np.uint8), scale={'y': spacing, 'x': spacing},
+                     translation={'y': origin, 'x': origin}, transform_key='source')
 
 
 def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path):

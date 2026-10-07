@@ -105,3 +105,111 @@ def assert_same_metadata(got, expected, keys=('dimension_order', 'shapes', 'dtyp
             _assert_same_sizes(got[key], expected[key])
         else:
             assert got[key] == expected[key], key
+
+
+def translation_affine(shift_y=0.0, shift_x=0.0, t_coords=None):
+    """A 2D translation as an xarray affine, with a t dim when t_coords are given."""
+    from multiview_stitcher import param_utils
+    return param_utils.affine_to_xaffine(param_utils.affine_from_translation([shift_y, shift_x]), t_coords=t_coords)
+
+
+def grid_graph(rows=4, cols=4, size=100.0, step=90.0, outlier=None):
+    """Tiles on a grid, overlapping their neighbours by 10: every pair registers to identity, bar `outlier`."""
+    import networkx as nx
+    import xarray as xr
+
+    graph = nx.Graph()
+    for row in range(rows):
+        for col in range(cols):
+            graph.add_node(row * cols + col, stack_props={
+                'shape': {'y': int(size), 'x': int(size)}, 'spacing': {'y': 1.0, 'x': 1.0},
+                'origin': {'y': row * step, 'x': col * step}, 'transform': translation_affine()})
+    for row in range(rows):
+        for col in range(cols):
+            for other_row, other_col in ((row, col + 1), (row + 1, col)):
+                if other_row < rows and other_col < cols:
+                    node, other = row * cols + col, other_row * cols + other_col
+                    lower = np.array([other_row * step, other_col * step])
+                    upper = np.array([row * step, col * step]) + size
+                    graph.add_edge(node, other, transform=translation_affine(), quality=0.9, overlap=0.1,
+                                   bbox=xr.DataArray(np.array([lower, upper]), dims=['point_index', 'dim']))
+    if outlier is not None:
+        graph.edges[outlier]['transform'] = translation_affine(0.0, 30.0)
+    return graph
+
+
+def prepared_registration(input_path, output_path, preprocess=True):
+    """An MVSRegistration over `input_path`, its data initialised and (by default) pre-processed."""
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    registration = MVSRegistration()
+    registration.init(operation='register', input_path=input_path, output_path=Path(output_path).as_posix() + '/')
+    registration.init_data()
+    if preprocess:
+        registration.preprocess(registration.msims)
+    return registration
+
+
+def registration_from_resource(resource_file, output_path=None):
+    """An MVSRegistration initialised from a resources/ project file: (registration, its first operation's params)."""
+    import yaml
+    from muvis_align.MVSRegistration import MVSRegistration
+
+    with open(Path('resources') / resource_file, 'r', encoding='utf8') as file:
+        params = yaml.safe_load(file)
+    operation_params = params['operations'][0]
+    if output_path is not None:
+        operation_params['output']['path'] = Path(output_path).as_posix() + '/'
+    registration = MVSRegistration()
+    registration.init_params(params['general'], operation_params)
+    registration.init_data()
+    return registration, operation_params
+
+
+class FakeBar:
+    """Stands in for napari's progress bar - no Qt needed."""
+
+    def __init__(self, **kwargs):
+        self.total = kwargs.get('total')
+        self.n = 0
+        self.closed = False
+
+    def update(self, step=1):
+        self.n += step
+
+    def close(self):
+        self.closed = True
+
+
+def make_phase_factory(phases=1, desc='Operation', progress_class=FakeBar, **kwargs):
+    from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
+
+    factory = NapariPhaseProgress(progress_class=progress_class, desc=desc, phases=phases, **kwargs)
+    # the heartbeat only logs; nothing here waits long enough for it to fire
+    factory.heartbeat_seconds = 0
+    return factory
+
+
+def percent(factory):
+    return factory._position / factory.ticks * 100
+
+
+def recording_phase_factory():
+    """A progress factory whose phases record their desc, total and steps done: (factory, records)."""
+    records = []
+
+    class RecordingPhase:
+        def __init__(self, total=None, desc=None, **_):
+            self.record = {'desc': desc, 'total': total, 'done': 0}
+            records.append(self.record)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def update(self, count=1):
+            self.record['done'] += count
+
+    return RecordingPhase, records

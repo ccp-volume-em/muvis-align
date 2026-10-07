@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from muvis_align.fusion_methods.FusionMethodExclusive import FusionMethodExclusive
+from tests.data_builders import make_sim
 
 nan = np.nan
 
@@ -40,12 +41,10 @@ def test_exclusive_with_one_view_keeps_it():
 @pytest.mark.parametrize('order', [(0, 1), (1, 0)])
 def test_exclusive_fuse_keeps_the_earlier_source_where_tiles_overlap(order):
     from multiview_stitcher import fusion, msi_utils
-    from multiview_stitcher import spatial_image_utils as si_utils
 
     values, origins = (10, 20), (0.0, 6.0)
-    sims = [si_utils.get_sim_from_array(np.full((8, 8), values[index], np.uint16), dims=['y', 'x'],
-                                        scale={'y': 1, 'x': 1}, translation={'y': 0.0, 'x': origins[index]},
-                                        transform_key='source')
+    sims = [make_sim(np.full((8, 8), values[index], np.uint16), translation={'y': 0.0, 'x': origins[index]},
+                     transform_key='source')
             for index in order]
     msims = [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in sims]
     fuse = FusionMethodExclusive(sims[0]).fusion

@@ -8,25 +8,18 @@ halves: that the records become a bar that keeps moving without filling, and
 one thing here no local care can keep true.
 """
 import logging
-import os.path
 
 import pytest
-import yaml
-from multiview_stitcher import msi_utils
+from multiview_stitcher.param_resolution import groupwise_resolution
 
 from muvis_align.GlobalOptProgress import (
     GlobalOptProgress, GLOBAL_OPT_LOGGER, ITERATION_MESSAGE, MAX_ITER_MESSAGE, FINISHED_MESSAGE,
     DEFAULT_MAX_ITER)
-from muvis_align.MVSRegistration import MVSRegistration
-from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress
-
-from tests.test_phase_progress import FakeBar, percent
+from tests.data_builders import grid_graph, make_phase_factory, percent
 
 
-def make_factory(phases=2):
-    factory = NapariPhaseProgress(progress_class=FakeBar, desc='Global registration', phases=phases)
-    factory.heartbeat_seconds = 0    # the bar's own heartbeat only logs
-    return factory
+def make_factory():
+    return make_phase_factory(phases=2, desc='Global registration')
 
 
 def emit_iteration(iteration, max_residual=1.0):
@@ -156,22 +149,10 @@ def test_upstream_still_logs_its_iterations():
     """Everything above rests on multiview_stitcher writing this exact record. It is upstream's,
     so this runs the real optimiser and checks the records arrive - the rest degrades quietly to
     a bar that moves once, and nothing else would notice if they stopped."""
-    with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
-        params = yaml.safe_load(file)
-
-    operation_params = params['operations'][0]
-    reg_params = operation_params['registration']
-    reg = MVSRegistration()
-    reg.init_params(params['general'], operation_params)
-    reg.init_data()
-    reg.preprocess(reg.msims)
-    reg.register_pairs(reg.register_msims, params=reg_params)
-
-    from muvis_align.image.util import wrap_sims_as_msims
-    sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in reg.msims]
     factory = make_factory()
     with factory:
-        reg.register_global(wrap_sims_as_msims(sims), params=reg_params, progress_factory=factory)
+        with GlobalOptProgress(factory, heartbeat_seconds=0):
+            groupwise_resolution(grid_graph(outlier=(5, 6)), method='global_optimization', transform='translation')
         reached = percent(factory)
 
     assert reached > 0, ('the optimiser reported no iteration this recognised:'
@@ -181,11 +162,7 @@ def test_upstream_still_logs_its_iterations():
 
 def test_a_cancel_stops_global_optimization_at_its_next_logged_iteration():
     """global_optimization is one blocking call; its own log call is where a cancel can reach it."""
-    import pytest
-    from multiview_stitcher.param_resolution import groupwise_resolution
-    from muvis_align.GlobalOptProgress import GlobalOptProgress
     from muvis_align.util import OperationCancelled, cancellable, request_cancel
-    from tests.test_robust_resolution import grid_graph
 
     with cancellable(), GlobalOptProgress(None, desc='Global registration'):
         request_cancel()
