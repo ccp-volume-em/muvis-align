@@ -1365,7 +1365,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.fusion_process()
 
     # the question carries the estimate, made for the fusion about to run
-    assert f"Estimated output: {print_hbytes(2000)} uncompressed in 2 resolution levels" in messages[0]
+    assert messages[0].endswith(f"Estimated output: {print_hbytes(2000)}")
     if reply == "No":
         assert not bare_interface.reg.fuse.called
         assert not bare_interface._napari_view_add_fused_data.called

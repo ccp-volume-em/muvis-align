@@ -1903,8 +1903,7 @@ class Interface:
         levels = estimate['levels']
         logging.info(f'Fusion size estimate: {print_hbytes(estimate["bytes"])} uncompressed, per level '
                      + ', '.join(f'{level["spacing"]:.4g}: {print_hbytes(level["bytes"])}' for level in levels))
-        return (f'\nEstimated output: {print_hbytes(estimate["bytes"])} uncompressed'
-                f' in {len(levels)} resolution level{"s" if len(levels) != 1 else ""}.')
+        return f'\nEstimated output: {print_hbytes(estimate["bytes"])}'
 
     @catch_run_errors
     def run_fusion(self, progress_factory=None):
