@@ -41,7 +41,6 @@ ESSENTIAL
 
 PERFORMANCE
 
-- [ ] refresh view after registration - very long time for low res output??
 - [ ] 19:30 CET time close napari - long time to actually close node
 - [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
       preview size cap (3.4 min on the HPC).
