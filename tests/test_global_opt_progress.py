@@ -98,7 +98,8 @@ def test_the_log_carries_the_progress_and_not_the_flood(caplog):
     heartbeat_seconds is left at its default (0 turns the logging off, which is what the tests
     above want): the first record always reports, whatever the interval.
     """
-    with caplog.at_level(logging.INFO):
+    # an earlier test's init_logging leaves multiview_stitcher at WARNING
+    with caplog.at_level(logging.INFO), caplog.at_level(logging.INFO, logger='multiview_stitcher'):
         with GlobalOptProgress(None, max_passes=831):
             emit_iteration(4, max_residual=0.125)
             for iteration in range(50):
