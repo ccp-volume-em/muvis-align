@@ -704,7 +704,7 @@ class MVSRegistration:
                          f' {format_phase_timing(time.time() - phase_start, file_times, file_cpu_times,
                                                  max_workers, time.process_time() - phase_cpu_start)}')
 
-    def init_data(self, source_metadata={}, extra_metadata={}, z_scale=None, target_scale=None, store=True,
+    def init_data(self, source_metadata={}, extra_metadata={}, target_scale=None, store=True,
                   progress_factory=None):
         if not source_metadata:
             source_metadata = self.source_metadata
