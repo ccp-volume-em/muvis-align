@@ -312,6 +312,8 @@ class MVSRegistration:
         self.group_pairs = {}
         self.fuse_by_z_slabs = True
         self.register_indices = None
+        # per source index: the registration's correction on top of the source transform; absent means identity
+        self.mappings = None
         self.output_params = {}
 
     def is_initialised(self):
@@ -1009,12 +1011,16 @@ class MVSRegistration:
                     if progress_factory is not None
                     else nullcontext(None)
                 )
+                self.mappings = {}
                 with progress_context as pbar:
-                    for msim, filename in zip(self.msims, self.filenames):
+                    for index, (msim, filename) in enumerate(zip(self.msims, self.filenames)):
                         # the mapping is stored as registration produced it - 2D for a stack,
                         # whose msims are stored 2D too (see fuse()), so neither needs widening
                         mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
-                        set_msim_affine(msim, mapping, transform_key=self.reg_transform_key)
+                        self.mappings[index] = mapping
+                        # chained onto the source transform, as register() does
+                        msi_utils.set_affine_transform(msim, mapping, transform_key=self.reg_transform_key,
+                                                       base_transform_key=self.source_transform_key)
                         if pbar is not None:
                             pbar.update(1)
                 if not is_3d:
@@ -1839,6 +1845,7 @@ class MVSRegistration:
                                           n_parallel_pairs=n_parallel_pairwise_regs,
                                           progress_factory=progress_factory)
 
+        self.mappings = mappings_dict
         if self.group_pairs:
             metrics['group_pairs'] = self.group_pair_metrics()
         self.metrics = metrics

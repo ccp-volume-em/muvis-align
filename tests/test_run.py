@@ -131,18 +131,31 @@ def test_preprocess_scale_selects_real_subpyramid_not_a_resize(tmp_path):
     np.testing.assert_array_equal(np.asarray(sub_sim0.data), np.asarray(native_sim.data))
 
 
-def test_init_progress_resumes_a_registration_of_the_same_files_only(tmp_path):
-    """Reopening a registered project puts the saved transform on every msim (Interface's init_progress relies on it);
-    a mappings.json left by another fileset in the same output directory is ignored, not a crash."""
-    reg, operation_params, reg_params = registered_from_resource(tmp_path)
-    reg.register(reg.register_msims, reg.register_indices, params=reg_params)
+@pytest.mark.parametrize('global_rotation', [None, 30], ids=['plain', 'rotated-source'])
+def test_init_progress_resumes_a_registration_of_the_same_files_only(tmp_path, global_rotation):
+    """Reopening a registered project puts the saved transform on every msim, chained onto a rotated source transform
+    as registering does, and keeps its mappings; a mappings.json left by another fileset is ignored, not a crash."""
+    def registration():
+        reg, operation_params = registration_from_resource('params_test_2d.yml', tmp_path)
+        if global_rotation is not None:
+            reg.global_rotation = global_rotation
+            reg.init_data()
+        return reg, operation_params
+
+    reg, operation_params = registration()
+    reg.preprocess(reg.msims)
+    reg.register(reg.register_msims, reg.register_indices,
+                 params=dict(operation_params['registration'], method='phase_correlation'))
     output_filename = operation_to_past_participle(operation_params['operation'])
 
-    resumed, _ = registration_from_resource('params_test_2d.yml', tmp_path)
+    resumed, _ = registration()
     resumed.init_progress(output_filename, 'ome.zarr')
 
     assert resumed.is_global_registered()
     assert len(resumed.msims) == len(reg.msims)
+    assert sorted(resumed.mappings) == sorted(reg.mappings)
+    for index, mapping in reg.mappings.items():
+        np.testing.assert_allclose(np.asarray(resumed.mappings[index]).squeeze(), np.asarray(mapping).squeeze())
     for msim, orig_msim in zip(resumed.msims, reg.msims):
         assert reg.reg_transform_key in get_msim_transform_keys(msim)
         resumed_transform = msi_utils.get_transform_from_msim(msim, reg.reg_transform_key)
