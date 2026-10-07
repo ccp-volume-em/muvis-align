@@ -31,7 +31,17 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-Nothing.
+**Test consolidation** (branch `tests-consolidation`): ~530 test functions / ~890 cases in 54 files; aim ~150 fewer
+functions, ~250 fewer cases, ~40 files. Done in three areas, one after the other, each committing per step:
+1. Image/metadata/geometry tests (owns tests/data_builders.py: one make_msim, TIFF/OME-Zarr writers, data paths).
+2. Registration/fusion/progress tests (shared FakeBar/grid_graph/prepared_registration helpers; accuracy fixes in
+   test_robust_resolution and test_mvs_registration_unit; fewer ORB registrations in test_run).
+3. UI tests: test_napari_interface_registration.py -> test_interface.py, no unused project_config parametrization.
+Per area: delete obsolete/vacuous tests (and dead image/util.copy_transforms), fold per-change files into the
+module's file, parametrize near-duplicates, rename single-letter names, drop timings from docstrings.
+Untouched: test_tiff_metadata.py and _dummy_tiff.py (napari-meta-tiff copies), the cancel tests.
+The uncommitted util.py/robust_resolution.py/Interface.py edits are the user's WIP: never stage them.
+Progress: plan agreed.
 
 ## TODO
 
