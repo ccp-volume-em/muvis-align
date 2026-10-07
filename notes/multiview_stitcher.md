@@ -57,6 +57,10 @@ global_optimization). At HPC size (synthetic grid, 34040 tiles, 269374 edges wit
 attributes, one component): reference view 0.4s, robust_linear 1283s (~2 min a round), peak rss
 3.5GB; the median residual settles by round 6-7 (0.809 -> 0.459 -> 0.445). Upstream candidate: a number of robust rounds as a `linear_two_pass`
 option, which would make the wrapper unnecessary.
+A round's cost is linear_two_pass's own, and little of it is solving: profiled locally, the sparse solves are
+0.15s of 9.7s, building the per-node xarray parameters (twice a call) 6.5s and the residuals 2.7s; with pruning off
+its second pass repeats the first. Upstream: suggestions 1a-1b in
+[multiview_stitcher_suggestions.md](multiview_stitcher_suggestions.md).
 
 ### Reference view search is O(nodes x edges)
 

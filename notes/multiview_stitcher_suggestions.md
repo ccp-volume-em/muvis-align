@@ -5,9 +5,53 @@ and how muvis-align works around it today. Checked against multiview-stitcher 0.
 test data (153 sources, 1764 overlapping / 831 orthogonal pairs); "HPC" is the full run (34k sources, 1081
 sections, 229725 pairs). Background on each area: [multiview_stitcher.md](multiview_stitcher.md).
 
-Ordered by impact at HPC scale.
+Ordered by impact at HPC scale; global resolution (1) is the main one.
 
-## 1. Reference view search: one pass over the edges
+## 1. Global resolution: a robust linear method that scales
+
+The main suggestion. At HPC scale `global_optimization` does not finish and `linear_two_pass` fits poorly where
+pairs are bad; reweighting `linear_two_pass` fits as well as `global_optimization` at close to `linear_two_pass`'s
+cost. Four parts, each useful on its own.
+
+### 1a. A robust option for `linear_two_pass`
+
+- **Problem:** `linear_two_pass` is plain weighted least squares plus one pruning step (median + 2 x MAD, a
+  spanning tree kept), so bad pairs pull the fit; repeating the pruning on its own kept edges prunes down to a
+  spanning tree.
+- **Measured:** the table below. HPC (34k sources, 229725 pairs): ~10 min a round; the median residual settled
+  at 0.104um by round 3.
+
+| method | time | median residual | p90 residual |
+|---|---|---|---|
+| **local, rigid, 153 sources, 831 orthogonal pairs** | | | |
+| `linear_two_pass` | 0.9s | 0.111um | 0.482um |
+| `linear_two_pass` reweighted (`robust_linear`, 9 rounds to converge) | 4.3s | 0.109um | 0.284um |
+| `global_optimization` | 83.7s | | |
+| **local, 1764 overlapping pairs (earlier)** | | | |
+| `linear_two_pass` | 2.0s | 0.211um | 0.894um |
+| `linear_two_pass` reweighted (10 rounds) | 6.5s | 0.134um | 0.434um |
+| `global_optimization` | 354-406s | 0.117um | 0.503um |
+
+- **Suggestion:** a `robust_rounds` option (with a residual `scale`) on `linear_two_pass`: iteratively reweighted
+  least squares, each round re-solving with every edge weighted by its quality x 1 / (1 + (residual / scale)^2) -
+  a Cauchy weight of its last residual, so bad pairs stop pulling the fit without being cut - and pruning off.
+  Stop once the 99th percentile of the residuals' change in a round is within a fraction of the scale: on the HPC
+  the largest change never settled (a few of 229k edges flip every round), so a max-based stop ran every round.
+- **muvis-align:** `robust_resolution.groupwise_resolution_robust_linear`, registered as `robust_linear`; the
+  plugin's default global method. Scale: half the voxel diagonal; tolerance 1% of it.
+
+### 1b. `linear_two_pass`: the cost is building the parameters, not solving
+
+- **Problem:** per call, `_build_params_from_components` builds an xarray transform per node twice (after pass 1
+  and pass 2), and pass 2 re-solves even when no edge was pruned - then giving pass 1's result again.
+- **Measured (local, profiled, 9 calls with pruning off):** 9.7s in all, of which the sparse solves 0.15s,
+  `_build_params_from_components` 6.5s (18 calls), `compute_edge_residuals` 2.7s. So about a third of every call
+  repeats pass 1 when nothing is pruned, and two thirds are xarray construction. On the HPC a call is ~10 min.
+- **Suggestion:** skip pass 2 (and its parameter build) when every edge is kept; keep the per-node components in
+  numpy between passes and build the xarray transforms once, for the result returned.
+- **muvis-align:** nothing - the solver is reached only through `groupwise_resolution_linear_two_pass`.
+
+### 1c. Reference view search: one pass over the edges
 
 - **Problem:** `mv_graph.get_node_with_maximal_edge_weight_sum_from_graph` scans every edge once per node, so it
   is O(nodes x edges). `global_optimization` and `linear_two_pass` call it whenever no `reference_view` is given,
@@ -18,30 +62,17 @@ Ordered by impact at HPC scale.
 - **muvis-align:** `robust_resolution.find_reference_view` does that (3ms locally against 57-267ms);
   `register_global` passes it when the graph is connected.
 
-## 2. A robust option for `linear_two_pass`
-
-- **Problem:** `linear_two_pass` is plain weighted least squares plus one pruning step, so bad pairs pull the
-  fit. `global_optimization` fits well but does not finish at scale (see 3).
-- **Measured (local, median / p90 residual on all edges):** global_optimization 354-406s, 0.117 / 0.503um;
-  linear_two_pass 2.0s, 0.211 / 0.894um; the same solver reweighted (IRLS, Cauchy weight of each edge's last
-  residual times its quality, 10 rounds) 6.5s, 0.134 / 0.434um. At HPC size (synthetic, 34k tiles, 269k edges):
-  1283s, peak 3.5GB, settled by round 6-7.
-- **Suggestion:** a `robust_rounds` (and residual scale) option on `linear_two_pass`: re-solve with each edge
-  weighted by quality x 1 / (1 + (residual / scale)^2), pruning off.
-- **muvis-align:** `robust_resolution.groupwise_resolution_robust_linear`, registered as `robust_linear`; the
-  plugin's default global method.
-
-## 3. `global_optimization` at scale
+### 1d. `global_optimization` at scale
 
 - **Problem:** it removes one edge per outer pass, re-running the inner loop (up to 500 iterations) and
   deep-copying the graph for each removal candidate.
 - **Measured:** 967 passes locally (354-406s); on the HPC pass 1 took ~2h, then ~3 min a pass, 146 passes in 10h
   with the max residual stuck at ~69.6. It would not finish.
 - **Suggestion:** remove several edges per pass (e.g. all above a residual threshold, keeping connectivity), and
-  avoid the per-candidate deep copies.
-- **muvis-align:** use `robust_linear` (2) for translation and rigid.
+  avoid the per-candidate deep copies - or point large graphs to the robust linear method (1a).
+- **muvis-align:** uses `robust_linear` (1a) for translation and rigid.
 
-## 4. View adjacency graph: exact box intersections when nothing is rotated
+## 2. View adjacency graph: exact box intersections when nothing is rotated
 
 - **Problem:** building the view adjacency graph solves a linear program (`linprog`) per candidate pair.
 - **Measured:** 2h16 for 233k pairs on the HPC; locally 4.5s -> 0.3s with the change below, edges identical and
@@ -50,7 +81,7 @@ Ordered by impact at HPC scale.
   overlap as the axis-aligned bounding boxes' intersection, all pairs at once; keep `linprog` for the rest.
 - **muvis-align:** `image.util.build_view_adjacency_graph` does this for the pairs it is given.
 
-## 5. Default pair search radius
+## 3. Default pair search radius
 
 - **Problem:** with no pairs given, candidates come from a cKDTree radius of the largest source's diameter. One
   large source (an overview image) makes nearly every pair a candidate, each a delayed overlap task.
@@ -60,7 +91,7 @@ Ordered by impact at HPC scale.
 - **muvis-align:** `image.util.find_candidate_overlap_pairs` hands multiview-stitcher bounding-box sweep
   candidates: same edges, graph build 13.2s -> 1.1s.
 
-## 6. Phase correlation: link quality for the kept shift only
+## 4. Phase correlation: link quality for the kept shift only
 
 - **Problem:** `phase_correlation_registration` computes a spearman link quality for every candidate shift (~11
   a pair) and keeps one.
@@ -69,7 +100,7 @@ Ordered by impact at HPC scale.
 - **Suggestion:** compute the link quality only for the chosen candidate.
 - **muvis-align:** `MVSRegistration.deferred_link_quality` / `resolve_deferred_quality`.
 
-## 7. Phase correlation: disambiguation that prefers zero shift
+## 5. Phase correlation: disambiguation that prefers zero shift
 
 - **Problem:** the candidate shift is chosen by SSIM over the union (or, with NaNs, the intersection) bounding box,
   with NaN pixels read as 0. When both images share an outline, a background or a fixed pattern at the same place
@@ -85,7 +116,7 @@ Ordered by impact at HPC scale.
   background before registering; with large shifts relative to the section, a feature method (SIFT) works where
   phase correlation does not.
 
-## 8. Pairwise registration in processes
+## 6. Pairwise registration in processes
 
 - **Problem:** `compute_pairwise_registrations` runs pairs in threads, and pair registration is GIL-bound.
 - **Measured:** 64 threads did ~3 cores of pair work on the HPC. In spawned worker processes (native pools at one
@@ -94,7 +125,7 @@ Ordered by impact at HPC scale.
 - **muvis-align:** `register_pairs` registers each pair in a worker process (`register_pair_in_worker`), with
   `PicklableTiffLevel` so TIFF levels can be sent.
 
-## 9. Registration metrics per registered pair
+## 7. Registration metrics per registered pair
 
 - **Problem:** `metrics.tile_pair_image_metrics` in its overlap mode measures every pair that overlaps under the
   base transform, not the pairs that were registered; each overlap is a `linprog` (HiGHS) call, which hung or
@@ -105,7 +136,7 @@ Ordered by impact at HPC scale.
 - **muvis-align:** calls it per registered pair with only that pair's two msims, in worker processes when there
   are more pairs than workers; without workers, one pair at a time in the calling thread.
 
-## 10. Fusion: the plan once per fusion, not once per block
+## 8. Fusion: the plan once per fusion, not once per block
 
 - **Problem:** writing to zarr, `_fuse_chunk_to_zarr` calls `fuse()` for every output block with that block as
   the output, so the fusion plan (`_build_spatial_fusion_plan`, `_get_axis_aligned_translation_dims`,
@@ -122,7 +153,7 @@ Ordered by impact at HPC scale.
   (identical output). Slides export ~31 -> ~9 min, ~1.5 -> ~4.3 cores, together with direct TIFF reads (see the
   tifffile item below; ~15-20% of that).
 
-## 11. Registration binning budget for 2D images
+## 9. Registration binning budget for 2D images
 
 - **Problem:** `registration.get_optimal_registration_binning` bins a pair only while it holds more than
   `max_total_pixels_per_stack = 400**3` (64M) pixels. That budget suits 3D stacks; a 2D image of up to 64M pixels
@@ -133,7 +164,7 @@ Ordered by impact at HPC scale.
 - **Suggestion:** a budget per dimensionality (e.g. 400**ndim, or a 2D default of the order of 1-4M pixels).
 - **muvis-align:** passes `registration_binning` for the section pairs, from the `split_binning` setting (default 8).
 
-## 12. Smaller items
+## 10. Smaller items
 
 - **Scheduler for the overlap graph:** without a dask scheduler set, building the view adjacency graph computes
   overlaps with spawned processes; a script without a `__main__` guard then re-runs itself in each (>10GB). A
