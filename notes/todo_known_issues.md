@@ -63,6 +63,10 @@ ESSENTIAL
 - [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
       single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
 - [ ] reduce amount of tests in the tests folder, by removing/grouping redundant or very similar tests
+- [ ] look at C:\Project\slides\Ciqtek\muvis_align_project_rotation.yml which now shows rotated tiles.
+      The napari viewer code for get shapes works perfectly, but not the code for get overlaps which is extremely elaborate and error-prone.
+      Shapes come from stack_props, can the overlap shapes also be constructed from stack_props, resulting in a rotated shapes,
+      instead of a number of coordinates forming arbitrary bounds?
 
 
 PERFORMANCE
