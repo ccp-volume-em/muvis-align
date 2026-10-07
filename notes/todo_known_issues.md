@@ -41,7 +41,8 @@ Per area: delete obsolete/vacuous tests (and dead image/util.copy_transforms), f
 module's file, parametrize near-duplicates, rename single-letter names, drop timings from docstrings.
 Untouched: test_tiff_metadata.py and _dummy_tiff.py (napari-meta-tiff copies), the cancel tests.
 The uncommitted util.py/robust_resolution.py/Interface.py edits are the user's WIP: never stage them.
-Progress: area 1 done (4078023..8836a05: 23 -> 15 files, 486 -> 388 cases); area 2 next.
+Progress: area 1 done (4078023..8836a05: 23 -> 15 files, 486 -> 388 cases); area 2 done (cc62a89..3510644:
+20 -> 15 files, 171 -> 142 functions, 230 -> 208 cases); area 3 next.
 
 ## TODO
 
