@@ -37,8 +37,6 @@ Nothing.
 
 ESSENTIAL
 
-- [ ] **HPC channel names** - check which files name their channel 'channel 0' rather than '#0' (an old
-      single-level export mixed in?). Fusion now relabels them (see Done), but they should not differ.
 - [ ] reduce amount of tests in the tests folder, by removing/grouping redundant or very similar tests
 - [ ] look at C:\Project\slides\Ciqtek\muvis_align_project_rotation.yml which now shows rotated tiles.
       The napari viewer code for get shapes works perfectly, but not the code for get overlaps which is extremely elaborate and error-prone.
@@ -178,6 +176,8 @@ REFACTORING
   fusion selects every source by the first one's 'c' labels. fuse() now gives a single-channel source named
   otherwise the common label (unify_msim_channels), and stops with an error on differing multichannel labels.
   Confirmed on the next HPC run (137 sources relabelled, fusion completed).
+  The names come from the files: SBEMimage writes Name="#0", and a channel without a name gets
+  muvis-align's 'channel N' - so the HPC set mixes SBEMimage tiles with unnamed files.
 - **HPC pair registration speed** - 3.2h on 64 worker processes on the 2026-10-03 run (4.6h before), rss flat
   16-18GB; the exact overlap test drops the ~3.6k of 233k candidates that only touch.
 
