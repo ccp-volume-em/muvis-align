@@ -1702,7 +1702,7 @@ def promoted_geometry(item, transform_key, z_position):
     if 'z' not in shape:
         # si_utils reports a size-1 dim's spacing as 1.0, whatever the nominal pixel size
         shape, spacing, origin = {'z': 1, **shape}, {'z': 1.0, **spacing}, {'z': float(z_position), **origin}
-    return {'shape': shape, 'spacing': spacing, 'origin': origin}, np.asarray(widen_xaffine_to_3d(affine), dtype=float)
+    return {'shape': shape, 'spacing': spacing, 'origin': origin}, widened_affine_matrix(affine)
 
 
 def calc_output_properties(sims, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
@@ -2510,13 +2510,20 @@ def widen_xaffine_to_3d(transform):
     """
     if 4 in transform.shape:
         return transform
+    return param_utils.affine_to_xaffine(widened_affine_matrix(transform))
+
+
+def widened_affine_matrix(transform):
+    """widen_xaffine_to_3d()'s 4x4 matrix as a plain array, for a caller that only reads it."""
     if 't' in transform.dims:
         transform = transform.sel(t=0)
+    if 4 in transform.shape:
+        return np.asarray(transform, dtype=float)
     labels_3d = ['z', 'y', 'x', '1']
     axes = [labels_3d.index(str(label)) for label in transform.coords['x_in'].values]
     widened = np.eye(len(labels_3d))
     widened[np.ix_(axes, axes)] = np.asarray(transform)
-    return param_utils.affine_to_xaffine(widened)
+    return widened
 
 
 def msim_is_already_3d(msim):

@@ -113,9 +113,14 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
       properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
 - [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
-      composite overview 10ms (11.9 min on the HPC: NFS reads?), preview cap 1.1ms (6.3 min on the HPC - grows with
-      sections, not sources?), sub-pyramid 0.7ms, image shapes 1.3ms, tables 1.8 min. Next: the preview cap, then
-      the composite overview. (Promotion and the second transform copy: see Done.)
+      composite overview 10ms (11.9 min on the HPC: NFS reads?), preview cap (below), sub-pyramid 0.7ms, image
+      shapes 1.3ms, tables 1.8 min. Next: the composite overview. (Promotion, the second transform copy and the
+      cap's size estimate: see Done.)
+- [ ] **Preview cap: one rebuild instead of three** - the HPC's 343GB -> 4GB cap ran 3 size estimates, 2 rounds
+      dropping levels and 1 strided round, each rebuilding every msim's tree (~2ms a source of the 2.6 left on
+      meatballs forced to the same 85x; ~11ms a source on the HPC). Choosing the levels from each level's geometry
+      before rebuilding once would halve it, but needs a level passed through estimate_fused_size,
+      calc_output_properties and promoted_geometry - weigh first.
 
 REFACTORING
 
@@ -130,6 +135,10 @@ REFACTORING
 
 ## Done
 
+- **Preview cap: not the sections, the reduction rounds** - the HPC's 6.3 min is ~11ms a source, the same per source
+  as meatballs forced to the same 85x reduction (3.3ms locally): size estimates and msim rebuilds per round.
+  promoted_geometry widened each affine through an xarray only to read it back (widened_affine_matrix now): an
+  estimate 0.40 -> 0.19ms a source, the cap 3.3 -> 2.6ms. The composite overview and fusion setup share it.
 - **Refresh after registration: view msims kept 2D, transforms copied once** - make_msims_3d promoted every level of
   every view msim (11.8ms a source: the HPC's ~13 untimed minutes); the preview steps now take z_positions as the
   pre-processed branch does, and shapes take each source's z from promoted_geometry. The preview msims no longer

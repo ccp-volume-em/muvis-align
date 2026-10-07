@@ -18,7 +18,7 @@ from multiview_stitcher import param_utils
 
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import (build_source_msim, make_msims_3d, msim_is_already_3d,
-                                    widen_xaffine_to_3d)
+                                    widen_xaffine_to_3d, widened_affine_matrix)
 from muvis_align.util import create_transform
 
 DATA_DIR = Path(__file__).resolve().parent.parent / 'data' / 'S000'
@@ -166,6 +166,7 @@ def reference_widen(transform):
 def test_widening_matches_the_label_based_original(label, transform):
     np.testing.assert_allclose(np.asarray(widen_xaffine_to_3d(transform)),
                                np.asarray(reference_widen(transform)))
+    np.testing.assert_allclose(widened_affine_matrix(transform), np.asarray(reference_widen(transform)))
 
 
 def test_widening_leaves_an_already_3d_transform_untouched():
