@@ -439,6 +439,9 @@ def test_print_significants_keeps_at_most_3_significant_digits(value, expected):
 
 def test_print_dict_simple_rounds_floats_only_in_zyx_order():
     assert print_dict_simple({'x': 18820.7, 'y': 0.0025505, 'z': 2}) == 'z: 2 y: 0.00255 x: 18800'
+    # other keys follow, a rotation's or a pair's (the notebooks print pair qualities)
+    assert print_dict_simple({'x': 1.0, 'r': 90.0}) == 'x: 1 r: 90'
+    assert print_dict_simple({(0, 1): 0.912345, (1, 2): 0.5}) == '(0, 1): 0.912 (1, 2): 0.5'
 
 
 def test_an_invalid_source_metadata_expression_warns_and_falls_back_to_the_default():

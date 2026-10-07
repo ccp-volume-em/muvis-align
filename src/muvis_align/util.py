@@ -207,9 +207,9 @@ def print_dict(dct: dict, indent: int = 0) -> str:
 
 def print_dict_simple(dct: dict, dims: str='zyx', significant_digits: int=3) -> str:
     items = []
-    for key in dct:
-        if key not in dims:
-            dims += key
+    # a list, not a string: keys need not be single letters (e.g. a pair's (index, index))
+    dims = list(dims)
+    dims += [key for key in dct if key not in dims]
     for dim in dims:
         if dim in dct:
             value = dct[dim]
