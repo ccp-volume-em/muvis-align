@@ -112,11 +112,15 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
       spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
       properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
-- [ ] **Pair registration slows ~14x towards the end** - 3s per 128 pairs at first, 42-45s at the end, rss flat (not
-      the old leak); 39.7 of 64 workers busy on average. Also 7.6 min before the first pairs (pairing 2.8 min, first
-      batch 85s). Each batch line now has wall/cpu per pair and busy workers. Meatballs shows the same shape: cpu per
-      pair 0.06s for the first ~350 pairs, 0.6-1.5s after, 2-4.6s for the last ~50, workers ~7 of 8 busy - harder
-      pairs last, not idle workers. Which pairs (overview-tile, between sections)? Check on the HPC log too.
+- [ ] **Pair registration 'slows' towards the end: the cheap pairs come first** - a pair's cpu follows its overlap
+      in pixels at the coarser of its two pixel sizes (r=0.97 on meatballs). Tile-overview pairs register at the
+      overview's 0.498um (0.06s each) and the edge order puts them all first: meatballs 350 of 831 (42%), then
+      tile-tile pairs at 0.02um, 0.31s within a section, 1.0s across sections, up to 7s for whole-tile overlaps.
+      The HPC (the full meatballs set) turns slow at ~102k of 229.7k pairs (44%) - the same split. Not harder
+      work, but the bar's estimate is far too short early on, and workers idle (39.7 of 64 busy) while the 0.06s
+      pairs outrun dispatch and on the last whole-tile pairs. Fix to consider: interleave the pairs (largest
+      estimated overlap first, or shuffled) in register_pairs. Also 7.6 min before the first pairs on the HPC
+      (pairing 2.8 min, first batch 85s).
 - [ ] **Faster refresh after registration** - 48 min in all: ~13 min untimed between the end of registration and
       'copy transforms to view msims', composite overview 11.9 min, preview size cap 6.3 min, transforms copied
       twice (4.3 + 1.4 min), create_image_shapes 1.5 min (8s before registration), create_overlap_shapes 3.4 min
