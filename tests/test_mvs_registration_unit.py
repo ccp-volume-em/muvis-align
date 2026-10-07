@@ -297,31 +297,37 @@ def test_init_data_defers_msim_construction_to_first_msims_read(tmp_path):
     assert all(source._msim is None for source in reg.sources)
 
 
-def test_select_pair_overlap_then_register_overlap_matches_register_pairs(tmp_path):
-    """select_pair_overlap()/register_overlap() together replace the old single register_pair()
-    call, split so a caller (e.g. a UI preview) can cache the overlap crop select_pair_overlap()
-    returns and re-run register_overlap() on it for parameter-only changes, without re-selecting
-    resolution or re-cropping from the (possibly large) source data every time."""
+def test_register_overlap_registers_one_cached_overlap_crop_with_each_methods_params(tmp_path):
+    """A caller (e.g. a UI preview) caches select_pair_overlap()'s crop and re-runs register_overlap() on it for
+    parameter-only changes. The registration itself is stubbed: what is checked is the crop and result handling."""
+    from muvis_align.image.util import affine_from_intrinsic_affine
+
     reg = prepared_registration(TWO_TILES, tmp_path)
+    overlap1, overlap2, sims_pixel_space = reg.select_pair_overlap(reg.register_msims[0], reg.register_msims[1],
+                                                                   params={'method': 'orb', 'pairing': 'orthogonal'})
+    assert overlap1.ndim == 2 and overlap2.ndim == 2
 
-    params = {'method': 'orb', 'pairing': 'orthogonal'}
-    msim1, msim2 = reg.register_msims[0], reg.register_msims[1]
+    matrix = np.array([[1.0, 0.0, 3.0], [0.0, 1.0, -2.0], [0.0, 0.0, 1.0]])
+    registered = []
 
-    overlap1, overlap2, sims_pixel_space = reg.select_pair_overlap(msim1, msim2, params=params)
-    assert overlap1.ndim == 2
-    assert overlap2.ndim == 2
+    def pairwise_reg_func(fixed_data, moving_data, **kwargs):
+        registered.append((fixed_data, moving_data))
+        return {'affine_matrix': matrix, 'quality': 0.75, 'fixed_points': [], 'moving_points': []}
 
-    transform, quality, result = reg.register_overlap(overlap1, overlap2, sims_pixel_space, params=params)
+    with patch.object(reg, 'create_registration_method', return_value=(None, pairwise_reg_func, {})) as create:
+        results = [reg.register_overlap(overlap1, overlap2, sims_pixel_space, params={'method': method})
+                   for method in ('orb', 'sift')]
 
-    assert transform.shape[-2:] == (3, 3)  # 2D homogeneous affine
-    assert not np.isnan(quality)
-
-    # the raw pairwise_reg_func result must survive - feature-based methods report points/matches
-    # used for a napari preview overlay
-    assert 'affine_matrix' in result
-    assert 'quality' in result
-    assert 'fixed_points' in result
-    assert 'moving_points' in result
+    assert [call.kwargs['params'] for call in create.call_args_list] == [{'method': 'orb'}, {'method': 'sift'}]
+    for fixed_data, moving_data in registered:
+        np.testing.assert_array_equal(fixed_data, registered[0][0])
+        np.testing.assert_array_equal(moving_data, registered[0][1])
+    expected = affine_from_intrinsic_affine(matrix, sims_pixel_space, reg.source_transform_key)
+    for transform, quality, result in results:
+        np.testing.assert_array_equal(np.asarray(transform), np.asarray(expected))
+        assert quality == 0.75
+        # the raw result survives: feature methods' points feed a napari preview overlay
+        assert set(result) == {'affine_matrix', 'quality', 'fixed_points', 'moving_points'}
 
 
 def test_register_pairs_computes_without_linear_fusion(tmp_path):
@@ -522,30 +528,6 @@ def test_register_pairs_registers_on_the_only_channel_whatever_it_is_called(capl
         assert mixed.keys() == by_name.keys()
         for edge, transform in by_name.items():
             np.testing.assert_array_equal(mixed[edge], transform)
-
-
-def test_register_overlap_reuses_cached_overlap_across_param_changes(tmp_path):
-    """The whole point of splitting select_pair_overlap()/register_overlap(): the same overlap
-    crop can be registered again with different registration parameters, without recomputing the
-    crop - the two calls below reuse the exact same overlap1/overlap2/sims_pixel_space."""
-    reg = prepared_registration(TWO_TILES, tmp_path)
-
-    msim1, msim2 = reg.register_msims[0], reg.register_msims[1]
-    overlap1, overlap2, sims_pixel_space = reg.select_pair_overlap(
-        msim1, msim2, params={'method': 'orb'}
-    )
-
-    transform1, quality1, result1 = reg.register_overlap(
-        overlap1, overlap2, sims_pixel_space, params={'method': 'orb'}
-    )
-    transform2, quality2, result2 = reg.register_overlap(
-        overlap1, overlap2, sims_pixel_space, params={'method': 'sift'}
-    )
-
-    # different methods, same crop - both must produce a valid result from the identical input
-    assert transform1.shape == transform2.shape
-    assert not np.isnan(quality1)
-    assert not np.isnan(quality2)
 
 
 def test_build_msims_is_parallel_but_keeps_source_order():

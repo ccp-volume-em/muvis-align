@@ -1,14 +1,11 @@
 import numpy as np
+import pytest
 import xarray as xr
 from multiview_stitcher import mv_graph
 from multiview_stitcher.param_resolution import groupwise_resolution
 
 from muvis_align.robust_resolution import ROBUST_LINEAR, find_reference_view
 from tests.data_builders import grid_graph, translation_affine
-
-
-def largest_shift(params):
-    return max(float(np.abs(np.asarray(value)[:2, 2]).max()) for value in params.values())
 
 
 def test_reference_view_is_the_one_multiview_stitcher_picks():
@@ -20,25 +17,30 @@ def test_reference_view_is_the_one_multiview_stitcher_picks():
     assert find_reference_view(graph) == mv_graph.get_node_with_maximal_edge_weight_sum_from_graph(graph, 'quality')
 
 
-def test_consistent_pairs_resolve_to_identity():
-    params, _ = groupwise_resolution(grid_graph(), method=ROBUST_LINEAR, transform='translation')
+def test_an_outlier_pair_is_down_weighted_by_its_residual_not_cut(monkeypatch):
+    """Each round re-solves with every edge's quality times 1 / (1 + (residual / scale)^2) of the round before."""
+    from muvis_align import robust_resolution
+    from muvis_align.robust_resolution import groupwise_resolution_robust_linear
 
-    assert largest_shift(params) < 1e-6
+    seen_qualities = []
 
+    def solve(graph, **_):
+        seen_qualities.append({tuple(sorted(edge)): graph.edges[edge]['quality'] for edge in graph.edges})
+        edges = list(graph.edges)
+        residuals = [3.0 if tuple(sorted(edge)) == (0, 1) else 0.0 for edge in edges]
+        metrics = {'u': [edge[0] for edge in edges], 'v': [edge[1] for edge in edges], 'residual': residuals}
+        return {node: translation_affine() for node in graph.nodes}, {'metrics': metrics}
+    monkeypatch.setattr(robust_resolution, 'groupwise_resolution_linear_two_pass', solve)
 
-def test_an_outlier_pair_pulls_the_fit_far_less_than_in_plain_least_squares():
-    """Down-weighting by residual is the point: one bad pair must not drag its tiles along."""
-    graph = grid_graph(outlier=(5, 6))
-    plain, _ = groupwise_resolution(graph, method='linear_two_pass', transform='translation',
-                                    residual_threshold=np.inf, keep_mst=False)
-    robust, _ = groupwise_resolution(graph, method=ROBUST_LINEAR, transform='translation')
+    groupwise_resolution_robust_linear(grid_graph(), transform='translation', scale=1.0, rounds=2)
 
-    assert largest_shift(plain) > 3
-    assert largest_shift(robust) < 0.1 * largest_shift(plain)
+    assert len(seen_qualities) == 2
+    assert set(seen_qualities[0].values()) == {0.9}
+    assert seen_qualities[1].pop((0, 1)) == pytest.approx(0.9 / 10)
+    assert set(seen_qualities[1].values()) == {0.9}
 
 
 def test_a_cancel_stops_the_robust_rounds():
-    import pytest
     from muvis_align.util import OperationCancelled, cancellable, request_cancel
 
     with cancellable():
