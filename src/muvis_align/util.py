@@ -254,7 +254,7 @@ def print_hbytes(nbytes: int) -> str:
         e = exps[exp]
     else:
         e = f'e{exp * 3}'
-    return f'{nbytes:.1f}{e}B'
+    return f'{nbytes:.1f} {e}B'
 
 
 def check_round_significants(a: float, significant_digits: int) -> float:

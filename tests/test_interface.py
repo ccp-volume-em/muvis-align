@@ -11,7 +11,6 @@ import yaml
 import numpy as np
 from qtpy.QtWidgets import QMessageBox
 
-from muvis_align.util import print_hbytes
 from muvis_align._widget import MainWidget
 from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
@@ -1473,7 +1472,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.fusion_process()
 
     # the question carries the estimate, made for the fusion about to run
-    assert messages[0].endswith(f"Estimated output: {print_hbytes(2000)}")
+    assert messages[0].endswith("Estimated output: 2.0 KB")
     if reply == "No":
         assert not bare_interface.reg.fuse.called
         assert not bare_interface._napari_view_add_fused_data.called
