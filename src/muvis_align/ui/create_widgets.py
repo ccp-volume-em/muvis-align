@@ -133,6 +133,9 @@ def create_section_container(section_id, section_template, interface,
             interface_function = interface.get_function(spec.param_name)
             if interface_function is not None:
                 widget.changed.connect(interface_function)
+            selected_function = interface.get_function(spec.param_name + '_selected')
+            if selected_function is not None and hasattr(widget.native, 'itemSelectionChanged'):
+                widget.native.itemSelectionChanged.connect(selected_function)
             interface.param_widgets[full_name] = param_widget
             if connect_changed and spec.section_key != 'display_only':
                 widget.changed.connect(param_widget.value_changed)

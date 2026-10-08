@@ -60,3 +60,23 @@ def test_create_section_container_end_to_end_dropdown_and_fileedit():
     assert input_widget.filter == '*.zarr'
     assert 'directory' in str(input_widget.mode).lower()
 
+
+
+def test_a_table_row_selection_calls_the_interfaces_selected_function():
+    _ = QApplication.instance() or QApplication([])
+    selections = []
+
+    class SelectingInterface(MinimalInterface):
+        def get_function(self, function_label):
+            return (lambda: selections.append(table.native.currentRow())) if function_label == 'metrics_selected' else None
+
+    interface = SelectingInterface()
+    create_section_container('registration', [{'name': 'metrics', 'type': 'table', 'label': ' ',
+                                               'section_key': 'display_only', 'default': []}],
+                             interface, connect_changed=False, add_button=False)
+    table = interface.param_widgets['registration.metrics'].widget
+    table.value = {'data': [[1], [2]], 'index': ['a - b', 'b - c'], 'columns': ['quality']}
+
+    table.native.selectRow(1)
+
+    assert selections == [1]

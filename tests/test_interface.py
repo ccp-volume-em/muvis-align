@@ -1972,6 +1972,35 @@ def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interfa
     assert values[2] == [0.3, None]
 
 
+@pytest.mark.parametrize(("row", "selected"), [(0, None), (1, ('S000_001', 'S000_000')), (2, None), (-1, None)],
+                         ids=["summary", "tile-pair", "group-pair", "none"])
+def test_selecting_a_metrics_row_picks_its_pair_for_preview(bare_interface, row, selected):
+    """Only a tile pair row names two images; the summary and section pair rows leave the selection."""
+    bare_interface.reg.file_labels = ['S000_000', 'S000_001']
+    bare_interface.reg.positions = [{'y': 0, 'x': 0}, {'y': 0, 'x': 1}]
+    table = MagicMock()
+    image1, image2 = MagicMock(), MagicMock()
+    bare_interface.param_widgets = {'registration.metrics_table': table,
+                                    'registration.reg_preview_image1': image1,
+                                    'registration.reg_preview_image2': image2}
+    bare_interface.populate_metrics_table(
+        {'summary': {'registered': {'quality': 0.5}},
+         'pairs': {(1, 0): {'registered': {'quality': 0.9}}},
+         'group_pairs': {('S000', 'S001'): {'registered': {'quality': 0.3}}}})
+    _, rows, _ = table.set_value.call_args[0][0]
+    table.widget.native.currentRow.return_value = row
+    table.widget.native.verticalHeaderItem.side_effect = (
+        lambda index: SimpleNamespace(text=lambda: rows[index]) if index >= 0 else None)
+
+    bare_interface.metrics_table_selected()
+
+    if selected is None:
+        assert not image1.set_value.called and not image2.set_value.called
+    else:
+        image1.set_value.assert_called_once_with(selected[0])
+        image2.set_value.assert_called_once_with(selected[1])
+
+
 def test_the_project_file_is_copied_into_the_output_folder_as_an_action_starts(bare_interface, tmp_path):
     project = tmp_path / "project.yml"
     project.write_text("input_output:\n  output_path: output\n")

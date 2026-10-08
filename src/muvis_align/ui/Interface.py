@@ -860,12 +860,21 @@ class Interface:
         # a plain image shape's ref is a single index (e.g. '0'); only an overlap shape's
         # ref ('0 1') identifies a pair, so single-image clicks are ignored here
         indices = ref.split()
-        if len(indices) != 2:
-            return
+        if len(indices) == 2:
+            self.set_preview_images([int(index) for index in indices])
+
+    def metrics_table_selected(self):
+        table = self.param_widgets.get('registration.metrics_table').widget.native
+        header_item = table.verticalHeaderItem(table.currentRow())
+        # the summary and group (section) pair rows have no image pair
+        indices = getattr(self, 'metrics_row_pairs', {}).get(header_item.text()) if header_item else None
+        if indices:
+            self.set_preview_images(indices)
+
+    def set_preview_images(self, indices):
         labels = self.reg.file_labels
-        label1, label2 = labels[int(indices[0])], labels[int(indices[1])]
-        self.param_widgets.get('registration.reg_preview_image1').set_value(label1)
-        self.param_widgets.get('registration.reg_preview_image2').set_value(label2)
+        self.param_widgets.get('registration.reg_preview_image1').set_value(labels[indices[0]])
+        self.param_widgets.get('registration.reg_preview_image2').set_value(labels[indices[1]])
 
     def get_best_transform_key(self):
         if not self.reg.is_pairs_registered():
@@ -1531,9 +1540,11 @@ class Interface:
                                          key=lambda i: position_sort_key(self.reg.positions[i])))}
             pairs_metrics = dict(sorted(pairs_metrics.items(),
                                         key=lambda item: (file_rank[item[0][0]], file_rank[item[0][1]])))
+        # a selected row picks its pair's preview images (metrics_table_selected)
+        self.metrics_row_pairs = {self.reg.file_labels[indices[0]] + ' - ' + self.reg.file_labels[indices[1]]: indices
+                                  for indices in (pairs_metrics or {})}
         # split pairing's group (e.g. section) pairs as rows after the tile pairs, keyed by their labels
-        row_metrics = {self.reg.file_labels[indices[0]] + ' - ' + self.reg.file_labels[indices[1]]: value
-                       for indices, value in (pairs_metrics or {}).items()}
+        row_metrics = {row_label: pairs_metrics[indices] for row_label, indices in self.metrics_row_pairs.items()}
         row_metrics |= {' - '.join(labels): value for labels, value in metrics_dict.get('group_pairs', {}).items()}
         # a dict for its order: `not in` the row list was quadratic, minutes at 229k pairs
         item_keys = list(dict.fromkeys(item_keys + list(row_metrics)))
