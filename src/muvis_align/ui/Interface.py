@@ -222,12 +222,9 @@ class Interface:
         current = read_params(self.params_path).get('input_output', {})
         changed = [name for name in source_metadata_params if previous.get(name) != current.get(name)]
         if saved and changed:
-            reply = QMessageBox.question(None, 'muvis-align',
-                                         f'Source metadata settings differ from the registration saved in {output}:'
-                                         f' {", ".join(changed)}.\nReload the previous settings?'
-                                         ' Discard removes the saved registration and fused output instead.',
-                                         QMessageBox.Yes | QMessageBox.Discard, QMessageBox.Yes)
-            if reply == QMessageBox.Discard:
+            if self._ask_discard_output(f'Source metadata settings differ from the registration saved in {output}:'
+                                        f' {", ".join(changed)}.\nReload the previous settings?'
+                                        ' Or continue and discard all previous output?'):
                 self.reg.discard_saved_progress(output)
                 if fused_name:
                     self._remove_output(fused_name, output)
@@ -238,6 +235,17 @@ class Interface:
             self.write_params()
             self.update_widgets()
         return False
+
+    def _ask_discard_output(self, text):
+        # no cancel: closing the box reloads, the answer that deletes nothing
+        box = QMessageBox(QMessageBox.Icon.Question, 'muvis-align', text,
+                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Discard)
+        box.button(QMessageBox.StandardButton.Yes).setText('Reload')
+        discard = box.button(QMessageBox.StandardButton.Discard)
+        discard.setText('Discard')
+        box.setDefaultButton(QMessageBox.StandardButton.Yes)
+        box.exec()
+        return box.clickedButton() is discard
 
     def change_param(self, param_name, value):
         keys = param_name.split('.')

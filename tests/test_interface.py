@@ -594,16 +594,16 @@ def test_project_path_handles_existing_and_new_projects(
 
 
 @pytest.mark.parametrize(
-    "previous_norm, reply, expect_question, expect_norm, expect_saved",
+    "previous_norm, discard, expect_question, expect_norm, expect_saved",
     [
-        (False, None, False, False, True),
-        (True, QMessageBox.Yes, True, True, True),
-        (True, QMessageBox.Discard, True, False, False),
+        (False, False, False, False, True),
+        (True, False, True, True, True),
+        (True, True, True, False, False),
     ],
     ids=["unchanged", "changed-reload", "changed-discard"],
 )
 def test_resolve_output_settings_reloads_or_discards_on_changed_source_metadata(
-    bare_interface, tmp_path, previous_norm, reply, expect_question, expect_norm, expect_saved
+    bare_interface, tmp_path, previous_norm, discard, expect_question, expect_norm, expect_saved
 ):
     from muvis_align.file.project_yaml import read_params, write_params
     from muvis_align.MVSRegistration import MVSRegistration
@@ -625,10 +625,11 @@ def test_resolve_output_settings_reloads_or_discards_on_changed_source_metadata(
                 "registration": {"operation": "register"}}
     write_params(str(output / "project.yml"), previous)
 
-    with patch.object(interface_module.QMessageBox, "question", return_value=reply) as question:
-        bare_interface.copy_params_to_output()
+    bare_interface._ask_discard_output = MagicMock(return_value=discard)
 
-    assert question.called is expect_question
+    bare_interface.copy_params_to_output()
+
+    assert bare_interface._ask_discard_output.called is expect_question
     assert read_params(bare_interface.params_path)["input_output"]["normalise_rotated_positions"] is expect_norm
     assert (output / "mappings.json").exists() is expect_saved
     assert (output / "registered.ome.zarr").exists() is expect_saved

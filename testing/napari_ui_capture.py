@@ -74,6 +74,12 @@ def main():
                         ('warning', QMessageBox.Ok), ('critical', QMessageBox.Ok)):
         setattr(interface_module.QMessageBox, kind, answered(kind, reply))
 
+    # a box with its own buttons: closed unanswered, as with the window's close button
+    def closed(box):
+        logging.info(f'capture: box {box.text()!r} -> closed')
+        return 0
+    interface_module.QMessageBox.exec = closed
+
     viewer = napari.Viewer()
     # fully on screen: the activity dialog sits at the window's bottom right
     viewer.window._qt_window.move(0, 0)
