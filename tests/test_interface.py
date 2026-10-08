@@ -562,6 +562,7 @@ def test_project_path_handles_existing_and_new_projects(
     bare_interface.update_widgets = MagicMock()
     bare_interface.write_params = MagicMock()
     bare_interface.update_input_output_path = MagicMock()
+    bare_interface.resolve_output_settings = MagicMock()
     monkeypatch.setattr(interface_module.os.path, "exists", lambda _: exists)
     monkeypatch.setattr(
         interface_module,
@@ -583,12 +584,72 @@ def test_project_path_handles_existing_and_new_projects(
     assert bare_interface.params_path == "project.yml"
     # for both: it shows the stored relative paths, which update_widgets() skips
     bare_interface.update_input_output_path.assert_called_once_with()
+    bare_interface.resolve_output_settings.assert_called_once_with()
     if exists:
         bare_interface.update_widgets.assert_called_once_with()
         bare_interface.write_params.assert_not_called()
     else:
         bare_interface.write_params.assert_called_once_with()
         bare_interface.update_widgets.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "previous_norm, reply, expect_question, expect_norm, expect_saved",
+    [
+        (False, None, False, False, True),
+        (True, QMessageBox.Yes, True, True, True),
+        (True, QMessageBox.Discard, True, False, False),
+    ],
+    ids=["unchanged", "changed-reload", "changed-discard"],
+)
+def test_resolve_output_settings_reloads_or_discards_on_changed_source_metadata(
+    bare_interface, tmp_path, previous_norm, reply, expect_question, expect_norm, expect_saved
+):
+    from muvis_align.file.project_yaml import read_params, write_params
+    from muvis_align.MVSRegistration import MVSRegistration
+    output = tmp_path / "output"
+    output.mkdir()
+    for name in ("pair_mappings.json", "mappings.json", "metrics.json"):
+        (output / name).write_text("{}")
+    (output / "registered.ome.zarr").mkdir()
+    bare_interface.reg = MVSRegistration()
+    bare_interface.update_widgets = MagicMock()
+    bare_interface.params_path = str(tmp_path / "project.yml")
+    bare_interface.params = {
+        "input_output": {"output_path": "output", "normalise_rotated_positions": False,
+                         "source_position_x": "fn[-2]*24"},
+        "registration": {"operation": "register"},
+    }
+    write_params(bare_interface.params_path, bare_interface.params)
+    previous = {"input_output": dict(bare_interface.params["input_output"], normalise_rotated_positions=previous_norm),
+                "registration": {"operation": "register"}}
+    write_params(str(output / "project.yml"), previous)
+
+    with patch.object(interface_module.QMessageBox, "question", return_value=reply) as question:
+        bare_interface.copy_params_to_output()
+
+    assert question.called is expect_question
+    assert read_params(bare_interface.params_path)["input_output"]["normalise_rotated_positions"] is expect_norm
+    assert (output / "mappings.json").exists() is expect_saved
+    assert (output / "registered.ome.zarr").exists() is expect_saved
+    # either way the settings now match the output, so the question is not asked again
+    assert read_params(str(output / "project.yml"))["input_output"] == \
+        read_params(bare_interface.params_path)["input_output"]
+
+
+@pytest.mark.parametrize("discarded, initialised, expect_read", [
+    (True, True, True), (True, False, False), (False, True, False)],
+    ids=["discarded", "discarded-before-open", "kept"])
+def test_copy_params_to_output_reads_sources_again_once_registration_is_discarded(
+    bare_interface, discarded, initialised, expect_read
+):
+    bare_interface.resolve_output_settings = MagicMock(return_value=discarded)
+    bare_interface.reg.is_initialised.return_value = initialised
+    bare_interface._input_output_process = MagicMock()
+
+    bare_interface.copy_params_to_output()
+
+    assert bare_interface._input_output_process.called is expect_read
 
 
 def test_populate_choices_and_image_selection(bare_interface):

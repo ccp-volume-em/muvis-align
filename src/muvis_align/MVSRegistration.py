@@ -902,6 +902,21 @@ class MVSRegistration:
                     or os.path.exists(mappings_filename)
                     or os.path.exists(pair_mappings_filename))
 
+    def saved_progress_paths(self, output=None):
+        """The saved registration's existing files, in this run's output or another (e.g. before init() has run)."""
+        output = os.path.join(output, '') if output else self.output
+        paths = [output + self.output_params.get('pair_mappings', default_pair_mappings_name),
+                 output + self.output_params.get('mappings', default_mappings_name),
+                 output + self.output_params.get('mappings', default_mappings_tabular_name),
+                 output + metrics_name]
+        return [path for path in set(paths) if os.path.exists(path)]
+
+    def discard_saved_progress(self, output=None):
+        """Removes the saved registration, which no longer matches the sources."""
+        for path in self.saved_progress_paths(output):
+            os.remove(path)
+        logging.info(f'Saved registration in {output or self.output} discarded')
+
     def check_progress(self, output_filename, output_format):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)

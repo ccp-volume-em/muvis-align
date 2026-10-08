@@ -48,6 +48,11 @@ from muvis_align.util import OperationCancelled, cancellable, request_cancel, pr
 patch_shapes_text_coords()
 patch_multiscale_label_show()
 
+# the input_output settings a saved registration depends on
+source_metadata_params = ['source_position_z', 'source_position_y', 'source_position_x',
+                          'source_scale_z', 'source_scale_y', 'source_scale_x',
+                          'source_rotation', 'normalise_rotated_positions']
+
 
 class _ProgressBridge(QObject):
     """Carries a worker thread's progress positions back to the Qt thread, where the bar lives."""
@@ -153,6 +158,7 @@ class Interface:
         else:
             self.write_params()
         self.update_input_output_path()
+        self.resolve_output_settings()
 
     def get_project_dir(self):
         # input/output path params are stored relative to this directory, so a project stays
@@ -178,18 +184,60 @@ class Interface:
     def write_params(self):
         write_params(self.params_path, self.params)
 
-    def copy_params_to_output(self):
-        """The project file as an action starts, next to its output: the settings the output was made with."""
+    def get_output_dir(self):
+        return resolve_to_project_dir(path_param_to_text(self.params['input_output'].get('output_path', '')),
+                                      self.get_project_dir())
+
+    def get_output_params_path(self):
+        """The copy of the project file next to its output, or None for a project kept in its own output."""
         params_path = getattr(self, 'params_path', None)
         if not params_path or not os.path.exists(params_path):
-            return
-        output = resolve_to_project_dir(path_param_to_text(self.params['input_output'].get('output_path', '')),
-                                        self.get_project_dir())
-        os.makedirs(output, exist_ok=True)
-        target = os.path.join(output, os.path.basename(params_path))
-        if os.path.abspath(target) != os.path.abspath(params_path):
-            shutil.copyfile(params_path, target)
+            return None
+        target = os.path.join(self.get_output_dir(), os.path.basename(params_path))
+        return target if os.path.abspath(target) != os.path.abspath(params_path) else None
+
+    def copy_params_to_output(self):
+        """The project file as an action starts, next to its output: the settings the output was made with."""
+        if self.resolve_output_settings() and self.reg.is_initialised():
+            # the action continues with sources read with the current settings
+            self._input_output_process()
+        target = self.get_output_params_path()
+        if target:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copyfile(self.params_path, target)
             logging.info(f'Project settings copied to {target}')
+
+    def resolve_output_settings(self):
+        """A registration saved with other source metadata settings either gets them back or is discarded.
+        Returns whether it was discarded, so the sources are read again with the current settings."""
+        output_params_path = self.get_output_params_path()
+        if not output_params_path or not os.path.exists(output_params_path):
+            return False
+        output = self.get_output_dir()
+        operation = self.params['registration'].get('operation', '')
+        fused_name = operation_to_past_participle(operation) if operation else None
+        fused_paths = self._output_paths(fused_name, output) if fused_name else []
+        saved = self.reg.saved_progress_paths(output) + [path for path in fused_paths if os.path.exists(path)]
+        previous = read_params(output_params_path).get('input_output', {})
+        current = read_params(self.params_path).get('input_output', {})
+        changed = [name for name in source_metadata_params if previous.get(name) != current.get(name)]
+        if saved and changed:
+            reply = QMessageBox.question(None, 'muvis-align',
+                                         f'Source metadata settings differ from the registration saved in {output}:'
+                                         f' {", ".join(changed)}.\nReload the previous settings?'
+                                         ' Discard removes the saved registration and fused output instead.',
+                                         QMessageBox.Yes | QMessageBox.Discard, QMessageBox.Yes)
+            if reply == QMessageBox.Discard:
+                self.reg.discard_saved_progress(output)
+                if fused_name:
+                    self._remove_output(fused_name, output)
+                self.need_source_reinit = True
+                return True
+            for name in changed:
+                self.params['input_output'][name] = previous.get(name)
+            self.write_params()
+            self.update_widgets()
+        return False
 
     def change_param(self, param_name, value):
         keys = param_name.split('.')
@@ -290,6 +338,8 @@ class Interface:
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
+        # resolved before the copy, which would read the sources again itself; reading them is next anyway
+        self.resolve_output_settings()
         self.copy_params_to_output()
         try:
             self._input_output_process()
@@ -305,6 +355,8 @@ class Interface:
         output = resolve_to_project_dir(path_param_to_text(params['output_path']), project_dir)
         if not self.reg.is_initialised() or self.need_source_reinit:
             self.need_source_reinit = False
+            # reg.init() keeps the previous registration's mappings, metrics and pre-processed msims
+            self.reg.reset()
             if not output.endswith('/'):
                 output += '/'
             input_path = resolve_to_project_dir(path_param_to_text(params['input_path']), project_dir)
@@ -1984,16 +2036,19 @@ class Interface:
                 self._remove_output(output_filename)
                 raise
 
-    def _remove_output(self, output_filename):
-        # a cancelled export's partly written file or store; it was being overwritten anyway
-        for extension in (zarr_extension, tiff_extension):
-            path = self.reg.output + output_filename + extension
+    def _remove_output(self, output_filename, output=None):
+        # a cancelled export's partly written file or store, or one fused from a discarded registration
+        for path in self._output_paths(output_filename, output):
             if os.path.isdir(path):
                 shutil.rmtree(path, ignore_errors=True)
             elif os.path.exists(path):
                 os.remove(path)
             if os.path.exists(path):
-                logging.warning(f'Could not remove the cancelled output {path}')
+                logging.warning(f'Could not remove the output {path}')
+
+    def _output_paths(self, output_filename, output=None):
+        output = os.path.join(output, '') if output else self.reg.output
+        return [output + output_filename + extension for extension in (zarr_extension, tiff_extension)]
 
 
     def fusion_process(self):

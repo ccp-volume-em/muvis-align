@@ -273,6 +273,19 @@ def test_check_progress_uses_most_advanced_available_state(
     assert registration.state is expected_state
 
 
+def test_discard_saved_progress_leaves_no_registration_to_resume(tmp_path):
+    registration = MVSRegistration()
+    registration.output = "elsewhere/"
+    for name in ("pair_mappings.json", "mappings.json", "mappings.csv", "metrics.json", "project.yml"):
+        (tmp_path / name).write_text("{}")
+    assert len(registration.saved_progress_paths(str(tmp_path))) == 4
+
+    registration.discard_saved_progress(str(tmp_path))
+
+    assert registration.saved_progress_paths(str(tmp_path)) == []
+    assert [path.name for path in tmp_path.iterdir()] == ["project.yml"]
+
+
 def test_init_data_defers_msim_construction_to_first_msims_read(tmp_path):
     """init_data() should only resolve cheap per-source metadata (position/scale/rotation) -
     the expensive per-source msim build (build_source_msim(), the actual bottleneck when
