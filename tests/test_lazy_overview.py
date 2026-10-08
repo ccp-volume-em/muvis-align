@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
+import dask.array as da
 import numpy as np
+from dask.callbacks import Callback
 import tifffile
 from multiview_stitcher import msi_utils
 
@@ -123,6 +125,23 @@ def test_readers_give_the_pixels_at_the_sources_place_and_a_missing_one_is_left_
 
     assert np.all(data[0, :64, :64] == 11) and np.all(data[0, :64, 64:128] == 0)
     assert np.all(data[0, 64:128, :64] == 31) and np.all(data[1, :64, :64] == 41)
+
+
+def test_a_tile_read_leaves_dasks_global_callbacks_alone(tmp_path):
+    """napari's slicing cache is a global dask callback, shared by every thread: a tile read on a reader thread
+    must not run it, or it clears the cache's start times under napari's own compute of the plane."""
+    reg = registration(tmp_path)
+    readers = [SimpleNamespace(pixel_sizes=[{'y': 1.0, 'x': 1.0}], dtype=np.uint8,
+                               level_data=lambda level, value=value: da.full((64, 64), value, dtype=np.uint8))
+               for value in TILES.values()]
+    planes = overview(reg, readers=readers).attrs['section_planes']
+    started = []
+
+    with Callback(start=started.append):
+        plane = planes.plane(0, prefetch=False)
+
+    assert started == []
+    assert np.all(plane[:64, :64] == 10) and np.all(plane[64:128, :64] == 30)
 
 
 def test_a_pre_processed_msim_is_read_at_its_own_levels(tmp_path):

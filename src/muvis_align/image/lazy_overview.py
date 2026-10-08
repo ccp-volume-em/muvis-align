@@ -110,8 +110,11 @@ class SectionPlanes:
         entries = self.entries.get(index, [])
 
         def read(entry):
-            with dask.config.set(scheduler='synchronous'):
-                return np.squeeze(np.asarray(entry['reader'].level_data(entry['level'])))
+            data = entry['reader'].level_data(entry['level'])
+            if hasattr(data, 'compute'):
+                # own (no) callbacks: dask's global ones, napari's slicing cache among them, are shared by all threads
+                data = data.compute(scheduler='synchronous', callbacks=())
+            return np.squeeze(np.asarray(data))
 
         with ThreadPoolExecutor(max_workers=max(1, min(self.workers, len(entries)))) as executor:
             datas = list(executor.map(read, entries))
