@@ -1733,6 +1733,21 @@ def test_process_button_runs_or_after_confirmation_cancels(bare_interface, monke
     assert cancelled.called == expect_cancel
 
 
+def test_a_process_failure_is_logged_and_reported(bare_interface, monkeypatch, caplog):
+    """A failure outside the run_*() steps (e.g. refreshing the view after registration) still reaches the log."""
+    reported = MagicMock()
+    monkeypatch.setattr(interface_module, 'report_failure', reported)
+    bare_interface._running_operation = None
+    process = MagicMock(side_effect=KeyError('missing'), __name__='registration_process')
+
+    with caplog.at_level(logging.ERROR):
+        bare_interface.process_or_cancel(process)
+
+    assert 'registration_process failed' in caplog.text
+    assert reported.call_args.args[0] == 'Registration process'
+    assert isinstance(reported.call_args.args[1], KeyError)
+
+
 def test_a_cancelled_global_registration_puts_back_the_sources_transforms(bare_interface, monkeypatch,
                                                                            mocked_activity_contexts):
     """It writes the registered transform onto the sources before its metrics: cancelled, they get back
