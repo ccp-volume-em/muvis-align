@@ -233,39 +233,36 @@ class Interface:
         self.need_source_reinit = True
 
     def source_position_z(self, value):
-        if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['position', 'z'], value)
-            self.need_source_reinit = True
+        self._set_source_metadata_value(['position', 'z'], value)
 
     def source_position_y(self, value):
-        if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['position', 'y'], value)
-            self.need_source_reinit = True
+        self._set_source_metadata_value(['position', 'y'], value)
 
     def source_position_x(self, value):
-        if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['position', 'x'], value)
-            self.need_source_reinit = True
+        self._set_source_metadata_value(['position', 'x'], value)
 
     def source_scale_z(self, value):
-        if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['scale', 'z'], value)
-            self.need_source_reinit = True
+        self._set_source_metadata_value(['scale', 'z'], value)
 
     def source_scale_y(self, value):
-        if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['scale', 'y'], value)
-            self.need_source_reinit = True
+        self._set_source_metadata_value(['scale', 'y'], value)
 
     def source_scale_x(self, value):
-        if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['scale', 'x'], value)
-            self.need_source_reinit = True
+        self._set_source_metadata_value(['scale', 'x'], value)
 
     def source_rotation(self, value):
+        self._set_source_metadata_value(['rotation'], value)
+
+    def _set_source_metadata_value(self, keys, value):
+        # an emptied field drops its override, so the source's own value applies, as for 'source'
         if is_valid_value(value):
-            set_dict_value(self.source_metadata, ['rotation'], value)
-            self.need_source_reinit = True
+            set_dict_value(self.source_metadata, keys, value)
+        else:
+            parent = self.source_metadata
+            for key in keys[:-1]:
+                parent = parent.get(key, {})
+            parent.pop(keys[-1], None)
+        self.need_source_reinit = True
 
     def normalise_rotated_positions(self, value):
         if value:

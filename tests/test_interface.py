@@ -478,23 +478,28 @@ def test_tab_changed_clears_feature_view_and_stops_timer(bare_interface):
 
 
 @pytest.mark.parametrize(
-    ("method_name", "expected"),
+    ("method_name", "expected", "cleared"),
     [
-        ("source_position_z", {"position": {"z": 2.5}}),
-        ("source_position_y", {"position": {"y": 2.5}}),
-        ("source_position_x", {"position": {"x": 2.5}}),
-        ("source_scale_z", {"scale": {"z": 2.5}}),
-        ("source_scale_y", {"scale": {"y": 2.5}}),
-        ("source_scale_x", {"scale": {"x": 2.5}}),
-        ("source_rotation", {"rotation": 2.5}),
+        ("source_position_z", {"position": {"z": 2.5}}, {"position": {}}),
+        ("source_position_y", {"position": {"y": 2.5}}, {"position": {}}),
+        ("source_position_x", {"position": {"x": 2.5}}, {"position": {}}),
+        ("source_scale_z", {"scale": {"z": 2.5}}, {"scale": {}}),
+        ("source_scale_y", {"scale": {"y": 2.5}}, {"scale": {}}),
+        ("source_scale_x", {"scale": {"x": 2.5}}, {"scale": {}}),
+        ("source_rotation", {"rotation": 2.5}, {}),
     ],
 )
-def test_source_metadata_setters(bare_interface, method_name, expected):
+def test_source_metadata_setters(bare_interface, method_name, expected, cleared):
     bare_interface.source_metadata = {}
 
     getattr(bare_interface, method_name)(2.5)
-
     assert bare_interface.source_metadata == expected
+
+    # emptying the field drops the override rather than keeping the last value
+    bare_interface.need_source_reinit = False
+    getattr(bare_interface, method_name)('')
+    assert bare_interface.source_metadata == cleared
+    assert bare_interface.need_source_reinit is True
 
 
 @pytest.mark.parametrize("exists", [True, False], ids=["existing", "new"])
