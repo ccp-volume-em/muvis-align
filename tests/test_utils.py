@@ -325,6 +325,57 @@ def test_get_pairs_scales_with_neighbours_not_all_pairs():
     assert candidate_count(40) < 2.2 * candidate_count(20)
 
 
+def _turned_tile_stack(angle, sections=3, rows=4, columns=5):
+    """A tile grid turned by angle about the origin, repeated in sections, with a much larger overview in each."""
+    cos, sin = np.cos(np.radians(angle)), np.sin(np.radians(angle))
+    positions, sizes = [], []
+    for section in range(sections):
+        for row in range(rows):
+            for column in range(columns):
+                x_value, y_value = column * 110.0, row * 90.0
+                positions.append({'x': cos * x_value - sin * y_value, 'y': sin * x_value + cos * y_value,
+                                  'z': section * 0.05})
+                sizes.append({'y': 100.0, 'x': 120.0})
+        positions.append({'x': -200.0, 'y': -150.0, 'z': section * 0.05})
+        sizes.append({'y': 900.0, 'x': 1100.0})
+    return positions, sizes
+
+
+@pytest.mark.parametrize('angle', [0, 10, -30, 40])
+def test_get_grid_angle_ignores_overviews_and_sections(angle):
+    from muvis_align.util import get_grid_angle
+
+    assert get_grid_angle(*_turned_tile_stack(angle)) == pytest.approx(angle)
+
+
+def test_get_grid_angle_without_neighbours_is_none():
+    from muvis_align.util import get_grid_angle
+
+    assert get_grid_angle([{'x': 0.0, 'y': 0.0}], [{'y': 100.0, 'x': 120.0}]) is None
+
+
+def test_normalise_rotated_positions_straightens_the_grid_and_keeps_the_overview_with_it():
+    from muvis_align.util import normalise_rotated_positions
+
+    positions0, sizes = _turned_tile_stack(20, sections=1)
+    positions, rotations = normalise_rotated_positions(positions0, [None] * len(positions0), sizes,
+                                                       {'y': 0, 'x': 0}, 2)
+
+    assert rotations == pytest.approx([-20] * len(positions0))
+    tiles = np.array([[position['x'], position['y']] for position in positions[:-1]]).reshape(4, 5, 2)
+    assert np.allclose(tiles[:, :, 1], tiles[:, :1, 1])  # each row level
+    assert np.allclose(tiles[:, :, 0], tiles[:1, :, 0])  # each column straight
+    assert all(position['z'] == 0 for position in positions)
+
+    def centres(source_positions):
+        return np.array([[position[dim] + size[dim] / 2 for dim in 'xy']
+                         for position, size in zip(source_positions, sizes)])
+    # sources turn about their own centres, so each keeps its distance to the overview
+    distances0 = np.linalg.norm(centres(positions0) - centres(positions0)[-1], axis=1)
+    distances = np.linalg.norm(centres(positions) - centres(positions)[-1], axis=1)
+    assert np.allclose(distances, distances0)
+
+
 @pytest.mark.parametrize('value, expected', [
     (2, 2), (2.5, 2.5), ('2', 2), (' 16 ', 16), ('0.5', 0.5), (None, 1), ('', 1),
     ('10um', '10um'), (' 0.5 mm ', '0.5 mm'), ('250nm', '250nm'), ('1e-3mm', '1e-3mm'),

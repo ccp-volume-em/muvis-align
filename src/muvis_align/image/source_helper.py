@@ -3,7 +3,7 @@ import os
 
 from muvis_align.image.TiffImageSource import TiffImageSource
 from muvis_align.image.ZarrImageSource import ZarrImageSource
-from muvis_align.util import get_pairs, get_unique_file_labels, print_dict_xyz
+from muvis_align.util import get_grid_angle, get_unique_file_labels, print_dict_xyz
 
 
 def create_image_source(filename, source_metadata=None, extra_metadata=None, file_label=None,
@@ -62,17 +62,11 @@ def get_images_metadata(filenames, source_metadata=None):
     area = {dim: max_position[dim] - min_position[dim] for dim in max_position}
     summary += f'Area: {print_dict_xyz(area)} Center: {print_dict_xyz(center)}\n'
 
-    rotations2 = []
-    for rotation in rotations:
-        if rotation is None:
-            _, angles = get_pairs(centers, sizes)
-            if len(angles) > 0:
-                rotation = -np.mean(angles)
-                rotations2.append(rotation)
-    if len(rotations2) > 0:
-        rotation = np.mean(rotations2)
-    else:
-        rotation = None
+    rotation = None
+    if None in rotations:
+        grid_angle = get_grid_angle(centers, sizes)
+        if grid_angle is not None:
+            rotation = -grid_angle
     return {'pixel_size': pixel_size,
             'center': center,
             'area': area,

@@ -1026,20 +1026,40 @@ def create_chunk_dict(chunk_size, dims):
 
 
 def normalise_rotated_positions(positions0, rotations0, sizes, center, ndims):
-    # in [xy(z)]
+    # in [xy(z)]; each source turns about its own centre, as its image is drawn unrotated
     positions = []
     rotations = []
-    _, angles = get_pairs(positions0, sizes)
-    mean_angle = float(np.mean(angles)) if len(angles) > 0 else None
-    for position0, rotation in zip(positions0, rotations0):
-        if rotation is None and mean_angle is not None:
-            rotation = -mean_angle
+    grid_angle = get_grid_angle(positions0, sizes)
+    for position0, size, rotation in zip(positions0, sizes, rotations0):
+        if rotation is None and grid_angle is not None:
+            rotation = -grid_angle
         angle = -rotation if rotation is not None else None
         transform = create_transform(center=center, angle=angle, matrix_size=ndims + 1)
-        position = apply_transform_dict([position0], transform)[0]
-        positions.append(position)
+        half_size = {dim: size.get(dim, 0) / 2 for dim in 'xy'}
+        source_center = {dim: position0.get(dim, 0) + half_size[dim] for dim in 'xy'}
+        turned_center = apply_transform_dict([source_center], transform, transform_dims='xy')[0]
+        positions.append(dict(position0) | {dim: turned_center[dim] - half_size[dim] for dim in 'xy'})
         rotations.append(rotation)
     return positions, rotations
+
+
+def get_grid_angle(positions, sizes):
+    """How far a tile grid is turned, in degrees within (-45, 45], or None without neighbours to tell.
+    Only neighbours of the same size count (not an overview with its tiles), at distinct xy (not the next section).
+    """
+    pairs, _ = get_pairs(positions, sizes)
+    directions = []
+    for first, second in pairs:
+        vector = [positions[first].get(dim, 0) - positions[second].get(dim, 0) for dim in 'xy']
+        is_same_size = all(math.isclose(sizes[first].get(dim, 0), sizes[second].get(dim, 0), rel_tol=0.01)
+                           for dim in 'xy')
+        if is_same_size and math.hypot(*vector) > 1e-3 * max(sizes[first].values(), default=0):
+            directions.append(math.atan2(vector[1], vector[0]))
+    if not directions:
+        return None
+    # four times the angle: rows and columns, either way round, give the same grid direction
+    return math.degrees(math.atan2(np.mean(np.sin(4 * np.array(directions))),
+                                   np.mean(np.cos(4 * np.array(directions)))) / 4)
 
 
 def get_nn_distance(points0):
