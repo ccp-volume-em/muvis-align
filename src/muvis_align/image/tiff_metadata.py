@@ -1,4 +1,4 @@
-# Copied from napari-meta-tiff (src/napari_meta_tiff/_metadata.py, 1e5d28a): keep in step with it
+# Copied from napari-meta-tiff (src/napari_meta_tiff/_metadata.py, 426b84f): keep in step with it
 
 """Read the metadata of a TIFF file, and what it says about space.
 
@@ -268,9 +268,16 @@ AXIS_SUFFIXES = (('x', 'x'), ('y', 'y'), ('z', 'z'),
 # the rotation of the stage written onto the end of its name, as StagePosR
 ROTATION_SUFFIXES = (('rotation', 'r'), ('r', 'r'))
 
-# the tags FEI, now Thermo Fisher, write their header to. Its Stage StageR
-# is radians without saying so (StageT=6.54498e-06 is 0.000375 degrees),
-# where Ciqtek, writing to the same tag, has StagePosR in degrees.
+# names the rotation of the scan goes by, as Ciqtek ElectricRotate, FEI
+# ScanRotation and Fibics ScanRot, or as the rotation in a structure named
+# after the scan, as Phenom writes it
+SCAN_ROTATION_NAMES = ('scanrotation', 'scanrot', 'electricrotate')
+SCAN_CONTAINER_NAMES = ('scan',)
+ROTATION_NAMES = ('rotation', 'rot')
+
+# the tags FEI, now Thermo Fisher, write their header to. Its angles are
+# radians without saying so (StageT=6.54498e-06 is 0.000375 degrees),
+# where Ciqtek, writing to the same tag, has its angles in degrees.
 FEI_TAG_NAMES = ('FEI_SFEG', 'FEI_HELIOS')
 
 
@@ -563,24 +570,62 @@ def get_position_um(metadata: Dict) -> Dict[str, float]:
 
 
 def get_rotation_deg(metadata: Dict) -> Optional[float]:
+    """Return how far the image is turned against the stage axes, in
+    degrees, or None.
+
+    This is what places the image beside others by their stage positions.
+    The scan rotation turns the raster against the stage, so the image is
+    turned the other way: a row of Ciqtek tiles at ElectricRotate -135
+    lines up at 135. The stage rotation turns the sample rather than the
+    axes the stage positions are in, so it plays no part.
+    """
+    implied_unit = implied_angle_unit(metadata)
+    for key, value, siblings in walk_fields(metadata):
+        name = normalise_name(key)
+        if isinstance(value, dict) and name.endswith(SCAN_CONTAINER_NAMES):
+            fields = [(field_value, None) for field_key, field_value
+                      in value.items()
+                      if normalise_name(field_key) in ROTATION_NAMES]
+        elif name.endswith(SCAN_ROTATION_NAMES):
+            fields = [(value, sibling_unit(key, siblings))]
+        else:
+            fields = []
+        for field_value, unit in fields:
+            scan_rotation = parse_quantity(field_value, unit or implied_unit,
+                                           DEGREE_CONVERSIONS)
+            if scan_rotation is not None:
+                # subtracted from 0.0 rather than negated, which makes -0.0
+                return 0.0 - scan_rotation
+    return None
+
+
+def get_stage_rotation_deg(metadata: Dict) -> Optional[float]:
     """Return the rotation of the stage in degrees, or None.
 
     The rotation sits beside the stage position, as StagePosR or as R in
-    a stage structure, and is read as degrees where no unit is given,
-    except for the StageR of an FEI header, which is radians.
-    The rotation of the scan is a setting of the beam rather than of the
-    stage, and is left alone.
+    a stage structure. It turns the sample on the stage, which matters
+    between acquisitions at different rotations, but not between the
+    images of one, whose stage positions it leaves alone.
     """
-    fei_stage = next((metadata[name].get('Stage') for name in FEI_TAG_NAMES
-                      if isinstance(metadata.get(name), dict)), None)
-    implied_unit = ('rad' if isinstance(fei_stage, dict)
-                    and 'StageR' in fei_stage else 'deg')
+    implied_unit = implied_angle_unit(metadata)
     for _, value, unit in stage_fields(metadata, ROTATION_SUFFIXES):
         rotation = parse_quantity(value, unit or implied_unit,
                                   DEGREE_CONVERSIONS)
         if rotation is not None:
             return rotation
     return None
+
+
+def implied_angle_unit(metadata: Dict) -> str:
+    """Return the unit an angle with no unit beside it is in.
+
+    That is degrees, except in an FEI header, told apart from Ciqtek's in
+    the same tag by its stage rotation being named StageR.
+    """
+    fei_stage = next((metadata[name].get('Stage') for name in FEI_TAG_NAMES
+                      if isinstance(metadata.get(name), dict)), None)
+    return ('rad' if isinstance(fei_stage, dict) and 'StageR' in fei_stage
+            else 'deg')
 
 
 def stage_fields(metadata: Dict, suffixes: Tuple

@@ -292,11 +292,13 @@ def test_a_vendor_tiff_gives_its_own_pixel_size_and_stage_position(tmp_path):
     path = str(tmp_path / 'vendor.tif')
     write_vendor_tiff(path, '<Vendor><pixelsizex>2e-9</pixelsizex><pixelsizey>2e-9</pixelsizey>'
                             '<Stage><X><value>10.5</value><units>um</units></X>'
-                            '<Y><value>-3.5</value><units>um</units></Y><R>-30</R></Stage></Vendor>')
+                            '<Y><value>-3.5</value><units>um</units></Y></Stage>'
+                            '<Beam><ElectricRotate>-30</ElectricRotate></Beam></Vendor>')
     source = create_image_source(path)
 
     assert source.pixel_size == pytest.approx({'y': 2e-3, 'x': 2e-3})
     assert source.position == {'x': 10.5, 'y': -3.5}
-    assert source.rotation == -30.0
+    # the scan rotation turns the image the other way
+    assert source.rotation == 30.0
     assert 'Vendor' in str(source.metadata)
     assert 'StripOffsets' not in source.metadata
