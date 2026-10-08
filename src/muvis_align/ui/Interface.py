@@ -774,7 +774,7 @@ class Interface:
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
         # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
         table_widget = self.param_widgets.get('input_output.metadata_table')
-        properties = ['position', 'size']
+        properties = ['position', 'pixel size']
         if transform_keys is None:
             positions = self.reg.positions
             scales = self.reg.scales
@@ -1743,8 +1743,6 @@ class Interface:
                         self.enable_tab(section_id, False)
                 self.pair_indices = indices
                 pair_transform = np.array(pair_transforms[indices].sel(t=0))
-                eye = np.eye(max(pair_transform.shape))
-                pair_transforms = pair_transform, eye
 
                 # everything below can bail out (pre-processing failing) or raise, and the
                 # widgets/tabs disabled just above are only ever re-enabled by leaving this mode
@@ -1758,9 +1756,16 @@ class Interface:
                     # register_msims is a real multiscale pyramid (built by preprocess()) - lets
                     # napari lazily load whichever level it needs during interactive adjustment
                     register_images = self.reg.register_msims
-                    for index, (sim_index, color) in enumerate(zip(indices, colors)):
+                    # each source keeps its own transform (e.g. a scan rotation); the pair transform maps fixed to moving
+                    self.pair_source_affines = [
+                        np.asarray(msi_utils.get_transform_from_msim(register_images[sim_index],
+                                                                     self.reg.source_transform_key)).squeeze()
+                        for sim_index in indices]
+                    fixed_source_affine, moving_source_affine = self.pair_source_affines
+                    layer_affines = pair_transform @ fixed_source_affine, moving_source_affine
+                    for sim_index, layer_affine, color in zip(indices, layer_affines, colors):
                         self._napari_view_add_image(self.viewer, register_images[sim_index], labels[sim_index],
-                                                    pair_transforms[index], color, affine_event=True)
+                                                    layer_affine, color, affine_event=True)
                     self.update_pair_metrics()
                     entered = True
                 finally:
@@ -1776,10 +1781,12 @@ class Interface:
                 self.enable_tab(section_id, was_enabled)
 
     def calc_mod_pair_transform(self):
-        transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
-        matsize = len(si_utils.get_spatial_dims_from_sim(get_msim_image0(self.reg.msims[0]))) + 1
-        transform = calculate_rigid_difference(transforms[1][-matsize:, -matsize:],
-                                               transforms[0][-matsize:, -matsize:])
+        fixed_source_affine, moving_source_affine = self.pair_source_affines
+        matsize = len(fixed_source_affine)
+        fixed_affine, moving_affine = [layer.affine.affine_matrix[-matsize:, -matsize:] for layer in self.viewer.layers]
+        # either layer may have been moved: the pair transform is what is left once both source transforms are taken out
+        transform = (moving_source_affine @ calculate_rigid_difference(moving_affine, fixed_affine)
+                     @ np.linalg.inv(fixed_source_affine))
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):

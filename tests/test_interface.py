@@ -363,6 +363,7 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._napari_view_add_image = MagicMock()
     bare_interface.update_pair_metrics = MagicMock()
+    _stub_source_affines(monkeypatch, {"msim": np.eye(3)})
 
     bare_interface.modify_pair_registration()
 
@@ -389,6 +390,55 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     if store:
         # a bbox without a 't' dim is saved as it is
         assert bare_interface.reg.save_pair_mappings.call_args.args[2] == {(0, 0): [[1, 2], [3, 4]]}
+
+
+def _stub_source_affines(monkeypatch, affines):
+    """Each msim (a plain key here) reads back its own source transform."""
+    monkeypatch.setattr(interface_module.msi_utils, "get_transform_from_msim",
+                        lambda msim, transform_key=None: affines[msim])
+
+
+def _rotation(degrees, translation=(0, 0)):
+    angle = np.deg2rad(degrees)
+    return np.array([[np.cos(angle), -np.sin(angle), translation[0]],
+                     [np.sin(angle), np.cos(angle), translation[1]],
+                     [0, 0, 1]])
+
+
+def test_modify_pair_registration_shows_and_reads_back_through_source_transforms(
+    bare_interface, monkeypatch
+):
+    """Each layer carries its source's own (rotated) transform, the fixed one the pair transform
+    on top; reading the layers back gives the pair transform alone, unchanged or after a move."""
+    import xarray as xr
+
+    _arm_pair_modify_entry(bare_interface, monkeypatch)
+    bare_interface.param_widgets["registration.reg_preview_image2"] = SimpleNamespace(
+        get_value=lambda: "image-1")
+    bare_interface.reg.file_labels = ["image-0", "image-1"]
+    bare_interface.reg.register_msims = ["fixed", "moving"]
+    source_affines = {"fixed": _rotation(30, (5, 7)), "moving": _rotation(-20, (40, 3))}
+    _stub_source_affines(monkeypatch, source_affines)
+    pair_transform = _rotation(2, (1.5, -0.5))
+    monkeypatch.setattr(interface_module.nx, "get_edge_attributes", lambda *_: {(0, 1): xr.DataArray(
+        pair_transform.reshape(1, 3, 3), dims=["t", "x_in", "x_out"], coords={"t": [0]})})
+
+    bare_interface.modify_pair_registration()
+
+    layer_affines = [call.args[3] for call in bare_interface._napari_view_add_image.call_args_list]
+    np.testing.assert_allclose(layer_affines[0], pair_transform @ source_affines["fixed"])
+    np.testing.assert_allclose(layer_affines[1], source_affines["moving"])
+
+    def read_back(affines):
+        bare_interface.viewer.layers = [SimpleNamespace(affine=SimpleNamespace(affine_matrix=affine))
+                                        for affine in affines]
+        return np.asarray(bare_interface.calc_mod_pair_transform())
+
+    np.testing.assert_allclose(read_back(layer_affines), pair_transform, atol=1e-12)
+    # moving the moving layer by a shift is the pair transform moved by the opposite shift
+    shift = _rotation(0, (3, 4))
+    np.testing.assert_allclose(read_back([layer_affines[0], shift @ layer_affines[1]]),
+                               np.linalg.inv(shift) @ pair_transform, atol=1e-12)
 
 
 def _arm_pair_modify_entry(bare_interface, monkeypatch):
@@ -450,6 +500,7 @@ def test_modify_pair_registration_restores_state_when_entering_raises(
     """The same applies to a failure part-way through building the pair view."""
     widget, tab_states = _arm_pair_modify_entry(bare_interface, monkeypatch)
     bare_interface.reg.register_msims = ["msim"]
+    _stub_source_affines(monkeypatch, {"msim": np.eye(3)})
     bare_interface._napari_view_add_image = MagicMock(side_effect=ValueError("boom"))
 
     with pytest.raises(ValueError):
