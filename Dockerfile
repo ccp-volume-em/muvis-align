@@ -47,10 +47,10 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Install dependencies
-RUN python -m pip install --upgrade pip
-RUN pip install -r requirements.txt
-RUN pip install napari[all]
-RUN pip install napari-ome-zarr
+RUN python -m pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir napari[all]
+RUN pip install --no-cache-dir napari-ome-zarr
 
 # Copy project files after dependencies have been installed.
 COPY run.py .
@@ -58,7 +58,7 @@ COPY pyproject.toml .
 COPY src/ src/
 
 RUN --mount=type=bind,source=.git,target=/app/.git \
-    pip install .
+    pip install --no-cache-dir .
 
 ENTRYPOINT ["python3", "-m", "napari", "--plugin", "muvis-align"]
 

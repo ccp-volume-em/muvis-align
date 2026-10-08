@@ -2,7 +2,7 @@
 #SBATCH --job-name=muvis_align_pull
 #SBATCH --part=ncpu
 #SBATCH --cpus-per-task=4
-#SBATCH --time=00:30:00
+#SBATCH --time=02:00:00
 #SBATCH --mem=8G
 #SBATCH --output=muvis-align-pull-%j.log
 #SBATCH --error=muvis-align-pull-%j.log
@@ -29,6 +29,8 @@ if ! command -v apptainer >/dev/null 2>&1; then
 fi
 
 mkdir -p "${DEST_DIR}"
+# fetch and unpack the layers on node-local disk: ~100k small files are slow on network storage
+export APPTAINER_TMPDIR="${TMPDIR:-/tmp}"
 
 echo "Pulling ${IMAGE_REF} and building sandbox at ${SANDBOX_PATH} ..."
 apptainer build --sandbox --force "${SANDBOX_PATH}" "${IMAGE_REF}"
