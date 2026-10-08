@@ -363,6 +363,7 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._napari_view_add_image = MagicMock()
     bare_interface.update_pair_metrics = MagicMock()
+    _stub_source_affines(monkeypatch, {"msim": np.eye(3)})
 
     bare_interface.modify_pair_registration()
 
@@ -389,6 +390,55 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     if store:
         # a bbox without a 't' dim is saved as it is
         assert bare_interface.reg.save_pair_mappings.call_args.args[2] == {(0, 0): [[1, 2], [3, 4]]}
+
+
+def _stub_source_affines(monkeypatch, affines):
+    """Each msim (a plain key here) reads back its own source transform."""
+    monkeypatch.setattr(interface_module.msi_utils, "get_transform_from_msim",
+                        lambda msim, transform_key=None: affines[msim])
+
+
+def _rotation(degrees, translation=(0, 0)):
+    angle = np.deg2rad(degrees)
+    return np.array([[np.cos(angle), -np.sin(angle), translation[0]],
+                     [np.sin(angle), np.cos(angle), translation[1]],
+                     [0, 0, 1]])
+
+
+def test_modify_pair_registration_shows_and_reads_back_through_source_transforms(
+    bare_interface, monkeypatch
+):
+    """Each layer carries its source's own (rotated) transform, the fixed one the pair transform
+    on top; reading the layers back gives the pair transform alone, unchanged or after a move."""
+    import xarray as xr
+
+    _arm_pair_modify_entry(bare_interface, monkeypatch)
+    bare_interface.param_widgets["registration.reg_preview_image2"] = SimpleNamespace(
+        get_value=lambda: "image-1")
+    bare_interface.reg.file_labels = ["image-0", "image-1"]
+    bare_interface.reg.register_msims = ["fixed", "moving"]
+    source_affines = {"fixed": _rotation(30, (5, 7)), "moving": _rotation(-20, (40, 3))}
+    _stub_source_affines(monkeypatch, source_affines)
+    pair_transform = _rotation(2, (1.5, -0.5))
+    monkeypatch.setattr(interface_module.nx, "get_edge_attributes", lambda *_: {(0, 1): xr.DataArray(
+        pair_transform.reshape(1, 3, 3), dims=["t", "x_in", "x_out"], coords={"t": [0]})})
+
+    bare_interface.modify_pair_registration()
+
+    layer_affines = [call.args[3] for call in bare_interface._napari_view_add_image.call_args_list]
+    np.testing.assert_allclose(layer_affines[0], pair_transform @ source_affines["fixed"])
+    np.testing.assert_allclose(layer_affines[1], source_affines["moving"])
+
+    def read_back(affines):
+        bare_interface.viewer.layers = [SimpleNamespace(affine=SimpleNamespace(affine_matrix=affine))
+                                        for affine in affines]
+        return np.asarray(bare_interface.calc_mod_pair_transform())
+
+    np.testing.assert_allclose(read_back(layer_affines), pair_transform, atol=1e-12)
+    # moving the moving layer by a shift is the pair transform moved by the opposite shift
+    shift = _rotation(0, (3, 4))
+    np.testing.assert_allclose(read_back([layer_affines[0], shift @ layer_affines[1]]),
+                               np.linalg.inv(shift) @ pair_transform, atol=1e-12)
 
 
 def _arm_pair_modify_entry(bare_interface, monkeypatch):
@@ -450,6 +500,7 @@ def test_modify_pair_registration_restores_state_when_entering_raises(
     """The same applies to a failure part-way through building the pair view."""
     widget, tab_states = _arm_pair_modify_entry(bare_interface, monkeypatch)
     bare_interface.reg.register_msims = ["msim"]
+    _stub_source_affines(monkeypatch, {"msim": np.eye(3)})
     bare_interface._napari_view_add_image = MagicMock(side_effect=ValueError("boom"))
 
     with pytest.raises(ValueError):
@@ -1217,32 +1268,23 @@ def test_pair_registration_confirmation_paths(
     assert bare_interface.update_registered.called is runs
 
 
-@pytest.mark.parametrize("reply", ["Yes", "No"])
-def test_registration_process_merge_opens_fusion_without_registering(
-    bare_interface, monkeypatch, reply
+def test_registration_process_merge_goes_to_fusion_without_registering(
+    bare_interface, monkeypatch
 ):
-    """merge fuses at the source positions, so there is nothing to register here."""
+    """merge fuses at the source positions, so there is nothing to register or ask here."""
     bare_interface.params = {"registration": {"operation": "merge"}}
     bare_interface.run_pair_registration = MagicMock()
     bare_interface.run_global_registration = MagicMock()
-    bare_interface.enable_tabs = MagicMock()
     bare_interface.select_tab = MagicMock()
-    monkeypatch.setattr(
-        interface_module.QMessageBox,
-        "question",
-        lambda *_: getattr(interface_module.QMessageBox, reply),
-    )
+    question = MagicMock()
+    monkeypatch.setattr(interface_module.QMessageBox, "question", question)
 
     bare_interface.registration_process()
 
+    assert not question.called
     assert not bare_interface.run_pair_registration.called
     assert not bare_interface.run_global_registration.called
-    if reply == "Yes":
-        bare_interface.enable_tabs.assert_called_once_with(True, 4)
-        bare_interface.select_tab.assert_called_once_with(4)
-    else:
-        assert not bare_interface.enable_tabs.called
-        assert not bare_interface.select_tab.called
+    bare_interface.select_tab.assert_called_once_with(4)
 
 
 def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch):
@@ -1319,7 +1361,6 @@ def test_registration_process_confirmation_and_prerequisites(
         if run_pair:
             bare_interface.run_pair_registration.assert_called_once_with()
         copy.assert_called_once_with(["sim"], ["preview"], "registered")
-        bare_interface.enable_tabs.assert_called_once_with(True, 4)
         # the refresh is a phase of the registration operation's bar, not a bar of its own
         _, refresh_kwargs = bare_interface.update_registered.call_args
         assert refresh_kwargs['view_transform_key'] == "registered"
@@ -1386,6 +1427,105 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     )
     assert bare_interface.reg.state is RegState.FUSED
     assert bare_interface.view_mode is ViewMode.FUSED
+
+
+@pytest.mark.parametrize(
+    ("operation", "pairs_registered", "global_registered", "prefix", "run_pair", "run_global"),
+    [
+        ("register", False, False, "Registration not performed yet. ", True, True),
+        ("register", True, False, "Global registration not performed yet. ", False, True),
+        ("register", True, True, "", False, False),
+        ("merge", False, False, "", False, False),
+    ],
+)
+def test_fusion_process_runs_missing_registration_first(
+    bare_interface, monkeypatch, mocked_activity_contexts,
+    operation, pairs_registered, global_registered, prefix, run_pair, run_global,
+):
+    bare_interface.viewer = MagicMock()
+    bare_interface.params = {"registration": {"operation": operation}}
+    bare_interface.reg.is_fused.return_value = False
+    bare_interface.reg.is_pairs_registered.return_value = pairs_registered
+    bare_interface.reg.is_global_registered.return_value = global_registered
+    bare_interface._fusion_size_text = MagicMock(return_value="")
+    bare_interface._clear_napari_view = MagicMock()
+    bare_interface._napari_view_add_fused_data = MagicMock()
+    calls = []
+    bare_interface.run_pair_registration = MagicMock(side_effect=lambda: calls.append("pair") or {"pairs": 1})
+    bare_interface.run_global_registration = MagicMock(side_effect=lambda: calls.append("global") or {"global": 1})
+    bare_interface.run_fusion = MagicMock(side_effect=lambda: calls.append("fusion") or "fused")
+    messages = []
+
+    def question(_parent, _title, message, *_):
+        messages.append(message)
+        return interface_module.QMessageBox.Yes
+
+    monkeypatch.setattr(interface_module.QMessageBox, "question", question)
+    monkeypatch.setattr(interface_module.QMessageBox, "information", MagicMock())
+
+    bare_interface.fusion_process()
+
+    assert messages[0].startswith(prefix)
+    assert calls == ["pair"] * run_pair + ["global"] * run_global + ["fusion"]
+
+
+def test_fusion_process_stops_when_registration_fails(bare_interface, monkeypatch):
+    bare_interface.params = {"registration": {"operation": "register"}}
+    bare_interface.reg.is_fused.return_value = False
+    bare_interface.reg.is_pairs_registered.return_value = False
+    bare_interface.reg.is_global_registered.return_value = False
+    bare_interface._fusion_size_text = MagicMock(return_value="")
+    bare_interface.run_pair_registration = MagicMock(return_value=None)
+    bare_interface.run_global_registration = MagicMock()
+    bare_interface.run_fusion = MagicMock()
+    monkeypatch.setattr(interface_module.QMessageBox, "question",
+                        lambda *_: interface_module.QMessageBox.Yes)
+
+    bare_interface.fusion_process()
+
+    assert not bare_interface.run_global_registration.called
+    assert not bare_interface.run_fusion.called
+
+
+@pytest.mark.parametrize(
+    ("operation", "global_registered", "enabled"),
+    [("register", False, False), ("register", True, True), ("merge", False, True)],
+)
+def test_fusion_preview_enabled_only_with_something_to_fuse(
+    bare_interface, operation, global_registered, enabled
+):
+    """Unregistered, only a merge has positions worth previewing a fusion at."""
+    bare_interface.params = {"registration": {"operation": "register"}}
+    bare_interface.write_params = MagicMock()
+    bare_interface.reg.is_global_registered.return_value = global_registered
+    preview = SimpleNamespace(widget=SimpleNamespace(enabled=None))
+    bare_interface.param_widgets = {"fusion.preview_fusion": preview}
+
+    bare_interface.change_param("registration.operation", operation)
+
+    assert preview.widget.enabled is enabled
+
+
+@pytest.mark.parametrize(
+    ("pairs_registered", "selected"), [(False, None), (True, 3)],
+)
+def test_show_loaded_project_opens_every_tab(bare_interface, pairs_registered, selected):
+    """Every step is reachable once the sources are read: a later one runs what it needs first."""
+    bare_interface.reg.is_fused.return_value = False
+    bare_interface.reg.is_global_registered.return_value = False
+    bare_interface.reg.is_pairs_registered.return_value = pairs_registered
+    bare_interface.update_views = MagicMock()
+    bare_interface.update_registered = MagicMock()
+    bare_interface.enable_tabs = MagicMock()
+    bare_interface.select_tab = MagicMock()
+
+    bare_interface._show_loaded_project()
+
+    bare_interface.enable_tabs.assert_called_once_with(True, 4)
+    if selected is None:
+        assert not bare_interface.select_tab.called
+    else:
+        bare_interface.select_tab.assert_called_once_with(selected)
 
 
 def test_build_view_msims_downscales_large_single_resolution_source():

@@ -120,6 +120,7 @@ class Interface:
             self.enable_tabs(False, 2)
         if self.select_tab:
             self.select_tab(1)
+        self.update_fusion_preview_enabled()
 
     def get_all_widgets(self):
         # excludes widgets on a currently disabled tab - their .enabled always reads False
@@ -203,6 +204,8 @@ class Interface:
                 value = relativize_to_project_dir(value, self.get_project_dir())
         self.params[keys[0]][keys[1]] = value
         self.write_params()
+        if param_name == 'registration.operation':
+            self.update_fusion_preview_enabled()
 
     def update_input_output_path(self):
         # display the path exactly as stored (relative-to-project-dir when the project file
@@ -559,32 +562,34 @@ class Interface:
     def _show_loaded_project(self):
         # building the view data and drawing it - the second bar of opening a project, shown
         # once the load above has finished
+        section_tab = None
         if self.reg.is_fused():
             with self._operation_progress('Refreshing view', phases=2) as view_factory:
                 self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
                                                     progress_factory=view_factory)
                 self.preview_fusion(progress_factory=view_factory)
-            self.enable_tabs(True, 4)
-            self.select_tab(4)
+            section_tab = 4
         elif self.reg.is_global_registered():
             with self._operation_progress('Refreshing view', phases=2) as view_factory:
                 self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
                                                     progress_factory=view_factory)
                 self.update_registered(view_transform_key=self.reg.reg_transform_key,
                                        progress_factory=view_factory)
-            self.enable_tabs(True, 4)
-            self.select_tab(4)
+            section_tab = 4
         elif self.reg.is_pairs_registered():
             self.update_registered(view_transform_key=self.reg.source_transform_key)
-            self.enable_tabs(True, 3)
-            self.select_tab(3)
+            section_tab = 3
         else:
             # No prior registration to view with a specific transform - this is the one
             # draw update_metadata_source()'s own (skipped, see input_output_process())
             # would otherwise have done for a brand-new project. No pre-processing has run
             # yet, so only shapes are shown - see update_views()'s show_images param.
             self.update_views(show_images=False)
-            self.enable_tabs(True, 2)
+        # every step can be reached from here: a later one runs whatever it needs first
+        self.enable_tabs(True, 4)
+        self.update_fusion_preview_enabled()
+        if section_tab is not None:
+            self.select_tab(section_tab)
 
     def update_metadata_source(self, skip_view_update=False, progress_factory=None):
         if not self.reg.is_pairs_registered():
@@ -745,8 +750,8 @@ class Interface:
             # view of the new ones must not ask them for its transform
             self.reg.state = RegState.SIMS_INIT
         self.update_views(show_preprocessed=True)
-        self.enable_tabs(True, 3)
         self.enable_modify_pair_registration(False)
+        self.update_fusion_preview_enabled()
         self.select_tab(3)
 
     def populate_channels(self):
@@ -769,7 +774,7 @@ class Interface:
         # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
         # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
         table_widget = self.param_widgets.get('input_output.metadata_table')
-        properties = ['position', 'size']
+        properties = ['position', 'pixel size']
         if transform_keys is None:
             positions = self.reg.positions
             scales = self.reg.scales
@@ -1591,6 +1596,13 @@ class Interface:
         if widget:
             widget.widget.enabled = enabled
 
+    def update_fusion_preview_enabled(self):
+        widget = self.param_widgets.get('fusion.preview_fusion')
+        if widget:
+            # only a merge fuses at the unregistered source positions
+            operation = getattr(self, 'params', {}).get('registration', {}).get('operation', '')
+            widget.widget.enabled = self.reg.is_global_registered() or 'merge' in operation
+
     @catch_run_errors
     def run_pair_registration(self, progress_factory=None):
         # pre-processing, when this is what triggers it, reports its own bar and finishes before
@@ -1673,6 +1685,7 @@ class Interface:
             if not self.run_pair_registration():
                 return
             self.update_registered(view_transform_key=self.reg.source_transform_key)
+            self.update_fusion_preview_enabled()
             QMessageBox.information(None, 'muvis-align', 'Pair registration completed')
 
     def modify_pair_registration(self):
@@ -1730,8 +1743,6 @@ class Interface:
                         self.enable_tab(section_id, False)
                 self.pair_indices = indices
                 pair_transform = np.array(pair_transforms[indices].sel(t=0))
-                eye = np.eye(max(pair_transform.shape))
-                pair_transforms = pair_transform, eye
 
                 # everything below can bail out (pre-processing failing) or raise, and the
                 # widgets/tabs disabled just above are only ever re-enabled by leaving this mode
@@ -1745,9 +1756,16 @@ class Interface:
                     # register_msims is a real multiscale pyramid (built by preprocess()) - lets
                     # napari lazily load whichever level it needs during interactive adjustment
                     register_images = self.reg.register_msims
-                    for index, (sim_index, color) in enumerate(zip(indices, colors)):
+                    # each source keeps its own transform (e.g. a scan rotation); the pair transform maps fixed to moving
+                    self.pair_source_affines = [
+                        np.asarray(msi_utils.get_transform_from_msim(register_images[sim_index],
+                                                                     self.reg.source_transform_key)).squeeze()
+                        for sim_index in indices]
+                    fixed_source_affine, moving_source_affine = self.pair_source_affines
+                    layer_affines = pair_transform @ fixed_source_affine, moving_source_affine
+                    for sim_index, layer_affine, color in zip(indices, layer_affines, colors):
                         self._napari_view_add_image(self.viewer, register_images[sim_index], labels[sim_index],
-                                                    pair_transforms[index], color, affine_event=True)
+                                                    layer_affine, color, affine_event=True)
                     self.update_pair_metrics()
                     entered = True
                 finally:
@@ -1763,10 +1781,12 @@ class Interface:
                 self.enable_tab(section_id, was_enabled)
 
     def calc_mod_pair_transform(self):
-        transforms = [layer.affine.affine_matrix for layer in self.viewer.layers]
-        matsize = len(si_utils.get_spatial_dims_from_sim(get_msim_image0(self.reg.msims[0]))) + 1
-        transform = calculate_rigid_difference(transforms[1][-matsize:, -matsize:],
-                                               transforms[0][-matsize:, -matsize:])
+        fixed_source_affine, moving_source_affine = self.pair_source_affines
+        matsize = len(fixed_source_affine)
+        fixed_affine, moving_affine = [layer.affine.affine_matrix[-matsize:, -matsize:] for layer in self.viewer.layers]
+        # either layer may have been moved: the pair transform is what is left once both source transforms are taken out
+        transform = (moving_source_affine @ calculate_rigid_difference(moving_affine, fixed_affine)
+                     @ np.linalg.inv(fixed_source_affine))
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
@@ -1782,15 +1802,8 @@ class Interface:
             return
 
         if 'merge' in self.params['registration']['operation']:
-            # merge: fuse at the sources' own metadata positions, registering nothing. There is
-            # no registration step to run here, so this only opens the fusion tab - the fusion
-            # itself falls back to source_transform_key via get_best_transform_key()
-            reply = QMessageBox.question(None, 'muvis-align',
-                                         'Merge without registration, at the source positions?',
-                                         QMessageBox.Yes|QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                self.enable_tabs(True, 4)
-                self.select_tab(4)
+            # merge fuses at the sources' own positions (get_best_transform_key()): nothing to register
+            self.select_tab(4)
             return
 
         completion_message = 'Global registration completed'
@@ -1804,23 +1817,25 @@ class Interface:
         reply = QMessageBox.question(None, 'muvis-align', message,
                                      QMessageBox.Yes|QMessageBox.No)
         if reply == QMessageBox.Yes:
-            # a bar per registration - pair, then global - each finishing before the next
-            # starts. One bar over both would have the pair phases fill it, leaving the global
-            # registration (just as long, and the only thing still running) with nothing to show
-            with Timer('registration process', verbose=self._timing_verbose()):
-                if not self.reg.is_pairs_registered():
-                    if not self.run_pair_registration():
-                        return
-                if not self.run_global_registration():
-                    return
-            # ...and one more for building and drawing the view they leave on screen
+            if not self._run_registration():
+                return
+            # one more bar for building and drawing the view the registration leaves on screen
             with self._operation_progress('Refreshing view', phases=2) as view_factory:
                 self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
                                                     progress_factory=view_factory)
                 self.update_registered(view_transform_key=self.reg.reg_transform_key,
                                        progress_factory=view_factory)
-            self.enable_tabs(True, 4)
             QMessageBox.information(None, 'muvis-align', completion_message)
+
+    def _run_registration(self):
+        """Pair registration where it has not run yet, then global; False if either did not complete."""
+        # a bar per registration, each finishing before the next starts: one bar over both would
+        # have the pair phases fill it, leaving the global registration with nothing to show
+        with Timer('registration process', verbose=self._timing_verbose()):
+            registered = ((self.reg.is_pairs_registered() or self.run_pair_registration())
+                          and self.run_global_registration())
+        self.update_fusion_preview_enabled()
+        return bool(registered)
 
     @catch_run_errors
     def preview_fusion(self, progress_factory=None):
@@ -1972,11 +1987,21 @@ class Interface:
 
     def fusion_process(self):
         self.copy_params_to_output()
-        message = 'Fusion was already performed. ' if self.reg.is_fused() else ''
-        message += 'Export fused data?' + self._fusion_size_text()
-        reply = QMessageBox.question(None, 'muvis-align', message,
+        needs_registration = (not self.reg.is_global_registered()
+                              and 'merge' not in self.params['registration']['operation'])
+        if self.reg.is_fused():
+            message = 'Fusion was already performed. Export fused data?'
+        elif needs_registration and self.reg.is_pairs_registered():
+            message = 'Global registration not performed yet. Run global registration and export fused data?'
+        elif needs_registration:
+            message = 'Registration not performed yet. Run pair and global registration, and export fused data?'
+        else:
+            message = 'Export fused data?'
+        reply = QMessageBox.question(None, 'muvis-align', message + self._fusion_size_text(),
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
+            if needs_registration and not self._run_registration():
+                return
             fused_image = self.run_fusion()
             if fused_image is None:
                 return
