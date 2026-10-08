@@ -782,12 +782,6 @@ class MVSRegistration:
                 z_position = 0
             if last_z_position is not None and z_position != last_z_position:
                 delta_zs.append(z_position - last_z_position)
-            if 'rotation' in source_metadata and not check_contains_value(source_metadata['rotation'], 'source'):
-                # 'source' means "keep whatever the file itself reports" - ImageSource.fix_metadata
-                # has already resolved that into source.get_rotation() (read just above). Taking
-                # the raw config value here regardless would hand create_transform() the literal
-                # string 'source' instead of an angle.
-                rotation = source_metadata['rotation']
             if self.global_rotation is not None:
                 rotation = self.global_rotation
 

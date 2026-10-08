@@ -500,6 +500,11 @@ def check_contains_value(value, contains_value):
     return isinstance(value, (dict, str)) and contains_value in value
 
 
+def is_source_value(value):
+    # 'invert' alone inverts the source's own value, as 'source invert' does
+    return check_contains_value(value, 'source') or check_contains_value(value, 'invert')
+
+
 def get_metadata_z_scale(metadata):
     """The configured z spacing from a source/extra metadata dict, as a number - or None when it
     is unset, blank, or delegated to the file itself ('source').

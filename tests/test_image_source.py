@@ -120,6 +120,19 @@ def test_data_mapping_adds_the_transforms_rotation_to_the_sources(rotation, tran
 
     assert mapped_rotation == (pytest.approx(expected) if expected is not None else None)
 
+@pytest.mark.parametrize('rotation', ['invert', 'source invert'])
+def test_invert_alone_inverts_the_sources_own_values(rotation):
+    source = create_image_source(str(DATA_DIR / TIFF_FILES[0]))
+    source.position = {'x': 5.0, 'y': 7.0}
+    source.rotation = 12.0
+
+    # z is not in the source, so there is nothing to invert
+    source.fix_metadata({'position': {'x': rotation, 'z': rotation}, 'rotation': rotation})
+
+    assert source.position == {'x': -5.0, 'y': 7.0}
+    assert source.rotation == -12.0
+
+
 def test_get_msim_caches_by_output_order_and_start_level():
     source = TiffImageSource(str(DATA_DIR / TIFF_FILES[0]))
 

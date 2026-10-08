@@ -9,7 +9,7 @@ from muvis_align.constants import default_transform_key
 from muvis_align.image.util import (combine_transforms, build_source_redimensioned_msim,
                                     build_missing_pyramid_levels, calc_pyramid_level_factors)
 from muvis_align.util import (find_all_numbers, split_numeric_dict, eval_context, check_contains_value,
-                              create_transform, load_sbemimage_best_config, adjust_sbemimage_properties,
+                              is_source_value, create_transform, load_sbemimage_best_config, adjust_sbemimage_properties,
                               find_sbemimage_meta_dir)
 
 
@@ -116,30 +116,15 @@ class ImageSource:
             context = {'filename_numeric': filename_numeric, 'fn': filename_numeric} | filename_dict
             if 'position' in source_metadata:
                 translation = source_metadata['position']
-                if 'x' in translation:
-                    if not check_contains_value(translation['x'], 'source'):
-                        self.position['x'] = eval_context(translation, 'x', 0, context)
-                    if check_contains_value(translation['x'], 'invert'):
-                        if isinstance(self.position['x'], (tuple, list)):
-                            self.position['x'] = -self.position['x'][0], self.position['x'][1]
-                        else:
-                            self.position['x'] = -self.position['x']
-                if 'y' in translation:
-                    if not check_contains_value(translation['y'], 'source'):
-                        self.position['y'] = eval_context(translation, 'y', 0, context)
-                    if check_contains_value(translation['y'], 'invert'):
-                        if isinstance(self.position['y'], (tuple, list)):
-                            self.position['y'] = -self.position['y'][0], self.position['y'][1]
-                        else:
-                            self.position['y'] = -self.position['y']
-                if 'z' in translation:
-                    if not check_contains_value(translation['z'], 'source'):
-                        self.position['z'] = eval_context(translation, 'z', 0, context)
-                    if check_contains_value(translation['z'], 'invert'):
-                        if isinstance(self.position['z'], (tuple, list)):
-                            self.position['z'] = -self.position['z'][0], self.position['z'][1]
-                        else:
-                            self.position['z'] = -self.position['z']
+                for dim in 'xyz':
+                    if dim in translation:
+                        if not is_source_value(translation[dim]):
+                            self.position[dim] = eval_context(translation, dim, 0, context)
+                        if check_contains_value(translation[dim], 'invert') and dim in self.position:
+                            if isinstance(self.position[dim], (tuple, list)):
+                                self.position[dim] = -self.position[dim][0], self.position[dim][1]
+                            else:
+                                self.position[dim] = -self.position[dim]
             if 'scale' in source_metadata:
                 scale = source_metadata['scale']
                 if 'x' in scale:
@@ -152,7 +137,7 @@ class ImageSource:
                     if not check_contains_value(scale['z'], 'source'):
                         self.pixel_sizes[0]['z'] = eval_context(scale, 'z', 1, context)
             if 'rotation' in source_metadata:
-                if not check_contains_value(source_metadata['rotation'], 'source'):
+                if not is_source_value(source_metadata['rotation']):
                     self.rotation = eval_context(source_metadata, 'rotation', None, context)
                 if check_contains_value(source_metadata['rotation'], 'invert') and self.rotation:
                     self.rotation = -self.rotation
