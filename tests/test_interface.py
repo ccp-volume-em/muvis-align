@@ -157,6 +157,7 @@ def bare_interface():
     interface.enable_plugin_widget = None
     interface.extra_metadata = {}
     interface.param_widgets = {}
+    interface.need_source_reinit = False
     interface.reg.file_labels = ["image-0"]
     interface.view_msims = [
         SimpleNamespace(dims=("z", "y", "x"), sizes={"z": 2})
@@ -626,7 +627,7 @@ def test_resolve_output_settings_reloads_or_discards_on_changed_source_metadata(
 
     bare_interface._ask_discard_output = MagicMock(return_value=discard)
 
-    bare_interface.copy_params_to_output()
+    assert bare_interface.prepare_action() is expect_read
 
     assert bare_interface._ask_discard_output.called is expect_question
     assert read_params(bare_interface.params_path)["input_output"]["normalise_rotated_positions"] is expect_norm
@@ -637,17 +638,19 @@ def test_resolve_output_settings_reloads_or_discards_on_changed_source_metadata(
         read_params(bare_interface.params_path)["input_output"]
 
 
-@pytest.mark.parametrize("discarded, initialised, expect_read", [
+@pytest.mark.parametrize("changed, initialised, expect_read", [
     (True, True, True), (True, False, False), (False, True, False)],
-    ids=["discarded", "discarded-before-open", "kept"])
-def test_copy_params_to_output_reads_sources_again_once_registration_is_discarded(
-    bare_interface, discarded, initialised, expect_read
+    ids=["changed", "changed-before-open", "unchanged"])
+def test_an_action_reads_sources_again_once_their_settings_changed(
+    bare_interface, changed, initialised, expect_read
 ):
-    bare_interface.resolve_output_settings = MagicMock(return_value=discarded)
+    bare_interface.resolve_output_settings = MagicMock()
+    bare_interface.copy_params_to_output = MagicMock()
+    bare_interface.need_source_reinit = changed
     bare_interface.reg.is_initialised.return_value = initialised
     bare_interface._input_output_process = MagicMock()
 
-    bare_interface.copy_params_to_output()
+    bare_interface.prepare_action()
 
     assert bare_interface._input_output_process.called is expect_read
 
@@ -665,6 +668,17 @@ def test_populate_choices_and_image_selection(bare_interface):
     }
     bare_interface.reg.sources = [
         SimpleNamespace(
+    bare_interface.copy_params_to_output.assert_called_once_with()
+
+
+@pytest.mark.parametrize("read_by_prepare", [True, False])
+def test_input_output_process_reads_sources_once(bare_interface, read_by_prepare):
+    bare_interface.prepare_action = MagicMock(return_value=read_by_prepare)
+    bare_interface._input_output_process = MagicMock()
+
+    bare_interface.input_output_process()
+
+    assert bare_interface._input_output_process.called is not read_by_prepare
             get_channels=lambda: [{"label": "red"}, {"label": "green"}]
         )
     ]

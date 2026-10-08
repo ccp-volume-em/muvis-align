@@ -196,11 +196,18 @@ class Interface:
         target = os.path.join(self.get_output_dir(), os.path.basename(params_path))
         return target if os.path.abspath(target) != os.path.abspath(params_path) else None
 
-    def copy_params_to_output(self):
-        """The project file as an action starts, next to its output: the settings the output was made with."""
-        if self.resolve_output_settings() and self.reg.is_initialised():
-            # the action continues with sources read with the current settings
+    def prepare_action(self):
+        """As an action starts: settings resolved against its output, sources read again where their settings
+        changed, and the project file copied next to the output. Returns whether the sources were read again."""
+        self.resolve_output_settings()
+        read_again = self.need_source_reinit and self.reg.is_initialised()
+        if read_again:
             self._input_output_process()
+        self.copy_params_to_output()
+        return read_again
+
+    def copy_params_to_output(self):
+        """The project file next to its output: the settings the output was made with."""
         target = self.get_output_params_path()
         if target:
             os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -208,11 +215,10 @@ class Interface:
             logging.info(f'Project settings copied to {target}')
 
     def resolve_output_settings(self):
-        """A registration saved with other source metadata settings either gets them back or is discarded.
-        Returns whether it was discarded, so the sources are read again with the current settings."""
+        """A registration saved with other source metadata settings either gets them back or is discarded."""
         output_params_path = self.get_output_params_path()
         if not output_params_path or not os.path.exists(output_params_path):
-            return False
+            return
         output = self.get_output_dir()
         operation = self.params['registration'].get('operation', '')
         fused_name = operation_to_past_participle(operation) if operation else None
@@ -229,12 +235,11 @@ class Interface:
                 if fused_name:
                     self._remove_output(fused_name, output)
                 self.need_source_reinit = True
-                return True
-            for name in changed:
-                self.params['input_output'][name] = previous.get(name)
-            self.write_params()
-            self.update_widgets()
-        return False
+            else:
+                for name in changed:
+                    self.params['input_output'][name] = previous.get(name)
+                self.write_params()
+                self.update_widgets()
 
     def _ask_discard_output(self, text):
         # no cancel: closing the box reloads, the answer that deletes nothing
@@ -346,11 +351,9 @@ class Interface:
         self.extra_metadata['channels'] = channels
 
     def input_output_process(self):
-        # resolved before the copy, which would read the sources again itself; reading them is next anyway
-        self.resolve_output_settings()
-        self.copy_params_to_output()
         try:
-            self._input_output_process()
+            if not self.prepare_action():
+                self._input_output_process()
         except OperationCancelled:
             logging.info('input_output_process cancelled')
             show_info('Cancelled')
@@ -802,7 +805,7 @@ class Interface:
     def pre_processing_process(self):
         # pre-processing reports its own bar, then the view it leaves on screen reports a second
         # one of its own (update_views()) - the work and showing the result are two operations
-        self.copy_params_to_output()
+        self.prepare_action()
         if not self.run_pre_processing():
             return
         if self.reg.is_pairs_registered():
@@ -1861,7 +1864,7 @@ class Interface:
         return param_utils.affine_to_xaffine(transform)
 
     def registration_process(self):
-        self.copy_params_to_output()
+        self.prepare_action()
         if 'convert' in self.params['registration']['operation']:
             # convert: each source written out individually at its own source/metadata
             # position, no registration and no fusion/blending - never reaches the fusion tab
@@ -2060,7 +2063,7 @@ class Interface:
 
 
     def fusion_process(self):
-        self.copy_params_to_output()
+        self.prepare_action()
         needs_registration = (not self.reg.is_global_registered()
                               and 'merge' not in self.params['registration']['operation'])
         if self.reg.is_fused():
