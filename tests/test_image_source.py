@@ -6,7 +6,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 from muvis_align.image.TiffImageSource import TiffImageSource
 from muvis_align.image.ZarrImageSource import ZarrImageSource
 from muvis_align.image.source_helper import create_image_source
-from muvis_align.image.util import combine_transforms
+from muvis_align.image.util import combine_transforms, get_data_mapping
 from muvis_align.util import create_transform, find_all_numbers
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES
 
@@ -103,6 +103,22 @@ def test_the_own_rotation_and_any_extra_transform_reach_every_msim_level(filenam
         assert affine.shape == (3, 3)
         np.testing.assert_allclose(affine.values, expected)
 
+
+
+@pytest.mark.parametrize('rotation, transform_rotation, expected', [
+    (None, 2, 2),
+    (-30, 2, -28),
+    (-30, 0, -30),
+    (None, 0, None),
+], ids=['transform only', 'source and transform', 'source only', 'neither'])
+def test_data_mapping_adds_the_transforms_rotation_to_the_sources(rotation, transform_rotation, expected):
+    sim = si_utils.get_sim_from_array(np.zeros((4, 4)), dims=['y', 'x'])
+    transform = param_utils.affine_to_xaffine(
+        param_utils.invert_coordinate_order(create_transform(None, transform_rotation)))
+
+    _, mapped_rotation = get_data_mapping(sim, transform=transform, rotation=rotation)
+
+    assert mapped_rotation == (pytest.approx(expected) if expected is not None else None)
 
 def test_get_msim_caches_by_output_order_and_start_level():
     source = TiffImageSource(str(DATA_DIR / TIFF_FILES[0]))
