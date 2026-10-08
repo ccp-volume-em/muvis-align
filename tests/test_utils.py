@@ -415,14 +415,15 @@ def test_the_crash_log_is_off_on_windows(tmp_path):
 
 @pytest.mark.parametrize('value, expected', [
     (0.0025505462087219684, '0.00255'), (0.004, '0.004'), (1.244, '1.24'), (1.5, '1.5'),
-    (-64863.2422089573, '-64900'), (12374.5, '12400'), (999.6, '1000'), (0.0, '0'), (-3.5, '-3.5'),
+    (-64863.2422089573, '-64863'), (12374.7, '12375'), (123.456, '123'), (999.6, '1000'), (0.0, '0'),
+    (-3.5, '-3.5'),
 ])
-def test_print_significants_keeps_at_most_3_significant_digits(value, expected):
+def test_print_significants_keeps_3_significant_digits_but_every_integer_digit(value, expected):
     assert print_significants(value, 3) == expected
 
 
 def test_print_dict_simple_rounds_floats_only_in_zyx_order():
-    assert print_dict_simple({'x': 18820.7, 'y': 0.0025505, 'z': 2}) == 'z: 2 y: 0.00255 x: 18800'
+    assert print_dict_simple({'x': 18820.7, 'y': 0.0025505, 'z': 2}) == 'z: 2 y: 0.00255 x: 18821'
     # other keys follow, a rotation's or a pair's (the notebooks print pair qualities)
     assert print_dict_simple({'x': 1.0, 'r': 90.0}) == 'x: 1 r: 90'
     assert print_dict_simple({(0, 1): 0.912345, (1, 2): 0.5}) == '(0, 1): 0.912 (1, 2): 0.5'

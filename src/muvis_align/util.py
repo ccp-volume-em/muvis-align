@@ -220,11 +220,12 @@ def print_dict_simple(dct: dict, dims: str='zyx', significant_digits: int=3) -> 
 
 
 def print_significants(value: float, significant_digits: int) -> str:
-    # fixed-point rather than 'g', which turns 64863 into 6.49e+04
+    # fixed-point rather than 'g', which turns 64863 into 6.49e+04; only decimals are dropped,
+    # every integer digit is kept
     if value == 0 or not np.isfinite(value):
         return f'{value:g}'
-    decimals = significant_digits - int(np.floor(np.log10(abs(value)))) - 1
-    text = f'{round(value, decimals):.{max(decimals, 0)}f}'
+    decimals = max(significant_digits - int(np.floor(np.log10(abs(value)))) - 1, 0)
+    text = f'{round(value, decimals):.{decimals}f}'
     return text.rstrip('0').rstrip('.') if '.' in text else text
 
 
