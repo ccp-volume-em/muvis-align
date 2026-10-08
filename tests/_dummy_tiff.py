@@ -1,4 +1,4 @@
-# Copied from napari-meta-tiff (tests/_dummy_tiff.py, 75897dc): keep in step with it
+# Copied from napari-meta-tiff (tests/_dummy_tiff.py, 1e5d28a): keep in step with it
 
 """Helpers creating dummy TIFF files for the tests.
 

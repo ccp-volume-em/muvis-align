@@ -1,4 +1,4 @@
-# Copied from napari-meta-tiff (src/napari_meta_tiff/_metadata.py, 75897dc): keep in step with it
+# Copied from napari-meta-tiff (src/napari_meta_tiff/_metadata.py, 1e5d28a): keep in step with it
 
 """Read the metadata of a TIFF file, and what it says about space.
 
@@ -12,9 +12,10 @@ well, as long as it names its fields the way the rest do.
 
 from enum import Enum
 import logging
+import math
 import re
 from tifffile import TiffFile, xml2dict
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 from xml.etree.ElementTree import ParseError
 
 
@@ -204,6 +205,13 @@ UM_CONVERSIONS = {
     'inch': 25400, 'in': 25400,
 }
 
+# how many degrees an angle unit is worth; the degree sign is kept as is,
+# having no letters for normalise_name() to leave
+DEGREE_CONVERSIONS = {
+    'deg': 1, 'degree': 1, 'degrees': 1, '°': 1,
+    'rad': 180 / math.pi, 'radian': 180 / math.pi, 'radians': 180 / math.pi,
+}
+
 # a pixel below this is smaller than an atom, and one above it is wider
 # than a hand, so a value outside the range is a misread rather than a
 # measurement, whatever the metadata claims
@@ -254,8 +262,16 @@ STAGE_TRAVEL_PATTERN = re.compile(r'(\d{1,4})x(\d{1,4})(?:x(\d{1,4}))?',
                                   re.IGNORECASE)
 
 # an axis written onto the end of a field name
-AXIS_SUFFIXES = (('x', 'x'), ('y', 'y'), ('z', 'z'), ('r', 'r'),
-                 ('width', 'x'), ('height', 'y'), ('depth', 'z'), ('rotation', 'r'))
+AXIS_SUFFIXES = (('x', 'x'), ('y', 'y'), ('z', 'z'),
+                 ('width', 'x'), ('height', 'y'), ('depth', 'z'))
+
+# the rotation of the stage written onto the end of its name, as StagePosR
+ROTATION_SUFFIXES = (('rotation', 'r'), ('r', 'r'))
+
+# the tags FEI, now Thermo Fisher, write their header to. Its Stage StageR
+# is radians without saying so (StageT=6.54498e-06 is 0.000375 degrees),
+# where Ciqtek, writing to the same tag, has StagePosR in degrees.
+FEI_TAG_NAMES = ('FEI_SFEG', 'FEI_HELIOS')
 
 
 def normalise_name(key: Any) -> str:
@@ -266,51 +282,58 @@ def normalise_name(key: Any) -> str:
                    if character.isalnum())
 
 
-def split_axis(name: str) -> Tuple[str, Optional[str], str]:
+def split_axis(name: str, suffixes: Tuple = AXIS_SUFFIXES
+               ) -> Tuple[str, Optional[str], str]:
     """Split the axis off the end of a normalised field name.
 
     The suffix itself comes back as well, because a name means
     different things depending on how the axis was written.
     """
-    for suffix, axis in AXIS_SUFFIXES:
+    for suffix, axis in suffixes:
         if name.endswith(suffix) and name != suffix:
             return name[:-len(suffix)], axis, suffix
     return name, None, ''
 
 
-def convert_to_um(value: Any, unit: Any) -> Optional[float]:
-    """Return a value in micrometres, or None if it cannot be read."""
+def convert_to_um(value: Any, unit: Any,
+                  conversions: Dict[str, float] = UM_CONVERSIONS
+                  ) -> Optional[float]:
+    """Return a value in micrometres, or in the unit other conversions
+    are to, or None if it cannot be read."""
     try:
         value = float(value)
     except (TypeError, ValueError):
         return None
-    factor = UM_CONVERSIONS.get(normalise_name(unit))
+    factor = conversions.get(normalise_name(unit) or unit)
     if factor is None:
         return None
     return value * factor
 
 
-def parse_quantity(value: Any, unit: Any = None) -> Optional[float]:
+def parse_quantity(value: Any, unit: Any = None,
+                   conversions: Dict[str, float] = UM_CONVERSIONS
+                   ) -> Optional[float]:
     """Return a metadata value in micrometres, however it is written.
 
     A vendor writes a measurement as a number beside a unit field, as a
     number with the unit stuck on the end of the string, or as a bare
-    number whose unit is named by a neighbouring field.
+    number whose unit is named by a neighbouring field. Other conversions
+    read another kind of quantity, such as an angle, the same way.
     """
     if isinstance(value, dict):
         keyed = {normalise_name(key): item for key, item in value.items()}
         for value_key in VALUE_KEYS:
             if value_key in keyed:
                 return parse_quantity(keyed[value_key],
-                                      find_unit(keyed) or unit)
+                                      find_unit(keyed) or unit, conversions)
         return None
     if isinstance(value, str):
         match = QUANTITY_PATTERN.match(repair_text(value))
         if match is None:
             return None
         number, written_unit = match.groups()
-        return convert_to_um(number, written_unit or unit)
-    return convert_to_um(value, unit)
+        return convert_to_um(number, written_unit or unit, conversions)
+    return convert_to_um(value, unit, conversions)
 
 
 def find_unit(keyed: Dict[str, Any]) -> Optional[str]:
@@ -531,24 +554,63 @@ def get_position_um(metadata: Dict) -> Dict[str, float]:
     """
     position = {}
     travel_mm = stage_travel_mm(metadata)
+    for axis, value, unit in stage_fields(metadata, AXIS_SUFFIXES):
+        coordinate = parse_quantity(
+            value, unit or implied_position_unit(value, travel_mm))
+        if coordinate is not None:
+            position.setdefault(axis, coordinate)
+    return position
+
+
+def get_rotation_deg(metadata: Dict) -> Optional[float]:
+    """Return the rotation of the stage in degrees, or None.
+
+    The rotation sits beside the stage position, as StagePosR or as R in
+    a stage structure, and is read as degrees where no unit is given,
+    except for the StageR of an FEI header, which is radians.
+    The rotation of the scan is a setting of the beam rather than of the
+    stage, and is left alone.
+    """
+    fei_stage = next((metadata[name].get('Stage') for name in FEI_TAG_NAMES
+                      if isinstance(metadata.get(name), dict)), None)
+    implied_unit = ('rad' if isinstance(fei_stage, dict)
+                    and 'StageR' in fei_stage else 'deg')
+    for _, value, unit in stage_fields(metadata, ROTATION_SUFFIXES):
+        rotation = parse_quantity(value, unit or implied_unit,
+                                  DEGREE_CONVERSIONS)
+        if rotation is not None:
+            return rotation
+    return None
+
+
+def stage_fields(metadata: Dict, suffixes: Tuple
+                 ) -> List[Tuple[str, Any, Optional[str]]]:
+    """Return each stage field for these axes: its axis, its value and the
+    unit a neighbouring field names for it, if any.
+
+    A vendor writes the stage as a structure holding one field per axis,
+    or as flat fields with the axis on the end of the name. The fields of
+    a structure named after the stage come first: FEI repeats the stage in
+    the section of each beam, where the image of another beam, such as the
+    navigation camera, keeps a position the stage has since left.
+    """
+    axes = {axis for _, axis in suffixes}
+    in_stage = []
+    elsewhere = []
     for key, value, siblings in walk_fields(metadata):
-        name, axis, _ = split_axis(normalise_name(key))
+        name, axis, _ = split_axis(normalise_name(key), suffixes)
         if isinstance(value, dict) and name.endswith(
                 POSITION_CONTAINER_NAMES) and axis is None:
-            for axis_key, axis_value in value.items():
-                axis = normalise_name(axis_key)
-                if axis in ('x', 'y', 'z', 'r'):
-                    unit = implied_position_unit(axis_value, travel_mm) if axis != 'r' else 'um'
-                    coordinate = parse_quantity(
-                        axis_value,
-                        unit)
-                    if coordinate is not None:
-                        position.setdefault(axis, coordinate)
+            for field_key, field_value in value.items():
+                field_name, field_axis, _ = split_axis(
+                    normalise_name(field_key), suffixes)
+                if normalise_name(field_key) in axes:
+                    in_stage.append((normalise_name(field_key), field_value,
+                                     None))
+                elif (field_axis is not None
+                      and field_name.endswith(POSITION_NAMES)):
+                    in_stage.append((field_axis, field_value,
+                                     sibling_unit(field_key, value)))
         elif axis is not None and name.endswith(POSITION_NAMES):
-            unit = implied_position_unit(value, travel_mm) if axis != 'r' else 'um'
-            coordinate = parse_quantity(
-                value,
-                sibling_unit(key, siblings) or unit)
-            if coordinate is not None:
-                position.setdefault(axis, coordinate)
-    return position
+            elsewhere.append((axis, value, sibling_unit(key, siblings)))
+    return in_stage + elsewhere

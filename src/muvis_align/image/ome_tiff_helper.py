@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - depends on the installed ngff_zarr
 
 from muvis_align.constants import default_chunk_size
 from muvis_align.image.color_conversion import hexrgb_to_rgba, rgba_to_int
-from muvis_align.image.tiff_metadata import get_extra_metadata, get_pixel_size_um, get_position_um
+from muvis_align.image.tiff_metadata import get_extra_metadata, get_pixel_size_um, get_position_um, get_rotation_deg
 from muvis_align.util import *
 
 
@@ -143,10 +143,11 @@ def read_tiff_source_metadata(filename):
         ome = (extract_ome_image_metadata(tif.ome_metadata)
                if tif.is_ome and tif.ome_metadata is not None else None)
         if ome is None:
-            # no OME: the pixel size and stage position wherever a vendor wrote them, in um
+            # no OME: the pixel size and stage position wherever a vendor wrote them, in um, and its rotation
             vendor_metadata = get_extra_metadata(tif)
             ome = {'scale': get_pixel_size_um(tif, vendor_metadata, dict(zip(axes.lower(), series.shape))),
-                   'position': get_position_um(vendor_metadata)}
+                   'position': get_position_um(vendor_metadata),
+                   'rotation': get_rotation_deg(vendor_metadata)}
 
     dims, _, _, _ = map_tiff_axes_to_ngff(axes, series.shape)
     shapes = [map_tiff_axes_to_ngff(axes, shape)[1] for shape in level_shapes]
@@ -180,6 +181,7 @@ def read_tiff_source_metadata(filename):
 
     return {'dimension_order': ''.join(dims), 'shapes': shapes, 'dtype': dtype,
             'pixel_sizes': pixel_sizes, 'position': (ome or {}).get('position') or {},
+            'rotation': (ome or {}).get('rotation'),
             'channels': channels, 'creator': (ome or {}).get('creator') or ''}
 
 

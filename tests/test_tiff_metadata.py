@@ -1,4 +1,4 @@
-# Copied from napari-meta-tiff (tests/test_metadata.py, 75897dc): keep in step with it
+# Copied from napari-meta-tiff (tests/test_metadata.py, 1e5d28a): keep in step with it
 
 """Tests for reading what the metadata says about space.
 
@@ -12,7 +12,8 @@ from tifffile import TiffFile, imwrite
 
 from muvis_align.image.tiff_metadata import (get_extra_metadata,
                                              get_pixel_size_um, get_position_um,
-                                             parse_quantity, resolution_pixel_size)
+                                             get_rotation_deg, parse_quantity,
+                                             resolution_pixel_size)
 
 from tests._dummy_tiff import (dummy_image, write_ome_tiff,
                                write_resolution_tiff, write_vendor_tiff)
@@ -231,6 +232,19 @@ def test_position_beyond_stage_travel_is_metres(tmp_path):
     assert position == pytest.approx({'x': 500e6})
 
 
+def test_position_prefers_the_stage_section():
+    """The stage's own section wins over the copy in a beam's section.
+
+    An FEI navigation camera image keeps another position in its IRBeam
+    section, written before the Stage section.
+    """
+    metadata = {'FEI_HELIOS': {
+        'IRBeam': {'StageX': -0.00126661, 'StageY': 0.002136},
+        'Stage': {'StageX': 0.0699197, 'StageY': 0.000811186}}}
+    assert get_position_um(metadata) == pytest.approx({'x': 69919.7,
+                                                       'y': 811.186})
+
+
 def test_position_ignores_other_fields(tmp_path):
     """Fields that are not a position in space are left alone."""
     path = str(tmp_path / 'other.tif')
@@ -239,6 +253,45 @@ def test_position_ignores_other_fields(tmp_path):
                             '<x>-0.012</x></sourceTilt></Scan></Vendor>')
     with TiffFile(path) as tif:
         assert get_position_um(get_extra_metadata(tif)) == {}
+
+
+def test_rotation_from_stage(tmp_path):
+    """The stage rotation is read in degrees, apart from the position.
+
+    Ciqtek writes StagePosR in degrees beside StagePosX; a stated radian
+    is converted, and the rotation of the scan is not the stage's.
+    """
+    path = str(tmp_path / 'rotation.tif')
+    write_vendor_tiff(path, '<Vendor><ElectricRotate>-135</ElectricRotate>'
+                            '<Scan><rotation>90</rotation></Scan>'
+                            '<Stage><StagePosR>11.7</StagePosR>'
+                            '<StagePosX>0.002</StagePosX></Stage></Vendor>')
+    with TiffFile(path) as tif:
+        metadata = get_extra_metadata(tif)
+    assert get_rotation_deg(metadata) == 11.7
+    assert get_position_um(metadata) == {'x': 2000.0}
+
+    path = str(tmp_path / 'radians.tif')
+    write_vendor_tiff(path, '<Vendor><Stage><R><value>0.5</value>'
+                            '<units>rad</units></R></Stage></Vendor>')
+    with TiffFile(path) as tif:
+        metadata = get_extra_metadata(tif)
+    assert get_rotation_deg(metadata) == pytest.approx(28.6479, abs=1e-4)
+
+    # an FEI header writes radians with no unit, as in a Helios file,
+    # while Ciqtek writes degrees to the same tag under its own name
+    metadata = {'FEI_HELIOS': {'Stage': {'StageX': 0.0699197,
+                                         'StageR': 1.07874}}}
+    assert get_rotation_deg(metadata) == pytest.approx(61.8072, abs=1e-4)
+    metadata = {'FEI_HELIOS': {'Stage': {'StagePosX': 18.9417,
+                                         'StagePosR': -30.0}}}
+    assert get_rotation_deg(metadata) == -30.0
+
+    path = str(tmp_path / 'no_rotation.tif')
+    write_vendor_tiff(path, '<Vendor><Scan><rotation>90</rotation></Scan>'
+                            '</Vendor>')
+    with TiffFile(path) as tif:
+        assert get_rotation_deg(get_extra_metadata(tif)) is None
 
 
 if __name__ == '__main__':
@@ -261,4 +314,6 @@ if __name__ == '__main__':
         test_position_from_stage(tmp_path)
         test_position_in_millimetres_from_stage_travel(tmp_path)
         test_position_beyond_stage_travel_is_metres(tmp_path)
+        test_position_prefers_the_stage_section()
         test_position_ignores_other_fields(tmp_path)
+        test_rotation_from_stage(tmp_path)
