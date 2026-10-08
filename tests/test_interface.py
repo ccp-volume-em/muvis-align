@@ -1591,6 +1591,26 @@ def test_pre_processing_process_reports_work_and_view_separately(bare_interface)
     bare_interface.update_views.assert_called_once_with(show_preprocessed=True)
 
 
+def test_pre_processing_after_registration_views_without_the_registration(bare_interface):
+    """The pre-processed msims have no registered transform, so the registration is undone
+    before the view picks its transform key, not after."""
+    bare_interface.viewer = MagicMock()
+    bare_interface.run_pre_processing = MagicMock(return_value=True)
+    bare_interface.enable_tabs = MagicMock()
+    bare_interface.enable_modify_pair_registration = MagicMock()
+    bare_interface.select_tab = MagicMock()
+    bare_interface.reg.state = RegState.PAIRS_REG
+    bare_interface.reg.is_pairs_registered.side_effect = (
+        lambda: bare_interface.reg.state.value >= RegState.PAIRS_REG.value)
+    states_viewed = []
+    bare_interface.update_views = MagicMock(
+        side_effect=lambda **kwargs: states_viewed.append(bare_interface.reg.state))
+
+    bare_interface.pre_processing_process()
+
+    assert states_viewed == [RegState.SIMS_INIT]
+
+
 def test_only_one_operation_bar_at_a_time(bare_interface, monkeypatch):
     """Two bars must never be on screen together: an operation started while another is running
     reports into the running one, and leaves it the activity dock and the widget state."""

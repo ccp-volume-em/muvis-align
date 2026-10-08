@@ -740,12 +740,13 @@ class Interface:
         self.copy_params_to_output()
         if not self.run_pre_processing():
             return
+        if self.reg.is_pairs_registered():
+            # register_msims just changed - prior pair/global registration is stale, and the
+            # view of the new ones must not ask them for its transform
+            self.reg.state = RegState.SIMS_INIT
         self.update_views(show_preprocessed=True)
         self.enable_tabs(True, 3)
         self.enable_modify_pair_registration(False)
-        if self.reg.is_pairs_registered():
-            # register_msims just changed - prior pair/global registration is stale
-            self.reg.state = RegState.SIMS_INIT
         self.select_tab(3)
 
     def populate_channels(self):
