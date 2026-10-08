@@ -70,6 +70,45 @@ SOURCE_INIT_WORKERS=256
 
 set -euo pipefail
 
+# ===========================================================================
+#  USAGE, on the login node:   bash xpra-slurm.sh
+#  Submits this job, waits for it to start and prints how to connect.
+#  "sbatch xpra-slurm.sh" also works: the instructions are then in
+#  muvis-align-<job id>.log, and the password in ~/.xpra/job-<job id>/passwd.
+# ===========================================================================
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+    JOB_ID="$(sbatch --parsable "$0")"
+    # --parsable adds ";cluster" on a multi-cluster setup
+    JOB_ID="${JOB_ID%%;*}"
+    LOG_FILE="muvis-align-${JOB_ID}.log"
+    PASSWORD_FILE="${HOME}/.xpra/job-${JOB_ID}/passwd"
+    trap 'echo; echo "Stopped waiting. Job ${JOB_ID} keeps going - log: ${LOG_FILE}, cancel: scancel ${JOB_ID}"; exit 130' INT
+    echo "Submitted job ${JOB_ID}. Waiting for it to start (Ctrl-C stops waiting, not the job)."
+    LAST_STATE=""
+    # the instructions block is complete once both of its ===== lines are in the log
+    while true; do
+        BLOCK_LINES="$(grep -c '^=\+$' "${LOG_FILE}" 2>/dev/null || true)"
+        if [ "${BLOCK_LINES:-0}" -ge 2 ] && [ -s "${PASSWORD_FILE}" ]; then
+            break
+        fi
+        STATE="$(squeue -h -j "${JOB_ID}" -o '%T %R' 2>/dev/null || true)"
+        if [ -z "${STATE}" ]; then
+            echo "Job ${JOB_ID} ended before the session started: $(sacct -n -X -j "${JOB_ID}" -o State 2>/dev/null | xargs || true)"
+            echo "--- end of ${LOG_FILE}:"
+            tail -n 20 "${LOG_FILE}" 2>/dev/null || echo "(no log)"
+            exit 1
+        fi
+        if [ "${STATE}" != "${LAST_STATE}" ]; then
+            echo "[$(date +%T)] ${STATE}"
+            LAST_STATE="${STATE}"
+        fi
+        sleep 5
+    done
+    awk '/^=+$/ { lines++ } lines { print } lines == 2 && /^=+$/ { exit }' "${LOG_FILE}" \
+        | sed "s|^\(      password:  \).*|\1$(cat "${PASSWORD_FILE}")|"
+    exit 0
+fi
+
 # Batch jobs do not inherit your interactive module environment.
 if ! command -v apptainer >/dev/null 2>&1; then
     module load Apptainer 2>/dev/null || module load apptainer 2>/dev/null || true
@@ -133,7 +172,7 @@ cat <<EOF
   STEP 3 - Log in with:
 
       username:  ${USER}
-      password:  ${XPRA_PASS}
+      password:  run: cat ${PASSWORD_FILE}
 
   STEP 4 - To finish:
 
