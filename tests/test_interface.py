@@ -1217,32 +1217,23 @@ def test_pair_registration_confirmation_paths(
     assert bare_interface.update_registered.called is runs
 
 
-@pytest.mark.parametrize("reply", ["Yes", "No"])
-def test_registration_process_merge_opens_fusion_without_registering(
-    bare_interface, monkeypatch, reply
+def test_registration_process_merge_goes_to_fusion_without_registering(
+    bare_interface, monkeypatch
 ):
-    """merge fuses at the source positions, so there is nothing to register here."""
+    """merge fuses at the source positions, so there is nothing to register or ask here."""
     bare_interface.params = {"registration": {"operation": "merge"}}
     bare_interface.run_pair_registration = MagicMock()
     bare_interface.run_global_registration = MagicMock()
-    bare_interface.enable_tabs = MagicMock()
     bare_interface.select_tab = MagicMock()
-    monkeypatch.setattr(
-        interface_module.QMessageBox,
-        "question",
-        lambda *_: getattr(interface_module.QMessageBox, reply),
-    )
+    question = MagicMock()
+    monkeypatch.setattr(interface_module.QMessageBox, "question", question)
 
     bare_interface.registration_process()
 
+    assert not question.called
     assert not bare_interface.run_pair_registration.called
     assert not bare_interface.run_global_registration.called
-    if reply == "Yes":
-        bare_interface.enable_tabs.assert_called_once_with(True, 4)
-        bare_interface.select_tab.assert_called_once_with(4)
-    else:
-        assert not bare_interface.enable_tabs.called
-        assert not bare_interface.select_tab.called
+    bare_interface.select_tab.assert_called_once_with(4)
 
 
 def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch):
@@ -1319,7 +1310,6 @@ def test_registration_process_confirmation_and_prerequisites(
         if run_pair:
             bare_interface.run_pair_registration.assert_called_once_with()
         copy.assert_called_once_with(["sim"], ["preview"], "registered")
-        bare_interface.enable_tabs.assert_called_once_with(True, 4)
         # the refresh is a phase of the registration operation's bar, not a bar of its own
         _, refresh_kwargs = bare_interface.update_registered.call_args
         assert refresh_kwargs['view_transform_key'] == "registered"
@@ -1386,6 +1376,105 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     )
     assert bare_interface.reg.state is RegState.FUSED
     assert bare_interface.view_mode is ViewMode.FUSED
+
+
+@pytest.mark.parametrize(
+    ("operation", "pairs_registered", "global_registered", "prefix", "run_pair", "run_global"),
+    [
+        ("register", False, False, "Registration not performed yet. ", True, True),
+        ("register", True, False, "Global registration not performed yet. ", False, True),
+        ("register", True, True, "", False, False),
+        ("merge", False, False, "", False, False),
+    ],
+)
+def test_fusion_process_runs_missing_registration_first(
+    bare_interface, monkeypatch, mocked_activity_contexts,
+    operation, pairs_registered, global_registered, prefix, run_pair, run_global,
+):
+    bare_interface.viewer = MagicMock()
+    bare_interface.params = {"registration": {"operation": operation}}
+    bare_interface.reg.is_fused.return_value = False
+    bare_interface.reg.is_pairs_registered.return_value = pairs_registered
+    bare_interface.reg.is_global_registered.return_value = global_registered
+    bare_interface._fusion_size_text = MagicMock(return_value="")
+    bare_interface._clear_napari_view = MagicMock()
+    bare_interface._napari_view_add_fused_data = MagicMock()
+    calls = []
+    bare_interface.run_pair_registration = MagicMock(side_effect=lambda: calls.append("pair") or {"pairs": 1})
+    bare_interface.run_global_registration = MagicMock(side_effect=lambda: calls.append("global") or {"global": 1})
+    bare_interface.run_fusion = MagicMock(side_effect=lambda: calls.append("fusion") or "fused")
+    messages = []
+
+    def question(_parent, _title, message, *_):
+        messages.append(message)
+        return interface_module.QMessageBox.Yes
+
+    monkeypatch.setattr(interface_module.QMessageBox, "question", question)
+    monkeypatch.setattr(interface_module.QMessageBox, "information", MagicMock())
+
+    bare_interface.fusion_process()
+
+    assert messages[0].startswith(prefix)
+    assert calls == ["pair"] * run_pair + ["global"] * run_global + ["fusion"]
+
+
+def test_fusion_process_stops_when_registration_fails(bare_interface, monkeypatch):
+    bare_interface.params = {"registration": {"operation": "register"}}
+    bare_interface.reg.is_fused.return_value = False
+    bare_interface.reg.is_pairs_registered.return_value = False
+    bare_interface.reg.is_global_registered.return_value = False
+    bare_interface._fusion_size_text = MagicMock(return_value="")
+    bare_interface.run_pair_registration = MagicMock(return_value=None)
+    bare_interface.run_global_registration = MagicMock()
+    bare_interface.run_fusion = MagicMock()
+    monkeypatch.setattr(interface_module.QMessageBox, "question",
+                        lambda *_: interface_module.QMessageBox.Yes)
+
+    bare_interface.fusion_process()
+
+    assert not bare_interface.run_global_registration.called
+    assert not bare_interface.run_fusion.called
+
+
+@pytest.mark.parametrize(
+    ("operation", "global_registered", "enabled"),
+    [("register", False, False), ("register", True, True), ("merge", False, True)],
+)
+def test_fusion_preview_enabled_only_with_something_to_fuse(
+    bare_interface, operation, global_registered, enabled
+):
+    """Unregistered, only a merge has positions worth previewing a fusion at."""
+    bare_interface.params = {"registration": {"operation": "register"}}
+    bare_interface.write_params = MagicMock()
+    bare_interface.reg.is_global_registered.return_value = global_registered
+    preview = SimpleNamespace(widget=SimpleNamespace(enabled=None))
+    bare_interface.param_widgets = {"fusion.preview_fusion": preview}
+
+    bare_interface.change_param("registration.operation", operation)
+
+    assert preview.widget.enabled is enabled
+
+
+@pytest.mark.parametrize(
+    ("pairs_registered", "selected"), [(False, None), (True, 3)],
+)
+def test_show_loaded_project_opens_every_tab(bare_interface, pairs_registered, selected):
+    """Every step is reachable once the sources are read: a later one runs what it needs first."""
+    bare_interface.reg.is_fused.return_value = False
+    bare_interface.reg.is_global_registered.return_value = False
+    bare_interface.reg.is_pairs_registered.return_value = pairs_registered
+    bare_interface.update_views = MagicMock()
+    bare_interface.update_registered = MagicMock()
+    bare_interface.enable_tabs = MagicMock()
+    bare_interface.select_tab = MagicMock()
+
+    bare_interface._show_loaded_project()
+
+    bare_interface.enable_tabs.assert_called_once_with(True, 4)
+    if selected is None:
+        assert not bare_interface.select_tab.called
+    else:
+        bare_interface.select_tab.assert_called_once_with(selected)
 
 
 def test_build_view_msims_downscales_large_single_resolution_source():
