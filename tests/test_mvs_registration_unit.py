@@ -50,9 +50,15 @@ def test_reset_clears_registration_state():
     registration.metrics = {"quality": 1}
     # a per-scale build is as stale as the full one once positions/transforms are rebuilt
     registration._scaled_msims = {'4': ['msim0']}
+    registration.pairs_graph = object()
+    registration.pair_msims = [object()]
+    registration.pairs = [(0, 1)]
 
     registration.reset()
 
+    assert registration.pairs_graph is None
+    assert registration.pair_msims is None
+    assert registration.pairs == []
     assert registration.state is RegState.UNINIT
     assert registration.msims == []
     assert registration.register_msims is None

@@ -1796,11 +1796,13 @@ class Interface:
             index2 = labels.index(label2)
             indices = index1, index2
             colors = [(0, 1, 0), (1, 0, 1)]     # green, purple
-            pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, default_transform_key)
+            pair_transforms = (nx.get_edge_attributes(self.reg.pairs_graph, default_transform_key)
+                               if self.reg.is_pairs_registered() else {})
             if indices not in pair_transforms and tuple(reversed(indices)) in pair_transforms:
                 indices = tuple(reversed(indices))
 
             if indices not in pair_transforms:
+                self.view_mode = ViewMode.OVERVIEW
                 show_warning('No pair registration found for selected images')
             else:
                 self.temp_widget_state = TemporarilyDisabledWidgets()

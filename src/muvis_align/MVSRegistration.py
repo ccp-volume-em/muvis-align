@@ -307,6 +307,9 @@ class MVSRegistration:
         self.extra_metadata = {}
         self.msims = []
         self.register_msims = None
+        self.pair_msims = None
+        self.pairs = []
+        self.pairs_graph = None
         self._scaled_msims = {}
         self.sources = []
         self.metrics = {}

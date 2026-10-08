@@ -494,6 +494,21 @@ def test_modify_pair_registration_restores_state_when_pre_processing_fails(
     assert bare_interface.view_mode is ViewMode.OVERVIEW
 
 
+def test_modify_pair_registration_without_pair_registration_shows_nothing(bare_interface, monkeypatch):
+    """A pair graph kept from a discarded registration must not place the pair."""
+    widget, tab_states = _arm_pair_modify_entry(bare_interface, monkeypatch)
+    bare_interface.reg.is_pairs_registered.return_value = False
+    bare_interface.reg.pairs_graph = None
+    bare_interface._napari_view_add_image = MagicMock()
+
+    with patch.object(interface_module, 'show_warning') as show_warning:
+        bare_interface.modify_pair_registration()
+
+    show_warning.assert_called_once()
+    bare_interface._napari_view_add_image.assert_not_called()
+    assert bare_interface.view_mode is ViewMode.OVERVIEW
+
+
 def test_modify_pair_registration_restores_state_when_entering_raises(
     bare_interface, monkeypatch
 ):
@@ -627,7 +642,7 @@ def test_resolve_output_settings_reloads_or_discards_on_changed_source_metadata(
 
     bare_interface._ask_discard_output = MagicMock(return_value=discard)
 
-    assert bare_interface.prepare_action() is expect_read
+    bare_interface.prepare_action()
 
     assert bare_interface._ask_discard_output.called is expect_question
     assert read_params(bare_interface.params_path)["input_output"]["normalise_rotated_positions"] is expect_norm
@@ -650,9 +665,20 @@ def test_an_action_reads_sources_again_once_their_settings_changed(
     bare_interface.reg.is_initialised.return_value = initialised
     bare_interface._input_output_process = MagicMock()
 
-    bare_interface.prepare_action()
+    assert bare_interface.prepare_action() is expect_read
 
     assert bare_interface._input_output_process.called is expect_read
+    bare_interface.copy_params_to_output.assert_called_once_with()
+
+
+@pytest.mark.parametrize("read_by_prepare", [True, False])
+def test_input_output_process_reads_sources_once(bare_interface, read_by_prepare):
+    bare_interface.prepare_action = MagicMock(return_value=read_by_prepare)
+    bare_interface._input_output_process = MagicMock()
+
+    bare_interface.input_output_process()
+
+    assert bare_interface._input_output_process.called is not read_by_prepare
 
 
 def test_populate_choices_and_image_selection(bare_interface):
@@ -668,17 +694,6 @@ def test_populate_choices_and_image_selection(bare_interface):
     }
     bare_interface.reg.sources = [
         SimpleNamespace(
-    bare_interface.copy_params_to_output.assert_called_once_with()
-
-
-@pytest.mark.parametrize("read_by_prepare", [True, False])
-def test_input_output_process_reads_sources_once(bare_interface, read_by_prepare):
-    bare_interface.prepare_action = MagicMock(return_value=read_by_prepare)
-    bare_interface._input_output_process = MagicMock()
-
-    bare_interface.input_output_process()
-
-    assert bare_interface._input_output_process.called is not read_by_prepare
             get_channels=lambda: [{"label": "red"}, {"label": "green"}]
         )
     ]
