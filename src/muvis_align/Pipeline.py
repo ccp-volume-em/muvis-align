@@ -12,9 +12,10 @@ from muvis_align.util import dir_regex, get_filetitle, find_all_numbers, find_ta
 
 
 class Pipeline(Thread):
-    def __init__(self, params):
+    def __init__(self, params, params_path=None):
         super().__init__()
         self.params = params
+        self.params_path = params_path
 
         self.params_general = params['general']
         params_logging = self.params_general.get('logging', {})
@@ -133,5 +134,5 @@ class Pipeline(Thread):
         mvs_registration = MVSRegistration()
         mvs_registration.init_params(params_general=self.params_general, params=params,
                                      label=fileset_label, input_path=fileset,
-                                     global_center=center, global_rotation=rotation)
+                                     global_center=center, global_rotation=rotation, params_path=self.params_path)
         return mvs_registration.run()

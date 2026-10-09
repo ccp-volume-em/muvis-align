@@ -31,7 +31,24 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 
 ## In progress
 
-Nothing.
+**RO-Crates after biomero-converter** (branch `ro-crate-workflow-run`; implemented and tested headlessly 2026-10-09 - left: the UI fusion's crates via the napari driver, then merge). Changes to the plan: no
+`run_parameters.yaml` - the crate references the project/params file copied next to the output (the UI already
+copies it; the CLI now does too, `run.py` passing its path). PropertyValues for both formats: the params dict
+flattened to `section.name`, each `subjectOf` the copied file, `exampleOfWork` the template FormalParameter
+(`#section.name`) where one matches. Both crates are written by one `MVSRegistration.write_ro_crates()`, called
+from `_run` and from `Interface.run_fusion` (the UI fusion wrote no crate at all).
+1. Zarr crate (`create_zarr_ro_crate`): root gets name + `encodingFormat` (Zarr, openMINDS link); a
+   `CreateAction` data capture (`instrument`: an `IndividualProduct` microscope with manufacturer/model/serial
+   searched in the sources' metadata, `startTime`/`endTime` from the sources' dates, `result`: root); root
+   `mentions` it. No acquisition YAML (no imaging metadata model here). Drop `image_acquisition` + fixed FBbi.
+2. Output crate (`create_ro_crate`): Workflow Run Crate 0.5 (+ Process Run, Workflow RO-Crate 1.0 conformsTo).
+   mainEntity: the packaged project template (via `importlib.resources`, fixes the cwd-relative path) as
+   `[File, SoftwareSourceCode, ComputationalWorkflow]`, its own `ComputerLanguage`, `input`/`output`/parameters
+   as `FormalParameter`s; muvis-align `SoftwareApplication` with version. `CreateAction`: `instrument` the
+   workflow, `object` the source files + the run's parameters YAML (StringIO) + `PropertyValue`s, `result` the
+   fused tiff/zarr + mappings/metrics/plots, start/end times; root `mentions` it.
+3. Remove `rembi_extension.py`; fix `acquisiton_method` typo; tests in a new `tests/test_rocrate.py`
+   (crate graph from stubbed sources, no pixels).
 
 ## TODO
 
