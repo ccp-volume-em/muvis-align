@@ -2043,7 +2043,8 @@ class Interface:
                                       ome_version=self.params['fusion']['ome_version'])
                     image_filenames = [path[len(self.reg.output):] for path in self._output_paths(output_filename)
                                        if os.path.exists(path)]
-                    self.reg.write_ro_crates(image_filenames, self.get_output_params_path() or self.params_path,
+                    self.reg.write_ro_crates(image_filenames,
+                                             self.get_output_params_path() or getattr(self, 'params_path', None),
                                              self.params)
                     return fused_image
 
