@@ -47,8 +47,6 @@ PERFORMANCE
 
 MINOR
 
-- [ ] fusion bar not indicative of progress, showing current pyramid level may also be informative
-- [ ] disabling plugin doesnt remove left had overview window, it should completely disable plugin
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
 - [ ] **OME-Zarr 0.6 from 'mean'/'min'/'max' fusion** - refused before fusing (multiview_stitcher 0.1.62 writes 0.4/0.5
@@ -102,6 +100,12 @@ REFACTORING
 
 ## Done
 
+- **Fusion bar names its level** - 'Fusion: Level 2 at 0.04 (153 sources)' (native), 'Fusion: Pyramid level 1'
+  (z-slab), in the bar and the heartbeat log. The z-slab path's pyramid levels (multiview_stitcher's ngff_utils)
+  now move the bar - the HPC's 5.5h at '100%' - but only within the last ~10% left after level 0: weighting
+  them needs their block counts before level 0 is fused.
+- **Overview dock left behind** - closing the plugin's dock (its x) removed the tabs but not the overview, its own
+  dock; it now goes with them. napari's disable already removed both (by name).
 - **Native fusion lost the overviews' level** - the HPC output had 0.01..0.16, then 0.3322 doubling, no 0.249: some
   sources are at 0.3322 (4/3 of 0.249), and a source size under sqrt(2) above the previous level replaced it, even
   when that level was another source's size. Now only a doubled level is replaced (0.01..0.16, 0.249, 0.3322,

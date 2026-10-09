@@ -1,3 +1,5 @@
+import itertools
+
 from muvis_align.ui.QtNapariTqdm import _QtNapariTqdm
 
 
@@ -42,7 +44,10 @@ class NapariMVSProgress:
             try:
                 import multiview_stitcher.fusion._core as mvs_fusion_core
 
+                import multiview_stitcher.ngff_utils as mvs_ngff_utils
+
                 targets.append((mvs_fusion_core, self._create_progress_replacement()))
+                targets.append((mvs_ngff_utils, self._create_pyramid_replacement()))
             except ImportError:
                 pass
 
@@ -79,6 +84,16 @@ class NapariMVSProgress:
                 super().__init__(*args, **merged_kwargs)
 
         return _ConfiguredTqdm
+
+    def _create_pyramid_replacement(self):
+        # the pyramid writer opens one unnamed bar per level it downsamples, level 0 being fused before it
+        tqdm_class = self._create_progress_replacement()
+        levels = itertools.count(1)
+
+        def pyramid_tqdm(*args, **kwargs):
+            return tqdm_class(*args, **({'desc': f'Pyramid level {next(levels)}'} | kwargs))
+
+        return pyramid_tqdm
 
     def _create_qt_friendly_replacement(self):
         tqdm_class = self.tqdm_class

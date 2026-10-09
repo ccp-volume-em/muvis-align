@@ -316,7 +316,7 @@ def fuse_to_zarr_by_z_slabs(msims, output_zarr_url, transform_key, output_stack_
         dims, properties = fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties,
                                                 output_chunksize, fusion_func=fusion_func,
                                                 creation_kwargs=creation_kwargs, batch_options=batch_options,
-                                                interpolation_order=interpolation_order)
+                                                interpolation_order=interpolation_order, desc='Level 0')
     fused = si_utils.get_sim_from_array(array=da.from_zarr(store_url), dims=dims, transform_key=transform_key,
                                         scale=properties['spacing'], translation=properties['origin'],
                                         c_coords=sims[0].coords['c'].values, t_coords=sims[0].coords['t'].values)

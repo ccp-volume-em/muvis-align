@@ -58,6 +58,7 @@ class _ProgressBridge(QObject):
     """Carries a worker thread's progress positions back to the Qt thread, where the bar lives."""
 
     moved = Signal(int)
+    stepped = Signal(str)
 
 
 class ViewMode(Enum):
@@ -473,10 +474,11 @@ class Interface:
 
         bridge = _ProgressBridge()
         bridge.moved.connect(progress_factory.set_position, Qt.QueuedConnection)
+        bridge.stepped.connect(progress_factory.set_step, Qt.QueuedConnection)
         # started where the bar has got to, not at zero (NapariPhaseProgress.worker_twin()): an
         # operation runs several of these in turn, and a twin re-planning from empty each time
         # reported positions the bar was already past, freezing it partway
-        worker_factory = progress_factory.worker_twin(bridge.moved.emit)
+        worker_factory = progress_factory.worker_twin(bridge.moved.emit, bridge.stepped.emit)
 
         def run():
             with worker_factory as factory:
@@ -1925,8 +1927,7 @@ class Interface:
         with self._operation_progress('Fusion preview', progress_factory,
                                       phases=fusion_weight + 1) as factory:
             def fuse(worker_factory):
-                with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, desc='Fusion',
-                                       patch_fusion=True):
+                with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_fusion=True):
                     return self._create_napari_data(
                         transform_key, fusion_method=self.params['fusion']['method'],
                         progress_factory=worker_factory, weight=fusion_weight)
@@ -2016,8 +2017,7 @@ class Interface:
             def fuse(worker_factory):
                 # both the fusion and the write run on the worker thread, reporting to its own
                 # factory - see _run_off_thread()
-                with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, desc='Fusion',
-                                       patch_fusion=True), \
+                with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_fusion=True), \
                         Timer('fusion', verbose=self._timing_verbose()):
                     fused_image, is_saved = self.reg.fuse(
                         self.reg.msims,

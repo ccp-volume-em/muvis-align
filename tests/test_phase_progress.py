@@ -210,20 +210,47 @@ def test_the_bar_shows_before_any_phase_reports():
     assert FakeBar.instances[0].closed
 
 
-def test_a_library_tqdm_loop_reports_into_the_same_bar():
-    """multiview_stitcher's fusion loop (patched in by NapariMVSProgress) is one more phase, not a bar beside it."""
+@pytest.mark.parametrize('off_thread', [False, True])
+def test_a_library_tqdm_loop_reports_into_the_same_bar(off_thread):
+    """multiview_stitcher's fusion loop (patched in by NapariMVSProgress) is one more phase, not a bar beside it,
+    named after the operation: a fusion level. A factory's own phases keep the operation's name."""
     FakeBar.instances.clear()
     factory = make_phase_factory(phases=2, desc='Fusion')
     with factory:
         with factory(total=1, desc='Preparing fusion') as phase:
             phase.update(1)
-        for _ in factory.tqdm_class(range(3), desc='Fusing blocks'):
-            pass
+        if off_thread:
+            twin = factory.worker_twin(factory.set_position, factory.set_step)
+            with twin:
+                for _ in twin.tqdm_class(range(3), desc='Level 0 at 0.01'):
+                    pass
+            factory.continue_from(twin)
+        else:
+            for _ in factory.tqdm_class(range(3), desc='Level 0 at 0.01'):
+                pass
 
     assert len(FakeBar.instances) == 1
     bar = FakeBar.instances[0]
     assert (bar.n, bar.total) == (factory.ticks, factory.ticks)
-    assert bar.descriptions == ['Fusion']
+    assert bar.descriptions == ['Fusion', 'Fusion: Level 0 at 0.01']
+
+
+def test_pyramid_levels_report_into_the_fusion_bar():
+    """multiview_stitcher's pyramid writer, after level 0 is fused, opens an unnamed bar per level: it once sat the
+    bar near full for hours."""
+    import multiview_stitcher.ngff_utils as mvs_ngff_utils
+    from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
+
+    FakeBar.instances.clear()
+    unpatched = mvs_ngff_utils.tqdm
+    factory = make_phase_factory(desc='Fusion')
+    with factory, NapariMVSProgress(tqdm_class=factory.tqdm_class, patch_fusion=True):
+        for _ in range(2):
+            for _ in mvs_ngff_utils.tqdm(range(3), total=3):
+                pass
+
+    assert mvs_ngff_utils.tqdm is unpatched
+    assert FakeBar.instances[0].descriptions == ['Fusion', 'Fusion: Pyramid level 1', 'Fusion: Pyramid level 2']
 
 
 def test_the_tqdm_stand_in_tolerates_the_rest_of_tqdm():

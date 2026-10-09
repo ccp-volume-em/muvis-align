@@ -46,7 +46,8 @@ class NapariPhaseProgress:
     all a headless run has, and the only way to tell a slow phase from a hung one.
 
     The bar keeps the operation's description throughout - a phase naming itself would turn one
-    bar into a flicker of labels - and its tick count is internal, left out of what napari shows.
+    bar into a flicker of labels - only a long step (a fusion level, see set_step()) is named after
+    it. Its tick count is internal, left out of what napari shows.
     """
 
     # no counts, no rate, just the time estimate (napari's eta label is everything after the
@@ -65,12 +66,14 @@ class NapariPhaseProgress:
     last_phase_share = 0.9
 
     def __init__(self, progress_class=None, desc=None, phases=1, min_duration=0.0, emit=None,
-                 **progress_kwargs):
+                 emit_step=None, **progress_kwargs):
         from napari.utils import progress
 
         self.progress_class = progress_class or progress
         self.emit = emit
+        self.emit_step = emit_step
         self.desc = desc
+        self.step = None
         progress_kwargs.setdefault('bar_format', self.bar_format)
         self.phases = max(int(phases), 1)
         self.phases_left = self.phases
@@ -99,11 +102,11 @@ class NapariPhaseProgress:
     def __call__(self, total=None, desc=None, weight=1, **_):
         return _ProgressPhase(self, total, desc, weight)
 
-    def worker_twin(self, emit):
+    def worker_twin(self, emit, emit_step=None):
         """A bar-less stand-in for work about to run on another thread, continuing this bar
         rather than re-planning it from empty. Hand its final state back with continue_from().
         """
-        twin = NapariPhaseProgress(emit=emit, phases=self.phases)
+        twin = NapariPhaseProgress(emit=emit, emit_step=emit_step, phases=self.phases)
         twin._position = self._position
         twin._target = self._target
         twin.phases_left = self.phases_left
@@ -115,6 +118,20 @@ class NapariPhaseProgress:
         """
         self.phases_left = twin.phases_left
         self._move_to(twin._position)
+
+    def set_step(self, step):
+        """Name the long step the operation is on (a fusion level) after its description, on the bar and in the log."""
+        if self.emit is not None:
+            if self.emit_step is not None:
+                self.emit_step(step)
+            return
+        self.step = step
+        if self._pbar is not None:
+            self._pbar.set_description(self.label)
+
+    @property
+    def label(self):
+        return ': '.join(part for part in (self.desc, self.step) if part) or 'Working'
 
     def ensure_phases(self, phases):
         """Make room for a nested operation reporting `phases` of its own into this bar.
@@ -141,7 +158,7 @@ class NapariPhaseProgress:
             # only for operations long enough to have logged their way up - a short one would
             # only ever log 100%, which says nothing
             so_far = (f'{elapsed / 60:.1f} minutes' if elapsed >= 60 else f'{elapsed:.0f} seconds')
-            logging.info(f'{self.desc or "Working"}: 100% ({so_far}){print_memory_usage()}')
+            logging.info(f'{self.label}: 100% ({so_far}){print_memory_usage()}')
         if elapsed >= self.completion_dwell_seconds:
             time.sleep(self.completion_dwell_seconds)
 
@@ -156,7 +173,7 @@ class NapariPhaseProgress:
                 elapsed = time.monotonic() - (self._started_at or time.monotonic())
                 so_far = (f'{elapsed / 60:.1f} minutes' if elapsed >= 60
                           else f'{elapsed:.0f} seconds')
-                logging.info(f'{self.desc or "Working"}:'
+                logging.info(f'{self.label}:'
                              f' {self._position / self.ticks * 100:.0f}%'
                              f' ({so_far} so far){print_memory_usage()}')
 
@@ -180,6 +197,7 @@ class NapariPhaseProgress:
             # back to how this started, so a factory outliving its operation reports on a new bar
             # rather than silently on a closed one. A twin is never reused, so it is exempt.
             self.phases_left = self.phases
+            self.step = None
             self._position = 0.0
             self._target = 0.0
         if self._started_at is not None and self.min_duration > 0:
@@ -220,6 +238,8 @@ class NapariPhaseProgress:
                 if not self._open:
                     self.__enter__()
                     self._open = True
+                    if self.desc:
+                        owner.set_step(self.desc)
 
             def update(self, n=1):
                 self._start()
@@ -354,13 +374,16 @@ class SilentProgress:
     def ensure_phases(self, phases):
         pass
 
-    def worker_twin(self, emit):
+    def worker_twin(self, emit, emit_step=None):
         return self
 
     def continue_from(self, twin):
         pass
 
     def set_position(self, *_):
+        pass
+
+    def set_step(self, *_):
         pass
 
     @property
