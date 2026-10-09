@@ -24,23 +24,40 @@ def read_graph(crate_dir):
 
 
 def test_zarr_crate_data_capture(tmp_path):
-    zarr_path = tmp_path / 'registered.ome.zarr'
-    zarr_path.mkdir()
-    create_zarr_ro_crate(str(zarr_path), [StubSource(OME_METADATA), StubSource(TIFF_METADATA)])
+    zarr_path = tmp_path / 'output' / 'registered.ome.zarr'
+    zarr_path.mkdir(parents=True)
+    source_paths = [str(tmp_path / 'tile1.tiff'), str(tmp_path / 'tile2.tiff')]
+    create_zarr_ro_crate(str(zarr_path), [StubSource(OME_METADATA), StubSource(TIFF_METADATA)], source_paths)
     graph = read_graph(zarr_path)
 
+    sources = [{'@id': '../../tile1.tiff'}, {'@id': '../../tile2.tiff'}]
     root = graph['./']
     assert root['name'] == 'registered'
     assert 'application/vnd.zarr' in root['encodingFormat']
+    assert root['isBasedOn'] == sources
     assert root['mentions'] == [{'@id': '#data-capture-001'}]
     action = graph['#data-capture-001']
     assert action['@type'] == 'CreateAction'
-    assert action['instrument'] == {'@id': '#microscope-001'}
-    assert action['result'] == {'@id': './'}
+    assert action['instrument'] == {'@id': '#instrument-zeiss-crossbeam-1234'}
+    assert action['result'] == sources
     assert action['startTime'] == '2026-01-02T03:04:05'
     assert action['endTime'] == '2026-01-02T04:00:00'
-    assert graph['#microscope-001'] == {'@id': '#microscope-001', '@type': 'IndividualProduct',
-                                        'manufacturer': 'Zeiss', 'name': 'Crossbeam', 'serialNumber': '1234'}
+    assert graph['#instrument-zeiss-crossbeam-1234'] == {
+        '@id': '#instrument-zeiss-crossbeam-1234', '@type': 'IndividualProduct',
+        'manufacturer': 'Zeiss', 'name': 'Crossbeam', 'serialNumber': '1234'}
+    assert graph['../../tile1.tiff']['@type'] == 'File'
+
+
+def test_zarr_crate_without_instrument_metadata(tmp_path):
+    zarr_path = tmp_path / 'registered.ome.zarr'
+    zarr_path.mkdir()
+    create_zarr_ro_crate(str(zarr_path), [StubSource({})])
+    graph = read_graph(zarr_path)
+
+    action = graph['#data-capture-001']
+    assert 'instrument' not in action
+    assert action['result'] == {'@id': './'}
+    assert not [entity for entity in graph.values() if entity.get('@type') == 'IndividualProduct']
 
 
 def test_find_metadata_value_prefers_context():
@@ -122,4 +139,4 @@ def test_write_ro_crates_copies_params_to_output(tmp_path):
 
     assert (output_dir / 'params.yml').read_text() == 'general: {}\n'
     assert read_graph(output_dir)['params.yml']['name'] == 'Project parameters'
-    assert read_graph(output_dir / 'registered.ome.zarr')['#microscope-001']['manufacturer'] == 'FEI'
+    assert read_graph(output_dir / 'registered.ome.zarr')['#instrument-fei-helios']['manufacturer'] == 'FEI'

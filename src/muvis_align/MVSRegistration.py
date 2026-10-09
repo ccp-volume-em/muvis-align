@@ -624,7 +624,7 @@ class MVSRegistration:
         output_dir = os.path.dirname(self.output)
         for filename in image_filenames:
             if filename.endswith(zarr_extension):
-                create_zarr_ro_crate(self.output + filename, self.sources)
+                create_zarr_ro_crate(self.output + filename, self.sources, self.filenames)
         if params_path and os.path.abspath(os.path.dirname(params_path)) != os.path.abspath(output_dir):
             output_params_path = os.path.join(output_dir, os.path.basename(params_path))
             shutil.copyfile(params_path, output_params_path)

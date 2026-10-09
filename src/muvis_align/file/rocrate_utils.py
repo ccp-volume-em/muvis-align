@@ -7,6 +7,7 @@ from importlib.metadata import version, PackageNotFoundError
 from io import StringIO
 import json
 import os.path
+import re
 from pathlib import Path
 from rocrate.model import ContextEntity
 from rocrate.rocrate import ROCrate
@@ -37,42 +38,59 @@ INSTRUMENT_CONTEXTS = ['instrument', 'microscope', 'device', 'system', '']
 DATETIME_LABELS = ['acquisitiondate', 'datetimeoriginal', 'datetime']
 
 
-def create_zarr_ro_crate(dest_path, sources=None):
+def create_zarr_ro_crate(dest_path, sources=None, source_paths=()):
     crate = ZarrCrate()
     properties = {'name': get_filetitle(dest_path), 'encodingFormat': ZARR_ENCODING_FORMAT}
     dataset_entity = crate.add_dataset(dest_path='.', properties=properties)
+    source_entities = [crate.add(ContextEntity(crate, to_crate_path(source_path, dest_path), {
+        '@type': 'Dataset' if os.path.isdir(source_path) else 'File'})) for source_path in source_paths]
+    if source_entities:
+        dataset_entity['isBasedOn'] = source_entities
     if sources:
-        add_data_capture(crate, dataset_entity, sources)
+        add_data_capture(crate, dataset_entity, sources, source_entities)
     crate.write(dest_path)
     return crate
 
 
-def add_data_capture(crate, dataset_entity, sources):
+def add_data_capture(crate, dataset_entity, sources, source_entities):
     # the first and last sources stand for the acquisition: reading every source's metadata is too slow
     metadatas = [source.metadata for source in (sources[0], sources[-1])]
 
-    instrument_properties = {'@type': 'IndividualProduct'}
-    manufacturer = find_metadata_value(metadatas[0], ['manufacturer', 'make'], INSTRUMENT_CONTEXTS)
-    if manufacturer:
-        instrument_properties['manufacturer'] = str(manufacturer)
-    model = find_metadata_value(metadatas[0], ['model'], INSTRUMENT_CONTEXTS)
-    if model:
-        instrument_properties['name'] = str(model)
-    serial = find_metadata_value(metadatas[0], ['serialnumber', 'serial'], INSTRUMENT_CONTEXTS)
-    if serial:
-        # schema.org serialNumber is text
-        instrument_properties['serialNumber'] = str(serial)
-    instrument_entity = crate.add(ContextEntity(crate, '#microscope-001', instrument_properties))
-
-    action_entity = crate.add_action(instrument_entity, identifier='#data-capture-001', result=dataset_entity,
-                                     properties={'name': 'Image acquisition'})
+    action_properties = {'@type': 'CreateAction', 'name': 'Image acquisition'}
+    instrument_entity = add_instrument(crate, metadatas[0])
+    if instrument_entity:
+        action_properties['instrument'] = instrument_entity
+    # the microscope made the sources, muvis-align the zarr from them
+    action_properties['result'] = source_entities or dataset_entity
     times = [to_iso_datetime(find_metadata_value(metadata, DATETIME_LABELS)) for metadata in metadatas]
     times = sorted(time for time in times if time)
     if times:
-        action_entity['startTime'] = times[0]
-        action_entity['endTime'] = times[-1]
+        action_properties['startTime'] = times[0]
+        action_properties['endTime'] = times[-1]
+    action_entity = crate.add(ContextEntity(crate, '#data-capture-001', action_properties))
     # listed on the root, so it can be found from there
     dataset_entity.append_to('mentions', action_entity)
+
+
+def add_instrument(crate, metadata):
+    """The instrument named in the metadata, identified by what names it; None if the metadata does not."""
+    instrument_properties = {}
+    manufacturer = find_metadata_value(metadata, ['manufacturer', 'make'], INSTRUMENT_CONTEXTS)
+    if manufacturer:
+        instrument_properties['manufacturer'] = str(manufacturer)
+    model = find_metadata_value(metadata, ['model'], INSTRUMENT_CONTEXTS)
+    if model:
+        instrument_properties['name'] = str(model)
+    serial = find_metadata_value(metadata, ['serialnumber', 'serial'], INSTRUMENT_CONTEXTS)
+    if serial:
+        # schema.org serialNumber is text
+        instrument_properties['serialNumber'] = str(serial)
+    if not instrument_properties:
+        return None
+    # the same instrument gets the same id in every crate
+    label = re.sub(r'[^a-z0-9]+', '-', ' '.join(instrument_properties.values()).lower()).strip('-')
+    return crate.add(ContextEntity(crate, f'#instrument-{label}', {'@type': 'IndividualProduct',
+                                                                   **instrument_properties}))
 
 
 def create_workflow_run_crate(dest_path, params_path, params, source_paths, result_paths,
