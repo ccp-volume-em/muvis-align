@@ -54,3 +54,14 @@ def test_a_tab_enabled_out_of_sight_is_scrolled_into_view_but_not_selected(make_
     tab_bar = main_widget.tabBar()
     assert tab_bar.rect().contains(tab_bar.tabRect(fusion))
     assert main_widget.currentIndex() == registration and not changes
+
+
+def test_closing_the_plugin_dock_removes_the_overview_dock(make_napari_viewer):
+    viewer = make_napari_viewer()
+    main_widget = MainWidget(viewer)
+    dock = viewer.window.add_dock_widget(main_widget, name='muvis-align (muvis-align)')
+    assert set(viewer.window.dock_widgets) == {'muvis-align', 'muvis-align (muvis-align)'}
+
+    dock.destroyOnClose()
+
+    assert not viewer.window.dock_widgets

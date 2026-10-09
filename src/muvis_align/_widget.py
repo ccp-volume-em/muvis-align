@@ -1,4 +1,5 @@
 from magicclass.ext.napari.viewer import ViewerWidget
+from qtpy.QtCore import QEvent
 from qtpy.QtWidgets import QTabWidget
 
 from muvis_align.ui.create_widgets import (
@@ -21,7 +22,7 @@ class MainWidget(QTabWidget):
 
         self.overview = ViewerWidget()
         self.overview.min_height = 200
-        viewer.window.add_dock_widget(
+        self.overview_dock = viewer.window.add_dock_widget(
             self.overview,
             name="muvis-align",
             area="left",
@@ -45,6 +46,13 @@ class MainWidget(QTabWidget):
             self.tab_labels.append(label)
         self.enable_tabs(False, 1)
         self.currentChanged.connect(self.tab_changed)
+
+    def event(self, event):
+        # napari closes (or disables) a plugin's dock by orphaning its widget: the overview is a dock of its own
+        if event.type() == QEvent.Type.ParentChange and self.parent() is None and self.overview_dock is not None:
+            self.viewer.window.remove_dock_widget(self.overview_dock)
+            self.overview_dock = None
+        return super().event(event)
 
     def create_widgets(self):
         project_widget = {
