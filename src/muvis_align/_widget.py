@@ -1,6 +1,6 @@
 from magicclass.ext.napari.viewer import ViewerWidget
 from qtpy.QtCore import QEvent
-from qtpy.QtWidgets import QTabWidget
+from qtpy.QtWidgets import QDockWidget, QTabWidget
 
 from muvis_align.ui.create_widgets import (
     create_project_widget,
@@ -48,11 +48,19 @@ class MainWidget(QTabWidget):
         self.currentChanged.connect(self.tab_changed)
 
     def event(self, event):
-        # napari closes (or disables) a plugin's dock by orphaning its widget: the overview is a dock of its own
-        if event.type() == QEvent.Type.ParentChange and self.parent() is None and self.overview_dock is not None:
-            self.viewer.window.remove_dock_widget(self.overview_dock)
-            self.overview_dock = None
+        # the overview is a dock of its own: napari closes (or disables) a plugin's dock by orphaning its widget
+        if event.type() == QEvent.Type.ParentChange and self.overview_dock is not None:
+            if self.parent() is None:
+                self.viewer.window.remove_dock_widget(self.overview_dock)
+                self.overview_dock = None
+            elif isinstance(self.parent(), QDockWidget):
+                # napari's plugin menu hides the dock; its toggle action ignores tab switches
+                self.parent().toggleViewAction().toggled.connect(self.show_overview)
         return super().event(event)
+
+    def show_overview(self, visible):
+        if self.overview_dock is not None:
+            self.overview_dock.setVisible(visible)
 
     def create_widgets(self):
         project_widget = {

@@ -56,11 +56,20 @@ def test_a_tab_enabled_out_of_sight_is_scrolled_into_view_but_not_selected(make_
     assert main_widget.currentIndex() == registration and not changes
 
 
-def test_closing_the_plugin_dock_removes_the_overview_dock(make_napari_viewer):
-    viewer = make_napari_viewer()
+def test_the_overview_dock_follows_the_plugin_dock(make_napari_viewer, qtbot):
+    # shown: Qt only toggles a dock's view action on a hide event, which a hidden window never sends
+    viewer = make_napari_viewer(show=True)
     main_widget = MainWidget(viewer)
     dock = viewer.window.add_dock_widget(main_widget, name='muvis-align (muvis-align)')
     assert set(viewer.window.dock_widgets) == {'muvis-align', 'muvis-align (muvis-align)'}
+
+    qtbot.waitUntil(dock.isVisible)
+
+    # as napari's plugin menu toggles it
+    dock.setVisible(False)
+    assert main_widget.overview_dock.isHidden()
+    dock.setVisible(True)
+    assert not main_widget.overview_dock.isHidden()
 
     dock.destroyOnClose()
 

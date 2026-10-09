@@ -104,8 +104,9 @@ REFACTORING
   (z-slab), in the bar and the heartbeat log. The z-slab path's pyramid levels (multiview_stitcher's ngff_utils)
   now move the bar - the HPC's 5.5h at '100%' - but only within the last ~10% left after level 0: weighting
   them needs their block counts before level 0 is fused.
-- **Overview dock left behind** - closing the plugin's dock (its x) removed the tabs but not the overview, its own
-  dock; it now goes with them. napari's disable already removed both (by name).
+- **Overview dock left behind** - closing the plugin's dock (its x), or deselecting it in the Plugins menu (which only
+  hides it), left the overview, its own dock,
+  behind; it now closes, hides and shows with it. napari's disable already removed both (by name).
 - **Native fusion lost the overviews' level** - the HPC output had 0.01..0.16, then 0.3322 doubling, no 0.249: some
   sources are at 0.3322 (4/3 of 0.249), and a source size under sqrt(2) above the previous level replaced it, even
   when that level was another source's size. Now only a doubled level is replaced (0.01..0.16, 0.249, 0.3322,
