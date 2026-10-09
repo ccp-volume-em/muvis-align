@@ -1222,6 +1222,9 @@ def get_process_memory():
         pass
     if resident is None and peak is None:
         resident, peak = _windows_process_memory()
+    if resident is not None and peak is not None:
+        # Linux RSS counters are per-CPU approximations read at different moments, so peak can lag
+        peak = max(peak, resident)
     return resident, peak
 
 
