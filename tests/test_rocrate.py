@@ -35,7 +35,9 @@ def test_zarr_crate_data_capture(tmp_path):
     assert root['name'] == 'registered'
     assert 'application/vnd.zarr' in root['encodingFormat']
     assert root['isBasedOn'] == sources
-    assert root['mentions'] == [{'@id': '#data-capture-001'}]
+    assert root['description'] == 'OME-Zarr image fused by muvis-align from 2 sources'
+    assert root['datePublished']
+    assert root['mentions'] == [{'@id': '#data-capture-001'}, {'@id': '#fusion-001'}]
     action = graph['#data-capture-001']
     assert action['@type'] == 'CreateAction'
     assert action['instrument'] == {'@id': '#instrument-zeiss-crossbeam-1234'}
@@ -46,6 +48,12 @@ def test_zarr_crate_data_capture(tmp_path):
         '@id': '#instrument-zeiss-crossbeam-1234', '@type': 'IndividualProduct',
         'manufacturer': 'Zeiss', 'name': 'Crossbeam', 'serialNumber': '1234'}
     assert graph['../../tile1.tiff']['@type'] == 'File'
+    fusion = graph['#fusion-001']
+    assert fusion['instrument'] == {'@id': 'https://github.com/folterj/muvis-align'}
+    assert fusion['object'] == sources
+    assert fusion['result'] == {'@id': './'}
+    assert fusion['endTime'] == root['datePublished']
+    assert graph['https://github.com/folterj/muvis-align']['@type'] == 'SoftwareApplication'
 
 
 def test_zarr_crate_without_instrument_metadata(tmp_path):
@@ -65,6 +73,9 @@ def test_find_metadata_value_prefers_context():
     assert find_metadata_value(metadata, ['model'], ['microscope', '']) == 'scope'
     assert find_metadata_value(metadata, ['model'], ['instrument']) is None
     assert find_metadata_value(TIFF_METADATA, ['manufacturer', 'make'], ['microscope', '']) == 'FEI'
+    # keys differing only in case, spaces or separators
+    metadata = {'Microscope Info': {'Serial_Number': 7}}
+    assert find_metadata_value(metadata, ['serialnumber'], ['microscope']) == 7
 
 
 def test_flatten_params_keeps_parameter_tables():

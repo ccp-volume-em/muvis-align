@@ -40,7 +40,12 @@ DATETIME_LABELS = ['acquisitiondate', 'datetimeoriginal', 'datetime']
 
 def create_zarr_ro_crate(dest_path, sources=None, source_paths=()):
     crate = ZarrCrate()
-    properties = {'name': get_filetitle(dest_path), 'encodingFormat': ZARR_ENCODING_FORMAT}
+    # the crate is written as the fusion ends
+    fusion_time = to_iso_datetime(datetime.now())
+    properties = {'name': get_filetitle(dest_path),
+                  'description': f'OME-Zarr image fused by muvis-align from {len(source_paths)} sources',
+                  'datePublished': fusion_time,
+                  'encodingFormat': ZARR_ENCODING_FORMAT}
     dataset_entity = crate.add_dataset(dest_path='.', properties=properties)
     source_entities = [crate.add(ContextEntity(crate, to_crate_path(source_path, dest_path), {
         '@type': 'Dataset' if os.path.isdir(source_path) else 'File'})) for source_path in source_paths]
@@ -48,6 +53,14 @@ def create_zarr_ro_crate(dest_path, sources=None, source_paths=()):
         dataset_entity['isBasedOn'] = source_entities
     if sources:
         add_data_capture(crate, dataset_entity, sources, source_entities)
+
+    # the zarr describes how it was made also once it is moved away from the output's workflow run crate
+    fusion_properties = {'@type': 'CreateAction', 'name': 'Fusion to OME-Zarr', 'endTime': fusion_time,
+                         'instrument': add_software(crate), 'result': dataset_entity}
+    if source_entities:
+        fusion_properties['object'] = source_entities
+    fusion_entity = crate.add(ContextEntity(crate, '#fusion-001', fusion_properties))
+    dataset_entity.append_to('mentions', fusion_entity)
     crate.write(dest_path)
     return crate
 
@@ -141,7 +154,7 @@ def create_workflow_run_crate(dest_path, params_path, params, source_paths, resu
     return crate
 
 
-def add_workflow(crate):
+def add_software(crate):
     try:
         software_version = version('muvis-align')
     except PackageNotFoundError:
@@ -149,7 +162,11 @@ def add_workflow(crate):
     software_properties = {'@type': 'SoftwareApplication', 'name': 'muvis-align', 'url': MUVIS_ALIGN_URL}
     if software_version:
         software_properties['softwareVersion'] = software_version
-    software_entity = crate.add(ContextEntity(crate, MUVIS_ALIGN_URL, software_properties))
+    return crate.add(ContextEntity(crate, MUVIS_ALIGN_URL, software_properties))
+
+
+def add_workflow(crate):
+    software_entity = add_software(crate)
 
     language = crate.add(ComputerLanguage(crate, '#muvis-align-project', {
         'name': 'muvis-align project YAML',
@@ -254,9 +271,14 @@ def find_field(metadata, label, context, path=''):
     elif isinstance(metadata, dict):
         for key, value in metadata.items():
             if isinstance(value, (dict, list)):
-                match = find_field(value, label, context, f'{path}/{str(key).lower()}')
+                match = find_field(value, label, context, f'{path}/{normalise_key(key)}')
                 if match is not None:
                     return match
-            elif str(key).lower() == label and context in path and value not in (None, ''):
+            elif normalise_key(key) == label and context in path and value not in (None, ''):
                 return value
     return None
+
+
+def normalise_key(key):
+    # Serial Number, serial_number and SerialNumber name the same field
+    return re.sub(r'[^a-z0-9]', '', str(key).lower())
