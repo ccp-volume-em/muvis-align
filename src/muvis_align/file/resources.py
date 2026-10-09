@@ -6,6 +6,10 @@ import yaml
 from muvis_align.constants import NAPARI_PROJECT_TEMPLATE
 
 
+def get_project_template_text():
+    return importlib.resources.files('muvis_align').joinpath(NAPARI_PROJECT_TEMPLATE).read_text()
+
+
 def get_project_template():
     # method 1: local path
     #RESOURCE_DIR = Path(__file__).parent.parent.parent / 'resources'
@@ -16,9 +20,7 @@ def get_project_template():
     #file = pkgutil.get_data('muvis_align', '../../resources/' + PROJECT_TEMPLATE)
 
     # method 3: importlib.resources (new)
-    project_template_res = importlib.resources.files('muvis_align')
-    project_template_file_res = project_template_res.joinpath(NAPARI_PROJECT_TEMPLATE)
-    file = project_template_file_res.read_text()
+    file = get_project_template_text()
 
     # load file content
     template = yaml.load(file, Loader=yaml.Loader)

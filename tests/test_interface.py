@@ -1377,8 +1377,11 @@ def test_registration_process_merge_goes_to_fusion_without_registering(
     bare_interface.select_tab.assert_called_once_with(4)
 
 
-def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch):
+def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch, tmp_path):
     """A merge never writes a 'registered' transform, so fusion must not assume one."""
+    bare_interface.reg.output = str(tmp_path) + "/"
+    (tmp_path / ("merged" + interface_module.zarr_extension)).mkdir()
+    bare_interface.params_path = str(tmp_path / "project.yml")
     bare_interface.params = {
         "registration": {"operation": "merge"},
         "fusion": {"method": "average", "spacing": "mean",
@@ -1402,6 +1405,9 @@ def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch):
     assert fuse_kwargs["transform_key"] == "source_metadata"
     # is_saved was True, so the separate save() path is not taken
     assert not bare_interface.reg.save.called
+    # the project file kept in its own output is referenced as it is
+    bare_interface.reg.write_ro_crates.assert_called_once_with(
+        ["merged" + interface_module.zarr_extension], bare_interface.params_path, bare_interface.params)
 
 
 @pytest.mark.parametrize(

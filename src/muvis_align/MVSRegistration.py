@@ -16,6 +16,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.mv_graph import NotEnoughOverlapError
 from multiview_stitcher.param_resolution import groupwise_resolution
 from multiview_stitcher.registration import compute_pairwise_registrations, _plot_registration_summaries
+from datetime import datetime
 import networkx as nx
 import numpy as np
 import os.path
@@ -26,7 +27,7 @@ import warnings
 import xarray as xr
 
 from muvis_align.constants import *
-from muvis_align.file.rocrate_utils import create_ro_crate, create_zarr_ro_crate
+from muvis_align.file.rocrate_utils import create_workflow_run_crate, create_zarr_ro_crate
 from muvis_align.file.transforms import write_transforms, read_transforms
 from muvis_align.GlobalOptProgress import GlobalOptProgress
 from muvis_align.image.Video import Video
@@ -147,6 +148,7 @@ class MVSRegistration:
         self.verbose = verbose
         self.logging_dask = self.verbose
         self.logging_time = self.verbose
+        self.params_path = None
         self.reset()
 
         if input_path is not None:
@@ -332,9 +334,11 @@ class MVSRegistration:
     def is_fused(self):
         return self.state.value >= RegState.FUSED.value
 
-    def init_params(self, params_general, params, label='', input_path=None, global_rotation=None, global_center=None):
+    def init_params(self, params_general, params, label='', input_path=None, global_rotation=None, global_center=None,
+                    params_path=None):
         self.params_general = params_general
         self.params = params
+        self.params_path = params_path
         self.input_params = params.get('input')
         if isinstance(self.input_params, (str, list)):
             self.input_params = {'path': self.input_params}
@@ -390,6 +394,7 @@ class MVSRegistration:
         self.msims = []
         self.sources = []
         self.state = RegState.INIT
+        self.start_time = datetime.now()
 
         self.input_path = input_path
         if isinstance(input_path, list):
@@ -604,14 +609,27 @@ class MVSRegistration:
             if 'zar' in output_format:
                 filename = output_filename + zarr_extension
                 image_paths.append(filename)
-                create_zarr_ro_crate(self.output + filename)
 
-        create_ro_crate(fused_msim, self.output, image_paths)
+        self.write_ro_crates(image_paths, self.params_path, {'general': self.params_general, **self.params})
 
         if is_transition:
             self.save_video(output, msims, fused_msim)
 
         return True
+
+    def write_ro_crates(self, image_filenames, params_path, params):
+        """A crate in each fused zarr for its acquisition, and a workflow run crate over all output."""
+        output_dir = os.path.dirname(self.output)
+        for filename in image_filenames:
+            if filename.endswith(zarr_extension):
+                create_zarr_ro_crate(self.output + filename, self.sources)
+        if params_path and os.path.abspath(os.path.dirname(params_path)) != os.path.abspath(output_dir):
+            output_params_path = os.path.join(output_dir, os.path.basename(params_path))
+            shutil.copyfile(params_path, output_params_path)
+            params_path = output_params_path
+        result_paths = [self.output + filename for filename in image_filenames] + sorted(self.saved_progress_paths())
+        create_workflow_run_crate(output_dir, params_path, params, self.filenames, result_paths,
+                                  start_time=self.start_time)
 
     def middle_section_indices(self):
         """The files of the middle section, by section number (a label as S000 or SBEMimage's s00538), else by folder;
