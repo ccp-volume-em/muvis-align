@@ -528,6 +528,7 @@ class MVSRegistration:
             if 'register' in operation:
                 logging.info(metrics['summary'])
                 self.save_mappings_csv(mappings, normalise_orientation=normalise_orientation)
+                self.write_ro_crates([], self.params_path, {'general': self.params_general, **self.params})
 
                 for reg_label, reg_item in reg_result.items():
                     if isinstance(reg_item, dict):
@@ -618,7 +619,8 @@ class MVSRegistration:
         return True
 
     def write_ro_crates(self, image_filenames, params_path, params):
-        """A crate in each fused zarr for its acquisition, and a workflow run crate over all output."""
+        """A crate in each fused zarr for its acquisition, and a workflow run crate over all output.
+        Written once the registration is saved, and again over the fused images."""
         output_dir = os.path.dirname(self.output)
         for filename in image_filenames:
             if filename.endswith(zarr_extension):

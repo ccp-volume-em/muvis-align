@@ -1745,6 +1745,8 @@ class Interface:
             self.reg.save_mappings(results['mappings'])
             self.reg.save_mappings_csv(results['mappings'])
             self.reg.save_metrics(results['metrics'])
+            self.reg.write_ro_crates([], self.get_output_params_path() or getattr(self, 'params_path', None),
+                                     self.params)
         return results
 
     def pair_registration(self):

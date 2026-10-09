@@ -1252,6 +1252,9 @@ def test_run_global_registration_persists_all_results(
     bare_interface.reg.save_metrics.assert_called_once_with(
         results["metrics"]
     )
+    # the run crate describes the saved registration before any fusion rewrites it
+    crate_args, _ = bare_interface.reg.write_ro_crates.call_args
+    assert crate_args[0] == [] and crate_args[2] is bare_interface.params
 
 
 def _stub_preview_registration_deps(bare_interface, monkeypatch, label1="image-0", label2="image-1"):
