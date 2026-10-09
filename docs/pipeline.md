@@ -140,7 +140,7 @@ see the pairing strategies under
 
 !!! warning "Convert is implemented in the napari plugin only"
     Converting each source individually to OME-Zarr, keeping its native pyramid levels,
-    is currently implemented only in the plugin - see [Convert](napari.md#convert).
+    is currently implemented only in the plugin - see [Registration](napari_guide.md#4-registration).
     `operation: convert` is accepted by the YAML pipeline (and
     `resources/params_test_convert.yml` uses it), but the pipeline has no convert step:
     it neither registers nor writes converted output. Use the plugin for this.

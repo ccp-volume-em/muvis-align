@@ -47,8 +47,6 @@ PERFORMANCE
 
 MINOR
 
-- [ ] **Step-by-step napari user doc** - each step of the plugin with screenshots (napari_ui_capture.py can take
-      them on the slides project).
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread

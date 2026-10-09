@@ -35,6 +35,7 @@ nav:
   - index.md
   - pipeline.md
   - napari.md
+  - napari_guide.md
   - notebooks.md
   - poster.md
   - references.md
