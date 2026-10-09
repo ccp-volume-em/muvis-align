@@ -47,6 +47,8 @@ PERFORMANCE
 
 MINOR
 
+- [ ] **Step-by-step napari user doc** - each step of the plugin with screenshots (napari_ui_capture.py can take
+      them on the slides project).
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
 - [ ] **OME-Zarr 0.6 from 'mean'/'min'/'max' fusion** - refused before fusing (multiview_stitcher 0.1.62 writes 0.4/0.5
