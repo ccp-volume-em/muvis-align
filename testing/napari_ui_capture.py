@@ -6,6 +6,8 @@
 Opens the project, runs the action on the Qt thread (as a button click would), and saves a
 screenshot every second from a background thread - Qt's own grab would stall with a blocked
 Qt thread. Each file is named <index>_<seconds>_<step>_dlg<activity dialog visible>.png.
+With --tabs, the plugin is also grabbed on each of its tabs once the action is done (tab_<n>_<label>.png),
+and the whole window as window.png - as the docs show them.
 """
 import argparse
 import ctypes
@@ -19,7 +21,7 @@ import time
 import napari
 from PIL import ImageGrab
 from qtpy.QtCore import Qt, QTimer
-from qtpy.QtWidgets import QMessageBox
+from qtpy.QtWidgets import QApplication, QMessageBox
 
 import muvis_align.ui.Interface as interface_module
 
@@ -44,6 +46,8 @@ def main():
     parser.add_argument('--interval', type=float, default=1)
     parser.add_argument('--cancel-after', type=float, default=None,
                         help='seconds into the action to press its (by then Cancel) Process button')
+    parser.add_argument('--tabs', action='store_true',
+                        help='once the action is done, save the plugin on each tab and the whole window')
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     state = {'step': 'start', 't0': time.monotonic(), 'done': False}
@@ -123,8 +127,25 @@ def main():
             # waited for with Qt running, so the last frames show the result painted
             QTimer.singleShot(int(2 * args.interval * 1000), finish)
 
+    def save_tabs():
+        window = viewer.window._qt_window
+        geometry = window.frameGeometry()
+        # a screen grab: Qt's own leaves the OpenGL canvas black
+        ImageGrab.grab(bbox=(geometry.left(), geometry.top(), geometry.right(), geometry.bottom())).save(
+            os.path.join(args.output_dir, 'window.png'))
+        size = widget.size()
+        for index, label in enumerate(widget.tab_labels):
+            widget.setCurrentIndex(index)
+            QApplication.processEvents()
+            # each tab at its own content's height: the dock stretches a short tab to the longest one
+            widget.resize(440, widget.tabBar().sizeHint().height() + widget.currentWidget().sizeHint().height() + 8)
+            widget.grab().save(os.path.join(args.output_dir, f'tab_{index}_{label}.png'))
+        widget.resize(size)
+
     def finish():
         state['done'] = True
+        if args.tabs:
+            save_tabs()
         # still alive two minutes after closing: show every thread's stack
         faulthandler.dump_traceback_later(120)
         QTimer.singleShot(1000, viewer.close)
