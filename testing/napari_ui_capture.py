@@ -7,7 +7,7 @@ Opens the project, runs the action on the Qt thread (as a button click would), a
 screenshot every second from a background thread - Qt's own grab would stall with a blocked
 Qt thread. Each file is named <index>_<seconds>_<step>_dlg<activity dialog visible>.png.
 With --tabs, the plugin is also grabbed on each of its tabs once the action is done (tab_<n>_<label>.png),
-and the whole window as window.png - as the docs show them.
+and with --window the whole window (window.png) - as the docs show them.
 """
 import argparse
 import ctypes
@@ -25,6 +25,7 @@ from qtpy.QtWidgets import QApplication, QMessageBox
 
 import muvis_align.ui.Interface as interface_module
 
+
 ACTIONS = {
     'open': lambda interface: interface.input_output_process(),
     'pre_processing': lambda interface: interface.pre_processing_process(),
@@ -32,6 +33,8 @@ ACTIONS = {
     'preview_registration': lambda interface: interface.preview_registration(),
     'registration': lambda interface: interface.registration_process(),
     'fusion': lambda interface: interface.fusion_process(),
+    'modify_pair_registration': lambda interface: (interface.registration_process(),
+                                                   interface.modify_pair_registration()),
 }
 
 
@@ -47,7 +50,10 @@ def main():
     parser.add_argument('--cancel-after', type=float, default=None,
                         help='seconds into the action to press its (by then Cancel) Process button')
     parser.add_argument('--tabs', action='store_true',
-                        help='once the action is done, save the plugin on each tab and the whole window')
+                        help='once the action is done, save the plugin on each tab')
+    parser.add_argument('--window', action='store_true', help='once the action is done, save the whole window')
+    parser.add_argument('--pair-offset', type=float, default=0,
+                        help='modify_pair_registration: shift the moving image by this much in x (world units)')
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
     state = {'step': 'start', 't0': time.monotonic(), 'done': False}
@@ -122,17 +128,24 @@ def main():
                               lambda: interface.process_or_cancel(lambda: logging.info('capture: nothing to cancel')))
         try:
             ACTIONS[args.action](interface)
+            if args.pair_offset:
+                # the moving image is the pair's second layer; its metrics follow once it has moved
+                moving_layer = viewer.layers[-1]
+                affine = moving_layer.affine.affine_matrix.copy()
+                affine[-2, -1] += args.pair_offset
+                moving_layer.affine = affine
         finally:
             state['step'] = 'finished'
             # waited for with Qt running, so the last frames show the result painted
             QTimer.singleShot(int(2 * args.interval * 1000), finish)
 
-    def save_tabs():
-        window = viewer.window._qt_window
-        geometry = window.frameGeometry()
+    def save_window():
+        geometry = viewer.window._qt_window.frameGeometry()
         # a screen grab: Qt's own leaves the OpenGL canvas black
         ImageGrab.grab(bbox=(geometry.left(), geometry.top(), geometry.right(), geometry.bottom())).save(
             os.path.join(args.output_dir, 'window.png'))
+
+    def save_tabs():
         size = widget.size()
         for index, label in enumerate(widget.tab_labels):
             widget.setCurrentIndex(index)
@@ -144,6 +157,8 @@ def main():
 
     def finish():
         state['done'] = True
+        if args.window:
+            save_window()
         if args.tabs:
             save_tabs()
         # still alive two minutes after closing: show every thread's stack
