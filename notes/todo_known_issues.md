@@ -100,7 +100,7 @@ REFACTORING
 
 ## Done
 
-- **Fusion bar names its level** - 'Fusion: Level 2 at 0.04' (native), 'Fusion: Pyramid level 1'
+- **Fusion bar names its level** - 'Fusion: Level 2 at 0.04 µm' (native), 'Fusion: Pyramid level 1'
   (z-slab), in the bar and the heartbeat log. The z-slab path's pyramid levels (multiview_stitcher's ngff_utils)
   now move the bar - the HPC's 5.5h at '100%' - but only within the last ~10% left after level 0: weighting
   them needs their block counts before level 0 is fused.

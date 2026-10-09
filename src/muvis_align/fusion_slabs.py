@@ -18,6 +18,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.Timer import Timer
 from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
+from muvis_align.util import print_significants
 
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):
@@ -439,7 +440,7 @@ def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, tran
         fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key, output_properties,
                              level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
                              batch_options=batch_options, interpolation_order=interpolation_order,
-                             desc=f'Level {index} at {level_spacing:.4g}',
+                             desc=f'Level {index} at {print_significants(level_spacing, 3)} µm',
                              ranks=[source_spacings[source] for source in selected], groups=groups)
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
