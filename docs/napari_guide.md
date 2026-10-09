@@ -126,12 +126,33 @@ The buttons:
 - **Modify pair registration** shows the selected pair in green and purple, to move one onto
   the other by hand with napari's transform tools. The pair's metrics follow the change,
   and the rest of the plugin is disabled meanwhile. Press it again to finish: it asks
-  whether to store the change, which then replaces that pair's registration.
+  whether to store the change, which then replaces that pair's registration. See
+  [Modifying a pair registration](#modifying-a-pair-registration) below.
 - **Process** runs the global registration, which resolves the pair registrations into a
   position for each source, and shows the registered layout. It runs pair registration
   first if that has not been done. It saves the result in the output folder:
   `pair_mappings.json`, `mappings.json` and `mappings.csv` (the transforms), `metrics.json`,
   and an RO-Crate (`ro-crate-metadata.json`) describing the run.
+
+### Modifying a pair registration
+
+Where two sources overlap, the green and purple images add up: matching detail shows grey,
+and a misalignment shows as green and purple edges side by side. The metrics table shows
+that one pair while you move it, coloured from red (poor) to green (good).
+
+A good overlap: the strip at the right edge, where the two tiles overlap, is grey, and the
+metrics are high (ncc 0.77, ssim 0.78).
+
+![A well aligned pair](images/napari/pair_good.png)
+
+The same pair, moved slightly to the right: the overlap shows colour fringes, and the
+metrics drop (ncc 0.16, ssim 0.45).
+
+![A poorly aligned pair](images/napari/pair_poor.png)
+
+Move the selected layer with the transform tool (press `2` in the view) until the overlap
+is grey and the metrics are as high as they go, then press **Modify pair registration**
+again to store it.
 
 ## 5. Fusion
 
