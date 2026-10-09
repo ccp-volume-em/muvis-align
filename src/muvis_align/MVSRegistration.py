@@ -624,7 +624,8 @@ class MVSRegistration:
         output_dir = os.path.dirname(self.output)
         for filename in image_filenames:
             if filename.endswith(zarr_extension):
-                create_zarr_ro_crate(self.output + filename, self.sources, self.filenames)
+                create_zarr_ro_crate(self.output + filename, self.sources, self.filenames,
+                                     metrics=self.summary_metrics())
         if params_path and os.path.abspath(os.path.dirname(params_path)) != os.path.abspath(output_dir):
             output_params_path = os.path.join(output_dir, os.path.basename(params_path))
             shutil.copyfile(params_path, output_params_path)
@@ -2376,6 +2377,19 @@ class MVSRegistration:
             video.write(frame)
 
         video.close()
+
+    def summary_metrics(self):
+        """The registration's metrics over all its pairs, by name; empty without a registration."""
+        summary = self.metrics.get('summary', {})
+        if self.reg_transform_key in summary:
+            # the pairs' registration quality is kept apart from the metrics of their registered overlaps
+            values = summary[self.reg_transform_key] | summary.get(default_transform_key, {})
+        else:
+            # loaded from metrics.json, without the overlap areas the summary weighs its pairs by
+            pair_metrics = [pair.get(self.reg_transform_key, {}) for pair in self.metrics.get('pairs', {}).values()]
+            names = {name for metrics in pair_metrics for name in metrics}
+            values = {name: np.mean([metrics[name] for metrics in pair_metrics if name in metrics]) for name in names}
+        return {name: float(value) for name, value in values.items() if value is not None and np.isfinite(value)}
 
     def get_metrics(self, metric_key=None, pair=None):
         metrics = self.metrics

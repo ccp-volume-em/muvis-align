@@ -38,7 +38,7 @@ INSTRUMENT_CONTEXTS = ['instrument', 'microscope', 'device', 'system', '']
 DATETIME_LABELS = ['acquisitiondate', 'datetimeoriginal', 'datetime']
 
 
-def create_zarr_ro_crate(dest_path, sources=None, source_paths=()):
+def create_zarr_ro_crate(dest_path, sources=None, source_paths=(), metrics=None):
     crate = ZarrCrate()
     # the crate is written as the fusion ends
     fusion_time = to_iso_datetime(datetime.now())
@@ -53,6 +53,11 @@ def create_zarr_ro_crate(dest_path, sources=None, source_paths=()):
         dataset_entity['isBasedOn'] = source_entities
     if sources:
         add_data_capture(crate, dataset_entity, sources, source_entities)
+    if metrics:
+        dataset_entity['variableMeasured'] = [crate.add(ContextEntity(crate, f'#metric-{name}', {
+            '@type': 'PropertyValue', 'name': name, 'value': value,
+            'description': f'Registration {name}, over the overlaps of all registered pairs'}))
+            for name, value in metrics.items()]
 
     # the zarr describes how it was made also once it is moved away from the output's workflow run crate
     fusion_properties = {'@type': 'CreateAction', 'name': 'Fusion to OME-Zarr', 'endTime': fusion_time,

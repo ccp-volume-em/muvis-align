@@ -68,6 +68,24 @@ def test_reset_clears_registration_state():
     assert registration._scaled_msims == {}
 
 
+@pytest.mark.parametrize(("metrics", "expected"), [
+    # a registration run here: the summary of the registered overlaps, and the pairs' quality apart
+    ({'summary': {'source_metadata': {'ncc': 0.25}, 'registered': {'ncc': 0.75, 'ssim': np.nan},
+                  'transform': {'quality': 0.5}}},
+     {'ncc': 0.75, 'quality': 0.5}),
+    # loaded from metrics.json: the mean over its pairs
+    ({'summary': {'transform': {'registered': 0.5}},
+      'pairs': {(0, 1): {'registered': {'ncc': 0.5, 'quality': 0.25}}, (1, 2): {'registered': {'ncc': 1.0}}}},
+     {'ncc': 0.75, 'quality': 0.25}),
+    # not registered
+    ({}, {}),
+])
+def test_summary_metrics(metrics, expected):
+    reg = MVSRegistration()
+    reg.metrics = metrics
+    assert reg.summary_metrics() == expected
+
+
 def test_init_with_explicit_files_sets_labels_and_output(tmp_path):
     # a list input_path is glob-expanded (it may also be unexpanded patterns, e.g. from a
     # comma-separated UI input path), so the files need to actually exist here

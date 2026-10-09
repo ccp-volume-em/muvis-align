@@ -27,7 +27,8 @@ def test_zarr_crate_data_capture(tmp_path):
     zarr_path = tmp_path / 'output' / 'registered.ome.zarr'
     zarr_path.mkdir(parents=True)
     source_paths = [str(tmp_path / 'tile1.tiff'), str(tmp_path / 'tile2.tiff')]
-    create_zarr_ro_crate(str(zarr_path), [StubSource(OME_METADATA), StubSource(TIFF_METADATA)], source_paths)
+    create_zarr_ro_crate(str(zarr_path), [StubSource(OME_METADATA), StubSource(TIFF_METADATA)], source_paths,
+                         metrics={'ncc': 0.75, 'quality': 0.5})
     graph = read_graph(zarr_path)
 
     sources = [{'@id': '../../tile1.tiff'}, {'@id': '../../tile2.tiff'}]
@@ -54,6 +55,10 @@ def test_zarr_crate_data_capture(tmp_path):
     assert fusion['result'] == {'@id': './'}
     assert fusion['endTime'] == root['datePublished']
     assert graph['https://github.com/folterj/muvis-align']['@type'] == 'SoftwareApplication'
+    assert root['variableMeasured'] == [{'@id': '#metric-ncc'}, {'@id': '#metric-quality'}]
+    assert graph['#metric-ncc']['@type'] == 'PropertyValue'
+    assert graph['#metric-ncc']['value'] == 0.75
+    assert graph['#metric-quality']['value'] == 0.5
 
 
 def test_zarr_crate_without_instrument_metadata(tmp_path):
@@ -64,6 +69,7 @@ def test_zarr_crate_without_instrument_metadata(tmp_path):
 
     action = graph['#data-capture-001']
     assert 'instrument' not in action
+    assert 'variableMeasured' not in graph['./']
     assert action['result'] == {'@id': './'}
     assert not [entity for entity in graph.values() if entity.get('@type') == 'IndividualProduct']
 
