@@ -398,7 +398,9 @@ def test_register_pairs_computes_without_linear_fusion(tmp_path):
     assert seen['pairs']['fuse'] is False
     # one synchronous compute a pair, on several threads
     assert seen['metrics']['fuse'] is False
-    assert seen['metrics']['scheduler'] == 'synchronous'
+    # the synchronous scheduler, with its own (no) callbacks: see metrics._scheduler
+    assert seen['metrics']['scheduler'].func is dask.local.get_sync
+    assert seen['metrics']['scheduler'].keywords == {'callbacks': ()}
     assert seen['metrics']['openblas_threads'] <= {1}
 
 
