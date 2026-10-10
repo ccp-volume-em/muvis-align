@@ -4,7 +4,7 @@ import pytest
 import xarray as xr
 from multiview_stitcher import param_utils
 
-from muvis_align.metrics import calc_pair_metrics, quality_to_scalar
+from muvis_align.metrics import _pair_metrics_compute, calc_pair_metrics, quality_to_scalar
 from tests.data_builders import DATA_DIR, ZARR_FILES, prepared_registration
 
 
@@ -113,3 +113,18 @@ def test_global_metrics_measure_only_the_registered_pairs_as_the_overlap_mode_do
         for key in (transform_key, 'registered'):
             # workers run BLAS at one thread: summation order can move the last digit
             assert np.isclose(value[key]['ncc'], whole_by_pair[frozenset(pair)][key]['ncc'], rtol=1e-9, atol=0)
+
+
+@pytest.mark.parametrize('scheduler', ['threads', 'synchronous'])
+def test_a_metrics_compute_leaves_dasks_global_callbacks_alone(scheduler):
+    """napari's slicing cache is a global dask callback: a compute on a worker thread must neither run it nor swap
+    dask's global set of them, which napari is adding to and removing from on the Qt thread."""
+    import dask.array as da
+    from dask.callbacks import Callback
+
+    started = []
+    with Callback(start=started.append) as callback, _pair_metrics_compute(scheduler):
+        active = Callback.active
+        assert int(da.ones((4, 4), chunks=2).sum().compute()) == 16
+        assert Callback.active is active and callback._callback in active
+    assert started == []

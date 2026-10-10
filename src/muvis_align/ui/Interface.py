@@ -108,6 +108,8 @@ class Interface:
         self.pair_metrics_timer.setSingleShot(True)
         self.pair_metrics_timer.setInterval(1000)
         self.pair_metrics_timer.timeout.connect(self.update_pair_metrics)
+        self._pair_metrics_worker = None
+        self._pair_metrics_pending = False
 
         self.reg = MVSRegistration()
         if initialize:
@@ -1508,12 +1510,47 @@ class Interface:
         self.pair_metrics_timer.start()
 
     def update_pair_metrics(self):
-        # filter only selected pair
-        reg_msims = [self.reg.register_msims[index] for index in self.pair_indices]
+        if self.view_mode != ViewMode.PAIRS:
+            return
+        if self._pair_metrics_worker is not None:
+            # one at a time: the latest position is measured once this one is done
+            self._pair_metrics_pending = True
+            return
+        # read off the layers here, on the Qt thread: only the measuring runs on the worker
+        pair_indices = self.pair_indices
+        reg_msims = [self.reg.register_msims[index] for index in pair_indices]
         transforms = {(0, 1): self.calc_mod_pair_transform()}
-        metrics = calc_msims_metrics(reg_msims, transforms, metric_methods=self.metrics_methods)
-        self._remap_local_pair_metrics(metrics, self.pair_indices)
-        self.populate_metrics_table(metrics)
+
+        def measure():
+            metrics = calc_msims_metrics(reg_msims, transforms, metric_methods=self.metrics_methods)
+            self._remap_local_pair_metrics(metrics, pair_indices)
+            return metrics
+
+        def show(metrics):
+            if self.view_mode == ViewMode.PAIRS and self.pair_indices == pair_indices:
+                self.populate_metrics_table(metrics)
+
+        def done():
+            self._pair_metrics_worker = None
+            if self._pair_metrics_pending:
+                self._pair_metrics_pending = False
+                self.update_pair_metrics()
+
+        if QApplication is None or QApplication.instance() is None:
+            show(measure())
+            return
+        # off the Qt thread, so the layers can still be dragged while it measures
+        self._pair_metrics_worker = create_worker(
+            measure,
+            _start_thread=False,
+            _connect={
+                'returned': show,
+                'errored': lambda error: show_warning(f'Pair metrics failed: {error}'),
+                'warned': lambda warning: notification_manager.receive_warning(*warning),
+                'finished': done,
+            },
+        )
+        self._pair_metrics_worker.start()
 
     @staticmethod
     def _remap_local_pair_metrics(metrics, indices):

@@ -1,5 +1,8 @@
 from contextlib import contextmanager, nullcontext
+from functools import partial
 import dask
+import dask.local
+import dask.threaded
 #import frc
 import multiview_stitcher.metrics
 import networkx as nx
@@ -45,12 +48,17 @@ def quality_to_scalar(value):
     return value
 
 
+def _scheduler(name):
+    # callbacks given, so dask never swaps its global set: on a worker that raced napari's slicing cache
+    return partial(dask.threaded.get if name == 'threads' else dask.local.get_sync, callbacks=())
+
+
 @contextmanager
 def _pair_metrics_compute(scheduler='threads'):
     """OpenBLAS is held to one thread per call: each pair's overlap mask is a matmul, and OpenBLAS
     starting its own pool from many threads at once crashed the process."""
     # fusion off for the fused key collision described in MVSRegistration.register_pairs
-    with (dask.config.set({'scheduler': scheduler, 'optimization.fuse.active': False}),
+    with (dask.config.set({'scheduler': _scheduler(scheduler), 'optimization.fuse.active': False}),
           threadpool_limits(1, user_api='blas')):
         yield
 
@@ -227,7 +235,7 @@ def calc_msims_metrics(msims, pair_transforms, qualities=None, base_transform_ke
                        reg_channel=None, n_parallel_pairs=None):
     if base_transform_key is None:
         base_transform_key = next(iter(get_msim_transform_keys(msims[0])))
-    with dask.config.set(scheduler='single-threaded'):
+    with dask.config.set(scheduler=_scheduler('single-threaded')):
         pairs_graph = mv_graph.build_view_adjacency_graph_from_msims(
             msims,
             transform_key=base_transform_key,

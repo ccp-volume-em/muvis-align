@@ -1165,6 +1165,43 @@ def test_on_image_data_changed_restarts_metrics_timer(bare_interface):
     bare_interface.pair_metrics_timer.start.assert_called_once_with()
 
 
+def test_pair_metrics_are_measured_off_the_qt_thread_one_at_a_time(bare_interface, monkeypatch):
+    workers = []
+
+    def create_worker(function, _start_thread, _connect):
+        workers.append(SimpleNamespace(function=function, connect=_connect, start=MagicMock()))
+        return workers[-1]
+
+    monkeypatch.setattr(interface_module, 'QApplication', SimpleNamespace(instance=object))
+    monkeypatch.setattr(interface_module, 'create_worker', create_worker)
+    monkeypatch.setattr(interface_module, 'calc_msims_metrics', lambda *_, **__: {'pairs': {(0, 1): 'value'}})
+    bare_interface.view_mode = ViewMode.PAIRS
+    bare_interface.pair_indices = (3, 5)
+    bare_interface.reg.register_msims = [f'msim-{index}' for index in range(6)]
+    bare_interface.calc_mod_pair_transform = MagicMock(return_value='transform')
+    bare_interface.metrics_methods = 'all'
+    bare_interface.populate_metrics_table = MagicMock()
+    bare_interface._pair_metrics_worker, bare_interface._pair_metrics_pending = None, False
+
+    bare_interface.update_pair_metrics()
+    bare_interface.update_pair_metrics()  # moved again while the first one measures
+
+    assert len(workers) == 1 and workers[0].start.called
+    workers[0].connect['returned'](workers[0].function())
+    bare_interface.populate_metrics_table.assert_called_once_with({'pairs': {(3, 5): 'value'}})
+    workers[0].connect['finished']()
+    assert len(workers) == 2 and not bare_interface._pair_metrics_pending
+
+    # a result for a pair no longer shown is dropped, and nothing is measured outside pair modify
+    bare_interface.pair_indices = (1, 2)
+    workers[1].connect['returned'](workers[1].function())
+    workers[1].connect['finished']()
+    assert bare_interface.populate_metrics_table.call_count == 1
+    bare_interface.view_mode = ViewMode.OVERVIEW
+    bare_interface.update_pair_metrics()
+    assert len(workers) == 2
+
+
 @pytest.fixture
 def mocked_activity_contexts(monkeypatch):
     monkeypatch.setattr(
