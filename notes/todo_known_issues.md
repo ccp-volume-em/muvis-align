@@ -47,6 +47,8 @@ PERFORMANCE
 
 MINOR
 
+- [ ] **Quick view fusion as a custom fusion method** - see if the quick view fusion (`lazy_section_overview`) can
+      be added as a custom fusion method, and have the view reuse `MVSRegistration.fuse` too.
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
