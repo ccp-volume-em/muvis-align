@@ -1,5 +1,6 @@
 from contextlib import contextmanager, nullcontext
 from functools import partial
+import threading
 import dask
 import dask.local
 import dask.threaded
@@ -50,7 +51,16 @@ def quality_to_scalar(value):
 
 def _scheduler(name):
     # callbacks given, so dask never swaps its global set: on a worker that raced napari's slicing cache
-    return partial(dask.threaded.get if name == 'threads' else dask.local.get_sync, callbacks=())
+    get = partial(dask.threaded.get if name == 'threads' else dask.local.get_sync, callbacks=())
+    if threading.current_thread() is threading.main_thread():
+        return get
+
+    def schedule(dsk, keys, **kwargs):
+        # the config is global: set on a worker, the main thread's own computes (napari's slicing) keep dask's default
+        if threading.current_thread() is threading.main_thread():
+            return dask.threaded.get(dsk, keys, **kwargs)
+        return get(dsk, keys, **kwargs)
+    return schedule
 
 
 @contextmanager

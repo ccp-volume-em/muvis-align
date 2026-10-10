@@ -128,3 +128,30 @@ def test_a_metrics_compute_leaves_dasks_global_callbacks_alone(scheduler):
         assert int(da.ones((4, 4), chunks=2).sum().compute()) == 16
         assert Callback.active is active and callback._callback in active
     assert started == []
+
+
+def test_metrics_set_on_a_worker_leave_the_main_threads_computes_on_dasks_default():
+    """dask's config is global: napari's slicing on the main thread must keep its threaded, cached compute while a
+    worker measures, or every step of a drag reloads its tiles single-threaded."""
+    import threading
+    import dask.array as da
+    from dask.callbacks import Callback
+
+    entered, release = threading.Event(), threading.Event()
+
+    def measure():
+        with _pair_metrics_compute('synchronous'):
+            entered.set()
+            release.wait(10)
+
+    worker = threading.Thread(target=measure)
+    worker.start()
+    entered.wait(10)
+    started = []
+    try:
+        with Callback(start=started.append):
+            assert int(da.ones((4, 4), chunks=2).sum().compute()) == 16
+    finally:
+        release.set()
+        worker.join()
+    assert len(started) == 1
