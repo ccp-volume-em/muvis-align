@@ -1066,10 +1066,16 @@ class Interface:
             for index, msim in zip(reg.register_indices, reg.register_msims):
                 readers[index] = MsimLevels(msim)
             label = 'Pre-processed overview'
+        channel_labels = None
+        if reg.is_channel_overlay(self.params['input_output']['registration_dimension'], self.extra_metadata):
+            channels = self.extra_metadata.get('channels', [])
+            channel_labels = [channels[index].get('label') if index < len(channels) else f'channel {index}'
+                              for index in range(len(reg.sources))]
         return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, transform_key,
                                      z_scale=getattr(reg, '_msim_z_scale', None),
                                      preview_scale=self.params['input_output'].get('preview_scale'),
-                                     readers=readers, label=f'{label} ({len(reg.sources)} images)')
+                                     readers=readers, label=f'{label} ({len(reg.sources)} images)',
+                                     channel_labels=channel_labels)
 
     def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
                                  face_colors=None, is_3d=None):

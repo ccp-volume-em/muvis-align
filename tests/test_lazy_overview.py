@@ -49,8 +49,20 @@ def test_each_tile_is_pasted_where_it_sits_in_its_own_section(tmp_path):
     assert float(sim.coords['x'][0]) == 0 and float(sim.coords['x'][1] - sim.coords['x'][0]) == 1
 
 
+def test_channel_labels_make_each_source_a_channel_of_its_own_on_the_shared_grid(tmp_path):
+    labels = [f'tile {index}' for index in range(len(TILES))]
+    sim = msi_utils.get_sim_from_msim(overview(registration(tmp_path), channel_labels=labels))
+    data = np.asarray(sim.data).squeeze()
+
+    assert list(sim.coords['c'].values) == labels
+    assert data.shape[:2] == (4, 2)
+    assert np.all(data[0, 0, :64, :64] == 10) and np.all(data[0, 0, :64, 64:] == 0)
+    assert np.all(data[1, 0, :64, 64:128] == 20) and np.all(data[1, 0, :64, :64] == 0)
+    assert np.all(data[3, 1, :64, :64] == 40) and np.all(data[3, 0] == 0)
+
+
 def test_a_section_is_built_only_when_it_is_asked_for_and_once(tmp_path):
-    planes = overview(registration(tmp_path)).attrs['section_planes']
+    planes = overview(registration(tmp_path)).attrs['section_planes'][0]
 
     assert list(planes._planes) == []
     first = planes.plane(1, prefetch=False)
@@ -59,7 +71,7 @@ def test_a_section_is_built_only_when_it_is_asked_for_and_once(tmp_path):
 
 
 def test_the_sections_around_a_viewed_one_are_built_in_the_background(tmp_path):
-    planes = overview(registration(tmp_path)).attrs['section_planes']
+    planes = overview(registration(tmp_path)).attrs['section_planes'][0]
     planes.prefetch_radius = 1
 
     planes.plane(0)
@@ -69,7 +81,7 @@ def test_the_sections_around_a_viewed_one_are_built_in_the_background(tmp_path):
 
 
 def test_kept_sections_stay_within_their_budget_the_least_recently_viewed_dropped(tmp_path):
-    planes = overview(registration(tmp_path)).attrs['section_planes']
+    planes = overview(registration(tmp_path)).attrs['section_planes'][0]
     planes.max_planes = 1
 
     planes.plane(0, prefetch=False)
@@ -134,7 +146,7 @@ def test_a_tile_read_leaves_dasks_global_callbacks_alone(tmp_path):
     readers = [SimpleNamespace(pixel_sizes=[{'y': 1.0, 'x': 1.0}], dtype=np.uint8,
                                level_data=lambda level, value=value: da.full((64, 64), value, dtype=np.uint8))
                for value in TILES.values()]
-    planes = overview(reg, readers=readers).attrs['section_planes']
+    planes = overview(reg, readers=readers).attrs['section_planes'][0]
     started = []
 
     with Callback(start=started.append):

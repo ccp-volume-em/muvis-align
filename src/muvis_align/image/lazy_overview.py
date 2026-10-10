@@ -13,7 +13,7 @@ from multiview_stitcher import msi_utils, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_interactive_preview_scale
-from muvis_align.image.util import build_source_stack_props, wrap_sims_as_msims
+from muvis_align.image.util import build_source_stack_props, combine_msims_as_channels, wrap_sims_as_msims
 from muvis_align.util import parse_scale, pixel_size_to_um
 
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
@@ -160,10 +160,11 @@ def _coarsest_level_within(reader, spacing):
 
 def lazy_section_overview(sources, translations, transforms, output_order, transform_key, z_scale=None,
                           preview_scale=default_interactive_preview_scale, max_plane_bytes=default_plane_max_bytes,
-                          readers=None, label='Overview'):
+                          readers=None, label='Overview', channel_labels=None):
     """The overview msim (z, y, x) of 2D, single-channel sources at one or more z, each z-plane computed on demand at
     `preview_scale`; None for anything it cannot place faithfully (a rotated transform, a 3D or multichannel source).
-    `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place."""
+    `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place.
+    `channel_labels` (one a source) make each source a channel of its own, on the same grid, as fuse() does."""
     if readers is None:
         readers = [SourceLevels(source) for source in sources]
     if all(reader is None for reader in readers):
@@ -188,6 +189,9 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     spacing = _plane_spacing(preview_scale, level0_spacing)
     dtype = next(reader.dtype for reader in readers if reader is not None)
     itemsize = np.dtype(dtype).itemsize
+    # each channel has planes of its own: together within the one budget
+    nchannels = len(channel_labels) if channel_labels else 1
+    max_plane_bytes //= nchannels
 
     def plane_shape_at(spacing):
         return {dim: int(np.ceil((upper[axis] - lower[axis]) / spacing[dim])) + 1
@@ -199,28 +203,36 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
         shape = plane_shape_at(spacing)
 
     z_values = sorted({round(float(low[0]), 9) for *_, low, _ in geometry})
-    entries = {}
-    for reader, props, low, _ in geometry:
+    channel_entries = [{} for _ in range(nchannels)]
+    for index, (reader, props, low, _) in enumerate(geometry):
         if reader is not None:
             level = _coarsest_level_within(reader, spacing)
             level_spacing = [float(reader.pixel_sizes[level].get(dim, props['spacing'][dim])) for dim in 'yx']
             # vertices are pixel centres of the source's level 0: its outer edge is half a pixel before the first
             edge = tuple(float(low[axis] - lower[axis] - props['spacing'][dim] / 2)
                          for axis, dim in ((1, 'y'), (2, 'x')))
+            entries = channel_entries[index if channel_labels else 0]
             entries.setdefault(z_values.index(round(float(low[0]), 9)), []).append(
                 {'reader': reader, 'level': level, 'edge': edge, 'spacing': tuple(level_spacing)})
 
-    planes = SectionPlanes(entries, shape, spacing, {'y': lower[1], 'x': lower[2]}, dtype, len(z_values))
     plane_shape = (shape['y'], shape['x'])
-    stacked = da.stack([da.from_delayed(dask.delayed(planes.plane)(index), plane_shape, dtype=dtype)
-                        for index in range(len(z_values))])
     z_spacing = float(np.min(np.diff(z_values))) if len(z_values) > 1 else float(z_scale or 1)
-    sim = si_utils.get_sim_from_array(stacked, dims=dims,
-                                      scale={'z': z_spacing, 'y': spacing['y'], 'x': spacing['x']},
-                                      translation={'z': z_values[0], 'y': float(lower[1]), 'x': float(lower[2])},
-                                      transform_key=transform_key)
+    section_planes, sims = [], []
+    for entries in channel_entries:
+        planes = SectionPlanes(entries, shape, spacing, {'y': lower[1], 'x': lower[2]}, dtype, len(z_values),
+                               max_bytes=default_planes_max_bytes // nchannels)
+        stacked = da.stack([da.from_delayed(dask.delayed(planes.plane)(index), plane_shape, dtype=dtype)
+                            for index in range(len(z_values))])
+        section_planes.append(planes)
+        sims.append(si_utils.get_sim_from_array(stacked, dims=dims,
+                                                scale={'z': z_spacing, 'y': spacing['y'], 'x': spacing['x']},
+                                                translation={'z': z_values[0], 'y': float(lower[1]),
+                                                             'x': float(lower[2])},
+                                                transform_key=transform_key))
     logging.info(f'{label}: {len(sources)} sources in {len(z_values)} sections of {shape["y"]}x{shape["x"]}'
+                 f'{f" in {nchannels} channels" if channel_labels else ""}'
                  f' at {spacing["x"]:.4g}um, each built when viewed')
-    msim = wrap_sims_as_msims([sim])[0]
-    msim.attrs['section_planes'] = planes
+    msims = wrap_sims_as_msims(sims)
+    msim = combine_msims_as_channels(msims, channel_labels) if channel_labels else msims[0]
+    msim.attrs['section_planes'] = section_planes
     return msim
