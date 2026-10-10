@@ -168,7 +168,7 @@ def patch_multiscale_label_show():
     window of its own (under xpra a tiny one flashing up) until the layer controls take it."""
     import importlib
 
-    # napari 0.9.2 has the control in both places, 0.9.0 only in dynamic
+    # napari 0.8 has the control only in widgets, 0.9.0 only in dynamic, 0.9.2 in both
     for module_name in ('napari._qt.layer_controls.dynamic.widgets.qt_multiscale_level_control',
                         'napari._qt.layer_controls.widgets.qt_multiscale_level_control'):
         try:

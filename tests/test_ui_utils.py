@@ -106,8 +106,14 @@ def test_activity_dock_toggle_raises_no_private_access_warning():
 
 
 def test_the_multiscale_label_shows_only_once_the_layer_controls_hold_it(qtbot):
+    import importlib
     from qtpy.QtWidgets import QVBoxLayout, QWidget
-    from napari._qt.layer_controls.dynamic.widgets import qt_multiscale_level_control as control_module
+
+    try:
+        control_module = importlib.import_module(
+            'napari._qt.layer_controls.dynamic.widgets.qt_multiscale_level_control')
+    except ImportError:  # napari 0.8
+        control_module = importlib.import_module('napari._qt.layer_controls.widgets.qt_multiscale_level_control')
 
     patch_multiscale_label_show()
     label_class = control_module.QtWrappedLabel
