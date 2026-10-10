@@ -86,6 +86,9 @@ def test_project_config_loading(make_napari_viewer, project_config, tmp_path):
 
     assert interface.params_path == str(config_copy)
     assert {'registration', 'fusion', 'input_output', 'pre_processing'} <= set(interface.params)
+    channels_table = interface.params['input_output'].get('channels_table')
+    if channels_table:
+        assert [channel['label'] for channel in interface.extra_metadata['channels']] == channels_table['label']
     # init_logging() opened a log file in tmp_path: Windows cannot delete it while open
     for handler in logging.getLogger().handlers[:]:
         handler.close()

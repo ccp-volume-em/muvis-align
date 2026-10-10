@@ -177,6 +177,9 @@ class Interface:
                 if value is not None:
                     param_widget.set_value(value)
                     if param_name == 'input_output.channels_table':
+                        # set_value() blocks the table's signals, so channels_table() never sees the loaded value
+                        if value:
+                            self.set_channels(value)
                         # a project loaded from disk already has channels, so
                         # update_output_channels() (and its populate_channels_table() call)
                         # never runs for it - attach the color pickers here instead
@@ -342,10 +345,12 @@ class Interface:
 
     def channels_table(self, value):
         old_value = self.param_widgets.get('input_output.channels_table').get_value()
-        channels_dict = update_dict_value(old_value, value)
-        channels = [{'label': label} for label in channels_dict['label']]
+        self.set_channels(update_dict_value(old_value, value))
+
+    def set_channels(self, channels_dict):
+        channels = [{'label': label} for label in channels_dict.get('label', [])]
         for channeli, channel in enumerate(channels):
-            if channeli < len(channels_dict['color']):
+            if channeli < len(channels_dict.get('color', [])):
                 color = parse_channel_color(channels_dict['color'][channeli])
                 if color is not None:
                     channel['color'] = color
