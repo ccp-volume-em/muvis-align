@@ -153,7 +153,9 @@ def patch_shapes_text_coords():
     def view_text_coords(self):
         data = self._data_view.data
         displayed = self._slice_input.displayed
-        coords = [data[index][:, displayed] for index in self._view_indices]
+        # napari 0.8 names it _indices_view, 0.9 _view_indices
+        indices = self._view_indices if hasattr(self, '_view_indices') else self._indices_view
+        coords = [data[index][:, displayed] for index in indices]
         return self.text.compute_text_coords(coords, self._slice_input.ndisplay, self._slice_input.order)
 
     view_text_coords._muvis_patched = True

@@ -79,7 +79,8 @@ def test_patched_shapes_text_coords_match_napari():
     layer = viewer.add_shapes(shapes, shape_type='polygon', text={'string': '{labels}'}, features={'labels': labels})
     viewer.dims.set_current_step(0, 1)
     expected, actual = original.fget(layer), layer._view_text_coords
-    assert len(layer._view_indices) == 10
+    indices = layer._view_indices if hasattr(layer, '_view_indices') else layer._indices_view
+    assert len(indices) == 10
     np.testing.assert_array_equal(actual[0], expected[0])
     assert actual[1:] == expected[1:]
 
