@@ -96,6 +96,16 @@ def test_project_config_loading(make_napari_viewer, project_config, tmp_path):
     close_fault_log()
 
 
+def test_project_configs_hold_only_template_settings(config_data):
+    from muvis_align.file.project_yaml import get_unknown_params
+    from muvis_align.file.resources import get_project_template
+    from muvis_align.ui.bilayers_util import get_section_dict
+
+    template = get_section_dict(get_project_template(), ['inputs', 'parameters', 'display_only', 'outputs'])
+    assert get_unknown_params(template, config_data) == []
+    assert get_unknown_params(template, {'input_output': {'channel_table': []}}) == ['input_output.channel_table']
+
+
 def test_project_configs_match_the_template(config_data):
     """The test projects only hold values the plugin's template offers."""
     from muvis_align.util import parse_scale, pixel_size_to_um
@@ -587,6 +597,7 @@ def test_project_path_handles_existing_and_new_projects(
         "get_template_params",
         lambda _: {"input_output": {}},
     )
+    monkeypatch.setattr(interface_module, "get_unknown_params", lambda *_: [])
     monkeypatch.setattr(
         interface_module, "read_params", lambda _: {"registration": {}}
     )

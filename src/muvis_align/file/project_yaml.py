@@ -20,6 +20,13 @@ def get_template_params(section_template):
     return params
 
 
+def get_unknown_params(section_template, params):
+    known = {(section_id, section_item['name']) for section_id, section_items in section_template.items()
+             for section_item in section_items}
+    return [f'{section_id}.{label}' for section_id, section_items in params.items()
+            for label in (section_items or {}) if (section_id, label) not in known]
+
+
 def update_params(params, new_params):
     for section_id, section_items in new_params.items():
         for label, value in section_items.items():

@@ -17,7 +17,6 @@ input_output:
   source_scale_x: source
   source_scale_y: source
   source_scale_z: source
-  target_scale: 1
 pre_processing:
   filter_foreground: false
   flatfield_quantiles: ''

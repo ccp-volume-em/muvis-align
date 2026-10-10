@@ -18,7 +18,8 @@ from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, tiff_extension, default_transform_key, default_quality_key, \
     default_interactive_preview_scale, default_preview_workers, default_chunk_size
-from muvis_align.file.project_yaml import read_params, get_template_params, write_params, update_params
+from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
+                                             update_params)
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
@@ -154,7 +155,12 @@ class Interface:
         self.params_path = path
         self.params = get_template_params(self.template)
         if os.path.exists(path):
-            self.params = update_params(self.params, read_params(path))
+            project_params = read_params(path)
+            unknown_params = get_unknown_params(self.template, project_params)
+            if unknown_params:
+                # still written back unchanged, as scripted runs may read them (e.g. extra_metadata)
+                logging.warning(f'Project settings not used by the plugin: {", ".join(unknown_params)}')
+            self.params = update_params(self.params, project_params)
             self.update_widgets()
         else:
             self.write_params()
