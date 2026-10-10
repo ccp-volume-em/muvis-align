@@ -682,8 +682,25 @@ def get_export_chunk_sizes(dtype, output_stack_properties, msims, num_z_position
     return sizes
 
 
-def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max_tasks):
-    """Real min/max contrast range computed from just the coarsest pyramid level, so a caller
+def get_display_range(values):
+    """[low, high] from the 0.1-99.9 percentiles of `values`, so a few hot pixels don't set it, zeros (the fill
+    around a stitched or fused image) left out; None if there is nothing else."""
+    values = np.asarray(values).ravel()
+    values = values[values != 0]
+    if not values.size:
+        return None
+    low, high = (float(value) for value in np.percentile(values, [0.1, 99.9]))
+    return [low, high if high > low else low + 1]
+
+
+def get_dtype_contrast_limits(dtype):
+    if np.issubdtype(dtype, np.integer):
+        return [0, np.iinfo(dtype).max]
+    return [0.0, 1.0]
+
+
+def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max_tasks, per_channel=False):
+    """Display range (see get_display_range) computed from just the coarsest pyramid level, so a caller
     can pass it as add_image()'s contrast_limits without napari falling back to its own default:
     for multiscale layers that already reads the coarsest level (data[-1]), but for anything
     other than uint8 still computes a real min/max over it, which for a still-lazy dask array
@@ -702,8 +719,13 @@ def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max
     necessarily for the work behind it - a level fused from thousands of sources is thousands of
     transforms however few pixels come out. This step exists to be the fast one before anything
     is on screen, so past that size it declines to be the thing that blocks first paint.
+
+    per_channel=True gives a list, one range a channel ('c'), each from that channel's own pixels.
     """
     coarsest = get_msim_level_data(msim)[-1]
+    dims = get_msim_image0(msim).dims
+    channel_axis = dims.index('c') if per_channel and 'c' in dims else None
+    nchannels = coarsest.shape[channel_axis] if channel_axis is not None else 1
     if not cheap:
         num_tasks = len(coarsest.dask) if hasattr(coarsest, 'dask') else 0
         if num_tasks > max_tasks:
@@ -711,15 +733,13 @@ def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max
                          f' the coarsest pyramid level ({num_tasks} tasks > {max_tasks})')
             cheap = True
     if cheap:
-        dtype = coarsest.dtype
-        if np.issubdtype(dtype, np.integer):
-            return [0, np.iinfo(dtype).max]
-        return [0.0, 1.0]
-    min_val, max_val = dask.compute(coarsest.min(), coarsest.max())
-    min_val, max_val = float(min_val), float(max_val)
-    if min_val == max_val:
-        max_val = min_val + 1
-    return [min_val, max_val]
+        limits = [get_dtype_contrast_limits(coarsest.dtype)] * nchannels
+    else:
+        values = np.asarray(dask.compute(coarsest)[0])
+        channel_values = np.moveaxis(values, channel_axis, 0) if channel_axis is not None else [values]
+        limits = [get_display_range(channel) or get_dtype_contrast_limits(coarsest.dtype)
+                  for channel in channel_values]
+    return limits if per_channel else limits[0]
 
 
 def get_msim_image0(msim, level=0):

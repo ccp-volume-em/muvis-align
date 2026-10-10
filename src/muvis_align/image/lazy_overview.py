@@ -13,7 +13,8 @@ from multiview_stitcher import msi_utils, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_interactive_preview_scale
-from muvis_align.image.util import build_source_stack_props, combine_msims_as_channels, wrap_sims_as_msims
+from muvis_align.image.util import (build_source_stack_props, combine_msims_as_channels, get_display_range,
+                                   get_dtype_contrast_limits, wrap_sims_as_msims)
 from muvis_align.util import parse_scale, pixel_size_to_um
 
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
@@ -24,6 +25,8 @@ default_planes_max_bytes = 1_000_000_000
 default_prefetch_radius = 4
 # a plane coarsened until it fits, so a viewed section and its prefetched neighbours stay within the budget
 default_plane_max_bytes = default_planes_max_bytes // (2 * default_prefetch_radius + 1)
+# sources whose coarsest level sets a channel's contrast: read up front, before any plane
+default_contrast_sources = 16
 
 
 class SourceLevels:
@@ -108,20 +111,33 @@ class SectionPlanes:
     def _build(self, index):
         plane = np.zeros((self.shape['y'], self.shape['x']), dtype=self.dtype)
         entries = self.entries.get(index, [])
-
-        def read(entry):
-            data = entry['reader'].level_data(entry['level'])
-            if hasattr(data, 'compute'):
-                # own (no) callbacks: dask's global ones, napari's slicing cache among them, are shared by all threads
-                data = data.compute(scheduler='synchronous', callbacks=())
-            return np.squeeze(np.asarray(data))
-
         with ThreadPoolExecutor(max_workers=max(1, min(self.workers, len(entries)))) as executor:
-            datas = list(executor.map(read, entries))
+            datas = list(executor.map(lambda entry: _read_level(entry['reader'], entry['level']), entries))
         # in source order, as the pasted overview did: a later source covers an earlier one
         for entry, data in zip(entries, datas):
             _paste(plane, data, entry['edge'], entry['spacing'], self.spacing)
         return plane
+
+
+def _read_level(reader, level):
+    data = reader.level_data(level)
+    if hasattr(data, 'compute'):
+        # own (no) callbacks: dask's global ones, napari's slicing cache among them, are shared by all threads
+        data = data.compute(scheduler='synchronous', callbacks=())
+    return np.squeeze(np.asarray(data))
+
+
+def _contrast_limits(readers, max_sources=default_contrast_sources, workers=default_plane_readers):
+    """The display range (get_display_range) of the coarsest level of up to `max_sources` readers spread evenly; None
+    if there is nothing to set it."""
+    readers = [reader for reader in readers if reader is not None]
+    if not readers:
+        return None
+    sample = [readers[int(index)] for index in np.linspace(0, len(readers) - 1, min(len(readers), max_sources))]
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(sample)))) as executor:
+        values = np.concatenate([data.ravel() for data in executor.map(
+            lambda reader: _read_level(reader, len(reader.pixel_sizes) - 1), sample)])
+    return get_display_range(values)
 
 
 def _source_indices(count, plane_spacing, edge, spacing, size):
@@ -164,7 +180,8 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     """The overview msim (z, y, x) of 2D, single-channel sources at one or more z, each z-plane computed on demand at
     `preview_scale`; None for anything it cannot place faithfully (a rotated transform, a 3D or multichannel source).
     `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place.
-    `channel_labels` (one a source) make each source a channel of its own, on the same grid, as fuse() does."""
+    `channel_labels` (one a source) make each source a channel of its own, on the same grid, as fuse() does.
+    attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one."""
     if readers is None:
         readers = [SourceLevels(source) for source in sources]
     if all(reader is None for reader in readers):
@@ -235,4 +252,7 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     msims = wrap_sims_as_msims(sims)
     msim = combine_msims_as_channels(msims, channel_labels) if channel_labels else msims[0]
     msim.attrs['section_planes'] = section_planes
+    channel_readers = [[reader] for reader in readers] if channel_labels else [readers]
+    msim.attrs['contrast_limits'] = [_contrast_limits(group) or get_dtype_contrast_limits(dtype)
+                                     for group in channel_readers]
     return msim

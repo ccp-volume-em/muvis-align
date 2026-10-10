@@ -278,6 +278,16 @@ def test_cheap_contrast_limits_are_the_dtype_range_without_computing(dtype, expe
     assert get_contrast_limits(make_msim(np.zeros((8, 8), dtype=dtype)), cheap=True) == expected
 
 
+def test_contrast_limits_per_channel_leave_out_the_zero_fill_and_a_hot_pixel():
+    data = np.zeros((2, 100, 100), dtype=np.uint16)
+    data[0, :50], data[1, :50] = 100, 7
+    data[0, 0, 0] = 60000
+    msim = make_msim(data, dims='cyx')
+
+    assert get_contrast_limits(msim, per_channel=True) == [[100.0, 101.0], [7.0, 8.0]]
+    assert get_contrast_limits(msim, cheap=True, per_channel=True) == [[0, 65535], [0, 65535]]
+
+
 def test_contrast_limits_fall_back_to_the_dtype_range_when_the_coarsest_level_is_expensive():
     # many small chunks stand in for a level fused from thousands of sources: its graph is large
     sim = make_sim(np.full((64, 64), 700, dtype=np.uint16)).chunk({'y': 1, 'x': 1})

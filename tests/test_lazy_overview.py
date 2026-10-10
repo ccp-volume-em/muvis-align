@@ -6,7 +6,7 @@ from dask.callbacks import Callback
 import tifffile
 from multiview_stitcher import msi_utils
 
-from muvis_align.image.lazy_overview import lazy_section_overview, _coarsest_level_within, MsimLevels
+from muvis_align.image.lazy_overview import lazy_section_overview, _coarsest_level_within, _contrast_limits, MsimLevels
 from muvis_align.MVSRegistration import MVSRegistration
 
 # z_y_x in the file name: z the section, y/x the tile in 64-pixel steps (1um pixels)
@@ -59,6 +59,26 @@ def test_channel_labels_make_each_source_a_channel_of_its_own_on_the_shared_grid
     assert np.all(data[0, 0, :64, :64] == 10) and np.all(data[0, 0, :64, 64:] == 0)
     assert np.all(data[1, 0, :64, 64:128] == 20) and np.all(data[1, 0, :64, :64] == 0)
     assert np.all(data[3, 1, :64, :64] == 40) and np.all(data[3, 0] == 0)
+
+
+def test_each_channel_takes_its_contrast_from_its_own_sources(tmp_path):
+    reg = registration(tmp_path)
+
+    assert overview(reg).attrs['contrast_limits'] == [[10.0, 40.0]]
+    assert overview(reg, channel_labels=list('abcd')).attrs['contrast_limits'] == [
+        [10.0, 11.0], [20.0, 21.0], [30.0, 31.0], [40.0, 41.0]]
+
+
+def test_contrast_comes_from_a_spread_sample_of_coarsest_levels_without_their_zero_fill():
+    # level 1 of reader `value`: a 4x4 block of value + 1 inside a zero border
+    readers = [SimpleNamespace(pixel_sizes=[{}, {}],
+                               level_data=lambda level, value=value: np.pad(np.full((4, 4), value + level), 2))
+               for value in (100, 200, 300, 400, 500)]
+
+    assert _contrast_limits(readers, max_sources=2) == [101.0, 501.0]
+    assert _contrast_limits(readers[:1]) == [101.0, 102.0]
+    assert _contrast_limits([None]) is None
+    assert _contrast_limits([SimpleNamespace(pixel_sizes=[{}], level_data=lambda level: np.zeros((4, 4)))]) is None
 
 
 def test_a_section_is_built_only_when_it_is_asked_for_and_once(tmp_path):

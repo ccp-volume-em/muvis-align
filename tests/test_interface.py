@@ -1729,6 +1729,27 @@ def test_the_preprocessed_preview_is_3d_without_building_or_changing_the_msims(t
         np.testing.assert_array_equal(original, current)
 
 
+@pytest.mark.parametrize(('limits', 'cheap', 'expected'), [
+    ([[1, 2], [3, 4]], True, [[1, 2], [3, 4]]),
+    (None, False, [[5.0, 6.0], [9.0, 10.0]]),
+    (None, True, [[0, 65535], [0, 65535]]),
+], ids=['overview-own', 'computed', 'cheap'])
+def test_each_channel_layer_gets_its_own_contrast_limits(bare_interface, limits, cheap, expected):
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.image.util import wrap_sims_as_msims
+
+    data = np.stack([np.full((1, 4, 4), 5, dtype=np.uint16), np.full((1, 4, 4), 9, dtype=np.uint16)])
+    msim = wrap_sims_as_msims([si_utils.get_sim_from_array(data, dims=['c', 'z', 'y', 'x'])])[0]
+    if limits is not None:
+        msim.attrs['contrast_limits'] = limits
+    bare_interface.extra_metadata = {'channels': [{'label': 'a'}, {'label': 'b'}]}
+    viewer = MagicMock()
+
+    bare_interface._napari_view_add_fused_data(viewer, msim, 'data', cheap=cheap)
+
+    assert viewer.add_image.call_args.kwargs['contrast_limits'] == expected
+
+
 def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer, tmp_path):
     """The preview's data layer (_create_napari_data -> _napari_view_add_fused_data) is a genuine
     napari multiscale layer from msims end to end, as the fused export's is."""

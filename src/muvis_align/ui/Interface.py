@@ -1445,7 +1445,9 @@ class Interface:
         translate = si_utils.get_origin_from_sim(image0, asarray=True)
         data = get_msim_level_data(fused)
         with Timer('_napari_view_add_fused_data: get_contrast_limits', verbose=self._timing_verbose()):
-            contrast_limits = get_contrast_limits(fused, cheap=cheap)
+            # the quick overview brings its own, from a sample of its sources
+            channel_limits = (fused.attrs.get('contrast_limits')
+                              or get_contrast_limits(fused, cheap=cheap, per_channel=True))
         # the single-channel overview has c of size 1 even when the metadata lists more channels
         if len(channels) > 1 and image0.sizes.get('c', 1) == len(channels):
             channel_axis = image0.dims.index('c')
@@ -1453,11 +1455,13 @@ class Interface:
             colormap = [channel.get('color', (1, 1, 1, 1)) for channel in channels]
             scale = [scale] * len(channels)
             translate = [translate] * len(channels)
-            contrast_limits = [contrast_limits] * len(channels)
+            contrast_limits = (channel_limits if len(channel_limits) == len(channels)
+                               else [channel_limits[0]] * len(channels))
         else:
             channel_axis = None
             name = channels[0].get('label') if len(channels) == 1 else None
             colormap = channels[0].get('color', (1, 1, 1, 1)) if len(channels) == 1 else None
+            contrast_limits = channel_limits[0]
         with Timer('_napari_view_add_fused_data: add_image', verbose=self._timing_verbose()):
             viewer.add_image(data, name=name or layer_name, multiscale=True, channel_axis=channel_axis,
                              colormap=colormap, contrast_limits=contrast_limits,
