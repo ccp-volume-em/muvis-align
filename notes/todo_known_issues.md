@@ -47,8 +47,12 @@ PERFORMANCE
 
 MINOR
 
-- [ ] **Quick view fusion as a custom fusion method** - see if the quick view fusion (`lazy_section_overview`) can
-      be added as a custom fusion method, and have the view reuse `MVSRegistration.fuse` too.
+- [ ] **Quick view through `MVSRegistration.fuse`** - have the view reuse `fuse()`, with the quick view
+      (`lazy_section_overview`) as a fusion method. It cannot be a multiview-stitcher fusion function: those only
+      combine views already resampled per chunk, while the quick view's savings come before that (no msims built,
+      the coarsest fitting pyramid level read, translation-only pasting, planes built when viewed). So it would be a
+      source-based branch at the top of `fuse()`, sharing the per-channel loop (fuse each channel on a shared grid,
+      then `combine_msims_as_channels`) that the channel overview already mirrors. A restructure: plan it first.
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
