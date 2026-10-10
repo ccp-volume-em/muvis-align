@@ -507,17 +507,25 @@ def test_modify_pair_registration_restores_state_when_pre_processing_fails(
     assert bare_interface.view_mode is ViewMode.OVERVIEW
 
 
-def test_modify_pair_registration_without_pair_registration_shows_nothing(bare_interface, monkeypatch):
-    """A pair graph kept from a discarded registration must not place the pair."""
+@pytest.mark.parametrize(('registered', 'message'), [
+    (False, 'Run pair registration first: a preview registration is not stored'),
+    (True, 'No pair registration for image-0 and image-0: choose a registered pair'),
+], ids=['none', 'not-this-pair'])
+def test_modify_pair_registration_without_pair_registration_shows_nothing(
+        bare_interface, monkeypatch, registered, message):
+    """A pair graph kept from a discarded registration must not place the pair, and the warning says what is missing."""
     widget, tab_states = _arm_pair_modify_entry(bare_interface, monkeypatch)
-    bare_interface.reg.is_pairs_registered.return_value = False
-    bare_interface.reg.pairs_graph = None
+    bare_interface.reg.is_pairs_registered.return_value = registered
+    if registered:
+        monkeypatch.setattr(interface_module.nx, 'get_edge_attributes', lambda *_: {})
+    else:
+        bare_interface.reg.pairs_graph = None
     bare_interface._napari_view_add_image = MagicMock()
 
     with patch.object(interface_module, 'show_warning') as show_warning:
         bare_interface.modify_pair_registration()
 
-    show_warning.assert_called_once()
+    show_warning.assert_called_once_with(message)
     bare_interface._napari_view_add_image.assert_not_called()
     assert bare_interface.view_mode is ViewMode.OVERVIEW
 

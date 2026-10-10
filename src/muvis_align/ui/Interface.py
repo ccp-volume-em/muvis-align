@@ -1866,7 +1866,10 @@ class Interface:
 
             if indices not in pair_transforms:
                 self.view_mode = ViewMode.OVERVIEW
-                show_warning('No pair registration found for selected images')
+                if self.reg.is_pairs_registered():
+                    show_warning(f'No pair registration for {label1} and {label2}: choose a registered pair')
+                else:
+                    show_warning('Run pair registration first: a preview registration is not stored')
             else:
                 self.temp_widget_state = TemporarilyDisabledWidgets()
                 self.temp_tab_states = {}
