@@ -29,6 +29,13 @@ On registered pairs multiview-stitcher's affine_matrix takes fixed crop pixels t
 pairs by brute-force shift search; the pair NCC improves with it). A synthetic scipy-shifted pair suggested the
 reverse. The preview grid follows the real data; the synthetic result is unexplained.
 
+### Fusion pyramid levels use ~10-15% of RAM: expected
+Not a leak, nor dask filling what is free. The z-slab path's lower levels (ngff_utils.write_sim_to_ome_zarr) run
+one thread a CPU, each reading 2x2 (2x2x2 past 200 z) parent chunks and averaging as float64: ~6-12 level-0 chunks
+a worker (measured locally, synthetic zarr, 1-8 workers). Level 0's chunk comes from the per-worker budget (a quarter
+of RAM over the CPUs), so the peak scales with the machine: the HPC's 250GB on ~2TB. A risk only if
+_available_memory() reads more than the job may use (no Slurm memory variable or cgroup limit set).
+
 ## In progress
 
 Nothing.
@@ -74,11 +81,12 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       alignment, DataTree.from_dict, expand_dims); 31ms on the HPC.
 
 From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration 7.2h, fusion 9.7h, no errors):
-- [ ] **Fusion pyramid levels: 5.5h at '100%', peak rss 249.5GB** - 'average' at 0.01um (z-slab path): after level 0,
-      ngff_utils.write_sim_to_ome_zarr builds the lower levels from it; rss swung 32 -> 224GB within 30s and the bar
-      doesn't count this phase (likely cause, not confirmed). Native fusion avoids it, existing projects with a set
-      spacing don't. Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output
-      properties, export chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them on the next HPC run.
+- [ ] **Fusion pyramid levels: 5.5h at '100%'** - 'average' at 0.01um (z-slab path): after level 0,
+      ngff_utils.write_sim_to_ome_zarr builds the lower levels from it, and the bar doesn't count this phase. Its
+      250GB peak is expected (see Known issues). Native fusion avoids it, existing projects with a set spacing don't.
+      Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output properties, export
+      chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them, and 'Fusion output_chunksize', on the
+      next HPC run.
 - [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
       image shapes 1.3ms, tables 1.8 min; the preview cap and composite overview only where the lazy overview
       declines (a rotation, 3D or multichannel sources). Check on the next HPC run. (Promotion, the second transform
