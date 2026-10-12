@@ -741,23 +741,12 @@ def test_populate_choices_and_image_selection(bare_interface):
     image2_widget.set_value.assert_called_once_with("b", choices=["a", "b", "c"])
 
 
-@pytest.mark.parametrize(
-        ("transforms", "expected"),
-        [
-            (["source_metadata"], "source_metadata"),
-            (["source_metadata", "transform"], "transform"),
-            (["registered", "transform"], "registered"),
-            ([], None),
-        ],
-)
-def test_get_best_transform_key(
-    bare_interface, monkeypatch, transforms, expected
-):
+@pytest.mark.parametrize(("global_registered", "expected"), [(False, "source_metadata"), (True, "registered")])
+def test_get_best_transform_key(bare_interface, global_registered, expected):
+    """From the state: reading the keys off the msims would build every one."""
     bare_interface.reg.reg_transform_key = "registered"
     bare_interface.reg.source_transform_key = "source_metadata"
-    monkeypatch.setattr(
-        interface_module, "get_transforms", lambda _: transforms
-    )
+    bare_interface.reg.is_global_registered.return_value = global_registered
 
     assert bare_interface.get_best_transform_key() == expected
 
@@ -859,24 +848,21 @@ def test_update_views_detects_multi_z_from_view_msims(
     )
 
 
-def test_registered_shapes_of_2d_view_msims_sit_at_their_sections_z(bare_interface):
-    """The view msims stay 2D: each source's shape takes its section's z from its position."""
-    from multiview_stitcher import msi_utils, spatial_image_utils as si_utils
-
-    def flat_msim(origin_x):
-        sim = si_utils.get_sim_from_array(np.zeros((8, 8), dtype=np.uint8), dims=["y", "x"],
-                                          scale={"y": 1.0, "x": 1.0}, translation={"y": 0.0, "x": origin_x},
-                                          transform_key="registered")
-        return msi_utils.get_msim_from_sim(sim, scale_factors=[])
-
-    bare_interface.view_msims = [flat_msim(0.0), flat_msim(4.0)]
+def test_registered_shapes_come_from_source_geometry_at_their_sections_z(bare_interface):
+    """No msim built for them: the registration's source geometry, promoted to each section's z."""
     bare_interface.reg.positions = [{"z": 0.0}, {"z": 5.0}]
-    bare_interface.reg.source_transform_key = "source_metadata"
+    bare_interface.reg.sources = [SimpleNamespace(), SimpleNamespace()]
     bare_interface.reg.is_pairs_registered.return_value = False
     bare_interface.reg.file_labels = ["a", "b"]
+    bare_interface.reg._msim_z_scale = None
+    bare_interface.reg.source_geometry.return_value = ([{}, {}], [
+        {"shape": {"z": 1, "y": 8, "x": 8}, "spacing": {"z": 1.0, "y": 1.0, "x": 1.0},
+         "origin": {"z": z, "y": 0.0, "x": x}} for z, x in ((0.0, 0.0), (5.0, 4.0))])
 
     shapes, _, _, _ = bare_interface._create_napari_shapes("registered", force_2d=True)
 
+    bare_interface.reg.source_geometry.assert_called_once_with("registered", promote_z=True, z_scale=None,
+                                                               progress=None)
     assert [sorted({point[0] for point in shape}) for shape in shapes] == [[0.0], [5.0]]
     assert min(point[2] for point in shapes[1]) == 4.0
 
@@ -893,9 +879,13 @@ def test_create_napari_shapes_reports_per_source(bare_interface, monkeypatch):
     bare_interface.reg.source_transform_key = "source_metadata"
     bare_interface.reg.is_pairs_registered.return_value = False
     bare_interface.reg.file_labels = ["a", "b", "c"]
-    monkeypatch.setattr(
-        interface_module, "build_source_stack_props", lambda *_, **__: "props"
-    )
+
+    def source_geometry(*_, progress=None, **__):
+        for _source in sources:
+            progress()
+        return [{}] * 3, ["props"] * 3
+
+    bare_interface.reg.source_geometry = source_geometry
     monkeypatch.setattr(
         interface_module, "create_image_shapes",
         lambda msims, **__: [np.zeros((4, 2)) for _ in msims],
@@ -947,6 +937,7 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"z": 2})]
     bare_interface.reg.positions = [{"z": 0}]
     bare_interface.reg.get_metrics.return_value = 0.75
+    bare_interface.reg.source_geometry.return_value = ([{}], ["props"])
     create_shapes = MagicMock(return_value=[image_shape])
     create_overlaps = MagicMock(
         return_value=([overlap_shape], [np.array([0, 0])])
@@ -1026,6 +1017,7 @@ def test_update_napari_shapes_3d_faces_are_axis_aligned_and_wind_outward(
     cosine, sine = np.cos(theta), np.sin(theta)
     rotation = np.array([[cosine, -sine, 0], [sine, cosine, 0], [0, 0, 1]])
     rotated_box = unit_cube @ rotation.T + np.array([10.0, 20.0, 30.0])
+    bare_interface.reg.source_geometry.return_value = ([{}], ["props"])
 
     monkeypatch.setattr(
         interface_module.si_utils, "get_origin_from_sim", lambda _: {"z": 0}
@@ -1259,6 +1251,30 @@ def test_run_pair_registration_saves_the_pairs_with_their_metrics(
         progress_factory=ANY,
     )
     bare_interface.reg.save_pair_results.assert_called_once_with({(0, 1): "mapping"}, metrics=results["metrics"])
+
+
+@pytest.mark.parametrize("preprocessed", [True, False], ids=["pre-processing done", "pre-processing fails"])
+def test_global_registration_after_an_open_pre_processes_its_pairs_msims_first(bare_interface, preprocessed):
+    """An open leaves the pre-processed msims unbuilt: the pairs were registered on them, so they come first."""
+    bare_interface.params = {"input_output": {}, "registration": {}}
+    bare_interface.reg.pair_msims = None
+    bare_interface.reg.register_msims = None
+
+    def run_pre_processing(**_):
+        bare_interface.reg.register_msims = ["pre-processed"]
+        return preprocessed
+
+    bare_interface.run_pre_processing = MagicMock(side_effect=run_pre_processing)
+    bare_interface._operation_progress = MagicMock(side_effect=RuntimeError("registration started"))
+
+    if preprocessed:
+        with pytest.raises(RuntimeError, match="registration started"):
+            bare_interface.run_global_registration.__wrapped__(bare_interface)
+        assert bare_interface.reg.pair_msims == ["pre-processed"]
+    else:
+        assert bare_interface.run_global_registration.__wrapped__(bare_interface) is None
+        assert bare_interface.reg.pair_msims is None
+    bare_interface.run_pre_processing.assert_called_once()
 
 
 def test_run_global_registration_persists_all_results(

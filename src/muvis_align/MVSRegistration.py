@@ -248,8 +248,45 @@ class MVSRegistration:
                            desc='Building sources', weight=weight,
                            timing_label='Build msims' if self.logging_time else None)
         if store:
+            self._apply_mappings(msims)
             self._msims = msims
         return msims
+
+    def _apply_mappings(self, msims):
+        """The registration's corrections (self.mappings) chained onto each msim's source transform, as
+        register_global writes them - for msims built after a saved registration was loaded."""
+        for index, mapping in (self.mappings or {}).items():
+            msi_utils.set_affine_transform(msims[index], mapping, transform_key=self.reg_transform_key,
+                                           base_transform_key=self.source_transform_key)
+
+    def source_geometry(self, transform_key, promote_z=False, z_scale=None, progress=None):
+        """Each source's translation and level-0 stack properties under transform_key, from its metadata and
+        self.mappings alone, building no msim: the registered transform is the mapping chained onto the source
+        transform, as _apply_mappings writes it, identity for a source without one. `progress` is called a source."""
+        translations, stack_props = [], []
+        for index, (source, position, transform) in enumerate(zip(self.sources, self.positions,
+                                                                   self._msim_transforms)):
+            translation = dict(position)
+            if promote_z and 'z' not in translation:
+                translation['z'] = index * (z_scale or 1)
+            props = build_source_stack_props(source, self._msim_output_order, translation, transform,
+                                             self.source_transform_key, z_scale=self._msim_z_scale,
+                                             promote_z=promote_z)
+            if transform_key == self.reg_transform_key:
+                matrix = np.asarray(props['transform'], dtype=float)
+                mapping = (self.mappings or {}).get(index)
+                if mapping is None:
+                    matrix = np.eye(len(matrix))
+                else:
+                    mapping_matrix = widened_affine_matrix(mapping) if len(matrix) == 4 else np.asarray(
+                        mapping.sel(t=0) if 't' in mapping.dims else mapping, dtype=float)
+                    matrix = mapping_matrix @ matrix
+                props['transform'] = props['transform'].copy(data=matrix)
+            translations.append(translation)
+            stack_props.append(props)
+            if progress is not None:
+                progress()
+        return translations, stack_props
 
     def reset(self):
         self.state = RegState.UNINIT
@@ -826,17 +863,13 @@ class MVSRegistration:
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
         metrics_filename = self.output + metrics_name
-        is_3d = (self.sources[0].get_size().get('z', 0) > 1)
         self.check_progress(output_filename, output_format)
 
         load_pairs = self.is_pairs_registered() and os.path.exists(pair_mappings_filename)
         self.group_pairs = {}
-        if load_pairs or self.is_global_registered():
-            # both branches below read self.msims, whose lazy build is the single most expensive
-            # thing resuming a saved project does (~15s for 328 sources) - build it here, through
-            # ensure_msims(), so a caller's progress_factory can report it per source instead of
-            # it happening silently inside the first plain `self.msims` expression further down
-            self.ensure_msims(progress_factory=progress_factory)
+        # no msims built for any of this: the graph comes from source geometry, the mappings are applied when the
+        # msims are built (_apply_mappings) - those a caller already built get them now
+        file_index = file_list_index_finder(self.filenames)
 
         if load_pairs:
             # load pair mapping and initialise pair_graph
@@ -851,8 +884,7 @@ class MVSRegistration:
                     # a label such as 'S000' would also match a file under S000/ as a tile pair
                     self.group_pairs[(key1, key2)] = {item: data for item, data in value.items() if item != 'kind'}
                 else:
-                    index1 = find_file_list_index(self.filenames, key1)
-                    index2 = find_file_list_index(self.filenames, key2)
+                    index1, index2 = file_index(key1), file_index(key2)
                     if index1 is not None and index2 is not None:
                         indexed_key = index1, index2
                         indexed_pair_transforms[indexed_key] = (
@@ -865,9 +897,7 @@ class MVSRegistration:
             # for a few hundred sources - count them rather than letting them run silently
             progress_context = progress_phase(progress_factory, total=2, desc='Loading pair registration')
             with progress_context as pbar:
-                if not is_3d:
-                    self.msims = make_msims_2d(self.msims)
-                self.pair_msims = self.msims
+                self.pair_msims = self._msims
                 self.pairs = list(indexed_pair_transforms.keys())
                 self.metrics = {
                     'summary': {default_transform_key: {default_quality_key: np.mean(list(indexed_qualities.values()))}},
@@ -883,8 +913,8 @@ class MVSRegistration:
                 overlaps = {key: float(np.prod([abs(high - low) for low, high
                                                 in zip(*np.array(value).reshape(2, -1))]))
                             for key, value in indexed_bboxes.items()}
-                self.pairs_graph = build_pairs_graph(self.pair_msims, self.pairs,
-                                                     self.source_transform_key, overlaps=overlaps)
+                self.pairs_graph = build_pairs_graph(self.source_geometry(self.source_transform_key)[1], self.pairs,
+                                                     overlaps=overlaps)
                 if pbar is not None:
                     pbar.update(1)
             nx.set_edge_attributes(self.pairs_graph, indexed_pair_transforms, default_transform_key)
@@ -903,32 +933,24 @@ class MVSRegistration:
                                 f'{len(self.filenames)} files (e.g. {missing[0]}) - ignoring it')
                 self.state = RegState.INIT
             else:
-                # write reg_transform_key onto self.msims (msim -> msim, every scale, no sim
-                # needed) - the persistent pyramid needs the same transform a fresh registration
-                # run would have written via register_global, or copy_transforms_to_msims/get_transforms
-                # downstream (Interface.py) won't find it there when resuming from saved state
-                progress_context = progress_phase(progress_factory, total=len(self.msims),
+                progress_context = progress_phase(progress_factory, total=len(self.filenames),
                                                   desc='Loading global registration')
                 self.mappings = {}
                 with progress_context as pbar:
-                    for index, (msim, filename) in enumerate(zip(self.msims, self.filenames)):
-                        # the mapping is stored as registration produced it - 2D for a stack,
-                        # whose msims are stored 2D too (see fuse()), so neither needs widening
-                        mapping = param_utils.affine_to_xaffine(np.array(find_file_dict_item(mappings, filename)))
-                        self.mappings[index] = mapping
-                        # chained onto the source transform, as register() does
-                        msi_utils.set_affine_transform(msim, mapping, transform_key=self.reg_transform_key,
-                                                       base_transform_key=self.source_transform_key)
+                    for index, filename in enumerate(self.filenames):
+                        # stored as registration produced it - 2D for a stack, whose msims are stored 2D too
+                        self.mappings[index] = param_utils.affine_to_xaffine(
+                            np.array(find_file_dict_item(mappings, filename)))
                         if pbar is not None:
                             pbar.update(1)
-                if not is_3d:
-                    self.msims = make_msims_2d(self.msims)
-                self.pair_msims = self.msims
+                if self._msims is not None:
+                    self._apply_mappings(self._msims)
+                self.pair_msims = self._msims
                 metrics = import_json(metrics_filename)
                 indexed_metrics = {}
                 for key, value in metrics.items():
                     key1, key2 = json.loads(key)
-                    index1, index2 = find_file_list_index(self.filenames, key1), find_file_list_index(self.filenames, key2)
+                    index1, index2 = file_index(key1), file_index(key2)
                     if index1 is not None and index2 is not None:
                         indexed_key = index1, index2
                         indexed_metrics[indexed_key] = value
@@ -1827,26 +1849,8 @@ class MVSRegistration:
         nonspatial = int(np.prod([size for dim, size in self.sources[0].get_size().items() if dim not in 'zyx']))
         voxel_bytes = nonspatial * dtype.itemsize
 
-        translations, matrices = [], []
-        for index, (source, position, transform) in enumerate(zip(self.sources, self.positions,
-                                                                   self._msim_transforms)):
-            translation = dict(position)
-            if promote_z and 'z' not in translation:
-                translation['z'] = index * (z_scale or 1)
-            translations.append(translation)
-            matrix = np.asarray(build_source_stack_props(
-                source, self._msim_output_order, translation, transform, self.source_transform_key,
-                z_scale=self._msim_z_scale, promote_z=promote_z)['transform'], dtype=float)
-            if transform_key == self.reg_transform_key:
-                # as registering writes it: the correction chained onto the source transform, identity without one
-                mapping = (self.mappings or {}).get(index)
-                if mapping is None:
-                    matrix = np.eye(len(matrix))
-                else:
-                    mapping_matrix = widened_affine_matrix(mapping) if len(matrix) == 4 else np.asarray(
-                        mapping.sel(t=0) if 't' in mapping.dims else mapping, dtype=float)
-                    matrix = mapping_matrix @ matrix
-            matrices.append(matrix)
+        translations, source_props = self.source_geometry(transform_key, promote_z=promote_z, z_scale=z_scale)
+        matrices = [np.asarray(props['transform'], dtype=float) for props in source_props]
 
         stacks = {}
 
