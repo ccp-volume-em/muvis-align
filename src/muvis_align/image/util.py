@@ -1378,8 +1378,7 @@ def group_sims_by_z(sims, positions=None):
 
 def calc_foreground_map(items):
     # sims or msims (each msim's scale0 sim is used): pixel data, a median-image comparison across all sources
-    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-           for item in items]
+    sims = sims_from_sims_or_msims(items)
     if len(sims) <= 2:
         return [True] * len(sims)
     sims = [sim.squeeze().astype(np.float32) for sim in sims]
@@ -1416,8 +1415,7 @@ def calc_normalise_stats(items, use_global=True):
     Split out from normalise_sims so a caller that only wants the statistics (e.g. to then apply them separately
     across a whole pyramid via map_msim_levels) doesn't have to build a full set of already-normalised sims.
     """
-    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-           for item in items]
+    sims = sims_from_sims_or_msims(items)
     dtype = sims[0].dtype
     # global mean and stddev
     if use_global:
@@ -2475,6 +2473,15 @@ def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scal
     return int(np.prod([int(size) for size in properties['shape'].values()]) * itemsize), properties
 
 
+def msims_stack_props(msims, transform_key):
+    """Each msim's finest level's stack properties, at its first t/c as mv_graph takes them: one plane, not the stack."""
+    sims = [msi_utils.get_sim_from_msim(msim) for msim in msims]
+    nsdims = si_utils.get_nonspatial_dims_from_sim(sims[0])
+    if len(nsdims):
+        sims = [si_utils.sim_sel_coords(sim, {nsdim: sim.coords[nsdim][0] for nsdim in nsdims}) for sim in sims]
+    return [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in sims]
+
+
 def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=None):
     """mv_graph.build_view_adjacency_graph_from_msims() for known pairs: the same nodes and
     'stack_props', and an edge with its 'overlap' for each pair that overlaps.
@@ -2484,12 +2491,7 @@ def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=No
     their bounding boxes' intersection, so all pairs are measured at once; any other box hands
     the whole graph to multiview_stitcher as before.
     """
-    sims = [msi_utils.get_sim_from_msim(msim) for msim in msims]
-    nsdims = si_utils.get_nonspatial_dims_from_sim(sims[0])
-    if len(nsdims):
-        sims = [si_utils.sim_sel_coords(sim, {nsdim: sim.coords[nsdim][0] for nsdim in nsdims})
-                for sim in sims]
-    stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in sims]
+    stack_props = msims_stack_props(msims, transform_key)
     if overlap_tolerance is not None:
         stack_props = [si_utils.extend_stack_props(props, overlap_tolerance) for props in stack_props]
     vertices = [mv_graph.get_vertices_from_stack_props(props) for props in stack_props]
@@ -2534,15 +2536,7 @@ def build_pairs_graph(msims, pairs, transform_key, overlaps=None):
     """
     graph = nx.Graph()
     graph.add_nodes_from(range(len(msims)))
-    sims = [msi_utils.get_sim_from_msim(msim) for msim in msims]
-    nsdims = si_utils.get_nonspatial_dims_from_sim(sims[0])
-    if len(nsdims):
-        # as mv_graph does: stack properties describe one plane, not the t/c stack
-        sims = [si_utils.sim_sel_coords(sim, {nsdim: sim.coords[nsdim][0] for nsdim in nsdims})
-                for sim in sims]
-    stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
-                   for sim in sims]
-    nx.set_node_attributes(graph, dict(enumerate(stack_props)), name='stack_props')
+    nx.set_node_attributes(graph, dict(enumerate(msims_stack_props(msims, transform_key))), name='stack_props')
     for pair in pairs:
         overlap = (overlaps or {}).get(tuple(pair))
         graph.add_edge(*pair, **({'overlap': overlap} if overlap is not None else {}))
