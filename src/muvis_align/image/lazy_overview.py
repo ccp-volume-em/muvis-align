@@ -14,8 +14,8 @@ from multiview_stitcher import msi_utils, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_interactive_preview_scale
-from muvis_align.image.util import (build_source_stack_props, combine_msims_as_channels, get_display_range,
-                                   get_dtype_contrast_limits, wrap_sims_as_msims)
+from muvis_align.image.util import (build_source_stack_props, coarsest_level_within, combine_msims_as_channels,
+                                   get_display_range, get_dtype_contrast_limits, wrap_sims_as_msims)
 from muvis_align.util import parse_scale, pixel_size_to_um
 
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
@@ -209,15 +209,6 @@ def _plane_spacing(preview_scale, level0_spacing):
     return {dim: level0_spacing[dim] * scale for dim in 'yx'}
 
 
-def _coarsest_level_within(reader, spacing):
-    """The reader's coarsest level no coarser than `spacing`, else its finest."""
-    best = 0
-    for level, pixel_size in enumerate(reader.pixel_sizes):
-        if all(pixel_size.get(dim, 0) <= spacing[dim] * (1 + 1e-6) for dim in 'yx'):
-            best = level
-    return best
-
-
 def lazy_section_overview(sources, translations, transforms, output_order, transform_key, z_scale=None,
                           preview_scale=default_interactive_preview_scale, max_plane_bytes=default_plane_max_bytes,
                           readers=None, label='Overview', channel_labels=None):
@@ -268,7 +259,7 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
         spacing = {dim: value * 2 for dim, value in spacing.items()}
         shape = plane_shape_at(spacing)
 
-    placed = [(source_index, reader, props, low, _coarsest_level_within(reader, spacing))
+    placed = [(source_index, reader, props, low, coarsest_level_within(reader.pixel_sizes, spacing))
               for source_index, (reader, props, low, _) in enumerate(geometry) if reader is not None]
     if is_volume:
         z_spacing = min(float(reader.pixel_sizes[level].get('z', props['spacing']['z']))

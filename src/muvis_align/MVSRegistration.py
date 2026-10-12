@@ -37,8 +37,7 @@ from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
-from muvis_align.fusion_slabs import fuse_native_levels_to_ome_zarr, fuse_to_zarr_by_z_slabs, level_blocks, \
-    native_levels, written_voxels
+from muvis_align.fusion_slabs import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
@@ -316,7 +315,6 @@ class MVSRegistration:
         self.sources = []
         self.metrics = {}
         self.group_pairs = {}
-        self.fuse_by_z_slabs = True
         self.register_indices = None
         # per source index: the registration's correction on top of the source transform; absent means identity
         self.mappings = None
@@ -1907,7 +1905,7 @@ class MVSRegistration:
                              tile_size=None, extra_metadata=None):
         """Uncompressed bytes per level of the OME-Zarr fuse() would write, from source geometry alone (no msims):
         {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}, or None for an export fuse() does not write.
-        Native fusion writes only the blocks some source reaches - exactly these; other spacings are dense."""
+        Only the blocks some source reaches are written - exactly these."""
         if extra_metadata is None:
             extra_metadata = self.extra_metadata
         if not self.sources or not self.fuses_to_zarr(fusion_method, dimension, extra_metadata):
@@ -1953,31 +1951,22 @@ class MVSRegistration:
         views0 = [(stack(index, 0), matrix) for index, matrix in enumerate(matrices)]
         level0 = calc_output_properties_from_views(views0, output_spacing_method=spacing_method, z_scale=z_scale)
         levels = []
-        if is_native:
-            source_spacings = [min(view[0]['spacing'][dim] for dim in 'yx') for view in views0]
-            scaled_dims = ['y', 'x'] + (['z'] if views0[0][0]['shape'].get('z', 1) > 1 else [])
-            chunksize = self._export_chunksize(dtype, level0, [view[0] for view in views0], num_z_positions,
-                                               tile_size)
-            for level_spacing, properties, selected in native_levels(source_spacings, level0, scaled_dims):
-                output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
-                views = []
-                for index in selected:
-                    # as msi_utils.get_res_level_from_spacing: the coarsest source level no coarser than the output
-                    level = 0
-                    while (level + 1 < len(self.sources[index].shapes)
-                           and all(stack(index, level + 1)['spacing'][dim] <= spacing
-                                   for dim, spacing in output_properties['spacing'].items())):
-                        level += 1
-                    views.append((stack(index, level), matrices[index]))
-                chunk, groups = level_blocks(views, output_properties, chunksize)
-                levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],
-                               'bytes': written_voxels(groups, output_properties, chunk) * voxel_bytes})
-        else:
-            shapes, _, _ = msi_utils.calc_resolution_levels(level0['shape'])
-            for shape in shapes:
-                factor = level0['shape']['x'] / shape['x']
-                levels.append({'spacing': float(level0['spacing']['x'] * factor), 'shape': shape,
-                               'bytes': int(np.prod(list(shape.values()))) * voxel_bytes})
+        source_spacings = [min(view[0]['spacing'][dim] for dim in 'yx') for view in views0]
+        scaled_dims = ['y', 'x'] + (['z'] if views0[0][0]['shape'].get('z', 1) > 1 else [])
+        chunksize = self._export_chunksize(dtype, level0, [view[0] for view in views0], num_z_positions, tile_size)
+        for level_spacing, properties, selected in export_levels(source_spacings, level0, scaled_dims,
+                                                                 native=is_native):
+            output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
+            views = []
+            for index in selected:
+                # as fusion picks it (fuse_levels_to_ome_zarr)
+                level = coarsest_level_within([stack(index, level)['spacing'] for level in range(len(
+                    self.sources[index].shapes))], output_properties['spacing'],
+                    dims=list(output_properties['spacing']), tolerance=0)
+                views.append((stack(index, level), matrices[index]))
+            chunk, groups = level_blocks(views, output_properties, chunksize)
+            levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],
+                           'bytes': written_voxels(groups, output_properties, chunk) * voxel_bytes})
         return {'levels': levels, 'bytes': sum(level['bytes'] for level in levels), 'native': is_native}
 
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
@@ -1999,8 +1988,9 @@ class MVSRegistration:
         level then has as many chunks (and dask graph tasks) in z as there are z-slices, even
         once a level's XY extent has been downsampled to a handful of pixels.
 
-        output_spacing None or 'native', written to a file: every level at its own pixel size, from the sources at
-        least that fine (see fuse_native_levels_to_ome_zarr) - not in memory, where it stays 'mean'.
+        Written to a file, every level is fused from the sources (fusion_slabs.export_levels): with output_spacing
+        None or 'native' each at its own pixel size from the sources at least that fine, else doubling from the set
+        spacing. In memory, 'native' stays 'mean'.
         """
         logging.info('Fusion...')
         if output_filename is not None:
@@ -2032,11 +2022,6 @@ class MVSRegistration:
 
         is_native, output_spacing = self._output_spacing_method(
             output_spacing, output_filename is not None and not is_channel_overlay)
-        if (output_filename is not None and not is_native and not is_channel_overlay
-                and str(ome_version).startswith('0.6')):
-            # before any work: multiview_stitcher's writer, which writes every other spacing, knows 0.4 and 0.5 only
-            raise ValueError("OME-Zarr 0.6 is written with 'native' output spacing only; choose 0.5 for "
-                             f"'{output_spacing}'")
         with Timer('fusion: output properties', verbose=self.logging_time):
             output_stack_properties = calc_output_properties(msims, transform_key,
                                                              output_spacing_method=output_spacing, z_scale=z_scale)
@@ -2112,7 +2097,7 @@ class MVSRegistration:
                 if saving_zarr:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
-                    zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
+                    zarr_options = {'ngff_version': ome_version}
                 else:
                     zarr_options = None
                 with dask.config.set(scheduler='threads'), warnings.catch_warnings():
@@ -2120,32 +2105,24 @@ class MVSRegistration:
                     # the array ends in. Set here, as a napari worker puts 'always' ahead of any module-level filter
                     warnings.filterwarnings('ignore', message='The input Dask array will be rechunked',
                                             category=PerformanceWarning)
-                    if saving_zarr and is_native:
+                    if saving_zarr:
                         source_spacings = [min(si_utils.get_spacing_from_sim(get_msim_image0(msim))[dim]
                                                for dim in 'yx') for msim in msims]
                         # a section stack keeps every section at every level; a volume is scaled in z too
                         scaled_dims = ['y', 'x'] + (['z'] if get_msim_image0(msims[0]).sizes.get('z', 1) > 1 else [])
-                        fused_image = fuse_native_levels_to_ome_zarr(
-                            msims, source_spacings, output_filename, transform_key, output_stack_properties,
-                            output_chunksize, scaled_dims, fusion_func=fuse_func, zarr_options=zarr_options,
-                            batch_options=self._fusion_batch_options(saving_zarr))
-                    elif saving_zarr and self.fuse_by_z_slabs and num_z_positions > 1 and 'z' in output_chunksize:
-                        # a stack's block reaches only the z-planes at its depth: fused from all, it costs as many
-                        fused_image = fuse_to_zarr_by_z_slabs(
-                            msims, output_filename, transform_key, output_stack_properties, output_chunksize,
+                        levels = export_levels(source_spacings, output_stack_properties, scaled_dims, native=is_native)
+                        # native: tiles over the overview, where a finer source covers a pixel the coarser one under it
+                        # is left out, each level from the sources it has; a set spacing averages them as one, and
+                        # every level has all of them, so averaging the level above gives it
+                        fused_image = fuse_levels_to_ome_zarr(
+                            msims, levels, output_filename, transform_key, output_stack_properties, output_chunksize,
                             fusion_func=fuse_func, zarr_options=zarr_options,
-                            batch_options=self._fusion_batch_options(saving_zarr))
+                            batch_options=self._fusion_batch_options(saving_zarr),
+                            ranks=source_spacings if is_native else None, average_levels=not is_native)
                     else:
-                        fused_image = fusion.fuse(
-                            msims,
-                            fusion_func=fuse_func,
-                            transform_key=transform_key,
-                            output_stack_properties=output_stack_properties,
-                            output_zarr_url=output_filename,
-                            zarr_options=zarr_options,
-                            output_chunksize=output_chunksize,
-                            batch_options=self._fusion_batch_options(saving_zarr)
-                        )
+                        fused_image = fusion.fuse(msims, fusion_func=fuse_func, transform_key=transform_key,
+                                                  output_stack_properties=output_stack_properties,
+                                                  output_chunksize=output_chunksize)
             else:
                 # 'compose' mode: no actual fusion, just return the per-source msims as-is
                 fused_image = msims

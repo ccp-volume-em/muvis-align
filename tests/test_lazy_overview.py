@@ -8,7 +8,8 @@ from dask.callbacks import Callback
 import tifffile
 from multiview_stitcher import msi_utils
 
-from muvis_align.image.lazy_overview import lazy_section_overview, _coarsest_level_within, _contrast_limits, MsimLevels
+from muvis_align.image.lazy_overview import lazy_section_overview, _contrast_limits, MsimLevels
+from muvis_align.image.util import coarsest_level_within
 from muvis_align.MVSRegistration import MVSRegistration
 
 # z_y_x in the file name: z the section, y/x the tile in 64-pixel steps (1um pixels)
@@ -150,9 +151,9 @@ def test_the_plane_takes_the_preview_scale_as_a_factor_coarsened_to_fit_its_byte
 def test_each_source_is_read_at_its_coarsest_level_no_coarser_than_the_plane():
     source = SimpleNamespace(pixel_sizes=[{'y': 1, 'x': 1}, {'y': 2, 'x': 2}, {'y': 4, 'x': 4}])
 
-    assert _coarsest_level_within(source, {'y': 3, 'x': 3}) == 1
-    assert _coarsest_level_within(source, {'y': 4, 'x': 4}) == 2
-    assert _coarsest_level_within(source, {'y': 0.5, 'x': 0.5}) == 0
+    assert coarsest_level_within(source.pixel_sizes, {'y': 3, 'x': 3}) == 1
+    assert coarsest_level_within(source.pixel_sizes, {'y': 4, 'x': 4}) == 2
+    assert coarsest_level_within(source.pixel_sizes, {'y': 0.5, 'x': 0.5}) == 0
 
 
 def test_readers_give_the_pixels_at_the_sources_place_and_a_missing_one_is_left_empty(tmp_path):

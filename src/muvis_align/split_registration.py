@@ -14,8 +14,8 @@ from multiview_stitcher.registration import compute_pairwise_registrations
 from scipy.ndimage import gaussian_filter
 
 from muvis_align.constants import default_split_binning, split_grid_margin, split_smoothing
-from muvis_align.image.util import (build_view_adjacency_graph, restore_msims_transform, set_msim_affine,
-                                    snapshot_msims_transform)
+from muvis_align.image.util import (build_view_adjacency_graph, coarsest_level_within, msim_level_spacings,
+                                    restore_msims_transform, set_msim_affine, snapshot_msims_transform)
 from muvis_align.util import raise_if_cancelled
 
 SPLIT = 'split'
@@ -49,12 +49,8 @@ def within_group_pairs(pairs, groups):
 
 def _level_sim(msim, spacing):
     """The msim's coarsest level no coarser than `spacing` - fusing from it resamples least."""
-    chosen = None
-    for scale_key in msi_utils.get_sorted_scale_keys(msim):
-        sim = msi_utils.get_sim_from_msim(msim, scale=scale_key)
-        if chosen is None or max(si_utils.get_spacing_from_sim(sim).values()) <= spacing:
-            chosen = sim
-    return chosen
+    level = coarsest_level_within(msim_level_spacings(msim), {'y': spacing, 'x': spacing})
+    return msi_utils.get_sim_from_msim(msim, scale=f'scale{level}')
 
 
 def smooth_group(data, spacing, tile_size):

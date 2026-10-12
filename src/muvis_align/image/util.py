@@ -343,6 +343,22 @@ def build_source_redimensioned_msim(source, output_order, chunk_size=default_chu
     return DataTree.from_dict(datasets)
 
 
+def coarsest_level_within(pixel_sizes, spacing, dims='yx', tolerance=1e-6):
+    """The index of the coarsest of `pixel_sizes` (one a level, finest first) no coarser than `spacing` in `dims`,
+    else 0; the tolerance keeps a level computed as exactly the spacing from losing to rounding."""
+    best = 0
+    for level, pixel_size in enumerate(pixel_sizes):
+        if all(pixel_size.get(dim, 0) <= spacing[dim] * (1 + tolerance) for dim in dims if dim in spacing):
+            best = level
+    return best
+
+
+def msim_level_spacings(msim):
+    """Each level's pixel size, read off its coordinates without building a sim."""
+    return [si_utils.get_spacing_from_sim(msim[scale_key].ds['image'])
+            for scale_key in msi_utils.get_sorted_scale_keys(msim)]
+
+
 def complete_translation(translation):
     """A copy of `translation` with x and y at 0 where missing, if any dim is given: si_utils takes all or none."""
     translation = dict(translation or {})

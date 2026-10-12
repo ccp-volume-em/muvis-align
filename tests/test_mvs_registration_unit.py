@@ -766,23 +766,27 @@ def test_a_cancel_stops_building_sources_without_building_the_rest():
 
 # an output smaller than one chunk made dask warn of an unsafe zarr write
 @pytest.mark.filterwarnings('error:The input Dask array will be rechunked')
-def test_export_fusion_by_z_slabs_writes_what_one_fusion_of_all_sources_does(tmp_path):
-    """Each z-slab of blocks fused from only the sources reaching it, every pyramid level identical."""
-    import glob
+def test_a_set_spacing_export_fuses_level_0_from_reaching_sources_and_averages_the_levels_below(tmp_path):
+    """Level 0 as one fusion of all sources gives it, each block from only the sources reaching it; every level after
+    the 2x2 average of the one above, a section stack's z never averaged."""
     from multiview_stitcher import msi_utils
-    from muvis_align.MVSRegistration import MVSRegistration
 
     reg = prepared_registration(ALL_TILES, tmp_path, preprocess=False)
-    fused = {}
-    for by_slabs in (False, True):
-        reg.fuse_by_z_slabs = by_slabs
-        fused[by_slabs], saved = reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key,
-                                          output_spacing='mean', output_filename=f'fused_{by_slabs}', ome_version='0.5')
-        assert saved
+    exported, saved = reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key,
+                               output_spacing='mean', output_filename='fused', ome_version='0.5')
+    in_memory, _ = reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key,
+                            output_spacing='mean')
 
-    for level in msi_utils.get_sorted_scale_keys(fused[False]):
-        assert np.array_equal(np.asarray(msi_utils.get_sim_from_msim(fused[False], scale=level).data),
-                              np.asarray(msi_utils.get_sim_from_msim(fused[True], scale=level).data))
+    assert saved
+    levels = [np.asarray(msi_utils.get_sim_from_msim(exported, scale=key).data)
+              for key in msi_utils.get_sorted_scale_keys(exported)]
+    assert len(levels) > 1
+    assert np.array_equal(levels[0], np.asarray(msi_utils.get_sim_from_msim(in_memory, scale='scale0').data))
+    for finer, coarser in zip(levels, levels[1:]):
+        assert coarser.shape[:-2] == finer.shape[:-2]
+        height, width = coarser.shape[-2:]
+        grouped = finer[..., :height * 2, :width * 2].reshape(finer.shape[:-2] + (height, 2, width, 2))
+        assert np.array_equal(coarser, grouped.mean(axis=(-3, -1)).astype(finer.dtype))
 
 
 def test_the_middle_section_is_the_middle_folders_files_registered_as_the_whole_labels_them(tmp_path):
@@ -821,14 +825,15 @@ def test_the_middle_section_is_found_by_the_labelled_section_number_else_the_fol
     assert reg.middle_section_indices() == expected
 
 
-def test_ome_zarr_06_is_refused_before_fusing_other_than_natively(tmp_path):
-    import pytest
+def test_ome_zarr_06_is_written_for_a_set_spacing_too(tmp_path):
+    import json
     reg = prepared_registration(S000_TILES, tmp_path, preprocess=False)
 
-    with pytest.raises(ValueError, match="'native' output spacing only"):
-        reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key, output_spacing='mean',
-                 output_filename='fused', ome_version='0.6')
-    assert not glob.glob(tmp_path.as_posix() + '/fused*')
+    reg.fuse(reg.msims, fusion_method='average', transform_key=reg.source_transform_key, output_spacing='mean',
+             output_filename='fused', ome_version='0.6')
+
+    group = json.load(open(glob.glob(tmp_path.as_posix() + '/fused*/zarr.json')[0]))
+    assert group['attributes']['ome']['version'] == '0.6'
 
 
 def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):
