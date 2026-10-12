@@ -17,18 +17,8 @@ from multiview_stitcher import msi_utils, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
-from muvis_align.image.util import coarsest_level_within, msim_level_spacings
+from muvis_align.image.util import coarsest_level_within, msim_level_spacings, sim_views
 from muvis_align.util import print_significants
-
-
-def sim_views(sims, transform_key):
-    """(stack properties, affine matrix) of each sim, the affine at the first time point as fuse() asks it."""
-    views = []
-    for sim in sims:
-        param = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
-        views.append((si_utils.get_stack_properties_from_sim(sim),
-                      np.asarray(param.isel(t=0) if 't' in param.dims else param, dtype=float)))
-    return views
 
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):

@@ -1472,18 +1472,23 @@ def promoted_geometry(item, transform_key, z_position):
     return {'shape': shape, 'spacing': spacing, 'origin': origin}, widened_affine_matrix(affine)
 
 
+def sim_views(sims, transform_key):
+    """(stack properties, affine matrix) of each sim, the affine at the first time point as fuse() asks it."""
+    views = []
+    for sim in sims:
+        param = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+        views.append((si_utils.get_stack_properties_from_sim(sim),
+                      np.asarray(param.isel(t=0) if 't' in param.dims else param, dtype=float)))
+    return views
+
+
 def calc_output_properties(items, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
     # sims or msims, reading only their scale0 geometry. z_positions: sources at several heights, not promoted to
     # 3D - taken as make_msims_3d() would make them (see promoted_geometry), with the same result
     if z_positions is not None:
         views = [promoted_geometry(item, transform_key, z) for item, z in zip(items, z_positions)]
     else:
-        views = []
-        for item in items:
-            sim = msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-            affine = si_utils.get_affine_from_sim(sim, transform_key)
-            views.append((si_utils.get_stack_properties_from_sim(sim),
-                          np.asarray(affine.sel(t=0) if 't' in affine.dims else affine, dtype=float)))
+        views = sim_views(sims_from_sims_or_msims(items), transform_key)
     return calc_output_properties_from_views(views, output_spacing_method=output_spacing_method, z_scale=z_scale)
 
 
