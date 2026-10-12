@@ -6,6 +6,7 @@ input_output:
   source_scale_y: '0.004'
   source_scale_x: '0.004'
   source_rotation: source
+  normalise_rotated_positions: false
   preview_scale: 16
   coordinate_system: source_metadata
   metadata_table: []
@@ -21,7 +22,7 @@ input_output:
   preview_images: true
   input_path: ../../../../Project/slides/12193/data/*/*.tiff
 pre_processing:
-  scale: 8
+  scale: '8'
   flatfield_quantiles: ''
   normalisation: none
   filter_foreground: false
@@ -35,16 +36,18 @@ registration:
   inlier_threshold_factor: 0.05
   max_trials: 1000
   ransac_iterations: 3
+  split_binning: 8
   metrics_table: []
+  groupwise_resolution_method: robust_linear
   channel: channel 0
-  reg_preview_image1: S000_000_000
-  reg_preview_image2: S001_000_000
+  reg_preview_image1: S002_002_006
+  reg_preview_image2: S002_003_006
   preview_registration: false
   pair_registration: false
   modify_pair_registration: false
 fusion:
   method: average
-  spacing: mean
+  spacing: native
   tile_size: ''
   ome_version: '0.5'
   preview_fusion: false

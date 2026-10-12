@@ -37,8 +37,7 @@ from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
-from muvis_align.fusion_slabs import fuse_native_levels_to_ome_zarr, fuse_to_zarr_by_z_slabs, level_blocks, \
-    native_levels, written_voxels
+from muvis_align.fusion_slabs import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
@@ -182,12 +181,6 @@ class MVSRegistration:
         return bool(params.get('flatfield_quantiles') or params.get('filter_foreground')
                     or normalisation_enabled(params.get('normalisation')))
 
-    @staticmethod
-    def progress_phase(progress_factory, total=None, desc=None, weight=1):
-        """One reporting phase of the caller's operation, or nothing to report into."""
-        return (progress_factory(total=total, desc=desc, weight=weight) if progress_factory is not None
-                else nullcontext(None))
-
     def ensure_msims(self, progress_factory=None, target_scale=None, weight=1, ends_only=False):
         """The lazy build the msims property triggers, callable ahead of time with a
         progress_factory - lets a caller about to force this (e.g. run_pre_processing()) show
@@ -243,61 +236,19 @@ class MVSRegistration:
         return self._msims is None
 
     def _build_msims(self, progress_factory=None, from_levels=None, store=True, weight=1, ends_only=False):
-        progress_context = (
-            progress_factory(total=len(self.sources), desc='Building sources', weight=weight)
-            if progress_factory is not None
-            else nullcontext(None)
-        )
-        # Where each source's pixel data is first opened: sources defer that read until
-        # something wants pixel-shaped data. On a network filesystem it is 128-200ms per source,
-        # the largest non-fusion phase of a large project when run serially (10-16 minutes for
-        # ~4700), and the same read init_sources() already overlaps across its own pool - so
-        # without one here, deferring the read only moves an I/O-bound phase into a serial one.
-        #
-        # Threads, not processes: each source's caches belong to that source alone, so no two
-        # workers touch the same state. On a local SSD the read is warm and the GIL-bound xarray
-        # half dominates (0.9-1.0x); the win is where the read actually costs something.
-        nsources = len(self.sources)
-        msims = [None] * nsources
-        # list.append is atomic under the GIL, so plain appends from worker threads need no lock.
-        # Both wall and CPU time per source: with several workers a task's wall time also counts
-        # the time it spent waiting for the GIL, so it inflates roughly in proportion to the
-        # worker count whether or not anything was actually overlapped - see the log below
-        source_times = []
-        source_cpu_times = []
-        phase_start, phase_cpu_start = time.time(), time.process_time()
-        max_workers = 1
-
+        # where each source's pixels are first opened: a network filesystem's read is worth overlapping, in threads as
+        # each source's caches are its own
         def build_msim(index):
-            source_start, cpu_start = time.time(), time.thread_time()
-            msim = build_source_msim(self.sources[index], self._msim_output_order,
-                                     self.positions[index], self._msim_transforms[index],
-                                     self.source_transform_key, z_scale=self._msim_z_scale,
-                                     from_level=from_levels[index] if from_levels else 0,
+            return build_source_msim(self.sources[index], self._msim_output_order, self.positions[index],
+                                     self._msim_transforms[index], self.source_transform_key,
+                                     z_scale=self._msim_z_scale, from_level=from_levels[index] if from_levels else 0,
                                      ends_only=ends_only)
-            source_times.append(time.time() - source_start)
-            source_cpu_times.append(time.thread_time() - cpu_start)
-            return msim
 
-        with progress_context as pbar:
-            if nsources > 1:
-                max_workers = min(default_msim_build_workers, nsources)
-                # rolling: a cancel (raised by pbar.update) must not wait for every source already submitted.
-                # Collected by index, so msims stays in source order however the builds complete
-                for index, msim in rolling_map(build_msim, range(nsources), max_workers):
-                    msims[index] = msim
-                    if pbar is not None:
-                        pbar.update(1)
-            elif nsources:
-                msims[0] = build_msim(0)
-                if pbar is not None:
-                    pbar.update(1)
+        msims = pooled_map(build_msim, len(self.sources), default_msim_build_workers, progress_factory,
+                           desc='Building sources', weight=weight,
+                           timing_label='Build msims' if self.logging_time else None)
         if store:
             self._msims = msims
-        if self.logging_time and source_times:
-            logging.info(f'Build msims: {len(source_times)} sources'
-                         f' {format_phase_timing(time.time() - phase_start, source_times, source_cpu_times,
-                                                 max_workers, time.process_time() - phase_cpu_start)}')
         return msims
 
     def reset(self):
@@ -316,7 +267,6 @@ class MVSRegistration:
         self.sources = []
         self.metrics = {}
         self.group_pairs = {}
-        self.fuse_by_z_slabs = True
         self.register_indices = None
         # per source index: the registration's correction on top of the source transform; absent means identity
         self.mappings = None
@@ -659,39 +609,12 @@ class MVSRegistration:
         return section
 
     def init_sources(self, progress_factory=None):
-        nfiles = len(self.filenames)
-        self.sources = [None] * nfiles
-        progress_context = (
-            progress_factory(total=nfiles, desc='Initialising sources')
-            if progress_factory is not None
-            else nullcontext(None)
-        )
-        with progress_context as pbar:
-            # per-file wall and CPU durations, only to log where the time goes (see format_phase_timing)
-            file_times = []
-            file_cpu_times = []
+        def build_source(index):
+            return create_image_source(self.filenames[index], self.source_metadata, file_label=self.file_labels[index],
+                                       index=index, transform_key=self.source_transform_key)
 
-            def build_source(index):
-                start, cpu_start = time.time(), time.thread_time()
-                source = create_image_source(self.filenames[index], self.source_metadata,
-                                             file_label=self.file_labels[index], index=index,
-                                             transform_key=self.source_transform_key)
-                file_times.append(time.time() - start)
-                file_cpu_times.append(time.thread_time() - cpu_start)
-                return source
-
-            phase_start, phase_cpu_start = time.time(), time.process_time()
-            max_workers = min(default_source_init_workers, nfiles)
-            # rolling: a cancel (raised by pbar.update) must not wait for every file already submitted
-            for index, source in rolling_map(build_source, range(nfiles), max_workers):
-                self.sources[index] = source
-                if pbar is not None:
-                    pbar.update(1)
-
-        if self.logging_time and file_times:
-            logging.info(f'Init sources: {len(file_times)} files'
-                         f' {format_phase_timing(time.time() - phase_start, file_times, file_cpu_times,
-                                                 max_workers, time.process_time() - phase_cpu_start)}')
+        self.sources = pooled_map(build_source, len(self.filenames), default_source_init_workers, progress_factory,
+                                  desc='Initialising sources', timing_label='Init sources' if self.logging_time else None)
 
     def init_data(self, source_metadata={}, extra_metadata={}, target_scale=None, store=True,
                   progress_factory=None):
@@ -940,11 +863,7 @@ class MVSRegistration:
             # neither of the two steps left is per-source-divisible (a whole-set redimension and
             # one graph build over every pair), but together they are seconds to tens of seconds
             # for a few hundred sources - count them rather than letting them run silently
-            progress_context = (
-                progress_factory(total=2, desc='Loading pair registration')
-                if progress_factory is not None
-                else nullcontext(None)
-            )
+            progress_context = progress_phase(progress_factory, total=2, desc='Loading pair registration')
             with progress_context as pbar:
                 if not is_3d:
                     self.msims = make_msims_2d(self.msims)
@@ -988,11 +907,8 @@ class MVSRegistration:
                 # needed) - the persistent pyramid needs the same transform a fresh registration
                 # run would have written via register_global, or copy_transforms_to_msims/get_transforms
                 # downstream (Interface.py) won't find it there when resuming from saved state
-                progress_context = (
-                    progress_factory(total=len(self.msims), desc='Loading global registration')
-                    if progress_factory is not None
-                    else nullcontext(None)
-                )
+                progress_context = progress_phase(progress_factory, total=len(self.msims),
+                                                  desc='Loading global registration')
                 self.mappings = {}
                 with progress_context as pbar:
                     for index, (msim, filename) in enumerate(zip(self.msims, self.filenames)):
@@ -1028,8 +944,7 @@ class MVSRegistration:
 
     def validate_overlap(self, items, labels, is_stack=False, expect_large_overlap=False):
         # sims or msims (each msim's scale0 sim is used) - only position/size metadata is ever read here
-        sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-               for item in items]
+        sims = sims_from_sims_or_msims(items)
         min_dists = []
         has_overlaps = []
         n = len(sims)
@@ -1098,11 +1013,7 @@ class MVSRegistration:
             if pbar is not None:
                 pbar.update(1)
 
-        progress_context = (
-            progress_factory(total=count_progress_steps(), desc='Pre-processing')
-            if progress_factory is not None
-            else nullcontext(None)
-        )
+        progress_context = progress_phase(progress_factory, total=count_progress_steps(), desc='Pre-processing')
 
         with progress_context as pbar:
             modified = False
@@ -1344,11 +1255,7 @@ class MVSRegistration:
 
     def register(self, register_msims=None, register_indices=None, params=None):
         pair_results = self.register_pairs(register_msims=register_msims, register_indices=register_indices, params=params)
-        qualities = {key: metric[default_transform_key][default_quality_key]
-                     for key, metric in pair_results['metrics']['pairs'].items()
-                     if default_quality_key in metric[default_transform_key]}
-        bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
-        self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
+        self.save_pair_results(pair_results['pair_mappings'], metrics=pair_results['metrics'])
         results = self.register_global(self.pair_msims, register_indices=register_indices, params=params)
         self.save_group_pair_mappings()
         self.save_mappings(results['mappings'])
@@ -1531,7 +1438,7 @@ class MVSRegistration:
                 phase_start, phase_cpu_start = time.time(), time.process_time()
                 # one pair per thread, each its own compute: a slow pair no longer holds up a batch. A lone
                 # thread keeps the threads scheduler, so a single (e.g. 3D) pair still runs its tasks in parallel.
-                with self.progress_phase(progress_factory, total=g_reg.number_of_edges(),
+                with progress_phase(progress_factory, total=g_reg.number_of_edges(),
                                          desc='Registering pairs') as pbar, \
                         Timer(f'register {g_reg.number_of_edges()} pairs on {workers}'
                               f' {"processes" if pool is not None else "threads"}', verbose=self.logging_time), \
@@ -1635,7 +1542,7 @@ class MVSRegistration:
         resolution_method = ROBUST_LINEAR if transform_type in ('translation', 'rigid') else 'global_optimization'
         binning = params.get('split_binning')
         binning = max(int(float(binning)), 1) if is_valid_value(binning) else default_split_binning
-        with self.progress_phase(progress_factory, total=1, desc='Registering z-planes / channels'), \
+        with progress_phase(progress_factory, total=1, desc='Registering z-planes / channels'), \
                 Timer('split: register groups', verbose=self.logging_time):
             transforms, group_graph = register_groups(
                 pair_msims, transforms, self.split_groups(list(register_indices)), self.source_transform_key,
@@ -1709,7 +1616,7 @@ class MVSRegistration:
             groupwise_resolution_kwargs['reference_view'] = find_reference_view(g_reg_computed)
 
         if groupwise_resolution_method == ROBUST_LINEAR:
-            resolution_progress = self.progress_phase(progress_factory, total=default_robust_rounds,
+            resolution_progress = progress_phase(progress_factory, total=default_robust_rounds,
                                                       desc='Global registration', weight=4)
         else:
             # global_optimization has nothing to report into a phase: GlobalOptProgress follows its log instead
@@ -1732,7 +1639,7 @@ class MVSRegistration:
                                                      progress_factory=progress_factory)
 
         # the stages below are the last 20 minutes of an 86-minute run, and reported nothing
-        with self.progress_phase(progress_factory, total=len(pair_msims),
+        with progress_phase(progress_factory, total=len(pair_msims),
                                  desc='Applying transforms') as pbar, \
                 Timer('apply registered transforms', verbose=self.logging_time):
             for imsim, msim in enumerate(pair_msims):
@@ -1746,7 +1653,7 @@ class MVSRegistration:
                     pbar.update(1)
 
         if plot_summary:
-            with self.progress_phase(progress_factory, total=1, desc='Registration summary'), \
+            with progress_phase(progress_factory, total=1, desc='Registration summary'), \
                     Timer('plot registration summaries', verbose=self.logging_time):
                 plot_info = _plot_registration_summaries(
                     pair_msims,
@@ -1789,7 +1696,7 @@ class MVSRegistration:
         # copy transforms from the registration-stage msims onto self.msims (the persistent,
         # full per-source pyramid) - msim -> msim, writes the same affine onto every scale,
         # no sim round-trip needed
-        with self.progress_phase(progress_factory, total=len(pair_msims),
+        with progress_phase(progress_factory, total=len(pair_msims),
                                  desc='Storing transforms') as pbar, \
                 Timer('store transforms on sources', verbose=self.logging_time):
             for reg_msim, index in zip(pair_msims, register_indices):
@@ -1907,7 +1814,7 @@ class MVSRegistration:
                              tile_size=None, extra_metadata=None):
         """Uncompressed bytes per level of the OME-Zarr fuse() would write, from source geometry alone (no msims):
         {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}, or None for an export fuse() does not write.
-        Native fusion writes only the blocks some source reaches - exactly these; other spacings are dense."""
+        Only the blocks some source reaches are written - exactly these."""
         if extra_metadata is None:
             extra_metadata = self.extra_metadata
         if not self.sources or not self.fuses_to_zarr(fusion_method, dimension, extra_metadata):
@@ -1953,31 +1860,22 @@ class MVSRegistration:
         views0 = [(stack(index, 0), matrix) for index, matrix in enumerate(matrices)]
         level0 = calc_output_properties_from_views(views0, output_spacing_method=spacing_method, z_scale=z_scale)
         levels = []
-        if is_native:
-            source_spacings = [min(view[0]['spacing'][dim] for dim in 'yx') for view in views0]
-            scaled_dims = ['y', 'x'] + (['z'] if views0[0][0]['shape'].get('z', 1) > 1 else [])
-            chunksize = self._export_chunksize(dtype, level0, [view[0] for view in views0], num_z_positions,
-                                               tile_size)
-            for level_spacing, properties, selected in native_levels(source_spacings, level0, scaled_dims):
-                output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
-                views = []
-                for index in selected:
-                    # as msi_utils.get_res_level_from_spacing: the coarsest source level no coarser than the output
-                    level = 0
-                    while (level + 1 < len(self.sources[index].shapes)
-                           and all(stack(index, level + 1)['spacing'][dim] <= spacing
-                                   for dim, spacing in output_properties['spacing'].items())):
-                        level += 1
-                    views.append((stack(index, level), matrices[index]))
-                chunk, groups = level_blocks(views, output_properties, chunksize)
-                levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],
-                               'bytes': written_voxels(groups, output_properties, chunk) * voxel_bytes})
-        else:
-            shapes, _, _ = msi_utils.calc_resolution_levels(level0['shape'])
-            for shape in shapes:
-                factor = level0['shape']['x'] / shape['x']
-                levels.append({'spacing': float(level0['spacing']['x'] * factor), 'shape': shape,
-                               'bytes': int(np.prod(list(shape.values()))) * voxel_bytes})
+        source_spacings = [min(view[0]['spacing'][dim] for dim in 'yx') for view in views0]
+        scaled_dims = ['y', 'x'] + (['z'] if views0[0][0]['shape'].get('z', 1) > 1 else [])
+        chunksize = self._export_chunksize(dtype, level0, [view[0] for view in views0], num_z_positions, tile_size)
+        for level_spacing, properties, selected in export_levels(source_spacings, level0, scaled_dims,
+                                                                 native=is_native):
+            output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
+            views = []
+            for index in selected:
+                # as fusion picks it (fuse_levels_to_ome_zarr)
+                level = coarsest_level_within([stack(index, level)['spacing'] for level in range(len(
+                    self.sources[index].shapes))], output_properties['spacing'],
+                    dims=list(output_properties['spacing']), tolerance=0)
+                views.append((stack(index, level), matrices[index]))
+            chunk, groups = level_blocks(views, output_properties, chunksize)
+            levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],
+                           'bytes': written_voxels(groups, output_properties, chunk) * voxel_bytes})
         return {'levels': levels, 'bytes': sum(level['bytes'] for level in levels), 'native': is_native}
 
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
@@ -1999,8 +1897,9 @@ class MVSRegistration:
         level then has as many chunks (and dask graph tasks) in z as there are z-slices, even
         once a level's XY extent has been downsampled to a handful of pixels.
 
-        output_spacing None or 'native', written to a file: every level at its own pixel size, from the sources at
-        least that fine (see fuse_native_levels_to_ome_zarr) - not in memory, where it stays 'mean'.
+        Written to a file, every level is fused from the sources (fusion_slabs.export_levels): with output_spacing
+        None or 'native' each at its own pixel size from the sources at least that fine, else doubling from the set
+        spacing. In memory, 'native' stays 'mean'.
         """
         logging.info('Fusion...')
         if output_filename is not None:
@@ -2032,11 +1931,6 @@ class MVSRegistration:
 
         is_native, output_spacing = self._output_spacing_method(
             output_spacing, output_filename is not None and not is_channel_overlay)
-        if (output_filename is not None and not is_native and not is_channel_overlay
-                and str(ome_version).startswith('0.6')):
-            # before any work: multiview_stitcher's writer, which writes every other spacing, knows 0.4 and 0.5 only
-            raise ValueError("OME-Zarr 0.6 is written with 'native' output spacing only; choose 0.5 for "
-                             f"'{output_spacing}'")
         with Timer('fusion: output properties', verbose=self.logging_time):
             output_stack_properties = calc_output_properties(msims, transform_key,
                                                              output_spacing_method=output_spacing, z_scale=z_scale)
@@ -2112,7 +2006,7 @@ class MVSRegistration:
                 if saving_zarr:
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
-                    zarr_options = {'ome_zarr': saving_zarr, 'ngff_version': ome_version}
+                    zarr_options = {'ngff_version': ome_version}
                 else:
                     zarr_options = None
                 with dask.config.set(scheduler='threads'), warnings.catch_warnings():
@@ -2120,36 +2014,37 @@ class MVSRegistration:
                     # the array ends in. Set here, as a napari worker puts 'always' ahead of any module-level filter
                     warnings.filterwarnings('ignore', message='The input Dask array will be rechunked',
                                             category=PerformanceWarning)
-                    if saving_zarr and is_native:
+                    if saving_zarr:
                         source_spacings = [min(si_utils.get_spacing_from_sim(get_msim_image0(msim))[dim]
                                                for dim in 'yx') for msim in msims]
                         # a section stack keeps every section at every level; a volume is scaled in z too
                         scaled_dims = ['y', 'x'] + (['z'] if get_msim_image0(msims[0]).sizes.get('z', 1) > 1 else [])
-                        fused_image = fuse_native_levels_to_ome_zarr(
-                            msims, source_spacings, output_filename, transform_key, output_stack_properties,
-                            output_chunksize, scaled_dims, fusion_func=fuse_func, zarr_options=zarr_options,
-                            batch_options=self._fusion_batch_options(saving_zarr))
-                    elif saving_zarr and self.fuse_by_z_slabs and num_z_positions > 1 and 'z' in output_chunksize:
-                        # a stack's block reaches only the z-planes at its depth: fused from all, it costs as many
-                        fused_image = fuse_to_zarr_by_z_slabs(
-                            msims, output_filename, transform_key, output_stack_properties, output_chunksize,
+                        levels = export_levels(source_spacings, output_stack_properties, scaled_dims, native=is_native)
+                        # native: tiles over the overview, where a finer source covers a pixel the coarser one under it
+                        # is left out, each level from the sources it has; a set spacing averages them as one, and
+                        # every level has all of them, so averaging the level above gives it
+                        fused_image = fuse_levels_to_ome_zarr(
+                            msims, levels, output_filename, transform_key, output_stack_properties, output_chunksize,
                             fusion_func=fuse_func, zarr_options=zarr_options,
-                            batch_options=self._fusion_batch_options(saving_zarr))
+                            batch_options=self._fusion_batch_options(saving_zarr),
+                            ranks=source_spacings if is_native else None, average_levels=not is_native)
                     else:
-                        fused_image = fusion.fuse(
-                            msims,
-                            fusion_func=fuse_func,
-                            transform_key=transform_key,
-                            output_stack_properties=output_stack_properties,
-                            output_zarr_url=output_filename,
-                            zarr_options=zarr_options,
-                            output_chunksize=output_chunksize,
-                            batch_options=self._fusion_batch_options(saving_zarr)
-                        )
+                        fused_image = fusion.fuse(msims, fusion_func=fuse_func, transform_key=transform_key,
+                                                  output_stack_properties=output_stack_properties,
+                                                  output_chunksize=output_chunksize)
             else:
                 # 'compose' mode: no actual fusion, just return the per-source msims as-is
                 fused_image = msims
         return fused_image, saving_zarr
+
+    def save_pair_results(self, pair_mappings, metrics=None, qualities=None):
+        """The pair mappings file, each pair with its quality (from `metrics` unless given) and its pairs graph bbox."""
+        if qualities is None:
+            qualities = {key: metric[default_transform_key][default_quality_key]
+                         for key, metric in metrics['pairs'].items() if default_quality_key in metric[default_transform_key]}
+        bboxes = {key: np.array(value.sel(t=0) if 't' in value.dims else value).tolist()
+                  for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
+        self.save_pair_mappings(pair_mappings, qualities, bboxes)
 
     def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)

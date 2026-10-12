@@ -15,8 +15,8 @@ from multiview_stitcher.registration import _get_overlap_bboxes, sims_to_intrins
     get_affine_from_intrinsic_affine
 from scipy.spatial import ConvexHull
 from skimage.filters import gaussian
-from skimage.feature import blob_log, plot_matched_features
-from skimage.transform import downscale_local_mean, resize
+from skimage.feature import blob_log
+from skimage.transform import resize
 import xarray as xr
 from xarray import DataTree
 
@@ -31,9 +31,7 @@ except Exception as e:
 
 from muvis_align.constants import (default_chunk_size, default_contrast_limits_max_tasks,
                                    default_export_chunk_size, default_export_fusion_chunk_bytes,
-                                   default_fusion_chunk_bytes, default_overview_max_bytes,
-                                   default_preview_max_bytes,
-                                   fusion_stack_arrays)
+                                   default_fusion_chunk_bytes, default_preview_max_bytes, fusion_stack_arrays)
 from muvis_align.util import *
 
 
@@ -50,15 +48,6 @@ def show_image(image, title='', cmap=None):
 def plt_close():
     plt.close()
 
-
-def grayscale_image(image):
-    nchannels = image.shape[2] if len(image.shape) > 2 else 1
-    if nchannels == 4:
-        return cv.cvtColor(image, cv.COLOR_RGBA2GRAY)
-    elif nchannels > 1:
-        return cv.cvtColor(image, cv.COLOR_RGB2GRAY)
-    else:
-        return image
 
 
 def _adapt_transform_to_image_dims(sim, transform, transform_key):
@@ -343,6 +332,22 @@ def build_source_redimensioned_msim(source, output_order, chunk_size=default_chu
         image = rechunk_if_monolithic(image, chunk_size)
         datasets[f'scale{level}'] = xr.Dataset({'image': image})
     return DataTree.from_dict(datasets)
+
+
+def coarsest_level_within(pixel_sizes, spacing, dims='yx', tolerance=1e-6):
+    """The index of the coarsest of `pixel_sizes` (one a level, finest first) no coarser than `spacing` in `dims`,
+    else 0; the tolerance keeps a level computed as exactly the spacing from losing to rounding."""
+    best = 0
+    for level, pixel_size in enumerate(pixel_sizes):
+        if all(pixel_size.get(dim, 0) <= spacing[dim] * (1 + tolerance) for dim in dims if dim in spacing):
+            best = level
+    return best
+
+
+def msim_level_spacings(msim):
+    """Each level's pixel size, read off its coordinates without building a sim."""
+    return [si_utils.get_spacing_from_sim(msim[scale_key].ds['image'])
+            for scale_key in msi_utils.get_sorted_scale_keys(msim)]
 
 
 def complete_translation(translation):
@@ -832,62 +837,6 @@ def get_numpy_slicing(dimension_order, **slicing):
     return tuple(slices)
 
 
-def get_image_size_info(sizes_xyzct: list, pixel_nbytes: int, pixel_type: np.dtype, channels: list) -> str:
-    image_size_info = 'XYZCT:'
-    size = 0
-    for i, size_xyzct in enumerate(sizes_xyzct):
-        w, h, zs, cs, ts = size_xyzct
-        size += np.int64(pixel_nbytes) * w * h * zs * cs * ts
-        if i > 0:
-            image_size_info += ','
-        image_size_info += f' {w} {h} {zs} {cs} {ts}'
-    image_size_info += f' Pixel type: {pixel_type} Uncompressed: {print_hbytes(size)}'
-    if sizes_xyzct[0][3] == 3:
-        channel_info = 'rgb'
-    else:
-        channel_info = ','.join([channel.get('Name', '') for channel in channels])
-    if channel_info != '':
-        image_size_info += f' Channels: {channel_info}'
-    return image_size_info
-
-
-def pilmode_to_pixelinfo(mode: str) -> tuple:
-    pixelinfo = (np.uint8, 8, 1)
-    mode_types = {
-        'I': (np.uint32, 32, 1),
-        'F': (np.float32, 32, 1),
-        'RGB': (np.uint8, 24, 3),
-        'RGBA': (np.uint8, 32, 4),
-        'CMYK': (np.uint8, 32, 4),
-        'YCbCr': (np.uint8, 24, 3),
-        'LAB': (np.uint8, 24, 3),
-        'HSV': (np.uint8, 24, 3),
-    }
-    if '16' in mode:
-        pixelinfo = (np.uint16, 16, 1)
-    elif '32' in mode:
-        pixelinfo = (np.uint32, 32, 1)
-    elif mode in mode_types:
-        pixelinfo = mode_types[mode]
-    pixelinfo = (np.dtype(pixelinfo[0]), pixelinfo[1])
-    return pixelinfo
-
-
-def calc_pyramid(xyzct: tuple, npyramid_add: int = 0, pyramid_downsample: float = 2,
-                 volumetric_resize: bool = False) -> list:
-    x, y, z, c, t = xyzct
-    if volumetric_resize and z > 1:
-        size = (x, y, z)
-    else:
-        size = (x, y)
-    sizes_add = []
-    scale = 1
-    for _ in range(npyramid_add):
-        scale /= pyramid_downsample
-        scaled_size = np.maximum(np.round(np.multiply(size, scale)).astype(int), 1)
-        sizes_add.append(scaled_size)
-    return sizes_add
-
 
 def get_level_from_scale(source, target_scale=1):
     # Only downscaling. A factor, possibly as text ('2'), or a pixel size with its unit ('10um')
@@ -955,52 +904,6 @@ def resize_image(image, new_size):
     return cv.resize(image, new_size)
 
 
-def image_resize(image: np.ndarray, target_size0: tuple, dimension_order: str = 'yxc') -> np.ndarray:
-    shape = image.shape
-    x_index = dimension_order.index('x')
-    y_index = dimension_order.index('y')
-    c_is_at_end = ('c' in dimension_order and dimension_order.endswith('c'))
-    size = shape[x_index], shape[y_index]
-    if np.mean(np.divide(size, target_size0)) < 1:
-        interpolation = cv.INTER_CUBIC
-    else:
-        interpolation = cv.INTER_AREA
-    dtype0 = image.dtype
-    image = ensure_unsigned_image(image)
-    target_size = tuple(np.maximum(np.round(target_size0).astype(int), 1))
-    if dimension_order in ['yxc', 'yx']:
-        new_image = cv.resize(np.asarray(image), target_size, interpolation=interpolation)
-    elif dimension_order == 'cyx':
-        new_image = np.moveaxis(image, 0, -1)
-        new_image = cv.resize(np.asarray(new_image), target_size, interpolation=interpolation)
-        new_image = np.moveaxis(new_image, -1, 0)
-    else:
-        ts = image.shape[dimension_order.index('t')] if 't' in dimension_order else 1
-        zs = image.shape[dimension_order.index('z')] if 'z' in dimension_order else 1
-        target_shape = list(image.shape).copy()
-        target_shape[x_index] = target_size[0]
-        target_shape[y_index] = target_size[1]
-        new_image = np.zeros(target_shape, dtype=image.dtype)
-        for t in range(ts):
-            for z in range(zs):
-                slices = get_numpy_slicing(dimension_order, z=z, t=t)
-                image1 = image[slices]
-                if not c_is_at_end:
-                    image1 = np.moveaxis(image1, 0, -1)
-                new_image1 = np.atleast_3d(cv.resize(np.asarray(image1), target_size, interpolation=interpolation))
-                if not c_is_at_end:
-                    new_image1 = np.moveaxis(new_image1, -1, 0)
-                new_image[slices] = new_image1
-    new_image = convert_image_sign_type(new_image, dtype0)
-    return new_image
-
-
-def precise_resize(image: np.ndarray, factors) -> np.ndarray:
-    if image.ndim > len(factors):
-        factors = list(factors) + [1]
-    new_image = downscale_local_mean(np.asarray(image), tuple(factors)).astype(image.dtype)
-    return new_image
-
 
 def draw_keypoints(image, points, color=(255, 0, 0)):
     out_image = color_image(float2int_image(image))
@@ -1009,66 +912,6 @@ def draw_keypoints(image, points, color=(255, 0, 0)):
         cv.drawMarker(out_image, tuple(point), color=color, markerType=cv.MARKER_CROSS, markerSize=5, thickness=1)
     return out_image
 
-
-def draw_keypoints_matches_cv(image1, points1, image2, points2, matches=None, inliers=None,
-                              color=(255, 0, 0), inlier_color=(0, 255, 0), radius = 15, thickness = 2):
-    # based on https://gist.github.com/woolpeeker/d7e1821e1b5c556b32aafe10b7a1b7e8
-    image1 = uint8_image(image1)
-    image2 = uint8_image(image2)
-    # We're drawing them side by side.  Get dimensions accordingly.
-    new_shape = (max(image1.shape[0], image2.shape[0]), image1.shape[1] + image2.shape[1], 3)
-    out_image = np.zeros(new_shape, image1.dtype)
-    # Place images onto the new image.
-    out_image[0:image1.shape[0], 0:image1.shape[1]] = color_image(image1)
-    out_image[0:image2.shape[0], image1.shape[1]:image1.shape[1] + image2.shape[1]] = color_image(image2)
-
-    if matches is not None:
-        # Draw lines between matches.  Make sure to offset kp coords in second image appropriately.
-        for index, match in enumerate(matches):
-            if inliers is not None and inliers[index]:
-                line_color = inlier_color
-            else:
-                line_color = color
-            # So the keypoint locs are stored as a tuple of floats.  cv2.line() wants locs as a tuple of ints.
-            end1 = tuple(np.round(points1[match[0]]).astype(int))
-            end2 = tuple(np.round(points2[match[1]]).astype(int) + np.array([image1.shape[1], 0]))
-            cv.line(out_image, end1, end2, line_color, thickness)
-            cv.circle(out_image, end1, radius, line_color, thickness)
-            cv.circle(out_image, end2, radius, line_color, thickness)
-    else:
-        # Draw all points if no matches are provided.
-        for point in points1:
-            point = tuple(np.round(point).astype(int))
-            cv.circle(out_image, point, radius, color, thickness)
-        for point in points2:
-            point = tuple(np.round(point).astype(int) + np.array([image1.shape[1], 0]))
-            cv.circle(out_image, point, radius, color, thickness)
-    return out_image
-
-
-def draw_keypoints_matches_sk(image1, points1, image2, points2, matches=np.array([]),
-                              show_plot=True, output_filename=None):
-    fig, ax = plt.subplots(figsize=(16, 8))
-    shape_y, shape_x = image1.shape[:2]
-    if shape_x > 2 * shape_y:
-        alignment = 'vertical'
-    else:
-        alignment = 'horizontal'
-    plot_matched_features(
-        image1,
-        image2,
-        keypoints0=points1,
-        keypoints1=points2,
-        matches=matches,
-        ax=ax,
-        alignment=alignment,
-        only_matches=True,
-    )
-    plt.tight_layout()
-    if output_filename is not None:
-        plt.savefig(output_filename)
-    if show_plot:
-        plt.show()
 
 
 def draw_keypoints_matches(image1, points1, image2, points2, matches=[], inliers=[],
@@ -1387,10 +1230,6 @@ def calc_images_median(images):
     return median_image
 
 
-def calc_images_quantiles(images, quantiles):
-    quantile_images = [image.astype(np.float32) for image in np.quantile(images, quantiles, 0)]
-    return quantile_images
-
 
 def get_image_quantile(image: np.ndarray, quantile: float, axis=None) -> float:
     # np.asarray() computes a dask-backed image (a no-op for a plain numpy one). Only ever the
@@ -1419,18 +1258,6 @@ def normalise_values(image: np.ndarray, min_value: float=None, max_value: float=
     return image.clip(0, 1)
 
 
-def norm_image_variance(image0, is_3d=False):
-    ncoldims = 4 if is_3d else 3
-    if len(image0.shape) == ncoldims and image0.shape[-1] == 4:
-        image, alpha = image0[..., :3], image0[..., 3]
-    else:
-        image, alpha = image0, None
-    normimage = (image - np.mean(image)) / np.std(image)
-    normimage = normimage.clip(0, 1).astype(np.float32)
-    if alpha is not None:
-        normimage = np.dstack([normimage, alpha])
-    return normimage
-
 
 def norm_image_variance2(image0, is_3d=False):
     ncoldims = 4 if is_3d else 3
@@ -1444,29 +1271,6 @@ def norm_image_variance2(image0, is_3d=False):
         normimage = np.dstack([normimage, alpha])
     return normimage
 
-
-def norm_image_quantiles(image0, quantile=0.99):
-    if len(image0.shape) == 3 and image0.shape[2] == 4:
-        image, alpha = image0[..., :3], image0[..., 3]
-    else:
-        image, alpha = image0, None
-    min_value = np.quantile(image, 1 - quantile)
-    max_value = np.quantile(image, quantile)
-    normimage = (image - np.mean(image)) / (max_value - min_value)
-    normimage = normimage.clip(0, 1).astype(np.float32)
-    if alpha is not None:
-        normimage = np.dstack([normimage, alpha])
-    return normimage
-
-
-def get_max_downsamples(shape, npyramid_add, pyramid_downsample):
-    shape = list(shape)
-    for i in range(npyramid_add):
-        shape[-1] //= pyramid_downsample
-        shape[-2] //= pyramid_downsample
-        if shape[-1] < 1 or shape[-2] < 1:
-            return i
-    return npyramid_add
 
 
 def filter_noise_images(images):
@@ -1525,15 +1329,6 @@ def get_transforms(items):
     return list({a for group in groups for a in group})
 
 
-def check_sim_dims(sim):
-    origin = si_utils.get_origin_from_sim(sim)
-    dims = {'dims': sim.dims,
-            'origin': list(origin.keys())}
-    for transform_key in si_utils.get_tranform_keys_from_sim(sim):
-        transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
-        dims[transform_key] = np.array(transform.coords['x_in'])
-    return dims
-
 
 def get_sim_position_final(data, position=None, transform_keys=None, get_center=False):
     # a sim or a msim (its scale0 sim is used) - only position/transform metadata is ever read here
@@ -1583,8 +1378,7 @@ def group_sims_by_z(sims, positions=None):
 
 def calc_foreground_map(items):
     # sims or msims (each msim's scale0 sim is used): pixel data, a median-image comparison across all sources
-    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-           for item in items]
+    sims = sims_from_sims_or_msims(items)
     if len(sims) <= 2:
         return [True] * len(sims)
     sims = [sim.squeeze().astype(np.float32) for sim in sims]
@@ -1600,20 +1394,19 @@ def calc_foreground_map(items):
     return map
 
 
+def sim_with_data(sim, data, transform_key):
+    """A new sim of `data` at `sim`'s geometry, coordinates and `transform_key` transform."""
+    return si_utils.get_sim_from_array(data, dims=sim.dims, scale=si_utils.get_spacing_from_sim(sim),
+                                       translation=si_utils.get_origin_from_sim(sim), transform_key=transform_key,
+                                       affine=si_utils.get_affine_from_sim(sim, transform_key), c_coords=sim.c.data,
+                                       t_coords=sim.t.data)
+
+
 def normalise_sim(sim, transform_key, min, range, dtype):
     #image = (sim - min) / range
     image = ((sim - min) / range + 1) / 2   # extended range
     image = float2int_image(image.clip(0, 1), dtype)    # np.clip(image) is not dask-compatible, use image.clip() instead
-    return si_utils.get_sim_from_array(
-        image,
-        dims=sim.dims,
-        scale=si_utils.get_spacing_from_sim(sim),
-        translation=si_utils.get_origin_from_sim(sim),
-        transform_key=transform_key,
-        affine=si_utils.get_affine_from_sim(sim, transform_key),
-        c_coords=sim.c.data,
-        t_coords=sim.t.data
-    )
+    return sim_with_data(sim, image, transform_key)
 
 
 def calc_normalise_stats(items, use_global=True):
@@ -1621,8 +1414,7 @@ def calc_normalise_stats(items, use_global=True):
     Split out from normalise_sims so a caller that only wants the statistics (e.g. to then apply them separately
     across a whole pyramid via map_msim_levels) doesn't have to build a full set of already-normalised sims.
     """
-    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-           for item in items]
+    sims = sims_from_sims_or_msims(items)
     dtype = sims[0].dtype
     # global mean and stddev
     if use_global:
@@ -1648,17 +1440,7 @@ def gaussian_filter_sim(sim, transform_key, sigma):
     spatial_dims = set(si_utils.get_spatial_dims_from_sim(sim))
     sigma_by_axis = [sigma if dim in spatial_dims else 0 for dim in sim.dims]
     blurred_image = gaussian(image, sigma=sigma_by_axis, preserve_range=True)
-    new_sim = si_utils.get_sim_from_array(
-        blurred_image.astype(sim.dtype),
-        dims=sim.dims,
-        scale=si_utils.get_spacing_from_sim(sim),
-        translation=si_utils.get_origin_from_sim(sim),
-        transform_key=transform_key,
-        affine=si_utils.get_affine_from_sim(sim, transform_key),
-        c_coords=sim.c.data,
-        t_coords=sim.t.data
-    )
-    return new_sim
+    return sim_with_data(sim, blurred_image.astype(sim.dtype), transform_key)
 
 
 def get_sim_physical_size(data):
@@ -1690,18 +1472,23 @@ def promoted_geometry(item, transform_key, z_position):
     return {'shape': shape, 'spacing': spacing, 'origin': origin}, widened_affine_matrix(affine)
 
 
+def sim_views(sims, transform_key):
+    """(stack properties, affine matrix) of each sim, the affine at the first time point as fuse() asks it."""
+    views = []
+    for sim in sims:
+        param = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
+        views.append((si_utils.get_stack_properties_from_sim(sim),
+                      np.asarray(param.isel(t=0) if 't' in param.dims else param, dtype=float)))
+    return views
+
+
 def calc_output_properties(items, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
     # sims or msims, reading only their scale0 geometry. z_positions: sources at several heights, not promoted to
     # 3D - taken as make_msims_3d() would make them (see promoted_geometry), with the same result
     if z_positions is not None:
         views = [promoted_geometry(item, transform_key, z) for item, z in zip(items, z_positions)]
     else:
-        views = []
-        for item in items:
-            sim = msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-            affine = si_utils.get_affine_from_sim(sim, transform_key)
-            views.append((si_utils.get_stack_properties_from_sim(sim),
-                          np.asarray(affine.sel(t=0) if 't' in affine.dims else affine, dtype=float)))
+        views = sim_views(sims_from_sims_or_msims(items), transform_key)
     return calc_output_properties_from_views(views, output_spacing_method=output_spacing_method, z_scale=z_scale)
 
 
@@ -2403,21 +2190,6 @@ def combine_transforms(transforms):
     return combined_transform
 
 
-def squeeze_sim_dims(sim, transform_key):
-    # very costly
-    sim = sim.copy()
-    if 't' in sim.dims:
-        sim = sim.isel(t=0)
-    if 'c' in sim.dims and sim.sizes.get('c', 0) <= 1:
-        sim = sim.isel(c=0)
-    affine = si_utils.get_affine_from_sim(sim, transform_key)
-    if 't' in affine.dims:
-        affine = affine.isel(t=0)
-    if 'c' in affine.dims:
-        affine = affine.isel(c=0)
-    si_utils.set_sim_affine(sim, affine, transform_key)
-    return sim
-
 
 def squeeze_sim_transform_time(sim, transform_key):
     affine = si_utils.get_affine_from_sim(sim, transform_key)
@@ -2426,49 +2198,6 @@ def squeeze_sim_transform_time(sim, transform_key):
         si_utils.set_sim_affine(sim, affine, transform_key)
     return sim
 
-
-def make_sims_3d(sims, z_scale=None, positions=None):
-    new_sims = []
-    if not z_scale:
-        z_scale = 1
-    for index, sim in enumerate(sims):
-        # check if already 3D
-        if 'z' not in sim.dims:
-            z_position = positions[index].get('z', index * z_scale)
-            sim = sim.expand_dims({'z': [z_position]}, axis=-3)
-        # set 3D affine transforms from 2D registration params
-        for transform_key in si_utils.get_tranform_keys_from_sim(sim):
-            transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
-            if 4 not in transform.shape:
-                transform_3d = param_utils.identity_transform(ndim=3)
-                if 't' in transform.dims:
-                    transform_3d.loc[{dim: transform.coords[dim] for dim in transform.sel(t=0).dims}] = transform.sel(t=0)
-                else:
-                    transform_3d.loc[{dim: transform.coords[dim] for dim in transform.dims}] = transform
-                si_utils.set_sim_affine(sim, transform_3d, transform_key=transform_key)
-        new_sims.append(sim)
-    return new_sims
-
-
-def make_sims_2d(sims):
-    new_sims = []
-    for index, sim in enumerate(sims):
-        # check if already 2D
-        if 'z' in sim.dims:
-            sim = sim.squeeze('z')
-        # set 2D affine transforms from 3D registration params
-        for transform_key in si_utils.get_tranform_keys_from_sim(sim):
-            transform = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
-            if 3 not in transform.shape:
-                has_t = 't' in transform.dims
-                if has_t:
-                    transform = transform.sel(t=0)
-                transform = transform[:3, :3]
-                if has_t:
-                    transform.loc[{dim: transform.coords[dim] for dim in transform.sel(t=0).dims}] = transform.sel(t=0)
-                si_utils.set_sim_affine(sim, transform, transform_key=transform_key)
-        new_sims.append(sim)
-    return new_sims
 
 
 def promote_sim_to_3d(sim, z_position):
@@ -2537,9 +2266,7 @@ def msim_is_already_3d(msim):
 
 
 def make_msims_3d(msims, z_scale=None, positions=None):
-    # msim-native equivalent of make_sims_3d: promote_sim_to_3d()'s result for every pyramid
-    # level - skipping any msim already in that form, since rebuilding it would only reproduce it
-    # (see msim_is_already_3d)
+    # promote_sim_to_3d() at every level, skipping an msim already in that form (msim_is_already_3d)
     if not z_scale:
         z_scale = 1
     new_msims = []
@@ -2606,7 +2333,6 @@ def msim_is_2d(msim):
 
 
 def make_msims_2d(msims):
-    # msim-native equivalent of make_sims_2d
     new_msims = []
     for msim in msims:
         if msim_is_2d(msim):
@@ -2741,135 +2467,13 @@ def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scal
     return int(np.prod([int(size) for size in properties['shape'].values()]) * itemsize), properties
 
 
-def composite_msims_overview(items, transform_key, z_scale=None,
-                             max_bytes=default_overview_max_bytes, label='Overview',
-                             progress=None, z_positions=None):
-    """Every source pasted into one array at its registered position - the on-screen overview.
-
-    The main view needs a picture of where the sources sit, and fusing for that is the wrong
-    tool: multiview_stitcher's cost is per *view*, not per pixel, so it scales with the dataset
-    however small the preview is made. On a 4733-source project, 10.3 minutes to plan the
-    preview fusion against 33 seconds of shape building; shrinking the result 256x saved half.
-
-    Pasting costs one strided copy per source instead - 1.9s against 18.6s for 328 sources,
-    including reading every pixel, which the fusion figure does not since it stays lazy.
-    Overlaps are overwritten, nearest-neighbour: this is an overview, not the fused result, and
-    the fusion tab's preview and the export are unchanged.
-
-    The geometry is the one fuse() would have produced, so the layer lands where the fused one
-    did, coarsened in x/y if that would exceed max_bytes. Returns None - leaving the caller to
-    fuse - for anything it cannot place faithfully: a transform that is not a pure translation
-    (a rotation needs resampling), or sources disagreeing about their non-spatial dims.
-
-    `progress`, if given, is called once per source pasted: this is the longest single step of
-    drawing the view, and the one with something real to report. `z_positions`: 2D sources at
-    several heights, each pasted into its own section's plane, as if promoted to 3D.
-    """
-    # sims or msims (each msim's scale0 sim is used)
-    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-            for item in items]
-    if not sims:
-        return None
-    source_dims = si_utils.get_spatial_dims_from_sim(sims[0])
-    nsdims = [dim for dim in sims[0].dims if dim not in source_dims]
-    if any(si_utils.get_spatial_dims_from_sim(sim) != source_dims for sim in sims):
-        return None
-
-    if z_positions is not None:
-        views = [promoted_geometry(sim, transform_key, z) for sim, z in zip(sims, z_positions)]
-    else:
-        views = []
-        for sim in sims:
-            affine = si_utils.get_affine_from_sim(sim, transform_key)
-            if 't' in affine.dims:
-                affine = affine.sel(t=0)
-            views.append(({'spacing': si_utils.get_spacing_from_sim(sim), 'origin': si_utils.get_origin_from_sim(sim)},
-                          np.asarray(affine, dtype=float)))
-    sdims = list(views[0][0]['spacing'])
-    ndim = len(sdims)
-    translations = []
-    for _, matrix in views:
-        if not np.allclose(matrix[:ndim, :ndim], np.eye(ndim), atol=1e-6):
-            logging.info(f'{label}: source transforms are not translations only - fusing instead')
-            return None
-        translations.append(matrix[:ndim, ndim])
-
-    properties = calc_output_properties(items, transform_key, output_spacing_method='mean',
-                                        z_scale=z_scale, z_positions=z_positions)
-    spacing = dict(properties['spacing'])
-    origin = dict(properties['origin'])
-    shape = {dim: int(properties['shape'][dim]) for dim in sdims}
-
-    # in-plane coarsening only: z is what tells the sections apart, and there are few of them
-    plane_dims = [dim for dim in sdims if dim != 'z']
-    itemsize = np.dtype(sims[0].dtype).itemsize
-    planes = int(np.prod([sim_size for dim, sim_size in shape.items() if dim not in plane_dims])) or 1
-    for _ in range(16):
-        if np.prod([shape[dim] for dim in sdims]) * itemsize <= max_bytes or not plane_dims:
-            break
-        for dim in plane_dims:
-            shape[dim] = max(shape[dim] // 2, 1)
-            spacing[dim] *= 2
-    del planes
-
-    leading = [sims[0].sizes[dim] for dim in nsdims]
-    overview = np.zeros(leading + [shape[dim] for dim in sdims], dtype=sims[0].dtype)
-
-    for sim, (view, _), translation in zip(sims, views, translations):
-        if progress is not None:
-            progress()
-        sim_spacing, sim_origin = view['spacing'], view['origin']
-        # downsample (stride) a finer source, or upsample (repeat) a coarser one, to match
-        # the output grid - coarser was previously pasted 1:1, shrinking its footprint
-        strides, repeats, starts = [], [], []
-        for index, dim in enumerate(sdims):
-            factor = spacing[dim] / sim_spacing[dim]
-            strides.append(max(int(round(factor)), 1) if factor >= 1 else 1)
-            repeats.append(max(int(round(1 / factor)), 1) if factor < 1 else 1)
-            starts.append(int(round((sim_origin[dim] + translation[index] - origin[dim])
-                                    / spacing[dim])))
-        # one tile a compute gives dask's thread pool nothing to parallelise, only more threads
-        # (and, on Linux, more per-thread heaps holding on to freed memory)
-        with dask.config.set(scheduler='synchronous'):
-            data = np.asarray(sim.data)
-        if len(sdims) > len(source_dims):
-            # a 2D source's size-1 z, as promotion would have added it
-            data = np.expand_dims(data, axis=len(nsdims))
-        if data.ndim != len(nsdims) + len(sdims):
-            return None
-        data = data[tuple([slice(None)] * len(nsdims)
-                          + [slice(None, None, stride) for stride in strides])]
-        if any(repeat > 1 for repeat in repeats):
-            data = _enlarge_nearest(data, [1] * len(nsdims) + repeats)
-        target, source = [slice(None)] * len(nsdims), [slice(None)] * len(nsdims)
-        for index, dim in enumerate(sdims):
-            start = starts[index]
-            stop = min(start + data.shape[len(nsdims) + index], shape[dim])
-            source.append(slice(max(-start, 0), max(stop - start, 0)))
-            target.append(slice(max(start, 0), max(stop, 0)))
-        # nothing to paste for a source entirely outside the output
-        if all(piece.stop > piece.start for piece in target[len(nsdims):]):
-            overview[tuple(target)] = data[tuple(source)]
-
-    sim = si_utils.get_sim_from_array(
-        overview,
-        dims=list(nsdims) + list(sdims),
-        scale={dim: spacing[dim] for dim in sdims},
-        translation={dim: origin[dim] for dim in sdims},
-        transform_key=transform_key,
-        c_coords=sims[0].coords['c'].values if 'c' in nsdims else None,
-    )
-    logging.info(f'{label}: {len(sims)} sources pasted into'
-                 f' {"x".join(str(shape[dim]) for dim in sdims)}')
-    return wrap_sims_as_msims([sim])[0]
-
-
-def _enlarge_nearest(data, repeats):
-    """`data` with each element repeated `repeats[axis]` times along each axis - np.repeat on every
-    axis at once, as one copy of a broadcast view: 5x faster for an overview image enlarged 8x."""
-    view = data[tuple(index for _ in data.shape for index in (slice(None), None))]
-    blocks = [size for pair in zip(data.shape, repeats) for size in pair]
-    return np.broadcast_to(view, blocks).reshape([size * repeat for size, repeat in zip(data.shape, repeats)])
+def msims_stack_props(msims, transform_key):
+    """Each msim's finest level's stack properties, at its first t/c as mv_graph takes them: one plane, not the stack."""
+    sims = [msi_utils.get_sim_from_msim(msim) for msim in msims]
+    nsdims = si_utils.get_nonspatial_dims_from_sim(sims[0])
+    if len(nsdims):
+        sims = [si_utils.sim_sel_coords(sim, {nsdim: sim.coords[nsdim][0] for nsdim in nsdims}) for sim in sims]
+    return [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in sims]
 
 
 def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=None):
@@ -2881,12 +2485,7 @@ def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=No
     their bounding boxes' intersection, so all pairs are measured at once; any other box hands
     the whole graph to multiview_stitcher as before.
     """
-    sims = [msi_utils.get_sim_from_msim(msim) for msim in msims]
-    nsdims = si_utils.get_nonspatial_dims_from_sim(sims[0])
-    if len(nsdims):
-        sims = [si_utils.sim_sel_coords(sim, {nsdim: sim.coords[nsdim][0] for nsdim in nsdims})
-                for sim in sims]
-    stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key) for sim in sims]
+    stack_props = msims_stack_props(msims, transform_key)
     if overlap_tolerance is not None:
         stack_props = [si_utils.extend_stack_props(props, overlap_tolerance) for props in stack_props]
     vertices = [mv_graph.get_vertices_from_stack_props(props) for props in stack_props]
@@ -2931,15 +2530,7 @@ def build_pairs_graph(msims, pairs, transform_key, overlaps=None):
     """
     graph = nx.Graph()
     graph.add_nodes_from(range(len(msims)))
-    sims = [msi_utils.get_sim_from_msim(msim) for msim in msims]
-    nsdims = si_utils.get_nonspatial_dims_from_sim(sims[0])
-    if len(nsdims):
-        # as mv_graph does: stack properties describe one plane, not the t/c stack
-        sims = [si_utils.sim_sel_coords(sim, {nsdim: sim.coords[nsdim][0] for nsdim in nsdims})
-                for sim in sims]
-    stack_props = [si_utils.get_stack_properties_from_sim(sim, transform_key=transform_key)
-                   for sim in sims]
-    nx.set_node_attributes(graph, dict(enumerate(stack_props)), name='stack_props')
+    nx.set_node_attributes(graph, dict(enumerate(msims_stack_props(msims, transform_key))), name='stack_props')
     for pair in pairs:
         overlap = (overlaps or {}).get(tuple(pair))
         graph.add_edge(*pair, **({'overlap': overlap} if overlap is not None else {}))
@@ -3085,17 +2676,3 @@ def set_msim_affine(msim, xaffine, transform_key, base_transform_key=None):
         node.dataset = node.to_dataset(inherit=False).assign({transform_key: xaffine})
 
 
-def print_sim_info(data):
-    # only convert msim -> sim when the input actually is a msim - a transform is readable
-    # directly off a sim via si_utils.get_affine_from_sim, no need to build a msim just to
-    # read one back via get_transform_from_msim
-    if isinstance(data, DataTree):
-        sim = msi_utils.get_sim_from_msim(data)
-    else:
-        sim = data
-
-    print('dims', sim.dims)
-    print('position dims', tuple(si_utils.get_origin_from_sim(sim).keys()))
-    for transform_key in si_utils.get_tranform_keys_from_sim(sim):
-        print(transform_key, si_utils.get_affine_from_sim(sim, transform_key).shape, end=' ')
-    print()

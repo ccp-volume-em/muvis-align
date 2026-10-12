@@ -6,7 +6,7 @@ import os.path
 import shutil
 
 from muvis_align.image.source_helper import create_image_source
-from muvis_align.image.util import calc_output_properties, make_sims_3d
+from muvis_align.image.util import calc_output_properties, promote_sim_to_3d
 from muvis_align.Timer import Timer
 from muvis_align.util import print_hbytes
 
@@ -59,7 +59,7 @@ if __name__ == '__main__':
         print('Init sims...')
         sims = [create_sim(shape, scale=scale, seed=index) for index in range(nz)]
         positions = [{'x': 0, 'y': 0, 'z': index * z_scale} for index in range(nz)]
-        sims = make_sims_3d(sims, z_scale=z_scale, positions=positions)
+        sims = [promote_sim_to_3d(sim, position['z']) for sim, position in zip(sims, positions)]
         with Timer('test'):
             fused = fuse(sims, filename, z_scale=z_scale)
 

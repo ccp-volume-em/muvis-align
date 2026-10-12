@@ -6,7 +6,7 @@ import pytest
 from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.fusion_slabs import (fuse_native_levels_to_ome_zarr, native_level_spacings,
+from muvis_align.fusion_slabs import (export_levels, fuse_levels_to_ome_zarr, native_level_spacings,
                                       native_level_stack_properties, block_sources)
 from tests.data_builders import make_msim, make_sim
 
@@ -87,8 +87,8 @@ def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff
     level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
     url = (tmp_path / 'fused.ome.zarr').as_posix()
 
-    fuse_native_levels_to_ome_zarr([overview, tile], [2.0, 0.5], url, 'source', level0, {'y': 64, 'x': 64},
-                                   ['y', 'x'], zarr_options={'ngff_version': ngff_version})
+    fuse_levels_to_ome_zarr([overview, tile], export_levels([2.0, 0.5], level0, ['y', 'x']), url, 'source', level0,
+                            {'y': 64, 'x': 64}, zarr_options={'ngff_version': ngff_version}, ranks=[2.0, 0.5])
 
     group = json.load(open(os.path.join(url, 'zarr.json')))
     assert group['zarr_format'] == 3

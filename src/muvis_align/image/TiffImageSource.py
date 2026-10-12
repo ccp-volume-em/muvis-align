@@ -95,8 +95,3 @@ class TiffImageSource(ImageSource):
         self.pixel_size = self.pixel_sizes[0]
 
 
-def tags_to_dict(tags: tifffile.TiffTags) -> dict:
-    tag_dict = {}
-    for tag in tags.values():
-        tag_dict[tag.name] = tag.value
-    return tag_dict

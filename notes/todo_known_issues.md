@@ -30,9 +30,10 @@ pairs by brute-force shift search; the pair NCC improves with it). A synthetic s
 reverse. The preview grid follows the real data; the synthetic result is unexplained.
 
 ### Fusion pyramid levels use ~10-15% of RAM: expected
-Not a leak, nor dask filling what is free. The z-slab path's lower levels (ngff_utils.write_sim_to_ome_zarr) run
-one thread a CPU, each reading 2x2 (2x2x2 past 200 z) parent chunks and averaging as float64: ~6-12 level-0 chunks
-a worker (measured locally, synthetic zarr, 1-8 workers). Level 0's chunk comes from the per-worker budget (a quarter
+Not a leak, nor dask filling what is free. Measured on the 2026-10-03 run's pyramid step
+(ngff_utils.write_sim_to_ome_zarr), one thread a CPU, each reading 2x2 (2x2x2 past 200 z) parent chunks and averaging
+as float64: ~6-12 level-0 chunks a worker (measured locally, synthetic zarr, 1-8 workers). Its replacement
+(fusion_slabs.average_into_zarr_array) does the same per block, 2x2 only. Level 0's chunk comes from the per-worker budget (a quarter
 of RAM over the CPUs), so the peak scales with the machine: the HPC's 250GB on ~2TB. A risk only if
 _available_memory() reads more than the job may use (no Slurm memory variable or cgroup limit set).
 
@@ -44,6 +45,20 @@ Nothing.
 
 ESSENTIAL
 
+- [ ] **Opening a fused project re-fuses a blurry preview instead of loading the fused zarr** - HPC (large
+      meatballs-type set): ~2h to open, and the view is far blurrier than the 100nm preview pixel size.
+      Why: an already-fused project (check_progress: FUSED when the output exists) opens through
+      _show_loaded_project -> _copy_transforms_to_view_msims (every source's msim) -> preview_fusion ->
+      _create_napari_data: sub-pyramid, preview cap (reduce_msims_to_fused_size, 3 rebuilds of every msim), an
+      in-memory fuse() and its contrast compute - a new fusion from all sources, while the export is already on
+      disk. Blurry: the cap holds the whole fused stack to default_preview_max_bytes (4GB), shared by every section
+      (1081 sections leave ~4MB, ~2000x2000 px, a section), far coarser than 100nm; and in memory 'native' fuses
+      as 'mean', averaging the overview into the tiles (the export puts the tiles over it). After an export the
+      plugin shows the zarr it wrote (fusion_process: read back, lazy, multiscale) - sharp at every zoom.
+      Fix: open a fused project by reading its zarr (ngff_utils.read_msim_from_ome_zarr) after the sources and
+      shapes, as after an export: seconds, every level sharp. Stale output (registration or fusion settings changed
+      since) could be told from the zarr's RO-Crate fusion parameters - re-fuse only then, or on Preview. Check
+      the HPC log's Time lines first to confirm where the 2h goes (view msims, cap, fuse, contrast, shapes).
 
 
 PERFORMANCE
@@ -54,12 +69,13 @@ PERFORMANCE
 
 MINOR
 
+- [ ] **Shape label and grid colours from the image** - choose the shapes' label (and grid) colours to stand out
+      against the shown channel's data, e.g. from its colormap and contrast limits, if it can be done cheaply
+      (no extra pixel reads).
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
       shape steps.
-- [ ] **OME-Zarr 0.6 from 'mean'/'min'/'max' fusion** - refused before fusing (multiview_stitcher 0.1.62 writes 0.4/0.5
-      only); native fusion and convert write 0.6 (ngff-zarr >= 0.48). Ask upstream (see Upstream fixes).
 - [ ] **Faster opening of large projects** - napari's per-shape Python cost (~10s at 150k shapes, main viewer and
       overview widget alike), ~39s untimed after init_data on the HPC (populating tables?), and init sources over
       NFS (42ms CPU a file on the HPC vs 2.7ms locally: ~31 small reads a file by tifffile).
@@ -81,18 +97,18 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       alignment, DataTree.from_dict, expand_dims); 31ms on the HPC.
 
 From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration 7.2h, fusion 9.7h, no errors):
-- [ ] **Fusion pyramid levels: 5.5h at '100%'** - 'average' at 0.01um (z-slab path): after level 0,
-      ngff_utils.write_sim_to_ome_zarr builds the lower levels from it, and the bar doesn't count this phase. Its
-      250GB peak is expected (see Known issues). Native fusion avoids it, existing projects with a set spacing don't.
-      Also 14 min at 0% before 'Output stack'. Timers now split it (fusion: make_msims_3d, output properties, export
-      chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them, and 'Fusion output_chunksize', on the
-      next HPC run.
+- [ ] **Fusion pyramid levels: 5.5h at '100%'** - 'average' at 0.01um: after level 0,
+      ngff_utils.write_sim_to_ome_zarr built the lower levels from it, uncounted by the bar; its 250GB peak was
+      expected (see Known issues). Now each level averages the one above in our own blocks (one zarr writer, see
+      Done): only blocks some source reaches, z never averaged across sections, each level on the bar. Measure on the
+      next HPC run, with the 14 min at 0% before 'Output stack' (timers: fusion: make_msims_3d, output properties,
+      export chunk sizes) and 'Fusion output_chunksize'.
 - [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
-      image shapes 1.3ms, tables 1.8 min; the preview cap and composite overview only where the lazy overview
-      declines (a rotation, 3D or multichannel sources). Check on the next HPC run. (Promotion, the second transform
+      image shapes 1.3ms, tables 1.8 min; the preview cap and fused preview only where the lazy overview
+      declines (a rotation, 2D and 3D sources together). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
 - [ ] **Preview cap: one rebuild instead of three** - only if the next HPC run still shows the cap running (it is
-      reached only where the lazy overview declines: a rotation, 3D or multichannel sources); otherwise drop. Time
+      reached only where the lazy overview declines: a rotation, 2D and 3D sources together); otherwise drop. Time
       only, not memory: the 343GB -> 4GB is the preview it keeps from being fused, and each round rebuilds lazy msim
       trees, not pixels. 3 size estimates, 2 rounds dropping levels and 1 strided round (~11ms a source each on the
       HPC, 3.4 min at 34k); choosing the levels from each level's geometry before rebuilding once needs a level
@@ -105,12 +121,15 @@ REFACTORING
 - [ ] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
       avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
       create detailed plan first
-      - One overview instead of two: lazy_section_overview and util.composite_msims_overview both paste
-        translation-only sources, overwriting overlaps; the composite one is reached only for 3D or multichannel
-        sources. A z/channel axis in SectionPlanes would let it go, with _create_napari_data's composite branch,
-        leaving the view as quick view or fuse() (rotations). Routing the quick view through fuse() instead was
-        weighed: it shares ~5 lines, needs msims=None and readers, a view-only fusion method to keep from export,
-        and leaves the msim preparation (view msims, sub-pyramid, cap) in Interface.
+      - One overview instead of two: done (see Done). Routing the quick view through fuse() instead was weighed:
+        it shares ~5 lines, needs msims=None and readers, a view-only fusion method to keep from export, and leaves
+        the msim preparation (view msims, sub-pyramid, cap) in Interface.
+      - Duplication found by a scan (2026-10-12): done (see Done), except these, weighed and left - a shared helper
+        would remove a few lines for flags or a one-line wrapper: the pair worker pool (register_pairs vs
+        map_pair_metrics: logging, timing and merging differ), the per-source build_source_stack_props loops, output
+        filename expressions and the multi-z check, section z spacing (fallbacks differ), the quality-into-metrics
+        merges (key matching differs), the pair-key parse, the two affine widenings (equal for y, x, 1 labels).
+        metrics.calc_msims_metrics still builds its graph with mv_graph's linear programs (a behaviour change).
 - [ ] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
 - [ ] add option to these efficiency classes to run without threading using an input argument
 - [ ] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
@@ -118,6 +137,26 @@ REFACTORING
 
 ## Done
 
+- **Duplication list** (branch `restructure`) - ~40 unreferenced functions and ome_ngff_helper deleted (652 lines);
+  one progress_phase (was 2 copies + 7 inline), one pooled_map for building sources and msims (single-threaded with
+  one worker), one um unit table (util lacked nanometre/inch, tiff_metadata picometre), msims_stack_props for both
+  pair graphs, sims_from_sims_or_msims and sim_views used where written inline, sim_with_data for the processed-sim
+  re-wraps, save_pair_results for the three pair-saving paths, z_positions computed once in _create_napari_data.
+- **One zarr writer** (branch `restructure`) - every OME-Zarr export goes through fusion_slabs.fuse_levels_to_ome_zarr
+  over export_levels: native as before; a set spacing fuses level 0 from the sources reaching each block and averages
+  each level after from the one above (average_into_zarr_array), z never averaged across sections. Gone: the z-slab
+  writer, multiview_stitcher's pyramid step and fuse()'s fusion.fuse zarr branch, the OME-Zarr 0.6 refusal (a set
+  spacing writes 0.6 too), and 3 of 4 coarsest-level lookups (image.util.coarsest_level_within; split registration
+  now compares y/x only - its max over z's 1.0 placeholder kept it at full resolution). Slides 2 sections x 9 tiles
+  at 0.016um: stack 2.5 -> 2.1s, one section 1.6 -> 1.1s, native 4.8 -> 4.5s, every level byte-identical. Fusing
+  each level from the sources was tried for a set spacing: 70% slower (interpolation at every level), dropped.
+  test_split_registration's group-correction test fails alone (robust_linear unknown) with or without this.
+- **One overview instead of two** (branch `restructure`) - the quick view takes 3D and multichannel sources: (c, y, x)
+  planes, volumes a plane per z at the finest z read, each source's nearest z, a volume's decoded z chunk kept for
+  the planes after it. composite_msims_overview and its branch are gone: the view is the quick view, else the
+  capped fused preview (a rotation, 2D and 3D sources together). data/3d and a multichannel set: the same pixels as
+  the composite (one more empty edge row/column); data/3d all 200 planes 1.05s vs the composite's 0.28s up front,
+  the first viewed plane 0.08s. Plugin captures of slides and the 3d project show the overview under its shapes.
 - **init_data / ImageSource overlap** - a source no longer builds its own transform (init_data's alone reaches the
   msims), so init_sources builds every source in one pool; each file picks its own source_metadata entry in
   ImageSource (its label's matrix, a list by index); one x/y translation fill (complete_translation). Geometry of

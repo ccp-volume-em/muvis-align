@@ -8,7 +8,6 @@ import dask.threaded
 import multiview_stitcher.metrics
 import networkx as nx
 from multiview_stitcher import mv_graph
-from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
 from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
 from sklearn.metrics import euclidean_distances
@@ -18,8 +17,8 @@ from xarray import DataArray
 from muvis_align.constants import (default_pair_worker_tasks, default_pair_workers, default_quality_key,
                                    default_transform_key)
 from muvis_align.image.util import image_reshape, get_msim_transform_keys
-from muvis_align.util import (apply_transform, picklable, release_memory, result_unless_cancelled, rolling_map,
-                              worker_process_pool)
+from muvis_align.util import (apply_transform, picklable, progress_phase, release_memory, result_unless_cancelled,
+                              rolling_map, worker_process_pool)
 
 
 def create_metric_methods(metric_methods, msim):
@@ -111,7 +110,7 @@ def map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory=Non
         return result_unless_cancelled(pool.submit(pair_image_metrics, *arguments, scheduler='synchronous'))
 
     results = []
-    progress = (progress_factory(total=len(edges), desc=desc) if progress_factory is not None else nullcontext(None))
+    progress = progress_phase(progress_factory, total=len(edges), desc=desc)
     # on threads, set once here: BLAS thread limits changed from many threads at once crash the process
     compute = (_pair_metrics_compute('synchronous' if workers > 1 else 'threads') if pool is None
                else nullcontext())
@@ -330,18 +329,6 @@ def calc_ncc(image1, image2):
     return float(ncc)
 
 
-def calc_ncc2(image1, image2):
-    max_size = np.flip(np.max([image1.shape, image2.shape], 0))
-    image1 = image_reshape(image1, max_size)
-    image2 = image_reshape(image2, max_size)
-
-    normimage1 = (image1 - np.mean(image1)) / np.std(image1)
-    normimage2 = (image2 - np.mean(image2)) / np.std(image2)
-    array1 = np.array(normimage1).reshape(-1)
-    array2 = np.array(normimage2).reshape(-1)
-    ncc = (np.correlate(array1, array2) / max(len(array1), len(array2)))[0]
-    return float(ncc)
-
 
 def calc_ssim(image1, image2):
     dtype = image1.dtype
@@ -356,20 +343,3 @@ def calc_ssim(image1, image2):
     return float(ssim)
 
 
-def calc_frc(image1, image2):
-    pixel_size1 = si_utils.get_spacing_from_sim(image1)
-    pixel_size2 = si_utils.get_spacing_from_sim(image2)
-    pixel_size = np.mean([pixel_size1['x'], pixel_size1['y'], pixel_size2['x'], pixel_size2['y']])
-    max_size = np.flip(np.max([image1.shape, image2.shape], 0))
-    image1 = frc.util.square_image(image_reshape(image1, max_size), add_padding=True)
-    image2 = frc.util.square_image(image_reshape(image2, max_size), add_padding=True)
-
-    frc_curve = frc.two_frc(image1, image2)
-    xs_pix = np.arange(len(frc_curve)) / max(max_size)
-    # scale has units [pixels <length unit>^-1] corresponding to original image
-    xs_nm_freq = xs_pix / pixel_size
-    frc_res, res_y, thres = frc.frc_res(xs_nm_freq, frc_curve, max_size)
-    #plt.plot(xs_nm_freq, thres(xs_nm_freq))
-    #plt.plot(xs_nm_freq, frc_curve)
-    #plt.show()
-    return frc_res

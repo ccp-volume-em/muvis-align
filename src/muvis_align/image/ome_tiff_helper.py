@@ -34,14 +34,6 @@ def load_tiff(filename):
     return tifffile.imread(filename)
 
 
-def extract_ome_translation(filename):
-    with tifffile.TiffFile(filename) as tif:
-        # .is_ome/.ome_metadata only read the description tag - deliberately not .series, which
-        # for an OME-TIFF parses the whole OME XML a second time to build its series/levels
-        if not tif.is_ome or tif.ome_metadata is None:
-            return {}
-        return extract_ome_translation_from_xml(tif.ome_metadata)
-
 
 def extract_ome_translation_from_xml(ome_xml, **kwargs):
     """The first Image's first Plane position, in um - see extract_ome_image_metadata()."""

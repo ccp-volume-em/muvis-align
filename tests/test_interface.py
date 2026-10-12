@@ -399,10 +399,10 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
         "project": True, "input_output": True, "pre_processing": True,
         "registration": True, "fusion": False,
     }
-    assert bare_interface.reg.save_pair_mappings.called is store
+    assert bare_interface.reg.save_pair_results.called is store
     if store:
-        # a bbox without a 't' dim is saved as it is
-        assert bare_interface.reg.save_pair_mappings.call_args.args[2] == {(0, 0): [[1, 2], [3, 4]]}
+        # the modified pair's quality set to 1, saved with the rest
+        assert bare_interface.reg.save_pair_results.call_args.kwargs['qualities'][bare_interface.pair_indices] == 1
 
 
 def _stub_source_affines(monkeypatch, affines):
@@ -812,7 +812,6 @@ def test_update_views_adds_enabled_preview_layers(
     args, kwargs = bare_interface._create_napari_data.call_args
     assert args == ("registered",)
     assert kwargs["show_preprocessed"] is True
-    assert kwargs["composite"] is True
     # the longest step of a refresh reports from the inside rather than being one silent block,
     # so it is handed the operation's progress factory and the share of the bar it is worth
     assert kwargs["progress_factory"] is not None
@@ -1228,12 +1227,9 @@ def mocked_activity_contexts(monkeypatch):
     )
 
 
-@pytest.mark.parametrize("with_t", [True, False], ids=["bbox-with-t", "bbox-without-t"])
-def test_run_pair_registration_serializes_quality_and_time_bbox(
-    bare_interface, monkeypatch, mocked_activity_contexts, with_t
+def test_run_pair_registration_saves_the_pairs_with_their_metrics(
+    bare_interface, monkeypatch, mocked_activity_contexts
 ):
-    import xarray as xr
-
     bare_interface.viewer = MagicMock()
     bare_interface.params = {"registration": {"method": "phase"}}
     bare_interface.metrics_methods = ["ncc"]
@@ -1253,14 +1249,6 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
         },
     }
     bare_interface.reg.register_pairs.return_value = results
-    bbox = xr.DataArray([[1, 2], [3, 4]], dims=("corner", "axis"))
-    if with_t:
-        bbox = bbox.expand_dims({"t": [0]})
-    monkeypatch.setattr(
-        interface_module.nx,
-        "get_edge_attributes",
-        lambda *_: {(0, 1): bbox},
-    )
 
     actual = bare_interface.run_pair_registration()
 
@@ -1270,11 +1258,7 @@ def test_run_pair_registration_serializes_quality_and_time_bbox(
         params={"method": "phase", "metrics": ["ncc"]},
         progress_factory=ANY,
     )
-    bare_interface.reg.save_pair_mappings.assert_called_once_with(
-        {(0, 1): "mapping"},
-        {(0, 1): 0.9},
-        {(0, 1): [[1, 2], [3, 4]]},
-    )
+    bare_interface.reg.save_pair_results.assert_called_once_with({(0, 1): "mapping"}, metrics=results["metrics"])
 
 
 def test_run_global_registration_persists_all_results(

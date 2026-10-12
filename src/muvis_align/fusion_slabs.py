@@ -1,6 +1,7 @@
-"""Fusion written to zarr block by block, each block from only the sources that reach it and only the blocks some
-source reaches: multiview_stitcher runs Python over every source it gives a block, so a block's cost grows with the
-source count. The steps are its own zarr path's, prepare_block_fusion(create_output=False) attaching to the store."""
+"""Fusion written to OME-Zarr level by level and block by block, each block from only the sources that reach it and
+only the blocks some source reaches: multiview_stitcher runs Python over every source it gives a block, so a block's
+cost grows with the source count. The steps are its own zarr path's, prepare_block_fusion(create_output=False)
+attaching to the store."""
 import copy
 from dataclasses import asdict
 import inspect
@@ -8,7 +9,6 @@ import logging
 import os
 import shutil
 
-import dask.array as da
 import numpy as np
 import ngff_zarr
 import zarr
@@ -16,20 +16,14 @@ import multiview_stitcher.fusion._core as fusion_core
 from multiview_stitcher import msi_utils, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.Timer import Timer
 from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
+from muvis_align.image.util import coarsest_level_within, msim_level_spacings, sim_views
 from muvis_align.util import print_significants
 
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):
     """view_bounds() of sims, each at its own geometry and transform."""
-    views = []
-    for sim in sims:
-        param = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
-        # per time point, as multiview_stitcher's fuse() asks it
-        param = param.isel(t=0) if 't' in param.dims else param
-        views.append((si_utils.get_stack_properties_from_sim(sim), np.asarray(param, dtype=float)))
-    return view_bounds(views, output_stack_properties, interpolation_order)
+    return view_bounds(sim_views(sims, transform_key), output_stack_properties, interpolation_order)
 
 
 def _grid_aligned_dims(stacks, matrices, output_stack_properties, sdims, tol=1e-6):
@@ -191,7 +185,6 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     if groups is None:
         bounds = source_bounds(sims, transform_key, output_stack_properties, interpolation_order)
         groups = block_sources(bounds, output_stack_properties, output_chunksize, sdims)
-    batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
 
     def prepare(sources, create_output):
         fuse_kwargs = {'images': [sims[index] for index in sources], 'transform_key': transform_key,
@@ -228,19 +221,55 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     def fuse_block(block_id):
         return funcs[block_id](block_id)
 
-    block_ids = sorted(funcs)
-    progress = fusion_core.tqdm(total=int(np.prod(nblocks)), desc=desc)
-    progress.update(int(np.prod(nblocks)) - len(block_ids))
+    _run_blocks(fuse_block, sorted(funcs), int(np.prod(nblocks)), batch_options, desc)
+    return dims, info['output_stack_properties']
+
+
+def _run_blocks(block_func, block_ids, total, batch_options, desc):
+    """block_func on each block id, in batches through batch_options' batch_func, the bar counting `total` blocks of
+    which those not given (none of their sources) are done already."""
+    batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
+    progress = fusion_core.tqdm(total=total, desc=desc)
+    progress.update(total - len(block_ids))
     for start in range(0, len(block_ids), n_batch):
         batch = block_ids[start:start + n_batch]
         if batch_func is None:
             for block_id in batch:
-                fuse_block(block_id)
+                block_func(block_id)
         else:
-            batch_func(fuse_block, batch, **(batch_options.get('batch_func_kwargs') or {}))
+            batch_func(block_func, batch, **(batch_options.get('batch_func_kwargs') or {}))
         progress.update(len(batch))
     progress.close()
-    return dims, info['output_stack_properties']
+
+
+def average_into_zarr_array(parent_url, store_url, factors, chunk, spatial_blocks, creation_kwargs=None,
+                            batch_options=None, desc=None):
+    """A zarr array averaging the one at parent_url by whole `factors` (one a dim of its trailing spatial dims), its
+    blocks of `chunk` written only where listed in spatial_blocks: a level from the one above it, as multiview_stitcher's
+    pyramid does, without its z averaged across sections or its empty blocks computed."""
+    batch_options = batch_options or {}
+    parent = zarr.open_array(parent_url, mode='r')
+    sdims = [dim for dim in 'zyx' if dim in chunk]
+    nonspatial = parent.ndim - len(sdims)
+    axis_factors = [1] * nonspatial + [int(factors[dim]) for dim in sdims]
+    shape = [size // factor for size, factor in zip(parent.shape, axis_factors)]
+    chunks = [1] * nonspatial + [int(chunk[dim]) for dim in sdims]
+    output = zarr.create(shape=shape, chunks=chunks, dtype=parent.dtype, store=store_url, overwrite=True,
+                         **(creation_kwargs or {}))
+
+    def average_block(block_id):
+        target = tuple(slice(block * size, min((block + 1) * size, total))
+                       for block, size, total in zip(block_id, chunks, shape))
+        data = parent[tuple(slice(piece.start * factor, piece.stop * factor)
+                            for piece, factor in zip(target, axis_factors))]
+        grouped = data.reshape([size for length, factor in zip(data.shape, axis_factors)
+                                for size in (length // factor, factor)])
+        output[target] = grouped.mean(axis=tuple(range(1, grouped.ndim, 2))).astype(parent.dtype)
+
+    block_ids = sorted(tuple(nonspatial_block) + tuple(spatial_block)
+                       for nonspatial_block in np.ndindex(*shape[:nonspatial]) for spatial_block in spatial_blocks)
+    nblocks = int(np.prod([-(-size // size_chunk) for size, size_chunk in zip(shape, chunks)]))
+    _run_blocks(average_block, block_ids, nblocks, batch_options, desc)
 
 
 def storage_ngff_version(ngff_version):
@@ -250,13 +279,10 @@ def storage_ngff_version(ngff_version):
 
 def _zarr_options(zarr_options):
     zarr_options = zarr_options or {}
-    ome_zarr = zarr_options.get('ome_zarr', False)
     ngff_version = zarr_options.get('ngff_version', '0.4')
-    creation_kwargs = zarr_options.get('zarr_array_creation_kwargs')
-    if ome_zarr:
-        creation_kwargs = ngff_utils.update_zarr_array_creation_kwargs_for_ngff_version(
-            storage_ngff_version(ngff_version), creation_kwargs)
-    return ome_zarr, ngff_version, creation_kwargs
+    creation_kwargs = ngff_utils.update_zarr_array_creation_kwargs_for_ngff_version(
+        storage_ngff_version(ngff_version), zarr_options.get('zarr_array_creation_kwargs'))
+    return ngff_version, creation_kwargs
 
 
 def write_multiscales_metadata(group, axes, datasets, ngff_version):
@@ -292,43 +318,6 @@ def _without_none(value):
 def _remove_existing(output_zarr_url, zarr_options):
     if (zarr_options or {}).get('overwrite', True) and os.path.exists(output_zarr_url):
         shutil.rmtree(output_zarr_url)
-
-
-def fuse_to_zarr_by_z_slabs(msims, output_zarr_url, transform_key, output_stack_properties, output_chunksize,
-                            fusion_func=None, zarr_options=None, batch_options=None, interpolation_order=1):
-    """As multiview_stitcher.fusion.fuse(msims, output_zarr_url=...), returning the same, but fusing each z-slab
-    of blocks from only the sources that reach it."""
-    sims = [msi_utils.get_sim_from_msim(
-        msim, scale='scale%s' % msi_utils.get_res_level_from_spacing(msim, output_stack_properties['spacing']))
-        for msim in msims]
-    ome_zarr, ngff_version, creation_kwargs = _zarr_options(zarr_options)
-    store_url = os.path.join(output_zarr_url, '0') if ome_zarr else output_zarr_url
-    _remove_existing(output_zarr_url, zarr_options)
-    # the caller's size assumes sources spread evenly over a plane; clustered tiles put many more in one block
-    budgeted_chunksize = budget_chunksize(
-        source_bounds(sims, transform_key, output_stack_properties, interpolation_order), output_stack_properties,
-        output_chunksize, list(si_utils.get_spatial_dims_from_sim(sims[0])), default_export_fusion_chunk_bytes,
-        4 * fusion_stack_arrays)
-    if budgeted_chunksize != output_chunksize:
-        logging.info(f'Fusion output_chunksize {budgeted_chunksize}: its busiest block meets more sources than'
-                     f' {output_chunksize} allowed for')
-    output_chunksize = budgeted_chunksize
-    with Timer('fusion by z-slabs: level 0'):
-        dims, properties = fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties,
-                                                output_chunksize, fusion_func=fusion_func,
-                                                creation_kwargs=creation_kwargs, batch_options=batch_options,
-                                                interpolation_order=interpolation_order, desc='Level 0')
-    fused = si_utils.get_sim_from_array(array=da.from_zarr(store_url), dims=dims, transform_key=transform_key,
-                                        scale=properties['spacing'], translation=properties['origin'],
-                                        c_coords=sims[0].coords['c'].values, t_coords=sims[0].coords['t'].values)
-    ngff_utils.copy_ngff_time_transform(sims[0], fused)
-    if ome_zarr:
-        with Timer('fusion by z-slabs: pyramid levels'):
-            ngff_utils.write_sim_to_ome_zarr(fused, output_zarr_url=output_zarr_url, overwrite=False,
-                                             batch_options=batch_options, zarr_array_creation_kwargs=creation_kwargs,
-                                             ngff_version=ngff_version)
-        return ngff_utils.read_msim_from_ome_zarr(output_zarr_url, transform_key=transform_key, array_backend='dask')
-    return msi_utils.get_msim_from_sim(fused, scale_factors=[])
 
 
 def native_level_spacings(source_spacings, finest_shape, min_shape=100, tolerance=0.05):
@@ -373,14 +362,19 @@ def native_level_stack_properties(level0_properties, level_spacings, scaled_dims
     return levels
 
 
-def native_levels(source_spacings, level0_properties, scaled_dims, tolerance=0.05):
-    """(pixel size, its native_level_stack_properties, indices of the sources fused into it) per level of a native
-    fusion."""
-    level_spacings = native_level_spacings(source_spacings, [level0_properties['shape'][dim] for dim in scaled_dims],
-                                           tolerance=tolerance)
+def export_levels(source_spacings, level0_properties, scaled_dims, native=True, tolerance=0.05):
+    """(pixel size, its native_level_stack_properties, indices of the sources fused into it) per level of an export.
+    Native: the levels of native_level_spacings, each from the sources at least that fine. Otherwise level 0's own
+    pixel size doubling, every level from every source."""
+    finest_shape = [level0_properties['shape'][dim] for dim in scaled_dims]
+    if native:
+        level_spacings = native_level_spacings(source_spacings, finest_shape, tolerance=tolerance)
+    else:
+        level_spacings = native_level_spacings([min(level0_properties['spacing'][dim] for dim in 'yx')], finest_shape)
     levels = native_level_stack_properties(level0_properties, level_spacings, scaled_dims)
     return [(level_spacing, properties,
-             [index for index, spacing in enumerate(source_spacings) if spacing <= level_spacing * (1 + tolerance)])
+             [index for index, spacing in enumerate(source_spacings)
+              if not native or spacing <= level_spacing * (1 + tolerance)])
             for level_spacing, properties in zip(level_spacings, levels)]
 
 
@@ -411,37 +405,41 @@ def level_paths(count):
     return [str(index).zfill(width) for index in range(count)]
 
 
-def fuse_native_levels_to_ome_zarr(msims, source_spacings, output_zarr_url, transform_key, level0_properties,
-                                   output_chunksize, scaled_dims, fusion_func=None, zarr_options=None,
-                                   batch_options=None, interpolation_order=1, tolerance=0.05):
-    """An OME-Zarr multiscale image whose every level is fused at its own pixel size from only the sources at least
-    that fine, each read at its own nearest level: no source upsampled, no level downsampled from another."""
-    zarr_options = (zarr_options or {}) | {'ome_zarr': True}
-    _, ngff_version, creation_kwargs = _zarr_options(zarr_options)
+def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level0_properties, output_chunksize,
+                            fusion_func=None, zarr_options=None, batch_options=None, interpolation_order=1,
+                            ranks=None, average_levels=False):
+    """An OME-Zarr multiscale image of `levels` (export_levels), each level fused at its own pixel size from its
+    sources, each read at its own nearest level. With average_levels, every level after the first averages the one
+    above it instead: the same pixels resampled again cost more than the average of what is already fused. With
+    `ranks` (one a source, lower first), where a lower-ranked source covers a pixel, a higher-ranked one under it is
+    left out."""
+    ngff_version, creation_kwargs = _zarr_options(zarr_options)
     _remove_existing(output_zarr_url, zarr_options)
-    levels = native_levels(source_spacings, level0_properties, scaled_dims, tolerance=tolerance)
-    sizes, counts = np.unique(np.round(source_spacings, 4), return_counts=True)
-    logging.info(f'Native fusion levels {[float(round(level[0], 4)) for level in levels]}, sources by pixel'
-                 f' size {dict(zip(sizes.tolist(), counts.tolist()))}')
+    logging.info(f'Fusion levels {[float(round(level[0], 4)) for level in levels]}')
     paths = level_paths(len(levels))
     for index, (level_spacing, properties, selected) in enumerate(levels):
         output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
-        sims = [msi_utils.get_sim_from_msim(
-            msims[source], scale='scale%s' % msi_utils.get_res_level_from_spacing(msims[source],
-                                                                                 output_properties['spacing']))
-            for source in selected]
-        views = []
-        for sim in sims:
-            param = si_utils.get_affine_from_sim(sim, transform_key=transform_key)
-            views.append((si_utils.get_stack_properties_from_sim(sim),
-                          np.asarray(param.isel(t=0) if 't' in param.dims else param, dtype=float)))
-        level_chunksize, groups = level_blocks(views, output_properties, output_chunksize, interpolation_order)
-        # tiles over the overview: where a finer source covers a pixel, the coarser one under it is left out
-        fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key, output_properties,
-                             level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
-                             batch_options=batch_options, interpolation_order=interpolation_order,
-                             desc=f'Level {index} at {print_significants(level_spacing, 3)} µm',
-                             ranks=[source_spacings[source] for source in selected], groups=groups)
+        # as multiview_stitcher picks them, exactly: a source level at the output's own pixel size, offset from its
+        # grid, leaves the output's edge pixels outside its interpolation
+        sims = [msi_utils.get_sim_from_msim(msims[source], scale='scale%d' % coarsest_level_within(
+            msim_level_spacings(msims[source]), output_properties['spacing'], dims=list(output_properties['spacing']),
+            tolerance=0)) for source in selected]
+        level_chunksize, groups = level_blocks(sim_views(sims, transform_key), output_properties, output_chunksize,
+                                               interpolation_order)
+        desc = f'Level {index} at {print_significants(level_spacing, 3)} µm'
+        if average_levels and index > 0:
+            factors = {dim: round(properties['factors'][dim] / levels[index - 1][1]['factors'][dim])
+                       for dim in output_properties['shape']}
+            average_into_zarr_array(os.path.join(output_zarr_url, paths[index - 1]),
+                                    os.path.join(output_zarr_url, paths[index]), factors, level_chunksize,
+                                    [block for blocks in groups.values() for block in blocks],
+                                    creation_kwargs=creation_kwargs, batch_options=batch_options, desc=desc)
+        else:
+            fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key, output_properties,
+                                 level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
+                                 batch_options=batch_options, interpolation_order=interpolation_order, desc=desc,
+                                 ranks=[ranks[source] for source in selected] if ranks is not None else None,
+                                 groups=groups)
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
         level0_properties, [properties['factors'] for _, properties, _ in levels],

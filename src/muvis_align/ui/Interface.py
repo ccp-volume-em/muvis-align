@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 import logging
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
@@ -27,7 +27,7 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
     promoted_geometry, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
     snapshot_msims_transform, restore_msims_transform, \
-    select_msim_subpyramid_at_scale, reduce_msims_to_fused_size, composite_msims_overview
+    select_msim_subpyramid_at_scale, reduce_msims_to_fused_size
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
 from muvis_align.metrics import calc_msims_metrics
@@ -43,7 +43,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle, print_hbytes
+    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase
 
 
 patch_shapes_text_coords()
@@ -754,11 +754,7 @@ class Interface:
         # resolution pyramid is used as-is; a single-resolution source is downscaled by one
         # constant factor when its largest spatial dimension exceeds 1000px
         view_msims = []
-        progress_context = (
-            progress_factory(total=len(self.reg.sources), desc='Building views')
-            if progress_factory is not None
-            else nullcontext(None)
-        )
+        progress_context = progress_phase(progress_factory, total=len(self.reg.sources), desc='Building views')
         with progress_context as pbar:
             for source, msim in zip(self.reg.sources, self.reg.msims):
                 if len(source.shapes) == 1:
@@ -1017,7 +1013,7 @@ class Interface:
                 data = self._run_off_thread(
                     lambda worker_factory: self._create_lazy_overview(transform_key,
                                                                       show_preprocessed=show_preprocessed), factory)
-            # otherwise (a rotation, a 3D or multichannel source) the fused preview
+            # otherwise (a rotation, or sources it cannot overlay) the fused preview
             if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
@@ -1025,7 +1021,7 @@ class Interface:
                     # so the step reports its own sub-steps instead of being one silent block
                     data = self._run_off_thread(
                         lambda worker_factory: self._create_napari_data(
-                            transform_key, show_preprocessed=show_preprocessed, composite=True,
+                            transform_key, show_preprocessed=show_preprocessed,
                             progress_factory=worker_factory, weight=view_data_weight),
                         factory)
             # cleared only once the new data is ready: an empty viewer shows the welcome screen,
@@ -1107,7 +1103,7 @@ class Interface:
         # sub-steps in rough proportion to what each costs on a large project. Building the
         # geometries is the one with a real per-source count, and most of the cost with it
         def phase(share, total=None):
-            return self._progress_phase(progress_factory, total=total,
+            return progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
         # with no native 'z' but sources at different heights, each source's z must become a real
@@ -1172,18 +1168,12 @@ class Interface:
         face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
         return shapes, refs, labels, face_colors
 
-    @staticmethod
-    def _progress_phase(progress_factory, total=None, desc=None, weight=1):
-        """One reporting phase of the caller's operation, or nothing to report into."""
-        return (progress_factory(total=total, desc=desc, weight=weight)
-                if progress_factory is not None else nullcontext(None))
-
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
-                            composite=False, progress_factory=None, weight=1):
+                            progress_factory=None, weight=1):
         # `weight` is what the caller's bar allows this step, divided below between the sub-steps
         # in rough proportion to what each costs on a large project
         def phase(share, total=None):
-            return self._progress_phase(progress_factory, total=total,
+            return progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
         # copy_transforms_to_msims() below is the only step here that writes into a msim,
@@ -1192,7 +1182,6 @@ class Interface:
         # to change, so anything added here that mutates one needs this flag too.
         writes_transforms = not (show_preprocessed
                                  and transform_key == self.reg.source_transform_key)
-        z_positions = None
         if show_preprocessed:
             with phase(1 / 12, total=1) as pbar, \
                  Timer(f'_create_napari_data: copy {len(self.reg.register_msims)} register_msims',
@@ -1201,11 +1190,6 @@ class Interface:
                          if writes_transforms else list(self.reg.register_msims))
                 if pbar is not None:
                     pbar.update(1)
-            # sources at several heights are sized and pasted as if promoted to 3D, the geometry
-            # fuse() gives them, without promoting them (9 minutes at 34k): each at its own z, as
-            # make_msims_3d() takes it
-            if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
         else:
             # view_msims is never scale-reduced - every source's full native pyramid. Fusing
             # that at scale0 to draw an overview builds (and, for get_contrast_limits(), runs)
@@ -1225,9 +1209,11 @@ class Interface:
                 msims = select_msim_subpyramid_at_scale(view_msims, self.reg.sources, preview_scale)
                 if pbar is not None:
                     pbar.update(1)
-            # the view msims stay 2D (see ensure_view_msims): placed at their z as in the branch above
-            if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
+        # sources at several heights are sized as if promoted to 3D, each at its own z as make_msims_3d() takes it,
+        # without promoting them
+        z_positions = None
+        if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
+            z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
         # Whichever branch produced them, cap what this preview will fuse. The show_preprocessed
         # branch takes its resolution from pre_processing's scale, never preview_scale, so at
         # scale 1 the "preview" is the whole dataset: one run fused 396.9GB over 55 minutes to
@@ -1257,22 +1243,6 @@ class Interface:
                 copy_transforms_to_msims(transform_msims, msims, transform_key)
             if pbar is not None:
                 pbar.update(1)
-        if composite:
-            # the main view only needs to show where the sources sit, and fusing for that costs
-            # per source however small the preview (10.3 minutes for 4733) - paste them instead,
-            # falling back to fusing if they cannot be placed faithfully. Also the one sub-step
-            # with real per-source progress, so it gets most of what this step was allowed.
-            with phase(7 / 12, total=len(msims)) as pbar, \
-                 Timer(f'_create_napari_data: composite overview ({len(msims)} images)',
-                       verbose=self._timing_verbose()):
-                overview = composite_msims_overview(
-                    msims, transform_key, z_scale=self.reg._msim_z_scale,
-                    label=f'Overview ({len(msims)} images)',
-                    progress=(pbar.update if pbar is not None else None), z_positions=z_positions)
-            # every source's pixels were decoded and dropped again, on many threads
-            release_memory(f'Overview ({len(msims)} images)')
-            if overview is not None:
-                return overview
         # output_chunksize is left to fuse(), which derives it after its own make_msims_3d
         # promotion - sizing it here would mean reproducing that rule against msims that may not
         # have a 'z' dim yet. No declared step count either: fuse() plans the whole graph in one
@@ -1760,15 +1730,7 @@ class Interface:
 
             results = self._run_off_thread(register_pairs, factory)
 
-        qualities = {key: metric[default_transform_key][default_quality_key]
-                     for key, metric in results['metrics']['pairs'].items()
-                     if default_quality_key in metric[default_transform_key]}
-        bboxes = {}
-        for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
-            if 't' in value.dims:
-                value = value.sel(t=0)
-            bboxes[key] = np.array(value).tolist()
-        self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
+        self.reg.save_pair_results(results['pair_mappings'], metrics=results['metrics'])
         self.enable_modify_pair_registration()
         return results
 
@@ -1840,12 +1802,7 @@ class Interface:
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1
                 nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, default_transform_key)
                 nx.set_edge_attributes(self.reg.pairs_graph, qualities, default_quality_key)
-                bboxes = {}
-                for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
-                    if 't' in value.dims:
-                        value = value.sel(t=0)
-                    bboxes[key] = np.array(value).tolist()
-                self.reg.save_pair_mappings(pair_transforms, qualities, bboxes)
+                self.reg.save_pair_results(pair_transforms, qualities=qualities)
 
             self.view_mode = ViewMode.OVERVIEW
             self.update_registered(view_transform_key=self.reg.source_transform_key)

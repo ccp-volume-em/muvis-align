@@ -196,7 +196,8 @@ def repair_text(value: Any) -> Any:
 # how many micrometres a unit is worth, keyed by the spellings vendors
 # use. Angstrom is included because electron microscopes report in it.
 UM_CONVERSIONS = {
-    'a': 1e-4, 'angstrom': 1e-4,
+    'a': 1e-4, 'å': 1e-4, 'angstrom': 1e-4,
+    'pm': 1e-6, 'picometer': 1e-6, 'picometre': 1e-6,
     'nm': 1e-3, 'nanometer': 1e-3, 'nanometre': 1e-3,
     'um': 1, 'µm': 1, 'micrometer': 1, 'micrometre': 1, 'micron': 1,
     'mm': 1e3, 'millimeter': 1e3, 'millimetre': 1e3,

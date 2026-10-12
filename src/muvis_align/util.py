@@ -1,7 +1,6 @@
-import ast
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from configparser import ConfigParser
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import csv
 import cv2 as cv
 import functools
@@ -24,6 +23,8 @@ import warnings
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
 from xarray import DataArray
+
+from muvis_align.image.tiff_metadata import UM_CONVERSIONS
 
 
 def single_threaded_highs():
@@ -49,9 +50,6 @@ def single_threaded_highs():
 single_threaded_highs()
 
 
-def get_default(x, default):
-    return default if x is None else x
-
 
 def ensure_list(x) -> list:
     if x is None:
@@ -61,16 +59,6 @@ def ensure_list(x) -> list:
     else:
         return [x]
 
-
-def reorder(items: list, old_order: str, new_order: str, default_value: int = 0) -> list:
-    new_items = []
-    for label in new_order:
-        if label in old_order:
-            item = items[old_order.index(label)]
-        else:
-            item = default_value
-        new_items.append(item)
-    return new_items
 
 
 def _paths_match_by_suffix(path1, path2, min_parts=2):
@@ -160,31 +148,6 @@ def filter_dict(dict0: dict) -> dict:
     return new_dict
 
 
-def desc_to_dict(desc: str) -> dict:
-    desc_dict = {}
-    if desc.startswith('{'):
-        try:
-            metadata = ast.literal_eval(desc)
-            return metadata
-        except:
-            pass
-    for item in re.split(r'[\r\n\t|]', desc):
-        item_sep = '='
-        if ':' in item:
-            item_sep = ':'
-        if item_sep in item:
-            items = item.split(item_sep)
-            key = items[0].strip()
-            value = items[1].strip()
-            for dtype in (int, float, bool):
-                try:
-                    value = dtype(value)
-                    break
-                except:
-                    pass
-            desc_dict[key] = value
-    return desc_dict
-
 
 def print_dict(dct: dict, indent: int = 0) -> str:
     s = ''
@@ -257,16 +220,6 @@ def print_hbytes(nbytes: int) -> str:
     return f'{nbytes:.1f} {e}B'
 
 
-def check_round_significants(a: float, significant_digits: int) -> float:
-    rounded = round_significants(a, significant_digits)
-    if a != 0:
-        dif = 1 - rounded / a
-    else:
-        dif = rounded - a
-    if abs(dif) < 10 ** -significant_digits:
-        return rounded
-    return a
-
 
 def round_significants(a: float, significant_digits: int) -> float:
     if a != 0:
@@ -274,9 +227,6 @@ def round_significants(a: float, significant_digits: int) -> float:
         return round(a, round_decimals)
     return a
 
-
-def split_path(path: str) -> list:
-    return os.path.normpath(path).split(os.path.sep)
 
 
 def get_filetitle(filename: str) -> str:
@@ -469,33 +419,6 @@ def split_num_text(text: str) -> list:
     return num_texts2
 
 
-def split_value_unit_list(text: str) -> list:
-    value_units = []
-    if text is None:
-        return None
-
-    items = split_num_text(text)
-    if isinstance(items[-1], str):
-        def_unit = items[-1]
-    else:
-        def_unit = ''
-
-    i = 0
-    while i < len(items):
-        value = items[i]
-        if i + 1 < len(items):
-            unit = items[i + 1]
-        else:
-            unit = ''
-        if not isinstance(value, str):
-            if isinstance(unit, str):
-                i += 1
-            else:
-                unit = def_unit
-            value_units.append((value, unit))
-        i += 1
-    return value_units
-
 
 def check_contains_value(value, contains_value):
     return isinstance(value, (dict, str)) and contains_value in value
@@ -550,45 +473,9 @@ def eval_context(data, key, default_value, context):
     return value
 
 
-def get_value_units_micrometer(value_units0: list|dict) -> list|dict|None:
-    conversions = {
-        'nm': 1e-3,
-        'µm': 1, 'um': 1, 'micrometer': 1, 'micron': 1,
-        'mm': 1e3, 'millimeter': 1e3,
-        'cm': 1e4, 'centimeter': 1e4,
-        'm': 1e6, 'meter': 1e6
-    }
-    if value_units0 is None:
-        return None
 
-    if isinstance(value_units0, dict):
-        values_um = {}
-        for dim, value_unit in value_units0.items():
-            if isinstance(value_unit, (list, tuple)):
-                value_um = value_unit[0] * conversions.get(value_unit[1], 1)
-            else:
-                value_um = value_unit
-            values_um[dim] = value_um
-    else:
-        values_um = []
-        for value_unit in value_units0:
-            if isinstance(value_unit, (list, tuple)):
-                value_um = value_unit[0] * conversions.get(value_unit[1], 1)
-            else:
-                value_um = value_unit
-            values_um.append(value_um)
-    return values_um
-
-
-um_conversions = {
-    'Å': 1e-4, 'A': 1e-4, 'angstrom': 1e-4,
-    'pm': 1e-6, 'picometer': 1e-6,
-    'nm': 1e-3, 'nanometer': 1e-3,
-    'µm': 1, 'um': 1, 'micrometer': 1, 'micron': 1,
-    'mm': 1e3, 'millimeter': 1e3,
-    'cm': 1e4, 'centimeter': 1e4,
-    'm': 1e6, 'meter': 1e6
-}
+# tiff_metadata's table, plus the cased spellings OME writes
+um_conversions = UM_CONVERSIONS | {'Å': 1e-4, 'A': 1e-4}
 
 
 def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None,
@@ -660,6 +547,33 @@ def timed_calls(func, times, cpu_times):
             times.append(time.perf_counter() - start)
             cpu_times.append(time.thread_time() - cpu_start)
     return timed
+
+
+def progress_phase(progress_factory, total=None, desc=None, weight=1):
+    """One reporting phase of the caller's operation, or nothing to report into."""
+    return progress_factory(total=total, desc=desc, weight=weight) if progress_factory is not None \
+        else nullcontext(None)
+
+
+def pooled_map(func, count, workers, progress_factory=None, desc=None, weight=1, timing_label=None):
+    """[func(index) for index in range(count)], on `workers` threads (one: none), each on the bar as it finishes; with
+    timing_label, the phase's timing logged (format_phase_timing). Rolling: a cancel need not wait for every item."""
+    results = [None] * count
+    times, cpu_times = [], []
+    timed = timed_calls(func, times, cpu_times)
+    workers = max(1, min(workers, count))
+    phase_start, phase_cpu_start = time.time(), time.process_time()
+    with progress_phase(progress_factory, total=count, desc=desc, weight=weight) as pbar:
+        items = ((index, timed(index)) for index in range(count)) if workers == 1 \
+            else rolling_map(timed, range(count), workers)
+        for index, result in items:
+            results[index] = result
+            if pbar is not None:
+                pbar.update(1)
+    if timing_label and times:
+        logging.info(f'{timing_label}: {len(times)} items {format_phase_timing(
+            time.time() - phase_start, times, cpu_times, workers, time.process_time() - phase_cpu_start)}')
+    return results
 
 
 class OperationCancelled(Exception):
@@ -843,14 +757,6 @@ def parse_scale(value, default=1):
     return int(number) if number.is_integer() else number
 
 
-def convert_rational_value(value) -> float:
-    if value is not None and isinstance(value, tuple):
-        if value[0] == value[1]:
-            value = value[0]
-        else:
-            value = value[0] / value[1]
-    return value
-
 
 def get_moments(data, offset=(0, 0)):
     moments = cv.moments((np.array(data) + offset).astype(np.float32))    # doesn't work for float64!
@@ -869,13 +775,6 @@ def get_center(data, offset=(0, 0)):
         center = np.mean(data, 0).flatten()  # close approximation
     return center.astype(np.float32)
 
-
-def create_transform0(center=(0, 0), angle=0, scale=1, translate=(0, 0)):
-    transform = cv.getRotationMatrix2D(center[:2], angle, scale)
-    transform[:, 2] += translate
-    if len(transform) == 2:
-        transform = np.vstack([transform, [0, 0, 1]])   # create 3x3 matrix
-    return transform
 
 
 def create_transform(center, angle, translation=None, matrix_size=3):
@@ -960,23 +859,6 @@ def get_translation_from_transform(transform):
     translation = apply_transform([[0] * ndim], transform)[0]
     return translation
 
-
-def get_center_from_transform(transform):
-    # from opencv:
-    # t0 = (1-alpha) * cx - beta * cy
-    # t1 = beta * cx + (1-alpha) * cy
-    # where
-    # alpha = cos(angle) * scale
-    # beta = sin(angle) * scale
-    # isolate cx and cy:
-    t0, t1 = transform[:2, 2]
-    scale = 1
-    angle = np.arctan2(transform[0][1], transform[0][0])
-    alpha = np.cos(angle) * scale
-    beta = np.sin(angle) * scale
-    cx = (t1 + t0 * (1 - alpha) / beta) / (beta + (1 - alpha) ** 2 / beta)
-    cy = ((1 - alpha) * cx - t0) / beta
-    return cx, cy
 
 
 def get_rotation_from_transform(transform, dims='xyz'):
@@ -1090,16 +972,6 @@ def filter_edge_points(points, bounds, filter_factor=0.1, threshold=0.5):
     return weights > threshold
 
 
-def draw_edge_filter(bounds):
-    out_image = np.zeros(np.flip(bounds))
-    y, x = np.where(out_image == 0)
-    points = np.transpose([x, y])
-
-    center = np.array(bounds) / 2
-    dist_center = np.abs(points / center - 1)
-    position_weights = np.clip((1 - np.max(dist_center, axis=-1)) * 10, 0, 1)
-    return position_weights.reshape(np.flip(bounds))
-
 
 def get_pairs(positions, sizes):
     """
@@ -1192,18 +1064,6 @@ def retuple(chunks, shape):
     dims_to_add = len(shape) - len(chunks)
     return *shape[:dims_to_add], *chunks
 
-
-def metric_to_color(value):
-    # metric range 0...1 to traffic-light color
-    if value > 0.5:
-        color = 'green'
-    elif value > 0.25:
-        color = 'gold'
-    elif value > 0.1:
-        color = 'orange'
-    else:
-        color = 'red'
-    return color
 
 
 def get_process_memory():
@@ -1479,12 +1339,6 @@ def adjust_sbemimage_properties(translation, scale, size, filename, sbemimage_co
 
     return translation, scale
 
-
-def get_label_element(elements, label):
-    for element in elements:
-        if element.get('label') == label:
-            return element
-    return None
 
 
 def operation_to_past_participle(operation):
