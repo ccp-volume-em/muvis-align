@@ -39,7 +39,11 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Nothing.
+**Remaining REFACTORING items** (branch `refactor-cleanup`): 1. tick the restructure item; 2. every pool runs in the
+calling thread with one worker (rolling_map, SectionPlanes, contrast sampling, MVS/Interface/Pipeline pools);
+3. efficiency audit written up per optimisation (gain from notes/commits vs code) for a decision; 4. comments to
+SKILLS.md (1-2 lines, why not what, no performance figures), file by file, the code unchanged (AST check).
+Status: step 2.
 
 ## TODO
 
@@ -100,7 +104,7 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
 
 REFACTORING
 
-- [ ] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
+- [x] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
       avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
       create detailed plan first
       - One overview instead of two: done (see Done). Routing the quick view through fuse() instead was weighed:

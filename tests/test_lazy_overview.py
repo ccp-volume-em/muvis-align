@@ -257,3 +257,12 @@ def test_2d_and_3d_sources_together_get_no_lazy_overview(tmp_path):
     reg.init_data(source_metadata={'scale': {'x': 1, 'y': 1, 'z': 1}})
 
     assert overview(reg) is None
+
+
+def test_one_worker_builds_each_plane_in_the_calling_thread_and_none_ahead(tmp_path):
+    planes = overview(registration(tmp_path), workers=1).attrs['section_planes'][0]
+
+    plane = planes.plane(0)
+
+    assert planes._background is None and list(planes._planes) == [0]
+    assert np.all(plane[0, :64, :64] == 10)

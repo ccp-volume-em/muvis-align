@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 import logging
 from enum import Enum, auto
@@ -43,7 +42,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase
+    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase, thread_map
 
 
 patch_shapes_text_coords()
@@ -1327,7 +1326,7 @@ class Interface:
                     if shape_index is not None:
                         self.select_pair_preview(refs[shape_index])
 
-    def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False):
+    def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False, workers=default_preview_workers):
         # fuse() always returns msims, and get_msim_level_data (each level's raw dask array off
         # its own Dataset) is enough to show a genuine multiscale pyramid, so nothing here needs
         # extract_sims_from_fused. `fused` is either one multiscale msim - already
@@ -1357,16 +1356,7 @@ class Interface:
             channel_list = channels or [{}] * len(fused)
             with Timer(f'_napari_view_add_fused_data: prep {len(fused)} layers',
                       verbose=self._timing_verbose()):
-                layer_kwargs = [None] * len(fused)
-                if len(fused) > 1:
-                    max_workers = min(default_preview_workers, len(fused))
-                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                        futures = {executor.submit(prep_layer, msim, channel): index
-                                  for index, (msim, channel) in enumerate(zip(fused, channel_list))}
-                        for future in as_completed(futures):
-                            layer_kwargs[futures[future]] = future.result()
-                elif fused:
-                    layer_kwargs[0] = prep_layer(fused[0], channel_list[0])
+                layer_kwargs = thread_map(lambda item: prep_layer(*item), list(zip(fused, channel_list)), workers)
 
             with Timer(f'_napari_view_add_fused_data: add_image loop ({len(fused)} layers)',
                       verbose=self._timing_verbose()):

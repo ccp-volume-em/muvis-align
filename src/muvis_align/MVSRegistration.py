@@ -1,7 +1,7 @@
 # https://stackoverflow.com/questions/62806175/xarray-combine-by-coords-return-the-monotonic-global-index-error
 # https://github.com/pydata/xarray/issues/8828
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 import copy
 import dask
@@ -1885,7 +1885,7 @@ class MVSRegistration:
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
              dimension=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
-             output_chunksize=None):
+             output_chunksize=None, workers=None):
         """Fuse each source's own multiscale msim into one output msim (a real multiscale
         pyramid, not a single resolution) - msims in, msims out. A caller with only a concrete
         sim per source (an ad-hoc resolution with no corresponding real pyramid) wraps it into a
@@ -1972,16 +1972,7 @@ class MVSRegistration:
             # each call builds one source's own lazy graph against the shared
             # output_stack_properties, independent per source, so a pool spreads that
             # graph-construction cost across every core. Joined in submission order below.
-            channel_results = [None] * len(msims)
-            if len(msims) > 1:
-                max_workers = min(default_preview_workers, len(msims))
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {executor.submit(build_channel_result, msim): index
-                              for index, msim in enumerate(msims)}
-                    for future in as_completed(futures):
-                        channel_results[futures[future]] = future.result()
-            elif msims:
-                channel_results[0] = build_channel_result(msims[0])
+            channel_results = thread_map(build_channel_result, msims, workers or default_preview_workers)
             fused_image = combine_msims_as_channels(channel_results, [channel['label'] for channel in channels])
         else:
             if fusion_method:
@@ -2030,7 +2021,7 @@ class MVSRegistration:
                         fused_image = fuse_levels_to_ome_zarr(
                             msims, levels, output_filename, transform_key, output_stack_properties, output_chunksize,
                             fusion_func=fuse_func, zarr_options=zarr_options,
-                            batch_options=self._fusion_batch_options(saving_zarr),
+                            batch_options=self._fusion_batch_options(saving_zarr, max_workers=workers),
                             ranks=source_spacings if is_native else None, average_levels=not is_native)
                     else:
                         fused_image = fusion.fuse(msims, fusion_func=fuse_func, transform_key=transform_key,

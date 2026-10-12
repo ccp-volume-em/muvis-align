@@ -658,6 +658,16 @@ class _WorkerProcessPool(ProcessPoolExecutor):
         return super().__exit__(exc_type, exc_value, traceback)
 
 
+def thread_map(func, items, workers):
+    """[func(item) for item in items], in order, on `workers` threads (one: in the calling thread)."""
+    items = list(items)
+    workers = max(1, min(workers, len(items)))
+    if workers == 1:
+        return [func(item) for item in items]
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        return list(executor.map(func, items))
+
+
 def worker_process_pool(workers, max_tasks_per_child=None):
     """Worker processes for GIL-bound per-item work. Spawned, never forked: forking a process running
     Qt and dask threads can copy a lock another thread holds."""
@@ -673,10 +683,13 @@ def result_unless_cancelled(future, poll_seconds=0.5):
 
 
 def rolling_map(func, items, workers):
-    """(item, func(item)) for each of `items` as it finishes, on `workers` threads. Only twice that
-    many are submitted at once, so memory stays bounded however many items there are, and a slow
-    item holds up only its own thread, not a whole batch.
-    """
+    """(item, func(item)) for each of `items` as it finishes, on `workers` threads (one: in the calling thread). Only
+    twice that many are submitted at once, so memory stays bounded and a slow item holds up only its own thread."""
+    if workers <= 1:
+        for item in items:
+            yield item, func(item)
+            raise_if_cancelled()
+        return
     items = iter(items)
     pending = {}
     with ThreadPoolExecutor(workers) as pool:
