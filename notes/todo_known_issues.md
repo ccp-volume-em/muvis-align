@@ -86,40 +86,34 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       image shapes 1.3ms, tables 1.8 min; the preview cap and fused preview only where the lazy overview
       declines (a rotation, 2D and 3D sources together). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
+
 REFACTORING
 
-- [x] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
-      avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
-      create detailed plan first
-      - One overview instead of two: done (see Done). Routing the quick view through fuse() instead was weighed:
-        it shares ~5 lines, needs msims=None and readers, a view-only fusion method to keep from export, and leaves
-        the msim preparation (view msims, sub-pyramid, cap) in Interface.
-      - Duplication found by a scan (2026-10-12): done (see Done), except these, weighed and left - a shared helper
-        would remove a few lines for flags or a one-line wrapper: the pair worker pool (register_pairs vs
-        map_pair_metrics: logging, timing and merging differ), the per-source build_source_stack_props loops, output
-        filename expressions and the multi-z check, section z spacing (fallbacks differ), the quality-into-metrics
-        merges (key matching differs), the pair-key parse, the two affine widenings (equal for y, x, 1 labels).
-        metrics.calc_msims_metrics still builds its graph with mv_graph's linear programs (a behaviour change).
-- [x] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
-      Audit (2026-10-12): nearly all have order-of-magnitude gains at 34k sources, prevent out-of-memory, or work
-      around a library bug (sweep pairing, polygon clipping, worker processes, rolling_map, deferred link quality,
-      lazy overview, stack props, fusion budgets, preview cap, napari cache clearing, single_threaded_highs, ...).
-      Debt removed (branch refactor-cleanup): (1) the direct byte-range TIFF reads (ome_tiff_helper contiguous_layout / _read_rows): +15-20%
-      export for ~1.4GB more peak memory, ~54 lines - remove; (2) the pair-scoring CPU instrumentation
-      (timed_module_functions, 'Pair scoring cpu' log): a diagnostic monkeypatching multiview_stitcher - remove;
-      (3) threads over GIL-bound per-source preview prep (fuse()'s channel overlay, compose-mode layers): unmeasured -
-      plain loops. After the next HPC run: estimated_pair_cost (meatballs unchanged; check workers busy) and
-      SectionPlanes' prefetch (unmeasured; keep its LRU and z-chunk cache). The 'Preview cap: one rebuild' TODO
-      dropped (~3.5% of a refresh).
 - [ ] **After the next HPC run, keep or drop** estimated_pair_cost (pairs largest first: workers busy was 39.7/64)
       and SectionPlanes' prefetch of neighbouring sections (a section's build time when scrolling).
-- [x] add option to these efficiency classes to run without threading using an input argument
-- [x] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
-      (1250 -> 764 comment lines; testing/code_unchanged.py proves code unchanged; tiff_metadata.py left as
-      the upstream napari-meta-tiff copy)
 
 
 ## Done
+
+- **Restructure for maintainability** (PRs #63, #65) - one overview (the quick view takes 3D and multichannel
+  sources), one OME-Zarr writer (fusion_slabs.fuse_levels_to_ome_zarr), _paste rewritten, the duplication scan
+  merged and ~40 unreferenced functions deleted. Weighed and left - a shared helper would remove a few lines for
+  flags or a one-line wrapper: the pair worker pool (register_pairs vs map_pair_metrics), the per-source
+  build_source_stack_props loops, output filename expressions, the multi-z check, section z spacing, the
+  quality-into-metrics merges, the pair-key parse, the two affine widenings. metrics.calc_msims_metrics still builds
+  its graph with mv_graph's linear programs (moving it would change behaviour). Routing the quick view through fuse()
+  was weighed too: ~5 shared lines for msims=None, readers and a view-only fusion method.
+- **Efficiency audit** (PR #65) - nearly every optimisation has an order-of-magnitude gain at 34k sources, prevents
+  out-of-memory, or works around a library bug (sweep pairing, polygon clipping, worker processes, rolling_map,
+  deferred link quality, lazy overview, stack props, fusion budgets, preview cap, napari cache clearing,
+  single_threaded_highs, ...). Removed as debt: the direct byte-range TIFF reads (+15-20% export for ~1.4GB more peak
+  memory), the pair-scoring CPU instrumentation (a diagnostic monkeypatching multiview_stitcher), threads over
+  GIL-bound per-source preview preparation; the 'Preview cap: one rebuild' TODO dropped (~3.5% of a refresh).
+- **Run without threading** (PR #65) - every worker pool runs in the calling thread with one worker (rolling_map,
+  thread_map, the quick view's reads and prefetch, contrast sampling, fusion batches); fuse() and
+  lazy_section_overview take a `workers` argument.
+- **Comments to why, without figures** (PR #65) - 1250 -> 764 comment lines, docstrings shortened, no timings or
+  history; testing/code_unchanged.py proves no code changed. tiff_metadata.py left as its napari-meta-tiff copy.
 
 - **Shape labels and edges contrast with the image** - the contrast-limit sample (quick view, or the coarsest level)
   also gives where the typical value shows (get_display_level); with the channels' colours that is the background's
