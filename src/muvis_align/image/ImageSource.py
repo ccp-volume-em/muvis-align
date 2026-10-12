@@ -6,20 +6,21 @@ from multiview_stitcher import msi_utils, param_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_transform_key
-from muvis_align.image.util import (combine_transforms, build_source_redimensioned_msim,
-                                    build_missing_pyramid_levels, calc_pyramid_level_factors)
+from muvis_align.image.util import (build_source_redimensioned_msim, build_missing_pyramid_levels,
+                                    calc_pyramid_level_factors, complete_translation, get_properties_from_transform)
 from muvis_align.util import (find_all_numbers, split_numeric_dict, eval_context, check_contains_value,
-                              is_source_value, create_transform, load_sbemimage_best_config, adjust_sbemimage_properties,
-                              find_sbemimage_meta_dir)
+                              is_source_value, load_sbemimage_best_config, adjust_sbemimage_properties,
+                              find_sbemimage_meta_dir, xyz_to_dict)
 
 
 class ImageSource:
     default_physical_unit = 'µm'
 
-    def __init__(self, filename, source_metadata=None, extra_metadata=None, file_label=None,
-                 transform_key=default_transform_key, matrix_size=None):
+    def __init__(self, filename, source_metadata=None, file_label=None, index=None,
+                 transform_key=default_transform_key):
         self.filename = filename
         self.file_label = file_label
+        self.index = index
         self.transform_key = transform_key
         self.dimension_order = ''
         self.is_rgb = False
@@ -35,12 +36,11 @@ class ImageSource:
         self.creator = ''
         self._data = []
         self._metadata = None
-        self.transform = None
         self._msim = None
         self._redimensioned_msims = {}
         self._data_loaded = False
         self.init_metadata()
-        self.fix_metadata(source_metadata, extra_metadata, matrix_size)
+        self.fix_metadata(source_metadata)
         # only the metadata for synthesized coarse levels is settled here - pure shape
         # arithmetic - with the arrays built on first access to self.data. Deciding it up front
         # keeps get_shape/get_pixel_size/get_level_from_scale answering the same however early
@@ -109,7 +109,8 @@ class ImageSource:
         raise NotImplementedError("Image source should implement init_metadata() to initialize metadata,"
                                   " populating self.data with one dask array per pyramid level")
 
-    def fix_metadata(self, source_metadata=None, extra_metadata=None, matrix_size=None):
+    def fix_metadata(self, source_metadata=None):
+        source_metadata = self.select_source_metadata(source_metadata)
         if isinstance(source_metadata, dict):
             filename_numeric = find_all_numbers(self.filename)
             filename_dict = {key: int(value) for key, value in split_numeric_dict(self.filename).items()}
@@ -190,19 +191,24 @@ class ImageSource:
                 if 'y' in self.position:
                     self.position['y'] = -self.position['y']
 
-        if matrix_size is None:
-            matrix_size = 4 if self.get_size().get('z', 0) > 1 else 3
-        if self.rotation is None:
-            self.transform = None
+    def select_source_metadata(self, source_metadata):
+        """This file's own entry of a run's source_metadata: its label's matrix, else the run-level values, a list
+        value taking this file's index."""
+        if not isinstance(source_metadata, dict):
+            return source_metadata
+        if self.file_label is not None and self.file_label in source_metadata:
+            transform = param_utils.affine_to_xaffine(np.array(source_metadata[self.file_label]))
+            position, rotation, scale = get_properties_from_transform(transform)
+            selected = {'position': position, 'rotation': rotation, 'scale': xyz_to_dict([scale, scale])}
         else:
-            self.transform = param_utils.invert_coordinate_order(
-                create_transform(self.position, self.rotation, matrix_size=matrix_size))
-        if extra_metadata and self.file_label is not None and self.file_label in extra_metadata:
-            transform2 = np.array(extra_metadata[self.file_label])
-            if self.transform is None:
-                self.transform = transform2
-            else:
-                self.transform = np.array(combine_transforms([self.transform, transform2]))
+            selected = {key: value[self.index] if isinstance(value, list) and self.index is not None else value
+                        for key, value in source_metadata.items()
+                        if key in ('position', 'scale', 'rotation', 'channels')}
+        # run-level flags apply to every file, whatever its entry
+        for flag in ('invert', 'is_center'):
+            if flag in source_metadata:
+                selected[flag] = source_metadata[flag]
+        return selected
 
     def _load_data(self):
         """Populate self._data with one array per level of the source's own pyramid. Called once,
@@ -270,36 +276,23 @@ class ImageSource:
         c_coords = [channel.get('label', '') for channel in self.get_channels()]
         # fix empty/incomplete dicts: si_utils.get_sim_from_array requires either a translation
         # covering every spatial dim, or None (letting it default everything to 0)
-        translation = dict(self.position)
-        if translation:
-            if 'x' not in translation:
-                translation['x'] = 0
-            if 'y' not in translation:
-                translation['y'] = 0
-        translation_arg = translation if translation else None
+        translation_arg = complete_translation(self.position) or None
+        # unplaced (init_data places it), with z only where there is more than one plane, as _restamp_msim
+        identity = np.eye(4 if self.get_size().get('z', 0) > 1 else 3)
         sims = []
         for level, data in enumerate(self.data):
             scale = self.pixel_sizes[level]
             scale_arg = scale if scale else None
             sims.append(si_utils.get_sim_from_array(
                 data, dims=list(self.dimension_order),
-                scale=scale_arg, translation=translation_arg,
-                affine=self.transform, transform_key=self.transform_key,
+                scale=scale_arg, translation=translation_arg, affine=identity, transform_key=self.transform_key,
                 c_coords=c_coords))
         self._msim = msi_utils.get_msim_from_sims(sims)
 
     def _restamp_msim(self):
-        # a subclass built self.msim natively via a trusted reader, whose position/pixel_size
-        # stay exactly as read - nothing downstream reads geometry off the msim's own coords.
-        # The transform does need replacing: such readers set an identity one in their own
-        # convention (read_msim_from_ome_zarr always 4x4, z being a real NGFF dim even at size
-        # 1), and it must become self.transform in ours - no 't', sized to the spatial dims
-        # that matter here.
-        if self.transform is not None:
-            xaffine = param_utils.affine_to_xaffine(self.transform)
-        else:
-            spatial_dims = [dim for dim in self.dimension_order if dim in 'xyz']
-            xaffine = param_utils.identity_transform(len(spatial_dims))
+        # a native reader's identity transform is in its own convention (read_msim_from_ome_zarr always 4x4, z a real
+        # NGFF dim even at size 1): ours has no 't', and z only where it has more than one plane
+        xaffine = param_utils.identity_transform(3 if self.get_size().get('z', 0) > 1 else 2)
         for scale_key in msi_utils.get_sorted_scale_keys(self.msim):
             ds = self.msim[scale_key].to_dataset()
             # drop the old x_in/x_out coordinate index too, not just the transform variable -

@@ -659,8 +659,6 @@ class MVSRegistration:
         return section
 
     def init_sources(self, progress_factory=None):
-        source_metadata0 = self.source_metadata
-        source_metadata = {}
         nfiles = len(self.filenames)
         self.sources = [None] * nfiles
         progress_context = (
@@ -668,73 +666,27 @@ class MVSRegistration:
             if progress_factory is not None
             else nullcontext(None)
         )
-        # resolve each file's own source_metadata up front (cheap, in-memory) - `source_metadata`
-        # is reused/mutated across iterations below (matching the previous sequential behaviour),
-        # so each file gets its own snapshot rather than a shared dict that the source
-        # construction below (parallelised, so no longer necessarily reading it immediately) could
-        # see mutated to a later file's values
-        per_file_metadata = []
-        for index, label in enumerate(self.file_labels):
-            if isinstance(source_metadata0, dict) and label in source_metadata0:
-                source_metadata = source_metadata0[label]
-                position, rotation, scale = get_properties_from_transform(param_utils.affine_to_xaffine(np.array(source_metadata)))
-                source_metadata = {'position': position, 'rotation': rotation, 'scale': xyz_to_dict([scale, scale])}
-            else:
-                if 'position' in source_metadata0:
-                    translation = source_metadata0['position']
-                    if isinstance(translation, list):
-                        translation = translation[index]
-                    source_metadata['position'] = translation
-                if 'scale' in source_metadata0:
-                    scale = source_metadata0['scale']
-                    if isinstance(scale, list):
-                        scale = scale[index]
-                    source_metadata['scale'] = scale
-                if 'rotation' in source_metadata0:
-                    source_metadata['rotation'] = source_metadata0['rotation']
-            if isinstance(source_metadata0, dict):
-                # blanket per-run flags that apply identically to every source
-                for flag in ('invert', 'is_center'):
-                    if flag in source_metadata0:
-                        source_metadata[flag] = source_metadata0[flag]
-            per_file_metadata.append(copy.deepcopy(source_metadata))
-
         with progress_context as pbar:
-            # per-file wall and CPU durations (list.append is atomic under the GIL, so plain
-            # appends from multiple worker threads are safe here without a lock) - only used to
-            # log where init_sources() actually spends its time; see format_phase_timing()
+            # per-file wall and CPU durations, only to log where the time goes (see format_phase_timing)
             file_times = []
             file_cpu_times = []
 
-            def build_source(index, matrix_size):
+            def build_source(index):
                 start, cpu_start = time.time(), time.thread_time()
-                source = create_image_source(
-                    self.filenames[index], per_file_metadata[index], extra_metadata=self.extra_metadata,
-                    file_label=self.file_labels[index], transform_key=self.source_transform_key,
-                    matrix_size=matrix_size)
+                source = create_image_source(self.filenames[index], self.source_metadata,
+                                             file_label=self.file_labels[index], index=index,
+                                             transform_key=self.source_transform_key)
                 file_times.append(time.time() - start)
                 file_cpu_times.append(time.thread_time() - cpu_start)
                 return source
 
-            # matrix_size is decided once from the first source (matching the previous
-            # is_3d-from-source0 behaviour) - build it on its own first, so every other source
-            # below can be constructed with that already-known matrix_size from the start
             phase_start, phase_cpu_start = time.time(), time.process_time()
-            first_source = build_source(0, matrix_size=None)
-            matrix_size = 4 if first_source.get_size().get('z', 0) > 1 else 3
-            self.sources[0] = first_source
-            if pbar is not None:
-                pbar.update(1)
-
-            max_workers = 1
-            if nfiles > 1:
-                max_workers = min(default_source_init_workers, nfiles - 1)
-                # rolling: a cancel (raised by pbar.update) must not wait for every file already submitted
-                for index, source in rolling_map(lambda index: build_source(index, matrix_size),
-                                                 range(1, nfiles), max_workers):
-                    self.sources[index] = source
-                    if pbar is not None:
-                        pbar.update(1)
+            max_workers = min(default_source_init_workers, nfiles)
+            # rolling: a cancel (raised by pbar.update) must not wait for every file already submitted
+            for index, source in rolling_map(build_source, range(nfiles), max_workers):
+                self.sources[index] = source
+                if pbar is not None:
+                    pbar.update(1)
 
         if self.logging_time and file_times:
             logging.info(f'Init sources: {len(file_times)} files'
@@ -791,8 +743,9 @@ class MVSRegistration:
             # position/scale/rotation, and per-source corrections (SBEM, is_center, invert),
             # are now resolved by ImageSource itself (see ImageSource.fix_metadata) - this pass
             # reads only cached metadata off `source`, no pixel data is touched
-            scale = source.get_pixel_size()
-            translation = source.get_position()
+            # copies: the z and x/y filled in below are this run's, not the source's
+            scale = dict(source.get_pixel_size())
+            translation = dict(source.get_position())
             rotation = source.get_rotation()
 
             level = 0
@@ -874,12 +827,7 @@ class MVSRegistration:
                 else:
                     transform = np.array(combine_transforms([transform, transform2]))
 
-            if translation:
-                if 'x' not in translation:
-                    translation['x'] = 0
-                if 'y' not in translation:
-                    translation['y'] = 0
-
+            translation = complete_translation(translation)
             transforms.append(transform)
             if not store:
                 # build this source's own multiscale msim directly from its already-correct,

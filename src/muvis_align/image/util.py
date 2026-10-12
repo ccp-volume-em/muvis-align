@@ -345,6 +345,15 @@ def build_source_redimensioned_msim(source, output_order, chunk_size=default_chu
     return DataTree.from_dict(datasets)
 
 
+def complete_translation(translation):
+    """A copy of `translation` with x and y at 0 where missing, if any dim is given: si_utils takes all or none."""
+    translation = dict(translation or {})
+    if translation:
+        translation.setdefault('x', 0)
+        translation.setdefault('y', 0)
+    return translation
+
+
 def _source_level_images(source, output_order, levels):
     """One image per pyramid level, taken straight off the source's own arrays.
 
@@ -361,10 +370,7 @@ def _source_level_images(source, output_order, levels):
         scale_keys = msi_utils.get_sorted_scale_keys(source.msim)
         return [source.msim[scale_keys[level]].ds['image'] for level in levels]
 
-    translation = dict(source.position)
-    if translation:
-        translation.setdefault('x', 0)
-        translation.setdefault('y', 0)
+    translation = complete_translation(source.position)
     images = []
     for level in levels:
         image = xr.DataArray(data[level], dims=list(source.dimension_order))
@@ -397,12 +403,7 @@ def build_source_msim(source, output_order, translation, transform, transform_ke
     else:
         xaffine = param_utils.affine_to_xaffine(transform)
 
-    translation_arg = dict(translation)
-    if translation_arg:
-        if 'x' not in translation_arg:
-            translation_arg['x'] = 0
-        if 'y' not in translation_arg:
-            translation_arg['y'] = 0
+    translation_arg = complete_translation(translation)
 
     redimensioned_msim = source.get_msim(output_order, from_level=from_level, ends_only=ends_only)
     scale_keys = msi_utils.get_sorted_scale_keys(redimensioned_msim)
@@ -458,10 +459,7 @@ def build_source_stack_props(source, output_order, translation, transform, trans
     spacing = {dim: float(pixel_size.get(dim, 1)) if shape[dim] > 1 else 1.0
                for dim in spatial_order}
 
-    translation_arg = dict(translation)
-    if translation_arg:
-        translation_arg.setdefault('x', 0)
-        translation_arg.setdefault('y', 0)
+    translation_arg = complete_translation(translation)
     origin = {dim: float(translation_arg.get(dim, 0)) for dim in spatial_order}
 
     stack_props = {'shape': shape, 'spacing': spacing, 'origin': origin}

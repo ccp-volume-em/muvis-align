@@ -6,9 +6,8 @@ from muvis_align.image.ZarrImageSource import ZarrImageSource
 from muvis_align.util import get_grid_angle, get_unique_file_labels, print_dict_xyz
 
 
-def create_image_source(filename, source_metadata=None, extra_metadata=None, file_label=None,
-                        transform_key=None, matrix_size=None):
-    kwargs = {'extra_metadata': extra_metadata, 'file_label': file_label, 'matrix_size': matrix_size}
+def create_image_source(filename, source_metadata=None, file_label=None, index=None, transform_key=None):
+    kwargs = {'file_label': file_label, 'index': index}
     if transform_key is not None:
         kwargs['transform_key'] = transform_key
     ext = os.path.splitext(filename)[1].lstrip('.').lower()
@@ -33,8 +32,8 @@ def get_images_metadata(filenames, source_metadata=None):
     max_positions = []
     pixel_sizes = []
     file_labels = get_unique_file_labels(filenames)
-    for filename, label in zip(filenames, file_labels):
-        source = create_image_source(filename, source_metadata)
+    for index, (filename, label) in enumerate(zip(filenames, file_labels)):
+        source = create_image_source(filename, source_metadata, file_label=label, index=index)
         pixel_size = source.get_pixel_size()
         size = source.get_physical_size()
         sizes.append(size)

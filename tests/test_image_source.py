@@ -6,7 +6,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 from muvis_align.image.TiffImageSource import TiffImageSource
 from muvis_align.image.ZarrImageSource import ZarrImageSource
 from muvis_align.image.source_helper import create_image_source
-from muvis_align.image.util import combine_transforms, get_data_mapping
+from muvis_align.image.util import get_data_mapping
 from muvis_align.util import create_transform, find_all_numbers
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES
 
@@ -81,28 +81,38 @@ def test_zarr_image_source_scale_override_reaches_getters_and_msim_coords():
     assert si_utils.get_origin_from_sim(_sim_at(source, 0))['x'] == pytest.approx(5)
 
 
-TRANSLATE_X_100 = np.array([[1.0, 0.0, 100.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+@pytest.mark.parametrize('filename', [TIFF_FILES[0], ZARR_FILES[0]], ids=['tiff', 'zarr'])
+def test_the_source_msim_is_unplaced_at_every_level(filename):
+    # a rotation is init_data's to apply: the source's own msim carries only an identity
+    source = create_image_source(str(DATA_DIR / filename), source_metadata={'rotation': 15})
 
-
-@pytest.mark.parametrize('filename, extra_transform', [
-    (TIFF_FILES[0], TRANSLATE_X_100),
-    (ZARR_FILES[0], None),
-], ids=['tiff with an extra transform', 'zarr'])
-def test_the_own_rotation_and_any_extra_transform_reach_every_msim_level(filename, extra_transform):
-    extra = {'extra_metadata': {'t1': extra_transform.tolist()}, 'file_label': 't1'} if extra_transform is not None else {}
-    source = create_image_source(str(DATA_DIR / filename), source_metadata={'rotation': 15}, **extra)
-
-    own = param_utils.invert_coordinate_order(create_transform(source.position, source.rotation, matrix_size=3))
-    expected = np.array(combine_transforms([own, extra_transform]) if extra_transform is not None else own)
-
-    np.testing.assert_allclose(source.transform, expected)
+    assert source.get_rotation() == 15
     for scale_key in msi_utils.get_sorted_scale_keys(source.msim):
         affine = si_utils.get_affine_from_sim(msi_utils.get_sim_from_msim(source.msim, scale=scale_key),
                                               source.transform_key)
         # 2D x_in/x_out like get_sim_from_array makes, not a stale 4x4 from the store
         assert affine.shape == (3, 3)
-        np.testing.assert_allclose(affine.values, expected)
+        np.testing.assert_allclose(affine.values, np.eye(3))
 
+
+LABEL_MATRIX = param_utils.invert_coordinate_order(create_transform(None, 10, translation=[3, 4], matrix_size=3))
+
+
+@pytest.mark.parametrize('file_label, index, expected', [
+    ('t1', 1, {'position': {'x': 3.0, 'y': 4.0}, 'rotation': 10, 'scale': {'x': 1.0, 'y': 1.0}, 'invert': True}),
+    ('t2', 1, {'position': {'x': 20}, 'scale': {'x': 2}, 'rotation': 5, 'invert': True}),
+    (None, None, {'position': [{'x': 10}, {'x': 20}], 'scale': {'x': 2}, 'rotation': 5, 'invert': True}),
+], ids=['own matrix', 'run-level by index', 'no index'])
+def test_a_file_takes_its_own_entry_of_the_run_metadata(file_label, index, expected):
+    source = create_image_source(str(DATA_DIR / TIFF_FILES[0]), file_label=file_label, index=index)
+    run_metadata = {'t1': LABEL_MATRIX.tolist(), 'position': [{'x': 10}, {'x': 20}], 'scale': {'x': 2},
+                    'rotation': 5, 'invert': True, 'norm': True}
+
+    selected = source.select_source_metadata(run_metadata)
+
+    assert selected.keys() == expected.keys()
+    for key, value in expected.items():
+        assert selected[key] == (pytest.approx(value) if key != 'invert' else value)
 
 
 @pytest.mark.parametrize('rotation, transform_rotation, expected', [

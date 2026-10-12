@@ -102,7 +102,6 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
 
 REFACTORING
 
-- [ ] MVS.init_data and ImageSource functionality overlap - better code re-use
 - [ ] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
       avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
       create detailed plan first
@@ -119,6 +118,11 @@ REFACTORING
 
 ## Done
 
+- **init_data / ImageSource overlap** - a source no longer builds its own transform (init_data's alone reaches the
+  msims), so init_sources builds every source in one pool; each file picks its own source_metadata entry in
+  ImageSource (its label's matrix, a list by index); one x/y translation fill (complete_translation). Geometry of
+  the slides, Ciqtek (both), meatballs and 3d projects identical before and after. One fix: a file without a
+  labelled matrix used to inherit the rotation of the labelled file before it.
 - **Fusion bar names its level** - 'Fusion: Level 2 at 0.04 µm' (native), 'Fusion: Pyramid level 1'
   (z-slab), in the bar and the heartbeat log. The z-slab path's pyramid levels (multiview_stitcher's ngff_utils)
   now move the bar - the HPC's 5.5h at '100%' - but only within the last ~10% left after level 0: weighting
