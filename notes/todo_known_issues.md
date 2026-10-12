@@ -38,7 +38,22 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Nothing.
+**One overview instead of two** (REFACTORING restructure item, branch `restructure`). Plan, awaiting agreement:
+1. Quick view for 3D and multichannel sources (translation-only still; rotations stay with fuse()):
+   - a plane becomes (c, y, x); readers give a level as (c, z, y, x) whatever the source's dimension order, and
+     an entry reads only its own z slice of it (a slice of the lazy level, not the whole volume);
+   - output z: 2D sources keep their distinct section z values; volumes a regular grid at the finest chosen level's
+     z spacing, each source's nearest z under each plane;
+   - contrast limits per source channel; the plane budget counts the channels, as channel overlay already does;
+   - channel overlay of multichannel sources still declined (fuse()), as now.
+2. Rewrite _paste readably (target slices and source indices named, any leading channel axis).
+3. Remove composite_msims_overview and _enlarge_nearest, _create_napari_data's composite branch and parameter;
+   update_views goes quick view, else the capped fuse().
+4. Tests: port test_composite_overview's cases (placement, geometry, budget coarsening, decline, heights, section
+   spacing) into test_lazy_overview, plus 3D and multichannel; delete test_composite_overview.py.
+Check: before deleting, the quick view and the composite overview give the same planes for data/3d and a synthetic
+multichannel set (two deterministic paths); UI capture (--action open) of slides and the 3d project.
+Out of scope: fusion_slabs.py, routing through fuse().
 
 ## TODO
 
