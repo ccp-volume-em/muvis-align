@@ -1255,11 +1255,7 @@ class MVSRegistration:
 
     def register(self, register_msims=None, register_indices=None, params=None):
         pair_results = self.register_pairs(register_msims=register_msims, register_indices=register_indices, params=params)
-        qualities = {key: metric[default_transform_key][default_quality_key]
-                     for key, metric in pair_results['metrics']['pairs'].items()
-                     if default_quality_key in metric[default_transform_key]}
-        bboxes = {key: np.array(value.sel(t=0)).tolist() for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
-        self.save_pair_mappings(pair_results['pair_mappings'], qualities, bboxes)
+        self.save_pair_results(pair_results['pair_mappings'], metrics=pair_results['metrics'])
         results = self.register_global(self.pair_msims, register_indices=register_indices, params=params)
         self.save_group_pair_mappings()
         self.save_mappings(results['mappings'])
@@ -2040,6 +2036,15 @@ class MVSRegistration:
                 # 'compose' mode: no actual fusion, just return the per-source msims as-is
                 fused_image = msims
         return fused_image, saving_zarr
+
+    def save_pair_results(self, pair_mappings, metrics=None, qualities=None):
+        """The pair mappings file, each pair with its quality (from `metrics` unless given) and its pairs graph bbox."""
+        if qualities is None:
+            qualities = {key: metric[default_transform_key][default_quality_key]
+                         for key, metric in metrics['pairs'].items() if default_quality_key in metric[default_transform_key]}
+        bboxes = {key: np.array(value.sel(t=0) if 't' in value.dims else value).tolist()
+                  for key, value in nx.get_edge_attributes(self.pairs_graph, 'bbox').items()}
+        self.save_pair_mappings(pair_mappings, qualities, bboxes)
 
     def save_pair_mappings(self, mappings, qualities, bboxes):
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)

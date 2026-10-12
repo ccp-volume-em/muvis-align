@@ -998,3 +998,24 @@ def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, s
                   for key in msi_utils.get_sorted_scale_keys(fused)]
         assert [level['shape'] for level in estimate['levels']] == [
             {dim: size for dim, size in shape.items() if dim in 'zyx'} for shape in shapes]
+
+
+@pytest.mark.parametrize('with_t', [True, False], ids=['bbox-with-t', 'bbox-without-t'])
+def test_pair_results_are_saved_with_each_pairs_quality_and_bbox(with_t):
+    import networkx as nx
+    import xarray as xr
+    from unittest.mock import MagicMock
+    from muvis_align.constants import default_quality_key, default_transform_key
+
+    reg = MVSRegistration()
+    bbox = xr.DataArray([[1, 2], [3, 4]], dims=('corner', 'axis'))
+    reg.pairs_graph = nx.Graph()
+    reg.pairs_graph.add_edge(0, 1, bbox=bbox.expand_dims({'t': [0]}) if with_t else bbox)
+    reg.save_pair_mappings = MagicMock()
+    metrics = {'pairs': {(0, 1): {default_transform_key: {default_quality_key: 0.9}},
+                         (1, 2): {default_transform_key: {}}}}
+
+    reg.save_pair_results({(0, 1): 'mapping'}, metrics=metrics)
+
+    reg.save_pair_mappings.assert_called_once_with({(0, 1): 'mapping'}, {(0, 1): 0.9}, {(0, 1): [[1, 2], [3, 4]]})
+

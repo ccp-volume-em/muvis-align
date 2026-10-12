@@ -1734,15 +1734,7 @@ class Interface:
 
             results = self._run_off_thread(register_pairs, factory)
 
-        qualities = {key: metric[default_transform_key][default_quality_key]
-                     for key, metric in results['metrics']['pairs'].items()
-                     if default_quality_key in metric[default_transform_key]}
-        bboxes = {}
-        for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
-            if 't' in value.dims:
-                value = value.sel(t=0)
-            bboxes[key] = np.array(value).tolist()
-        self.reg.save_pair_mappings(results['pair_mappings'], qualities, bboxes)
+        self.reg.save_pair_results(results['pair_mappings'], metrics=results['metrics'])
         self.enable_modify_pair_registration()
         return results
 
@@ -1814,12 +1806,7 @@ class Interface:
                 qualities[self.pair_indices] = np.array(1)    # set quality to 1
                 nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, default_transform_key)
                 nx.set_edge_attributes(self.reg.pairs_graph, qualities, default_quality_key)
-                bboxes = {}
-                for key, value in nx.get_edge_attributes(self.reg.pairs_graph, 'bbox').items():
-                    if 't' in value.dims:
-                        value = value.sel(t=0)
-                    bboxes[key] = np.array(value).tolist()
-                self.reg.save_pair_mappings(pair_transforms, qualities, bboxes)
+                self.reg.save_pair_results(pair_transforms, qualities=qualities)
 
             self.view_mode = ViewMode.OVERVIEW
             self.update_registered(view_transform_key=self.reg.source_transform_key)
