@@ -91,11 +91,12 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       image shapes 1.3ms, tables 1.8 min; the preview cap and composite overview only where the lazy overview
       declines (a rotation, 3D or multichannel sources). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
-- [ ] **Preview cap: one rebuild instead of three** - the HPC's 343GB -> 4GB cap ran 3 size estimates, 2 rounds
-      dropping levels and 1 strided round, each rebuilding every msim's tree (~2ms a source of the 2.6 left on
-      meatballs forced to the same 85x; ~11ms a source on the HPC). Choosing the levels from each level's geometry
-      before rebuilding once would halve it, but needs a level passed through estimate_fused_size,
-      calc_output_properties and promoted_geometry - weigh first.
+- [ ] **Preview cap: one rebuild instead of three** - only if the next HPC run still shows the cap running (it is
+      reached only where the lazy overview declines: a rotation, 3D or multichannel sources); otherwise drop. Time
+      only, not memory: the 343GB -> 4GB is the preview it keeps from being fused, and each round rebuilds lazy msim
+      trees, not pixels. 3 size estimates, 2 rounds dropping levels and 1 strided round (~11ms a source each on the
+      HPC, 3.4 min at 34k); choosing the levels from each level's geometry before rebuilding once would save ~1.5-2
+      min, but needs a level passed through estimate_fused_size, calc_output_properties and promoted_geometry.
 
 REFACTORING
 
