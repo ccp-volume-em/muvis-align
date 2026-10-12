@@ -1182,7 +1182,6 @@ class Interface:
         # to change, so anything added here that mutates one needs this flag too.
         writes_transforms = not (show_preprocessed
                                  and transform_key == self.reg.source_transform_key)
-        z_positions = None
         if show_preprocessed:
             with phase(1 / 12, total=1) as pbar, \
                  Timer(f'_create_napari_data: copy {len(self.reg.register_msims)} register_msims',
@@ -1191,11 +1190,6 @@ class Interface:
                          if writes_transforms else list(self.reg.register_msims))
                 if pbar is not None:
                     pbar.update(1)
-            # sources at several heights are sized and pasted as if promoted to 3D, the geometry
-            # fuse() gives them, without promoting them (9 minutes at 34k): each at its own z, as
-            # make_msims_3d() takes it
-            if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
         else:
             # view_msims is never scale-reduced - every source's full native pyramid. Fusing
             # that at scale0 to draw an overview builds (and, for get_contrast_limits(), runs)
@@ -1215,9 +1209,11 @@ class Interface:
                 msims = select_msim_subpyramid_at_scale(view_msims, self.reg.sources, preview_scale)
                 if pbar is not None:
                     pbar.update(1)
-            # the view msims stay 2D (see ensure_view_msims): placed at their z as in the branch above
-            if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
-                z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
+        # sources at several heights are sized as if promoted to 3D, each at its own z as make_msims_3d() takes it,
+        # without promoting them
+        z_positions = None
+        if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
+            z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
         # Whichever branch produced them, cap what this preview will fuse. The show_preprocessed
         # branch takes its resolution from pre_processing's scale, never preview_scale, so at
         # scale 1 the "preview" is the whole dataset: one run fused 396.9GB over 55 minutes to

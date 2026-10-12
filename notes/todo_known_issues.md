@@ -39,9 +39,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-**Duplication list** (REFACTORING restructure item, branch `restructure`), in order: delete the unreferenced
-functions; then merge the listed duplications largest first, a commit each, with the targeted tests for each.
-Status: unreferenced functions.
+Nothing.
 
 ## TODO
 
@@ -126,31 +124,12 @@ REFACTORING
       - One overview instead of two: done (see Done). Routing the quick view through fuse() instead was weighed:
         it shares ~5 lines, needs msims=None and readers, a view-only fusion method to keep from export, and leaves
         the msim preparation (view msims, sub-pyramid, cap) in Interface.
-      - Duplication found by a scan (2026-10-12), by code a merge would remove:
-        - pooled per-item build with timing and a bar: MVS _build_msims and init_sources, beside util.timed_calls;
-        - the worker-process pool for pairs: MVS register_pairs and metrics.map_pair_metrics;
-        - progress-or-nullcontext: MVSRegistration.progress_phase = Interface._progress_phase, inline 7 more times;
-        - per-source build_source_stack_props loops over reg._msim_*: Interface, MVS (2), lazy_overview;
-        - (stack props, affine) views from sims: fusion_slabs.sim_views, util calc_output_properties, promoted_geometry;
-        - make_sims_2d (unused) = make_msims_2d's level_func; make_sims_3d re-implements promote_sim_to_3d;
-        - saving pair results (qualities, bboxes, save_pair_mappings; mappings and metrics): MVS and Interface (2);
-        - stack props from msims at plane 0: build_view_adjacency_graph and build_pairs_graph;
-        - sim-or-msim to scale0 sim inline 7 times beside sims_from_sims_or_msims;
-        - normalise_sim and gaussian_filter_sim re-wrap a processed sim alike;
-        - two convert_to_um (util, tiff_metadata), differing on an unknown unit;
-        - smaller: output filename expressions in MVS, the multi-z check in Interface, section z spacing (util and
-          lazy_overview), the quality-into-metrics merge in metrics, the pair-key parse in MVS, affine widening.
-        - Unreferenced (check for dynamic use first): metrics calc_ncc2, calc_frc; util.py get_default, reorder,
-          desc_to_dict, check_round_significants, split_path, split_value_unit_list, get_value_units_micrometer,
-          convert_rational_value, create_transform0, get_center_from_transform, draw_edge_filter, metric_to_color,
-          get_label_element; image/util.py check_sim_dims, squeeze_sim_dims, print_sim_info, grayscale_image,
-          calc_pyramid, get_image_size_info, pilmode_to_pixelinfo, image_resize, precise_resize,
-          draw_keypoints_matches_cv/_sk, calc_images_quantiles, norm_image_variance, norm_image_quantiles,
-          get_max_downsamples, make_sims_2d; ome_zarr_util's create_*_metadata and scale_dimensions_*;
-          ome_tiff_helper.extract_ome_translation, ome_ngff_helper (whole module), TiffImageSource.tags_to_dict,
-          bilayers_util.get_choice_label.
-        - metrics.calc_msims_metrics builds its graph with mv_graph's linear programs, not the local
-          build_view_adjacency_graph.
+      - Duplication found by a scan (2026-10-12): done (see Done), except these, weighed and left - a shared helper
+        would remove a few lines for flags or a one-line wrapper: the pair worker pool (register_pairs vs
+        map_pair_metrics: logging, timing and merging differ), the per-source build_source_stack_props loops, output
+        filename expressions and the multi-z check, section z spacing (fallbacks differ), the quality-into-metrics
+        merges (key matching differs), the pair-key parse, the two affine widenings (equal for y, x, 1 labels).
+        metrics.calc_msims_metrics still builds its graph with mv_graph's linear programs (a behaviour change).
 - [ ] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
 - [ ] add option to these efficiency classes to run without threading using an input argument
 - [ ] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
@@ -158,6 +137,11 @@ REFACTORING
 
 ## Done
 
+- **Duplication list** (branch `restructure`) - ~40 unreferenced functions and ome_ngff_helper deleted (652 lines);
+  one progress_phase (was 2 copies + 7 inline), one pooled_map for building sources and msims (single-threaded with
+  one worker), one um unit table (util lacked nanometre/inch, tiff_metadata picometre), msims_stack_props for both
+  pair graphs, sims_from_sims_or_msims and sim_views used where written inline, sim_with_data for the processed-sim
+  re-wraps, save_pair_results for the three pair-saving paths, z_positions computed once in _create_napari_data.
 - **One zarr writer** (branch `restructure`) - every OME-Zarr export goes through fusion_slabs.fuse_levels_to_ome_zarr
   over export_levels: native as before; a set spacing fuses level 0 from the sources reaching each block and averages
   each level after from the one above (average_into_zarr_array), z never averaged across sections. Gone: the z-slab
