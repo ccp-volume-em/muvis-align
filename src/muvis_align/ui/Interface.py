@@ -27,7 +27,7 @@ from muvis_align.image.util import get_sim_physical_size, get_sim_position_final
     promoted_geometry, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
     snapshot_msims_transform, restore_msims_transform, \
-    select_msim_subpyramid_at_scale, reduce_msims_to_fused_size, composite_msims_overview
+    select_msim_subpyramid_at_scale, reduce_msims_to_fused_size
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
 from muvis_align.metrics import calc_msims_metrics
@@ -43,7 +43,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, release_memory, parse_scale, get_filetitle, print_hbytes
+    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes
 
 
 patch_shapes_text_coords()
@@ -1017,7 +1017,7 @@ class Interface:
                 data = self._run_off_thread(
                     lambda worker_factory: self._create_lazy_overview(transform_key,
                                                                       show_preprocessed=show_preprocessed), factory)
-            # otherwise (a rotation, a 3D or multichannel source) the fused preview
+            # otherwise (a rotation, or sources it cannot overlay) the fused preview
             if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
                     # the fusion runs off the Qt thread; adding the result to the viewer, below,
@@ -1025,7 +1025,7 @@ class Interface:
                     # so the step reports its own sub-steps instead of being one silent block
                     data = self._run_off_thread(
                         lambda worker_factory: self._create_napari_data(
-                            transform_key, show_preprocessed=show_preprocessed, composite=True,
+                            transform_key, show_preprocessed=show_preprocessed,
                             progress_factory=worker_factory, weight=view_data_weight),
                         factory)
             # cleared only once the new data is ready: an empty viewer shows the welcome screen,
@@ -1179,7 +1179,7 @@ class Interface:
                 if progress_factory is not None else nullcontext(None))
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
-                            composite=False, progress_factory=None, weight=1):
+                            progress_factory=None, weight=1):
         # `weight` is what the caller's bar allows this step, divided below between the sub-steps
         # in rough proportion to what each costs on a large project
         def phase(share, total=None):
@@ -1257,22 +1257,6 @@ class Interface:
                 copy_transforms_to_msims(transform_msims, msims, transform_key)
             if pbar is not None:
                 pbar.update(1)
-        if composite:
-            # the main view only needs to show where the sources sit, and fusing for that costs
-            # per source however small the preview (10.3 minutes for 4733) - paste them instead,
-            # falling back to fusing if they cannot be placed faithfully. Also the one sub-step
-            # with real per-source progress, so it gets most of what this step was allowed.
-            with phase(7 / 12, total=len(msims)) as pbar, \
-                 Timer(f'_create_napari_data: composite overview ({len(msims)} images)',
-                       verbose=self._timing_verbose()):
-                overview = composite_msims_overview(
-                    msims, transform_key, z_scale=self.reg._msim_z_scale,
-                    label=f'Overview ({len(msims)} images)',
-                    progress=(pbar.update if pbar is not None else None), z_positions=z_positions)
-            # every source's pixels were decoded and dropped again, on many threads
-            release_memory(f'Overview ({len(msims)} images)')
-            if overview is not None:
-                return overview
         # output_chunksize is left to fuse(), which derives it after its own make_msims_3d
         # promotion - sizing it here would mean reproducing that rule against msims that may not
         # have a 'z' dim yet. No declared step count either: fuse() plans the whole graph in one

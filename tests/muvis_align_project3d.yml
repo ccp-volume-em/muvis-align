@@ -6,6 +6,7 @@ input_output:
   source_scale_y: source
   source_scale_x: source
   source_rotation: source
+  normalise_rotated_positions: false
   preview_scale: '1'
   coordinate_system: source_metadata
   metadata_table: []
@@ -33,10 +34,12 @@ registration:
   inlier_threshold_factor: 0.05
   max_trials: 1000
   ransac_iterations: 3
+  split_binning: 8
   metrics_table: []
+  groupwise_resolution_method: robust_linear
   channel: '0'
   reg_preview_image1: X00_Y00
-  reg_preview_image2: X00_Y01
+  reg_preview_image2: X01_Y00
   preview_registration: false
 fusion:
   method: average

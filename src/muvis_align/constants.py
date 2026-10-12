@@ -152,9 +152,6 @@ default_export_chunk_size = 4096
 # what the on-screen overview reduces each source by, matching create_preview()'s own
 # 'preview_scale' so a preview stays proportionate to an exported one
 default_interactive_preview_scale = 16
-# ...and how large that overview may be. Unlike a fused preview (a lazy graph napari computes
-# only the coarsest level of), it is pasted eagerly into one array, so this is real memory.
-default_overview_max_bytes = 512 * 1024 ** 2
 # ...and an upper bound on the fused preview however it was reached. It is a few hundred pixels
 # on screen whatever is behind it, so fusing more is wasted: one run fused 396.9GB over 55
 # minutes to show what an 8x-reduced one showed in 9. preview_scale cannot prevent that (it is

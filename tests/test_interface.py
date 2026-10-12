@@ -812,7 +812,6 @@ def test_update_views_adds_enabled_preview_layers(
     args, kwargs = bare_interface._create_napari_data.call_args
     assert args == ("registered",)
     assert kwargs["show_preprocessed"] is True
-    assert kwargs["composite"] is True
     # the longest step of a refresh reports from the inside rather than being one silent block,
     # so it is handed the operation's progress factory and the share of the bar it is worth
     assert kwargs["progress_factory"] is not None

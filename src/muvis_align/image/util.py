@@ -31,9 +31,7 @@ except Exception as e:
 
 from muvis_align.constants import (default_chunk_size, default_contrast_limits_max_tasks,
                                    default_export_chunk_size, default_export_fusion_chunk_bytes,
-                                   default_fusion_chunk_bytes, default_overview_max_bytes,
-                                   default_preview_max_bytes,
-                                   fusion_stack_arrays)
+                                   default_fusion_chunk_bytes, default_preview_max_bytes, fusion_stack_arrays)
 from muvis_align.util import *
 
 
@@ -2739,137 +2737,6 @@ def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scal
                                         z_scale=z_scale, z_positions=z_positions)
     itemsize = get_msim_image0(msims[0]).dtype.itemsize
     return int(np.prod([int(size) for size in properties['shape'].values()]) * itemsize), properties
-
-
-def composite_msims_overview(items, transform_key, z_scale=None,
-                             max_bytes=default_overview_max_bytes, label='Overview',
-                             progress=None, z_positions=None):
-    """Every source pasted into one array at its registered position - the on-screen overview.
-
-    The main view needs a picture of where the sources sit, and fusing for that is the wrong
-    tool: multiview_stitcher's cost is per *view*, not per pixel, so it scales with the dataset
-    however small the preview is made. On a 4733-source project, 10.3 minutes to plan the
-    preview fusion against 33 seconds of shape building; shrinking the result 256x saved half.
-
-    Pasting costs one strided copy per source instead - 1.9s against 18.6s for 328 sources,
-    including reading every pixel, which the fusion figure does not since it stays lazy.
-    Overlaps are overwritten, nearest-neighbour: this is an overview, not the fused result, and
-    the fusion tab's preview and the export are unchanged.
-
-    The geometry is the one fuse() would have produced, so the layer lands where the fused one
-    did, coarsened in x/y if that would exceed max_bytes. Returns None - leaving the caller to
-    fuse - for anything it cannot place faithfully: a transform that is not a pure translation
-    (a rotation needs resampling), or sources disagreeing about their non-spatial dims.
-
-    `progress`, if given, is called once per source pasted: this is the longest single step of
-    drawing the view, and the one with something real to report. `z_positions`: 2D sources at
-    several heights, each pasted into its own section's plane, as if promoted to 3D.
-    """
-    # sims or msims (each msim's scale0 sim is used)
-    sims = [msi_utils.get_sim_from_msim(item, scale='scale0') if isinstance(item, DataTree) else item
-            for item in items]
-    if not sims:
-        return None
-    source_dims = si_utils.get_spatial_dims_from_sim(sims[0])
-    nsdims = [dim for dim in sims[0].dims if dim not in source_dims]
-    if any(si_utils.get_spatial_dims_from_sim(sim) != source_dims for sim in sims):
-        return None
-
-    if z_positions is not None:
-        views = [promoted_geometry(sim, transform_key, z) for sim, z in zip(sims, z_positions)]
-    else:
-        views = []
-        for sim in sims:
-            affine = si_utils.get_affine_from_sim(sim, transform_key)
-            if 't' in affine.dims:
-                affine = affine.sel(t=0)
-            views.append(({'spacing': si_utils.get_spacing_from_sim(sim), 'origin': si_utils.get_origin_from_sim(sim)},
-                          np.asarray(affine, dtype=float)))
-    sdims = list(views[0][0]['spacing'])
-    ndim = len(sdims)
-    translations = []
-    for _, matrix in views:
-        if not np.allclose(matrix[:ndim, :ndim], np.eye(ndim), atol=1e-6):
-            logging.info(f'{label}: source transforms are not translations only - fusing instead')
-            return None
-        translations.append(matrix[:ndim, ndim])
-
-    properties = calc_output_properties(items, transform_key, output_spacing_method='mean',
-                                        z_scale=z_scale, z_positions=z_positions)
-    spacing = dict(properties['spacing'])
-    origin = dict(properties['origin'])
-    shape = {dim: int(properties['shape'][dim]) for dim in sdims}
-
-    # in-plane coarsening only: z is what tells the sections apart, and there are few of them
-    plane_dims = [dim for dim in sdims if dim != 'z']
-    itemsize = np.dtype(sims[0].dtype).itemsize
-    planes = int(np.prod([sim_size for dim, sim_size in shape.items() if dim not in plane_dims])) or 1
-    for _ in range(16):
-        if np.prod([shape[dim] for dim in sdims]) * itemsize <= max_bytes or not plane_dims:
-            break
-        for dim in plane_dims:
-            shape[dim] = max(shape[dim] // 2, 1)
-            spacing[dim] *= 2
-    del planes
-
-    leading = [sims[0].sizes[dim] for dim in nsdims]
-    overview = np.zeros(leading + [shape[dim] for dim in sdims], dtype=sims[0].dtype)
-
-    for sim, (view, _), translation in zip(sims, views, translations):
-        if progress is not None:
-            progress()
-        sim_spacing, sim_origin = view['spacing'], view['origin']
-        # downsample (stride) a finer source, or upsample (repeat) a coarser one, to match
-        # the output grid - coarser was previously pasted 1:1, shrinking its footprint
-        strides, repeats, starts = [], [], []
-        for index, dim in enumerate(sdims):
-            factor = spacing[dim] / sim_spacing[dim]
-            strides.append(max(int(round(factor)), 1) if factor >= 1 else 1)
-            repeats.append(max(int(round(1 / factor)), 1) if factor < 1 else 1)
-            starts.append(int(round((sim_origin[dim] + translation[index] - origin[dim])
-                                    / spacing[dim])))
-        # one tile a compute gives dask's thread pool nothing to parallelise, only more threads
-        # (and, on Linux, more per-thread heaps holding on to freed memory)
-        with dask.config.set(scheduler='synchronous'):
-            data = np.asarray(sim.data)
-        if len(sdims) > len(source_dims):
-            # a 2D source's size-1 z, as promotion would have added it
-            data = np.expand_dims(data, axis=len(nsdims))
-        if data.ndim != len(nsdims) + len(sdims):
-            return None
-        data = data[tuple([slice(None)] * len(nsdims)
-                          + [slice(None, None, stride) for stride in strides])]
-        if any(repeat > 1 for repeat in repeats):
-            data = _enlarge_nearest(data, [1] * len(nsdims) + repeats)
-        target, source = [slice(None)] * len(nsdims), [slice(None)] * len(nsdims)
-        for index, dim in enumerate(sdims):
-            start = starts[index]
-            stop = min(start + data.shape[len(nsdims) + index], shape[dim])
-            source.append(slice(max(-start, 0), max(stop - start, 0)))
-            target.append(slice(max(start, 0), max(stop, 0)))
-        # nothing to paste for a source entirely outside the output
-        if all(piece.stop > piece.start for piece in target[len(nsdims):]):
-            overview[tuple(target)] = data[tuple(source)]
-
-    sim = si_utils.get_sim_from_array(
-        overview,
-        dims=list(nsdims) + list(sdims),
-        scale={dim: spacing[dim] for dim in sdims},
-        translation={dim: origin[dim] for dim in sdims},
-        transform_key=transform_key,
-        c_coords=sims[0].coords['c'].values if 'c' in nsdims else None,
-    )
-    logging.info(f'{label}: {len(sims)} sources pasted into'
-                 f' {"x".join(str(shape[dim]) for dim in sdims)}')
-    return wrap_sims_as_msims([sim])[0]
-
-
-def _enlarge_nearest(data, repeats):
-    """`data` with each element repeated `repeats[axis]` times along each axis - np.repeat on every
-    axis at once, as one copy of a broadcast view: 5x faster for an overview image enlarged 8x."""
-    view = data[tuple(index for _ in data.shape for index in (slice(None), None))]
-    blocks = [size for pair in zip(data.shape, repeats) for size in pair]
-    return np.broadcast_to(view, blocks).reshape([size * repeat for size, repeat in zip(data.shape, repeats)])
 
 
 def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=None):

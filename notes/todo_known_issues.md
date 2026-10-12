@@ -38,22 +38,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-**One overview instead of two** (REFACTORING restructure item, branch `restructure`). Plan, awaiting agreement:
-1. Quick view for 3D and multichannel sources (translation-only still; rotations stay with fuse()):
-   - a plane becomes (c, y, x); readers give a level as (c, z, y, x) whatever the source's dimension order, and
-     an entry reads only its own z slice of it (a slice of the lazy level, not the whole volume);
-   - output z: 2D sources keep their distinct section z values; volumes a regular grid at the finest chosen level's
-     z spacing, each source's nearest z under each plane;
-   - contrast limits per source channel; the plane budget counts the channels, as channel overlay already does;
-   - channel overlay of multichannel sources still declined (fuse()), as now.
-2. Rewrite _paste readably (target slices and source indices named, any leading channel axis).
-3. Remove composite_msims_overview and _enlarge_nearest, _create_napari_data's composite branch and parameter;
-   update_views goes quick view, else the capped fuse().
-4. Tests: port test_composite_overview's cases (placement, geometry, budget coarsening, decline, heights, section
-   spacing) into test_lazy_overview, plus 3D and multichannel; delete test_composite_overview.py.
-Check: before deleting, the quick view and the composite overview give the same planes for data/3d and a synthetic
-multichannel set (two deterministic paths); UI capture (--action open) of slides and the 3d project.
-Out of scope: fusion_slabs.py, routing through fuse().
+Nothing.
 
 ## TODO
 
@@ -106,11 +91,11 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       chunk sizes; fusion by z-slabs: level 0 / pyramid levels) - read them, and 'Fusion output_chunksize', on the
       next HPC run.
 - [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
-      image shapes 1.3ms, tables 1.8 min; the preview cap and composite overview only where the lazy overview
-      declines (a rotation, 3D or multichannel sources). Check on the next HPC run. (Promotion, the second transform
+      image shapes 1.3ms, tables 1.8 min; the preview cap and fused preview only where the lazy overview
+      declines (a rotation, 2D and 3D sources together). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
 - [ ] **Preview cap: one rebuild instead of three** - only if the next HPC run still shows the cap running (it is
-      reached only where the lazy overview declines: a rotation, 3D or multichannel sources); otherwise drop. Time
+      reached only where the lazy overview declines: a rotation, 2D and 3D sources together); otherwise drop. Time
       only, not memory: the 343GB -> 4GB is the preview it keeps from being fused, and each round rebuilds lazy msim
       trees, not pixels. 3 size estimates, 2 rounds dropping levels and 1 strided round (~11ms a source each on the
       HPC, 3.4 min at 34k); choosing the levels from each level's geometry before rebuilding once needs a level
@@ -123,12 +108,9 @@ REFACTORING
 - [ ] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
       avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
       create detailed plan first
-      - One overview instead of two: lazy_section_overview and util.composite_msims_overview both paste
-        translation-only sources, overwriting overlaps; the composite one is reached only for 3D or multichannel
-        sources. A z/channel axis in SectionPlanes would let it go, with _create_napari_data's composite branch,
-        leaving the view as quick view or fuse() (rotations). Routing the quick view through fuse() instead was
-        weighed: it shares ~5 lines, needs msims=None and readers, a view-only fusion method to keep from export,
-        and leaves the msim preparation (view msims, sub-pyramid, cap) in Interface.
+      - One overview instead of two: done (see Done). Routing the quick view through fuse() instead was weighed:
+        it shares ~5 lines, needs msims=None and readers, a view-only fusion method to keep from export, and leaves
+        the msim preparation (view msims, sub-pyramid, cap) in Interface.
 - [ ] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
 - [ ] add option to these efficiency classes to run without threading using an input argument
 - [ ] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
@@ -136,6 +118,12 @@ REFACTORING
 
 ## Done
 
+- **One overview instead of two** (branch `restructure`) - the quick view takes 3D and multichannel sources: (c, y, x)
+  planes, volumes a plane per z at the finest z read, each source's nearest z, a volume's decoded z chunk kept for
+  the planes after it. composite_msims_overview and its branch are gone: the view is the quick view, else the
+  capped fused preview (a rotation, 2D and 3D sources together). data/3d and a multichannel set: the same pixels as
+  the composite (one more empty edge row/column); data/3d all 200 planes 1.05s vs the composite's 0.28s up front,
+  the first viewed plane 0.08s. Plugin captures of slides and the 3d project show the overview under its shapes.
 - **init_data / ImageSource overlap** - a source no longer builds its own transform (init_data's alone reaches the
   msims), so init_sources builds every source in one pool; each file picks its own source_metadata entry in
   ImageSource (its label's matrix, a list by index); one x/y translation fill (complete_translation). Geometry of
