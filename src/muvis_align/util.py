@@ -1,6 +1,6 @@
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from configparser import ConfigParser
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import csv
 import cv2 as cv
 import functools
@@ -552,6 +552,33 @@ def timed_calls(func, times, cpu_times):
             times.append(time.perf_counter() - start)
             cpu_times.append(time.thread_time() - cpu_start)
     return timed
+
+
+def progress_phase(progress_factory, total=None, desc=None, weight=1):
+    """One reporting phase of the caller's operation, or nothing to report into."""
+    return progress_factory(total=total, desc=desc, weight=weight) if progress_factory is not None \
+        else nullcontext(None)
+
+
+def pooled_map(func, count, workers, progress_factory=None, desc=None, weight=1, timing_label=None):
+    """[func(index) for index in range(count)], on `workers` threads (one: none), each on the bar as it finishes; with
+    timing_label, the phase's timing logged (format_phase_timing). Rolling: a cancel need not wait for every item."""
+    results = [None] * count
+    times, cpu_times = [], []
+    timed = timed_calls(func, times, cpu_times)
+    workers = max(1, min(workers, count))
+    phase_start, phase_cpu_start = time.time(), time.process_time()
+    with progress_phase(progress_factory, total=count, desc=desc, weight=weight) as pbar:
+        items = ((index, timed(index)) for index in range(count)) if workers == 1 \
+            else rolling_map(timed, range(count), workers)
+        for index, result in items:
+            results[index] = result
+            if pbar is not None:
+                pbar.update(1)
+    if timing_label and times:
+        logging.info(f'{timing_label}: {len(times)} items {format_phase_timing(
+            time.time() - phase_start, times, cpu_times, workers, time.process_time() - phase_cpu_start)}')
+    return results
 
 
 class OperationCancelled(Exception):

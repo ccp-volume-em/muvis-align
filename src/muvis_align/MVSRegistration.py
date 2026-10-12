@@ -181,12 +181,6 @@ class MVSRegistration:
         return bool(params.get('flatfield_quantiles') or params.get('filter_foreground')
                     or normalisation_enabled(params.get('normalisation')))
 
-    @staticmethod
-    def progress_phase(progress_factory, total=None, desc=None, weight=1):
-        """One reporting phase of the caller's operation, or nothing to report into."""
-        return (progress_factory(total=total, desc=desc, weight=weight) if progress_factory is not None
-                else nullcontext(None))
-
     def ensure_msims(self, progress_factory=None, target_scale=None, weight=1, ends_only=False):
         """The lazy build the msims property triggers, callable ahead of time with a
         progress_factory - lets a caller about to force this (e.g. run_pre_processing()) show
@@ -242,61 +236,19 @@ class MVSRegistration:
         return self._msims is None
 
     def _build_msims(self, progress_factory=None, from_levels=None, store=True, weight=1, ends_only=False):
-        progress_context = (
-            progress_factory(total=len(self.sources), desc='Building sources', weight=weight)
-            if progress_factory is not None
-            else nullcontext(None)
-        )
-        # Where each source's pixel data is first opened: sources defer that read until
-        # something wants pixel-shaped data. On a network filesystem it is 128-200ms per source,
-        # the largest non-fusion phase of a large project when run serially (10-16 minutes for
-        # ~4700), and the same read init_sources() already overlaps across its own pool - so
-        # without one here, deferring the read only moves an I/O-bound phase into a serial one.
-        #
-        # Threads, not processes: each source's caches belong to that source alone, so no two
-        # workers touch the same state. On a local SSD the read is warm and the GIL-bound xarray
-        # half dominates (0.9-1.0x); the win is where the read actually costs something.
-        nsources = len(self.sources)
-        msims = [None] * nsources
-        # list.append is atomic under the GIL, so plain appends from worker threads need no lock.
-        # Both wall and CPU time per source: with several workers a task's wall time also counts
-        # the time it spent waiting for the GIL, so it inflates roughly in proportion to the
-        # worker count whether or not anything was actually overlapped - see the log below
-        source_times = []
-        source_cpu_times = []
-        phase_start, phase_cpu_start = time.time(), time.process_time()
-        max_workers = 1
-
+        # where each source's pixels are first opened: a network filesystem's read is worth overlapping, in threads as
+        # each source's caches are its own
         def build_msim(index):
-            source_start, cpu_start = time.time(), time.thread_time()
-            msim = build_source_msim(self.sources[index], self._msim_output_order,
-                                     self.positions[index], self._msim_transforms[index],
-                                     self.source_transform_key, z_scale=self._msim_z_scale,
-                                     from_level=from_levels[index] if from_levels else 0,
+            return build_source_msim(self.sources[index], self._msim_output_order, self.positions[index],
+                                     self._msim_transforms[index], self.source_transform_key,
+                                     z_scale=self._msim_z_scale, from_level=from_levels[index] if from_levels else 0,
                                      ends_only=ends_only)
-            source_times.append(time.time() - source_start)
-            source_cpu_times.append(time.thread_time() - cpu_start)
-            return msim
 
-        with progress_context as pbar:
-            if nsources > 1:
-                max_workers = min(default_msim_build_workers, nsources)
-                # rolling: a cancel (raised by pbar.update) must not wait for every source already submitted.
-                # Collected by index, so msims stays in source order however the builds complete
-                for index, msim in rolling_map(build_msim, range(nsources), max_workers):
-                    msims[index] = msim
-                    if pbar is not None:
-                        pbar.update(1)
-            elif nsources:
-                msims[0] = build_msim(0)
-                if pbar is not None:
-                    pbar.update(1)
+        msims = pooled_map(build_msim, len(self.sources), default_msim_build_workers, progress_factory,
+                           desc='Building sources', weight=weight,
+                           timing_label='Build msims' if self.logging_time else None)
         if store:
             self._msims = msims
-        if self.logging_time and source_times:
-            logging.info(f'Build msims: {len(source_times)} sources'
-                         f' {format_phase_timing(time.time() - phase_start, source_times, source_cpu_times,
-                                                 max_workers, time.process_time() - phase_cpu_start)}')
         return msims
 
     def reset(self):
@@ -657,39 +609,12 @@ class MVSRegistration:
         return section
 
     def init_sources(self, progress_factory=None):
-        nfiles = len(self.filenames)
-        self.sources = [None] * nfiles
-        progress_context = (
-            progress_factory(total=nfiles, desc='Initialising sources')
-            if progress_factory is not None
-            else nullcontext(None)
-        )
-        with progress_context as pbar:
-            # per-file wall and CPU durations, only to log where the time goes (see format_phase_timing)
-            file_times = []
-            file_cpu_times = []
+        def build_source(index):
+            return create_image_source(self.filenames[index], self.source_metadata, file_label=self.file_labels[index],
+                                       index=index, transform_key=self.source_transform_key)
 
-            def build_source(index):
-                start, cpu_start = time.time(), time.thread_time()
-                source = create_image_source(self.filenames[index], self.source_metadata,
-                                             file_label=self.file_labels[index], index=index,
-                                             transform_key=self.source_transform_key)
-                file_times.append(time.time() - start)
-                file_cpu_times.append(time.thread_time() - cpu_start)
-                return source
-
-            phase_start, phase_cpu_start = time.time(), time.process_time()
-            max_workers = min(default_source_init_workers, nfiles)
-            # rolling: a cancel (raised by pbar.update) must not wait for every file already submitted
-            for index, source in rolling_map(build_source, range(nfiles), max_workers):
-                self.sources[index] = source
-                if pbar is not None:
-                    pbar.update(1)
-
-        if self.logging_time and file_times:
-            logging.info(f'Init sources: {len(file_times)} files'
-                         f' {format_phase_timing(time.time() - phase_start, file_times, file_cpu_times,
-                                                 max_workers, time.process_time() - phase_cpu_start)}')
+        self.sources = pooled_map(build_source, len(self.filenames), default_source_init_workers, progress_factory,
+                                  desc='Initialising sources', timing_label='Init sources' if self.logging_time else None)
 
     def init_data(self, source_metadata={}, extra_metadata={}, target_scale=None, store=True,
                   progress_factory=None):
@@ -938,11 +863,7 @@ class MVSRegistration:
             # neither of the two steps left is per-source-divisible (a whole-set redimension and
             # one graph build over every pair), but together they are seconds to tens of seconds
             # for a few hundred sources - count them rather than letting them run silently
-            progress_context = (
-                progress_factory(total=2, desc='Loading pair registration')
-                if progress_factory is not None
-                else nullcontext(None)
-            )
+            progress_context = progress_phase(progress_factory, total=2, desc='Loading pair registration')
             with progress_context as pbar:
                 if not is_3d:
                     self.msims = make_msims_2d(self.msims)
@@ -986,11 +907,8 @@ class MVSRegistration:
                 # needed) - the persistent pyramid needs the same transform a fresh registration
                 # run would have written via register_global, or copy_transforms_to_msims/get_transforms
                 # downstream (Interface.py) won't find it there when resuming from saved state
-                progress_context = (
-                    progress_factory(total=len(self.msims), desc='Loading global registration')
-                    if progress_factory is not None
-                    else nullcontext(None)
-                )
+                progress_context = progress_phase(progress_factory, total=len(self.msims),
+                                                  desc='Loading global registration')
                 self.mappings = {}
                 with progress_context as pbar:
                     for index, (msim, filename) in enumerate(zip(self.msims, self.filenames)):
@@ -1096,11 +1014,7 @@ class MVSRegistration:
             if pbar is not None:
                 pbar.update(1)
 
-        progress_context = (
-            progress_factory(total=count_progress_steps(), desc='Pre-processing')
-            if progress_factory is not None
-            else nullcontext(None)
-        )
+        progress_context = progress_phase(progress_factory, total=count_progress_steps(), desc='Pre-processing')
 
         with progress_context as pbar:
             modified = False
@@ -1529,7 +1443,7 @@ class MVSRegistration:
                 phase_start, phase_cpu_start = time.time(), time.process_time()
                 # one pair per thread, each its own compute: a slow pair no longer holds up a batch. A lone
                 # thread keeps the threads scheduler, so a single (e.g. 3D) pair still runs its tasks in parallel.
-                with self.progress_phase(progress_factory, total=g_reg.number_of_edges(),
+                with progress_phase(progress_factory, total=g_reg.number_of_edges(),
                                          desc='Registering pairs') as pbar, \
                         Timer(f'register {g_reg.number_of_edges()} pairs on {workers}'
                               f' {"processes" if pool is not None else "threads"}', verbose=self.logging_time), \
@@ -1633,7 +1547,7 @@ class MVSRegistration:
         resolution_method = ROBUST_LINEAR if transform_type in ('translation', 'rigid') else 'global_optimization'
         binning = params.get('split_binning')
         binning = max(int(float(binning)), 1) if is_valid_value(binning) else default_split_binning
-        with self.progress_phase(progress_factory, total=1, desc='Registering z-planes / channels'), \
+        with progress_phase(progress_factory, total=1, desc='Registering z-planes / channels'), \
                 Timer('split: register groups', verbose=self.logging_time):
             transforms, group_graph = register_groups(
                 pair_msims, transforms, self.split_groups(list(register_indices)), self.source_transform_key,
@@ -1707,7 +1621,7 @@ class MVSRegistration:
             groupwise_resolution_kwargs['reference_view'] = find_reference_view(g_reg_computed)
 
         if groupwise_resolution_method == ROBUST_LINEAR:
-            resolution_progress = self.progress_phase(progress_factory, total=default_robust_rounds,
+            resolution_progress = progress_phase(progress_factory, total=default_robust_rounds,
                                                       desc='Global registration', weight=4)
         else:
             # global_optimization has nothing to report into a phase: GlobalOptProgress follows its log instead
@@ -1730,7 +1644,7 @@ class MVSRegistration:
                                                      progress_factory=progress_factory)
 
         # the stages below are the last 20 minutes of an 86-minute run, and reported nothing
-        with self.progress_phase(progress_factory, total=len(pair_msims),
+        with progress_phase(progress_factory, total=len(pair_msims),
                                  desc='Applying transforms') as pbar, \
                 Timer('apply registered transforms', verbose=self.logging_time):
             for imsim, msim in enumerate(pair_msims):
@@ -1744,7 +1658,7 @@ class MVSRegistration:
                     pbar.update(1)
 
         if plot_summary:
-            with self.progress_phase(progress_factory, total=1, desc='Registration summary'), \
+            with progress_phase(progress_factory, total=1, desc='Registration summary'), \
                     Timer('plot registration summaries', verbose=self.logging_time):
                 plot_info = _plot_registration_summaries(
                     pair_msims,
@@ -1787,7 +1701,7 @@ class MVSRegistration:
         # copy transforms from the registration-stage msims onto self.msims (the persistent,
         # full per-source pyramid) - msim -> msim, writes the same affine onto every scale,
         # no sim round-trip needed
-        with self.progress_phase(progress_factory, total=len(pair_msims),
+        with progress_phase(progress_factory, total=len(pair_msims),
                                  desc='Storing transforms') as pbar, \
                 Timer('store transforms on sources', verbose=self.logging_time):
             for reg_msim, index in zip(pair_msims, register_indices):

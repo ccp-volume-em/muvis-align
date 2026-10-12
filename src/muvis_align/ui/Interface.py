@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 import logging
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
@@ -43,7 +43,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes
+    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase
 
 
 patch_shapes_text_coords()
@@ -754,11 +754,7 @@ class Interface:
         # resolution pyramid is used as-is; a single-resolution source is downscaled by one
         # constant factor when its largest spatial dimension exceeds 1000px
         view_msims = []
-        progress_context = (
-            progress_factory(total=len(self.reg.sources), desc='Building views')
-            if progress_factory is not None
-            else nullcontext(None)
-        )
+        progress_context = progress_phase(progress_factory, total=len(self.reg.sources), desc='Building views')
         with progress_context as pbar:
             for source, msim in zip(self.reg.sources, self.reg.msims):
                 if len(source.shapes) == 1:
@@ -1107,7 +1103,7 @@ class Interface:
         # sub-steps in rough proportion to what each costs on a large project. Building the
         # geometries is the one with a real per-source count, and most of the cost with it
         def phase(share, total=None):
-            return self._progress_phase(progress_factory, total=total,
+            return progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
         # with no native 'z' but sources at different heights, each source's z must become a real
@@ -1172,18 +1168,12 @@ class Interface:
         face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
         return shapes, refs, labels, face_colors
 
-    @staticmethod
-    def _progress_phase(progress_factory, total=None, desc=None, weight=1):
-        """One reporting phase of the caller's operation, or nothing to report into."""
-        return (progress_factory(total=total, desc=desc, weight=weight)
-                if progress_factory is not None else nullcontext(None))
-
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
                             progress_factory=None, weight=1):
         # `weight` is what the caller's bar allows this step, divided below between the sub-steps
         # in rough proportion to what each costs on a large project
         def phase(share, total=None):
-            return self._progress_phase(progress_factory, total=total,
+            return progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
         # copy_transforms_to_msims() below is the only step here that writes into a msim,

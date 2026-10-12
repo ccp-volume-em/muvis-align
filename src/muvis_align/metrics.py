@@ -17,8 +17,8 @@ from xarray import DataArray
 from muvis_align.constants import (default_pair_worker_tasks, default_pair_workers, default_quality_key,
                                    default_transform_key)
 from muvis_align.image.util import image_reshape, get_msim_transform_keys
-from muvis_align.util import (apply_transform, picklable, release_memory, result_unless_cancelled, rolling_map,
-                              worker_process_pool)
+from muvis_align.util import (apply_transform, picklable, progress_phase, release_memory, result_unless_cancelled,
+                              rolling_map, worker_process_pool)
 
 
 def create_metric_methods(metric_methods, msim):
@@ -110,7 +110,7 @@ def map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory=Non
         return result_unless_cancelled(pool.submit(pair_image_metrics, *arguments, scheduler='synchronous'))
 
     results = []
-    progress = (progress_factory(total=len(edges), desc=desc) if progress_factory is not None else nullcontext(None))
+    progress = progress_phase(progress_factory, total=len(edges), desc=desc)
     # on threads, set once here: BLAS thread limits changed from many threads at once crash the process
     compute = (_pair_metrics_compute('synchronous' if workers > 1 else 'threads') if pool is None
                else nullcontext())
