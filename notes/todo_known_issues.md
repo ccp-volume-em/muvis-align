@@ -47,6 +47,20 @@ Status: unreferenced functions.
 
 ESSENTIAL
 
+- [ ] **Opening a fused project re-fuses a blurry preview instead of loading the fused zarr** - HPC (large
+      meatballs-type set): ~2h to open, and the view is far blurrier than the 100nm preview pixel size.
+      Why: an already-fused project (check_progress: FUSED when the output exists) opens through
+      _show_loaded_project -> _copy_transforms_to_view_msims (every source's msim) -> preview_fusion ->
+      _create_napari_data: sub-pyramid, preview cap (reduce_msims_to_fused_size, 3 rebuilds of every msim), an
+      in-memory fuse() and its contrast compute - a new fusion from all sources, while the export is already on
+      disk. Blurry: the cap holds the whole fused stack to default_preview_max_bytes (4GB), shared by every section
+      (1081 sections leave ~4MB, ~2000x2000 px, a section), far coarser than 100nm; and in memory 'native' fuses
+      as 'mean', averaging the overview into the tiles (the export puts the tiles over it). After an export the
+      plugin shows the zarr it wrote (fusion_process: read back, lazy, multiscale) - sharp at every zoom.
+      Fix: open a fused project by reading its zarr (ngff_utils.read_msim_from_ome_zarr) after the sources and
+      shapes, as after an export: seconds, every level sharp. Stale output (registration or fusion settings changed
+      since) could be told from the zarr's RO-Crate fusion parameters - re-fuse only then, or on Preview. Check
+      the HPC log's Time lines first to confirm where the 2h goes (view msims, cap, fuse, contrast, shapes).
 
 
 PERFORMANCE
