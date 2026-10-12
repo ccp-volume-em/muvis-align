@@ -69,6 +69,9 @@ PERFORMANCE
 
 MINOR
 
+- [ ] **Shape label and grid colours from the image** - choose the shapes' label (and grid) colours to stand out
+      against the shown channel's data, e.g. from its colormap and contrast limits, if it can be done cheaply
+      (no extra pixel reads).
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
