@@ -2313,11 +2313,11 @@ def test_the_build_takes_the_bar_in_proportion_to_what_it_costs():
     assert (phases, weight) == (3, 2)
 
 
-@pytest.mark.parametrize("ndisplay, expected", [(2, 0.1), (3, 1.0)], ids=["a slice", "a volume"])
-def test_the_main_views_background_is_its_typical_level_or_a_volumes_brightest(bare_interface, ndisplay, expected):
+@pytest.mark.parametrize("ndisplay", [2, 3])
+def test_the_main_views_background_is_its_typical_level_whether_shown_in_2d_or_3d(bare_interface, ndisplay):
     bare_interface.viewer = MagicMock()
     bare_interface.viewer.dims.ndisplay = ndisplay
     bare_interface._view_levels = ([0.1], [(1, 1, 1)])
 
-    assert bare_interface._view_background_luminance(bare_interface.viewer) == pytest.approx(expected)
+    assert bare_interface._view_background_luminance(bare_interface.viewer) == pytest.approx(0.1)
     assert bare_interface._view_background_luminance(MagicMock()) is None

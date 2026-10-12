@@ -1098,11 +1098,7 @@ class Interface:
         """The luminance of the image the main viewer shows (background_luminance), None for another viewer or none."""
         if viewer is not getattr(self, 'viewer', None) or getattr(self, '_view_levels', None) is None:
             return None
-        levels, colors = self._view_levels
-        if levels is not None and viewer.dims.ndisplay == 3:
-            # a volume renders as the brightest value along each ray, not the typical one
-            levels = [1.0] * len(levels)
-        return background_luminance(levels, colors)
+        return background_luminance(*self._view_levels)
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name,
                                 show_labels=True):

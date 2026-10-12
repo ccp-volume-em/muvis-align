@@ -123,8 +123,7 @@ REFACTORING
 
 - **Shape labels and edges contrast with the image** - the contrast-limit sample (quick view, or the coarsest level)
   also gives where the typical value shows (get_display_level); with the channels' colours that is the background's
-  luminance, and labels and edges go navy on a bright one, cyan otherwise. A volume in the 3D view shows its brightest
-  values, so it counts as bright. Slides and the 3d set: navy, readable.
+  luminance, and labels and edges go navy on a bright one, cyan otherwise - the same in the 2D and 3D view.
 - **Msim-free registered open** (branch `registered-open`) - init_progress keeps a loaded registration in
   self.mappings, applied when msims are first built (_apply_mappings), and finds files by dict; the pairs graph,
   registered shapes, the quick view's transforms and the size estimate come from MVSRegistration.source_geometry
