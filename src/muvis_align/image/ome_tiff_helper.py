@@ -9,11 +9,8 @@ from ome_zarr.scale import Scaler
 from tifffile import TiffWriter, tifffile
 
 try:
-    # ngff_zarr's own tifffile-axes -> NGFF-dims mapping (and the array reshape that goes with
-    # it), reused rather than reimplemented so a fast metadata or array read can never disagree
-    # with what ngff_zarr itself would build from the same file. Private, hence guarded: if they
-    # move, read_tiff_source_metadata()/read_tiff_level_arrays() decline and the caller falls
-    # back to ngff_zarr itself.
+    # reused so our reads never disagree with ngff_zarr's; private, so guarded: without them the
+    # fast reads decline and callers fall back to ngff_zarr
     from ngff_zarr.tiff_to_ngff_image import _map_tiff_axes_to_ngff as map_tiff_axes_to_ngff
     from ngff_zarr.tiff_to_ngff_image import _normalize_unit as normalize_ome_unit
     from ngff_zarr.tiff_to_ngff_image import _reshape_tiff_for_channels as reshape_tiff_for_channels
@@ -41,23 +38,12 @@ def extract_ome_translation_from_xml(ome_xml, **kwargs):
 
 
 def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
-    """The first Image's geometry and channels - position (um), physical pixel size and units,
-    channel names and colours - plus the document's own Creator, in one pass.
+    """The first Image's position (um), physical pixel size and units, channel names and colours, plus the
+    document's Creator.
 
-    Parsed incrementally and stopped as soon as the answer is settled, rather than building a DOM
-    of the whole document: a multi-file OME-TIFF repeats the entire dataset's XML in every file's
-    header, ~2.4MB each for a 4733-file set, and a full parse measured ~210ms per file - ~16
-    CPU-minutes across the set to read a handful of attributes. Everything wanted is in the first
-    <Image>, so the cost does not scale with the dataset. (Fed in chunks, since a StringIO over
-    the whole string costs a copy of it: 3.7ms of 4.1ms at 2.4MB, against a ~0.4ms parse.)
-
-    `creator` comes off the root <OME> element, the first tag parsed, so it's free to capture.
-
-    `position` is {} when the XML describes more than one Image, preserving the behaviour of the
-    xml2dict implementation this replaces - such a file has always yielded no position, and
-    positions come from source_metadata instead. Reading it properly would mean matching the
-    Image whose TiffData/UUID names this file, which is a behaviour change, not a refactor.
-    scale, units and channels come from the first Image either way, as ngff_zarr does.
+    Pull-parsed in chunks and stopped once settled: a multi-file OME-TIFF repeats the whole dataset's XML in
+    every file. `position` is {} when the XML describes more than one Image (positions then come from
+    source_metadata); scale, units and channels come from the first Image, as in ngff_zarr.
     """
     parser = ElementTree.XMLPullParser(events=['start'])
     position, scale, units = {}, {}, {}
@@ -67,14 +53,14 @@ def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
     for start in range(0, len(ome_xml), chunk_size):
         parser.feed(ome_xml[start:start + chunk_size])
         for _event, element in parser.read_events():
-            # tags carry the OME namespace, e.g. '{http://...}Plane'
+            # strip the OME namespace, e.g. '{http://...}Plane'
             tag = element.tag.rpartition('}')[2]
             if tag == 'OME':
                 creator = element.get('Creator', '')
             elif tag == 'Image':
                 images += 1
                 if images > 1:
-                    # a second Image settles it - nothing further belongs to this file's own
+                    # nothing after a second Image belongs to the first
                     return {'position': {}, 'scale': scale, 'units': units,
                             'channel_names': channel_names, 'channel_colors': channel_colors,
                             'creator': creator}
@@ -104,23 +90,11 @@ def extract_ome_image_metadata(ome_xml, chunk_size=64 * 1024):
 
 
 def read_tiff_source_metadata(filename):
-    """Every piece of metadata an ImageSource needs from a TIFF - per-level shapes and pixel
-    sizes, dtype, dimension order, origin, channels - read straight off tifffile, with no zarr
-    store and no dask array built. Returns None if it cannot be done faithfully, leaving the
-    caller on ngff_zarr's own (array-building) path.
+    """The metadata an ImageSource needs from a TIFF (per-level shapes and pixel sizes, dtype, dimension
+    order, origin, channels, creator), read off tifffile without building a zarr store or dask arrays.
 
-    ngff_zarr.tiff_file_to_ngff_images() is the reference for all of this, but obtaining it from
-    there costs ~8ms per source: it opens tif.aszarr(), walks the zarr group per pyramid level
-    and wraps each in a dask array - ~18 round-trips through zarr's async/sync bridge - none of
-    which project load needs, since only metadata is read until something asks for pixels. For
-    an OME-TIFF it additionally DOM-parses the whole OME XML (findall('.//ome:Image')), the same
-    per-file cost over the whole dataset's XML described in extract_ome_image_metadata().
-    Measured on a real pyramidal tile: 0.68ms here against 8.41ms there.
-
-    The tifffile-axes-to-NGFF-dims mapping is ngff_zarr's own _map_tiff_axes_to_ngff (channel-
-    like axes flattened - 'S' samples included, so RGB lands on 'c' - and unsupported axes
-    dropped): deliberately reused rather than reimplemented, since a divergence there would
-    silently mis-order dimensions.
+    Matches ngff_zarr.tiff_file_to_ngff_images(), reusing its axis mapping so dims can never be mis-ordered.
+    Returns None if it cannot be done faithfully, leaving the caller on ngff_zarr's path.
     """
     if map_tiff_axes_to_ngff is None:
         return None
@@ -154,8 +128,7 @@ def read_tiff_source_metadata(filename):
     axis_of = {dim: index for index, dim in enumerate(dims)}
     pixel_sizes = []
     for shape in shapes:
-        # per level, ngff_zarr scales the base value by the realised extent ratio rather than by
-        # the nominal downsample factor
+        # by the realised extent ratio, not the nominal downsample factor, as ngff_zarr
         pixel_sizes.append({
             dim: convert_to_um(ome_scale.get(dim, 1.0) * shapes[0][axis_of[dim]] / shape[axis_of[dim]],
                                ome_units.get(dim, 'um'))
@@ -164,8 +137,7 @@ def read_tiff_source_metadata(filename):
     channels = []
     for index, (name, color) in enumerate(zip((ome or {}).get('channel_names') or [],
                                                (ome or {}).get('channel_colors') or [])):
-        # an OME <Channel> with no Name attribute parses to '' - fall back to a generated
-        # label so it never renders/saves as blank downstream
+        # a <Channel> without Name parses to '': generate a label so it never shows blank
         channel = {'label': name or f'channel {index}'}
         if color:
             channel['color'] = hexrgb_to_rgba(color)
@@ -185,28 +157,12 @@ def read_tiff_creator(filename):
         return extract_ome_image_metadata(tif.ome_metadata).get('creator', '')
 
 
-def contiguous_layout(page, shape):
-    """(file offset, byte order) of a level stored as one uncompressed run of rows in C order, as its array has
-    them (`shape`), or None: only then can a slice be read as a byte range of the file."""
-    is_plain = (page.compression == 1 and page.predictor == 1 and page.fillorder == 1 and not page.is_tiled
-                and page.planarconfig == 1 and page.bitspersample == 8 * np.dtype(page.dtype).itemsize)
-    offsets, counts = page.dataoffsets, page.databytecounts
-    runs_on = all(offset + count == next_offset for offset, count, next_offset in zip(offsets, counts, offsets[1:]))
-    if not (is_plain and runs_on and tuple(page.shape) == tuple(shape)
-            and sum(counts) == int(np.prod(shape)) * np.dtype(page.dtype).itemsize):
-        return None
-    return int(offsets[0]), page.parent.byteorder
-
-
 class PicklableTiffLevel:
     """A TIFF pyramid level's zarr array that pickles as its file name and level, reopening the file
-    where it is unpickled: tifffile's store holds a lock, so worker processes could not be sent one.
+    where it is unpickled: tifffile's store holds a lock, so worker processes could not be sent one."""
 
-    A level stored as one uncompressed run of rows is read as the byte range of the rows asked for, in the
-    calling thread: through zarr every read of the process runs on zarr's one event-loop thread."""
-
-    def __init__(self, filename, path, array=None, layout=None):
-        self.filename, self.path, self._array, self.layout = filename, path, array, layout
+    def __init__(self, filename, path, array=None):
+        self.filename, self.path, self._array = filename, path, array
         self.shape, self.dtype, self.chunks = array.shape, array.dtype, array.chunks
         self.ndim = len(self.shape)
 
@@ -214,8 +170,7 @@ class PicklableTiffLevel:
 
     @property
     def array(self):
-        # locked: dask threads reading an unpickled level's first tiles at once opened it concurrently
-        # and read from a closed file
+        # locked: dask threads opening it concurrently could read from a closed file
         if self._array is None:
             with self._open_lock:
                 if self._array is None:
@@ -226,58 +181,25 @@ class PicklableTiffLevel:
         return self._array
 
     def __getitem__(self, key):
-        if self.layout is None:
-            return self.array[key]
-        key = key if isinstance(key, tuple) else (key,)
-        first = key[0] if key else slice(None)
-        if isinstance(first, (int, np.integer)):
-            rows = slice(int(first) % self.shape[0], int(first) % self.shape[0] + 1)
-            rest = (0,) + key[1:]
-        elif isinstance(first, slice) and first.step in (None, 1):
-            rows = slice(*first.indices(self.shape[0])[:2])
-            rest = (slice(None),) + key[1:]
-        else:
-            rows = slice(0, self.shape[0])
-            rest = key
-        return self._read_rows(rows)[rest]
-
-    def _read_rows(self, rows):
-        offset, byteorder = self.layout
-        row_shape = self.shape[1:]
-        dtype = np.dtype(self.dtype).newbyteorder(byteorder)
-        count = max(rows.stop - rows.start, 0)
-        data = np.empty((count,) + tuple(row_shape), dtype=dtype)
-        with open(self.filename, 'rb') as file:
-            file.seek(offset + rows.start * int(np.prod(row_shape)) * dtype.itemsize)
-            if file.readinto(memoryview(data).cast('B')) != data.nbytes:
-                raise OSError(f'{self.filename}: fewer bytes than level {self.path} holds')
-        return data.astype(self.dtype, copy=False)
+        return self.array[key]
 
     def __reduce__(self):
-        return _unpickle_tiff_level, (self.filename, self.path, self.shape, self.dtype, self.chunks, self.layout)
+        return _unpickle_tiff_level, (self.filename, self.path, self.shape, self.dtype, self.chunks)
 
 
-def _unpickle_tiff_level(filename, path, shape, dtype, chunks, layout=None):
+def _unpickle_tiff_level(filename, path, shape, dtype, chunks):
     level = PicklableTiffLevel.__new__(PicklableTiffLevel)
-    level.filename, level.path, level._array, level.layout = filename, path, None, layout
+    level.filename, level.path, level._array = filename, path, None
     level.shape, level.dtype, level.chunks, level.ndim = shape, dtype, chunks, len(shape)
     return level
 
 
 def read_tiff_level_arrays(filename):
-    """One dask array per pyramid level of the file's first series, off tifffile's own zarr
-    store. Returns None if it cannot be done faithfully, leaving the caller on ngff_zarr's path.
+    """One dask array per pyramid level of the file's first series, off tifffile's zarr store, as ngff_zarr
+    builds them but without rebuilding the metadata. Returns None if it cannot be done faithfully.
 
-    The same arrays ngff_zarr.tiff_file_to_ngff_images() produces, reached the same way, but
-    without also rebuilding the metadata the source has already read for itself - which is what
-    the rest of that call costs: 3.2ms against 4.7ms for a plain 800x800 tile, 6.6ms against
-    9.8ms for a 4096x4096 4-level pyramid.
-
-    The dask wrapping is deliberate even though reading pixels off the zarr arrays directly is
-    3-4x faster: the pipeline downstream is lazy and a zarr array is not. Slicing one reads
-    immediately, which would turn build_missing_pyramid_levels()' near-free strided subsampling
-    into a full decode at load. Handing zarr arrays to multiview_stitcher, which supports them
-    natively, is the larger win - but that is a change to how the pipeline reads pixels.
+    Wrapped in dask because slicing a zarr array reads at once, which would make strided level synthesis a
+    full decode at load.
     """
     if map_tiff_axes_to_ngff is None or reshape_tiff_for_channels is None:
         return None
@@ -286,9 +208,7 @@ def read_tiff_level_arrays(filename):
         axes = series.axes
         if not axes:
             return None
-        # multiscales=True so a single-level file yields a group too, and the levels come back
-        # in the multiscales metadata's own order (highest resolution first) rather than in the
-        # group's arbitrary iteration order
+        # multiscales=True: a group even for one level, levels ordered finest first
         group = zarr.open_group(store=tif.aszarr(series=0, multiscales=True), mode='r')
         attributes = group.attrs.get('ome', group.attrs)
         try:
@@ -298,31 +218,24 @@ def read_tiff_level_arrays(filename):
         arrays = []
         for dataset in datasets:
             array = group[dataset['path']]
-            page = series.levels[int(dataset['path'])].keyframe if dataset['path'].isdigit() else None
-            layout = contiguous_layout(page, array.shape) if page is not None else None
-            arrays.append(PicklableTiffLevel(filename, dataset['path'], array, layout))
-        # tif is closed on the way out: tifffile's store reopens the file itself whenever a
-        # chunk is actually read, so holding a file handle open per source (thousands of them in
-        # a project) buys nothing
+            arrays.append(PicklableTiffLevel(filename, dataset['path'], array))
+        # tif closes on exit: the store reopens the file per chunk read, so no handle is held per source
         dims, _, channel_indices, dropped_indices = map_tiff_axes_to_ngff(axes, series.shape)
 
     datas = []
-    # names from the file and level, not from_zarr's tokenize of each zarr array (~6ms a source);
-    # its size and time too, so a file rewritten in place gets new ones
+    # names from file, size, mtime and level: cheaper than tokenizing the array, and new when rewritten in place
     stat = os.stat(filename)
     for level, array in enumerate(arrays):
-        # the level's shape in NGFF terms (unsupported axes dropped, channel-like axes - 'S'
-        # samples included - flattened onto 'c'), then the array reshaped to match it
+        # NGFF shape: unsupported axes dropped, channel-like axes ('S' included) flattened onto 'c'
         shape = map_tiff_axes_to_ngff(axes, array.shape)[1]
-        # as from_zarr, with the dtype given rather than probed with a read of the array
+        # meta given, so dask does not probe the dtype with a read
         data = da.from_array(array, chunks=array.chunks, meta=np.empty((0,) * array.ndim, dtype=array.dtype),
                              name='tiff-' + tokenize(filename, stat.st_size, stat.st_mtime_ns, level))
         if tuple(data.shape) != tuple(shape):
             data = reshape_tiff_for_channels(data, axes, tuple(array.shape), dims, tuple(shape),
                                              list(channel_indices), list(dropped_indices))
         if tuple(data.shape) != tuple(shape):
-            # the reshape could not get there - decline rather than hand back levels whose
-            # shapes disagree with the metadata read from the same file
+            # decline rather than return levels disagreeing with the metadata
             return None
         datas.append(data)
     return datas

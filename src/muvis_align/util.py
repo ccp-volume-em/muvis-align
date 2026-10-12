@@ -29,8 +29,8 @@ from muvis_align.image.tiff_metadata import UM_CONVERSIONS
 
 def single_threaded_highs():
     """Run scipy's HiGHS (linprog, as multiview-stitcher's overlap tests use) on the calling thread alone."""
-    # HiGHS starts ~11 workers per calling thread and tears them down when it exits, which can deadlock on the
-    # Windows loader lock and freeze every thread start; these problems are tiny
+    # HiGHS starts and tears down workers per calling thread, which can deadlock on the Windows loader lock;
+    # these problems are tiny
     try:
         from scipy.optimize import _linprog_highs
     except ImportError:
@@ -62,13 +62,8 @@ def ensure_list(x) -> list:
 
 
 def _paths_match_by_suffix(path1, path2, min_parts=2):
-    # a project resumed on a different machine/mount than the one that saved its mappings (e.g.
-    # registered inside a container where the drive was mounted at /data, then reopened natively
-    # at C:/Project/...) can see the same file under two absolute paths with no shared prefix at
-    # all, so the plain substring check below (aimed at relative-vs-absolute differences) can't
-    # bridge them. Trailing path components (parent folder + filename) are already unique across
-    # a tiled dataset, so comparing those instead matches regardless of what either machine
-    # mounted the data root as.
+    # a project reopened on another mount sees a file under an unrelated absolute path: parent folder
+    # and filename are unique in a dataset, so compare those
     parts1 = path1.replace('\\', '/').rstrip('/').split('/')
     parts2 = path2.replace('\\', '/').rstrip('/').split('/')
     if min(len(parts1), len(parts2)) < min_parts:
@@ -194,8 +189,7 @@ def print_dict_simple(dct: dict, dims: str='zyx', significant_digits: int=3) -> 
 
 
 def print_significants(value: float, significant_digits: int) -> str:
-    # fixed-point rather than 'g', which turns 64863 into 6.49e+04; only decimals are dropped,
-    # every integer digit is kept
+    # fixed-point rather than 'g', which turns 64863 into 6.49e+04: every integer digit is kept
     if value == 0 or not np.isfinite(value):
         return f'{value:g}'
     decimals = max(significant_digits - int(np.floor(np.log10(abs(value)))) - 1, 0)
@@ -266,14 +260,8 @@ def find_sbemimage_meta_dir(filename, max_hops=5):
 
 
 def pattern_base_dir(pattern):
-    """The real directory an input pattern sits in - what a relative output path is taken to be
-    relative to (MVSRegistration.init).
-
-    os.path.dirname() alone keeps any wildcard in the pattern: for 'data/*/*.tiff' it returns
-    'data/*', which is not a directory, so joining an output onto it yields a path that cannot
-    be created (WinError 123 on Windows, a literal '*' directory elsewhere). Walk up until no
-    component of the tail is a wildcard.
-    """
+    """The real directory an input pattern sits in, without wildcard components (os.path.dirname of
+    'data/*/*.tiff' is 'data/*'): what a relative output path is relative to."""
     directory = os.path.dirname(pattern)
     while directory and any(char in os.path.basename(directory) for char in '*?['):
         parent = os.path.dirname(directory)
@@ -347,8 +335,7 @@ def get_unique_nums(all_parts: list) -> list:
         if len(set(values)) > 1:
             changing_keys.append(key)
 
-    # keep each file's own key order - a global order would let one naming scheme dictate
-    # another's (e.g. an overview's 's' pushed ahead of a tile's own 'r'/'t')
+    # each file's own key order: a global one would let one naming scheme dictate another's
     changing = set(changing_keys)
     final_parts = [{key: value for key, value in parts.items() if key in changing} for parts in all_parts]
     return final_parts
@@ -442,14 +429,7 @@ def is_source_value(value):
 
 def get_metadata_z_scale(metadata):
     """The configured z spacing from a source/extra metadata dict, as a number - or None when it
-    is unset, blank, or delegated to the file itself ('source').
-
-    Every consumer of z_scale treats it as a number (fusion output spacing, the z step used to
-    promote 2D sources into a 3D stack), while the configuration it comes from is free-form text
-    a user types: 'source' means "whatever the file reports", which ImageSource.fix_metadata has
-    already applied per source. Reading the raw dict value handed that literal string straight to
-    numpy - e.g. `source_scale_z: source` (any OME-Zarr project using file metadata) failed in
-    fusion with "could not convert string to float: 'source'".
+    is unset, blank, or 'source' (the file's own, already applied by ImageSource.fix_metadata).
     """
     if not isinstance(metadata, dict):
         return None
@@ -491,34 +471,12 @@ um_conversions = UM_CONVERSIONS | {'Å': 1e-4, 'A': 1e-4}
 
 def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None,
                         processes=False):
-    """One timing line for a threaded per-item phase, reported so it can actually be read.
+    """One timing line for a threaded per-item phase: wall time against summed per-item CPU time.
 
-    The obvious summary - wall time against the summed per-item time - cannot distinguish the
-    two cases it is usually quoted for. Under a thread pool, an item's wall time includes
-    whatever it spent waiting for the GIL, so the sum inflates roughly in proportion to the
-    worker count whether the threads overlapped real waiting or merely queued behind each other.
-    Measured on 328 sources: summed per-source time went 15s -> 1028s from 1 to 64 workers while
-    wall time went 14.9s -> 16.6s, i.e. the 60x "overlap" that ratio suggests was worth nothing.
-
-    Per-item CPU time (time.thread_time) is not distorted that way, so it gives a usable floor:
-    Python can only run one thread's bytecode at a time, so no arrangement of threads finishes
-    this phase faster than the total CPU it needs. Hence
-
-        wall ~= cpu   the phase is at that floor - it is CPU/GIL-bound and more workers cannot
-                      help (they will cost a little)
-        wall >> cpu   time is going somewhere other than CPU (network/disk latency), which is
-                      exactly what more workers can overlap
-
-    so the printed ratio says which regime a run is in, rather than always looking like a win.
-
-    `process_cpu_time` (time.process_time across the phase) is reported alongside, because the
-    per-item figure above is time.thread_time and so counts only the thread that ran the item -
-    never a nested pool it submitted to, nor anything else in the process. One 4733-source run
-    measured 468s of per-item CPU inside a phase whose wall clock was 598s, while the process
-    itself burned 2268s over the same stretch: ~3.8 cores, none of it in the work being timed.
-    Without both numbers that CPU is invisible, and the phase looks merely slow rather than
-    surrounded by something expensive (a rendering stack, a library's own thread pool, a BLAS
-    build spinning its idle threads).
+    Summed per-item wall time inflates with GIL waits, but per-item CPU (time.thread_time) is a floor:
+    wall ~= cpu means CPU/GIL-bound, more workers cannot help; wall >> cpu means waiting (I/O) that more
+    workers can overlap. `process_cpu_time` (time.process_time over the phase) also shows CPU spent outside
+    the timed items, such as nested pools or other threads.
     """
     total_time = sum(item_times)
     total_cpu = sum(item_cpu_times) if item_cpu_times else 0.0
@@ -546,8 +504,8 @@ def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, proc
 
 
 def timed_calls(func, times, cpu_times):
-    """`func`, appending each call's wall and thread CPU time to `times` and `cpu_times` - the
-    per-item figures format_phase_timing() reads. Keeps func's signature for callers that inspect it.
+    """`func`, appending each call's wall and thread CPU time to `times` and `cpu_times` (for
+    format_phase_timing()). Keeps func's signature for callers that inspect it.
     """
     @functools.wraps(func)
     def timed(*args, **kwargs):
@@ -636,8 +594,8 @@ _spawn_lock = threading.Lock()
 
 class _WorkerProcessPool(ProcessPoolExecutor):
     def _spawn_process(self):
-        # set before numpy/scipy load: each OpenBLAS commits a buffer per thread at import, ~1.9GB a worker
-        # with 24 cores - 24 workers ran out of Windows commit; the initializer's limits come too late
+        # set before numpy/scipy load: OpenBLAS commits a buffer per thread at import, exhausting Windows commit
+        # across workers; the initializer's limits come too late
         with _spawn_lock:
             saved = {name: os.environ.get(name) for name in _worker_environment}
             os.environ.update(_worker_environment)
@@ -658,6 +616,16 @@ class _WorkerProcessPool(ProcessPoolExecutor):
         return super().__exit__(exc_type, exc_value, traceback)
 
 
+def thread_map(func, items, workers):
+    """[func(item) for item in items], in order, on `workers` threads (one: in the calling thread)."""
+    items = list(items)
+    workers = max(1, min(workers, len(items)))
+    if workers == 1:
+        return [func(item) for item in items]
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        return list(executor.map(func, items))
+
+
 def worker_process_pool(workers, max_tasks_per_child=None):
     """Worker processes for GIL-bound per-item work. Spawned, never forked: forking a process running
     Qt and dask threads can copy a lock another thread holds."""
@@ -673,10 +641,13 @@ def result_unless_cancelled(future, poll_seconds=0.5):
 
 
 def rolling_map(func, items, workers):
-    """(item, func(item)) for each of `items` as it finishes, on `workers` threads. Only twice that
-    many are submitted at once, so memory stays bounded however many items there are, and a slow
-    item holds up only its own thread, not a whole batch.
-    """
+    """(item, func(item)) for each of `items` as it finishes, on `workers` threads (one: in the calling thread). Only
+    twice that many are submitted at once, so memory stays bounded and a slow item holds up only its own thread."""
+    if workers <= 1:
+        for item in items:
+            yield item, func(item)
+            raise_if_cancelled()
+        return
     items = iter(items)
     pending = {}
     with ThreadPoolExecutor(workers) as pool:
@@ -699,30 +670,9 @@ def rolling_map(func, items, workers):
                 future.cancel()
 
 
-@contextmanager
-def timed_module_functions(module, names):
-    """For the duration, time calls to `module`'s functions `names` (looked up there at call time),
-    yielding {name: [thread CPU time per call]}. Replaces them process-wide, restored on exit.
-    """
-    cpu_times = {name: [] for name in names}
-    originals = {name: getattr(module, name) for name in names}
-    for name, func in originals.items():
-        setattr(module, name, timed_calls(func, [], cpu_times[name]))
-    try:
-        yield cpu_times
-    finally:
-        for name, func in originals.items():
-            setattr(module, name, func)
-
 def convert_to_um(value, unit):
-    """`value` in `unit`, converted to um. An unrecognised unit is left unscaled - but logged,
-    since silently treating it as um mis-scales geometry with nothing to show for it.
-
-    Both the OME abbreviations (a Plane's PositionXUnit, say) and the spelled-out NGFF names
-    (which ngff_zarr's _normalize_unit produces from them) have to be here: readers pass
-    whichever form they happen to hold, and every length unit OME can express should land on a
-    real factor either way. 'nanometer' in particular used to be missing while 'nm' was present,
-    so a nanometre-scale OME-TIFF read through the spelled-out name was silently scaled by 1.
+    """`value` in `unit`, converted to um; an unrecognised unit is left unscaled, and logged.
+    Takes both OME abbreviations and spelled-out NGFF unit names.
     """
     if unit is None:
         return value
@@ -942,7 +892,7 @@ def normalise_rotated_positions(positions0, rotations0, sizes, center, ndims):
 
 def get_grid_angle(positions, sizes):
     """How far a tile grid is turned, in degrees within (-45, 45], or None without neighbours to tell.
-    Only neighbours of the same size count (not an overview with its tiles), at distinct xy (not the next section).
+    Only same-sized neighbours at distinct xy count.
     """
     pairs, _ = get_pairs(positions, sizes)
     directions = []
@@ -1031,7 +981,6 @@ def get_pairs(positions, sizes):
 def _get_pairs_candidates(positions, sizes, is_mixed_3dstack, z_index):
     """(i, j), i < j, of every pair get_pairs() could accept, in the order its full loop visits
     them: each source's box of its own search distance, one section deep in z for a stack.
-    All pairs at 34k sources is 578M Python iterations (2.5 hours); the boxes leave a handful each.
     """
     from muvis_align.image.util import _sweep_candidate_pairs
 
@@ -1079,8 +1028,7 @@ def retuple(chunks, shape):
 
 def get_process_memory():
     """This process's (resident, peak resident) memory in bytes, or None where the platform
-    will not say. No psutil - deliberately not a dependency of this package, see
-    constants._available_memory() for the same reasoning.
+    will not say (psutil is not a dependency).
     """
     resident = peak = None
     try:
@@ -1149,14 +1097,9 @@ def print_memory_usage():
 def release_memory(label=None, generation=2):
     """Hand memory the process has freed back to the OS, logging what that recovered.
 
-    glibc keeps a heap (arena) per thread, and a large buffer freed inside one returns to the OS
-    only if nothing still in use sits above it. Hundreds of reader threads each decoding tiles
-    left one 34k-source run holding 240GB after the overview, which on Windows kept 160KB a
-    source for the same work. malloc_trim() returns every such free page; elsewhere this just
-    collects garbage.
-
-    `generation` 1 collects only young objects, enough for what one batch left behind: a full
-    collection scans every live object, 0.4s at 484k and growing with the project.
+    glibc's per-thread heaps keep freed buffers below anything still in use; malloc_trim() returns them,
+    elsewhere this only collects garbage. `generation` 1 collects only young objects, enough after one
+    batch, where a full collection scans every live object.
     """
     gc.collect(generation)
     if not sys.platform.startswith('linux'):
@@ -1174,15 +1117,12 @@ def release_memory(label=None, generation=2):
 
 
 def to_posix_path(path):
-    # one separator everywhere: Windows reports '\' (file dialogs, pathlib) but accepts '/'
-    # just as well, so a path is converted on the way in and stays '/' from there on
+    # one separator everywhere: Windows reports '\' but accepts '/'
     return path.replace('\\', '/') if isinstance(path, str) else path
 
 
 def path_param_to_text(value):
-    # a multi-path param (several globs) can be stored either as one comma-separated string or
-    # as a yaml list - the path widgets show, and the path helpers below take, a single line of
-    # text either way
+    # a multi-path param is stored as a comma-separated string or a yaml list; the helpers take one line
     if isinstance(value, (list, tuple)):
         return ', '.join(str(part).strip() for part in value)
     return '' if value is None else str(value)
@@ -1199,11 +1139,8 @@ def eval_path(path):
 
 
 def resolve_to_project_dir(path, base_dir):
-    # input/output path params are stored relative to the project file's directory (so
-    # projects stay portable when moved/shared), but consumers like MVSRegistration.init()
-    # resolve a relative path against the process's cwd - so any relative part must be
-    # joined with base_dir before use. Always returned with forward slashes, even on
-    # Windows, so the path is consistent whether it ends up in the UI or on disk.
+    # path params are stored relative to the project dir for portability, but consumers resolve
+    # against the cwd; returned with forward slashes
     if not path or not base_dir:
         return to_posix_path(path)
     parts = [part.strip() for part in path.split(',')]
@@ -1218,10 +1155,7 @@ def resolve_to_project_dir(path, base_dir):
 
 
 def relativize_to_project_dir(path, base_dir):
-    # counterpart to resolve_to_project_dir(): converts an absolute path (e.g. one just
-    # chosen through a file dialog, which always returns an absolute path) back to relative
-    # form before it is stored, so the project file keeps portable relative paths. Always
-    # returned with forward slashes, even on Windows.
+    # counterpart to resolve_to_project_dir(): stored paths stay relative and portable; forward slashes
     if not path or not base_dir:
         return to_posix_path(path)
     parts = [part.strip() for part in path.split(',')]
@@ -1235,8 +1169,7 @@ def relativize_to_project_dir(path, base_dir):
             try:
                 relativized.append(to_posix_path(os.path.relpath(part, base_dir)))
             except ValueError:
-                # path is on a different drive than the project dir (Windows) - can't be
-                # made relative, keep it absolute
+                # on a different drive than the project dir (Windows): can't be made relative
                 relativized.append(to_posix_path(part))
     return ', '.join(relativized)
 

@@ -10,18 +10,11 @@ from muvis_align.image.color_conversion import hexrgb_to_rgba
 
 class TiffImageSource(ImageSource):
     def init_metadata(self):
-        # Metadata only - the per-level arrays are built on first access to self.data
-        # (_load_data below). Everything project load reads (per-level shapes and pixel sizes,
-        # dtype, dimension order, origin, channels) is in the file's own tags and, for an
-        # OME-TIFF, its XML; read_tiff_source_metadata() takes it straight off tifffile at
-        # ~0.7ms per source, against ~8ms to obtain the same values from
-        # tiff_file_to_ngff_images() - which gets there by opening tif.aszarr() and wrapping
-        # every pyramid level in a dask array, work nothing has asked for yet (and which
-        # _load_data() then does for itself, without the metadata half).
+        # metadata only, straight off the tags/OME-XML: tiff_file_to_ngff_images would also wrap every level
+        # in a dask array; the arrays wait for first access to self.data
         metadata = read_tiff_source_metadata(self.filename)
         if metadata is None:
-            # ngff_zarr's private axis mapping is unavailable - fall back to letting it do the
-            # whole job, arrays and all (_load_data then has nothing left to do)
+            # ngff_zarr's private axis mapping is unavailable: let it read arrays and all
             self._init_metadata_from_ngff_zarr()
             return
 
@@ -39,27 +32,22 @@ class TiffImageSource(ImageSource):
         self.is_rgb = (self.get_nchannels() in (3, 4))
 
     def _read_metadata(self):
-        # full OME-XML root dict, else every tag but the pixel layout - kept behind the lazy metadata property
+        # full OME-XML root dict, else every tag but the pixel layout
         with tifffile.TiffFile(self.filename) as tif:
             if tif.is_ome and tif.ome_metadata is not None:
                 return tifffile.xml2dict(tif.ome_metadata).get('OME', {})
             return get_extra_metadata(tif)
 
     def _load_data(self):
-        # the arrays come off tifffile's own zarr store (read_tiff_level_arrays), the same route
-        # ngff_zarr takes to them, but without rebuilding the metadata init_metadata() has
-        # already read for itself - ~1.5x cheaper per source. ngff_zarr stays the fallback for
-        # whenever that read declines.
+        # tifffile's zarr store, as ngff_zarr reads it but without rebuilding metadata; ngff_zarr as fallback
         datas = read_tiff_level_arrays(self.filename)
         if datas is None:
             datas = self._read_ngff_images()[1]
         self._data = datas
 
     def _read_ngff_images(self):
-        """(ngff_images, per-level arrays) from ngff_zarr - the reference reader, and the
-        fallback for both the metadata and the array read. Only the first series is the image
-        itself: later series (if any) are auxiliary (e.g. an embedded thumbnail/label image),
-        not further pyramid levels.
+        """(ngff_images, per-level arrays) from ngff_zarr, the fallback reader. Only the first series is the
+        image; later ones are auxiliary (e.g. a thumbnail), not pyramid levels.
         """
         ngff_image_data1 = tiff_file_to_ngff_images(self.filename, reuse_existing_pyramids=True)[0][1]
         if isinstance(ngff_image_data1, NgffMultiscales):
@@ -69,7 +57,6 @@ class TiffImageSource(ImageSource):
         return ngff_images, [ngff_image.data for ngff_image in ngff_images]
 
     def _init_metadata_from_ngff_zarr(self):
-        # the original path, kept as the fallback for whenever the fast read declines
         ngff_images, datas = self._read_ngff_images()
         # ngff_zarr's NgffImage carries no Creator - read it separately
         self.creator = read_tiff_creator(self.filename)

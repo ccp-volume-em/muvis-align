@@ -1,6 +1,6 @@
 """An overview of the sources (raw or pre-processed), one plane per section (or z of a volume), each built only when
 it is viewed: the plane's own tiles read at the coarsest level no coarser than the plane and pasted at their position.
-Opening a large project then shows image data as soon as the shapes, instead of pasting every source before any."""
+Opening a large project then shows image data as soon as the shapes."""
 import logging
 import threading
 from collections import OrderedDict
@@ -16,11 +16,11 @@ from multiview_stitcher import spatial_image_utils as si_utils
 from muvis_align.constants import default_interactive_preview_scale
 from muvis_align.image.util import (build_source_stack_props, coarsest_level_within, combine_msims_as_channels,
                                    get_display_range, get_dtype_contrast_limits, wrap_sims_as_msims)
-from muvis_align.util import parse_scale, pixel_size_to_um
+from muvis_align.util import parse_scale, pixel_size_to_um, thread_map
 
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
 default_plane_readers = 32
-# planes kept once built, the least recently viewed dropped first: all 1081 of a 34k-source stack would be ~17GB
+# planes kept once built, the least recently viewed dropped first: all planes of a large stack would not fit
 default_planes_max_bytes = 1_000_000_000
 # sections on either side of a viewed one built in the background, so scrolling finds them ready
 default_prefetch_radius = 4
@@ -59,7 +59,7 @@ class MsimLevels:
 
 class SectionPlanes:
     """The (c, y, x) planes of a sectioned overview, each built on first request and kept within a memory budget, the
-    planes around a requested one built in the background."""
+    planes around a requested one built in the background - none with one worker, which also reads in this thread."""
 
     def __init__(self, entries, shape, spacing, origin, dtype, nplanes, nchannels=1, workers=default_plane_readers,
                  max_bytes=default_planes_max_bytes, prefetch_radius=default_prefetch_radius):
@@ -71,11 +71,11 @@ class SectionPlanes:
         self._chunks = OrderedDict()
         self._building = {}
         self._lock = threading.Lock()
-        self._background = ThreadPoolExecutor(max_workers=1)
+        self._background = ThreadPoolExecutor(max_workers=1) if workers > 1 else None
 
     def plane(self, index, prefetch=True):
         plane = self._get(index)
-        if prefetch:
+        if prefetch and self._background is not None:
             for offset in range(1, self.prefetch_radius + 1):
                 for neighbour in (index + offset, index - offset):
                     if 0 <= neighbour < self.nplanes:
@@ -115,9 +115,8 @@ class SectionPlanes:
     def _build(self, index):
         plane = np.zeros((self.nchannels, self.shape['y'], self.shape['x']), dtype=self.dtype)
         entries = self.entries.get(index, [])
-        with ThreadPoolExecutor(max_workers=max(1, min(self.workers, len(entries)))) as executor:
-            datas = list(executor.map(self._source_plane, entries))
-        # in source order, as the pasted overview did: a later source covers an earlier one
+        datas = thread_map(self._source_plane, entries, self.workers)
+        # in source order: a later source covers an earlier one
         for entry, data in zip(entries, datas):
             _paste(plane, data, entry['edge'], entry['spacing'], self.spacing)
         return plane
@@ -175,8 +174,7 @@ def _contrast_limits(readers, max_sources=default_contrast_sources, workers=defa
     if not readers:
         return []
     sample = [readers[int(index)] for index in np.linspace(0, len(readers) - 1, min(len(readers), max_sources))]
-    with ThreadPoolExecutor(max_workers=max(1, min(workers, len(sample)))) as executor:
-        datas = list(executor.map(lambda reader: _read(_level_image(reader, len(reader.pixel_sizes) - 1)), sample))
+    datas = thread_map(lambda reader: _read(_level_image(reader, len(reader.pixel_sizes) - 1)), sample, workers)
     return [get_display_range(np.concatenate([data[channel].ravel() for data in datas]))
             for channel in range(datas[0].shape[0])]
 
@@ -211,13 +209,14 @@ def _plane_spacing(preview_scale, level0_spacing):
 
 def lazy_section_overview(sources, translations, transforms, output_order, transform_key, z_scale=None,
                           preview_scale=default_interactive_preview_scale, max_plane_bytes=default_plane_max_bytes,
-                          readers=None, label='Overview', channel_labels=None):
+                          readers=None, label='Overview', channel_labels=None, workers=default_plane_readers):
     """The overview msim (c, z, y, x) of the sources, each z-plane computed on demand at `preview_scale`: 2D sources
     a plane per section, volumes a plane per z at the finest z spacing read. None for anything it cannot place
     faithfully: a rotated transform, 2D and 3D sources together, or sources with differing channels.
     `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place.
     `channel_labels` (one a single-channel source) make each source a channel of its own, on the same grid, as fuse()
-    does. attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one."""
+    does. attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one.
+    `workers`: tile reads at once (one: none in other threads, and no planes built ahead)."""
     if readers is None:
         readers = [SourceLevels(source) for source in sources]
     if not sources or all(reader is None for reader in readers):
@@ -296,7 +295,8 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     section_planes, sims = [], []
     for entries in channel_entries:
         planes = SectionPlanes(entries, shape, spacing, {'y': lower[1], 'x': lower[2]}, dtype, nplanes,
-                               nchannels=plane_shape[0], max_bytes=default_planes_max_bytes // len(channel_entries))
+                               nchannels=plane_shape[0], max_bytes=default_planes_max_bytes // len(channel_entries),
+                               workers=workers)
         stacked = da.stack([da.from_delayed(dask.delayed(planes.plane)(index), plane_shape, dtype=dtype)
                             for index in range(nplanes)], axis=1)
         section_planes.append(planes)
@@ -314,5 +314,5 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     dtype_limits = get_dtype_contrast_limits(dtype)
     channel_readers = [[reader] for reader in readers] if channel_labels else [readers]
     msim.attrs['contrast_limits'] = [limits or dtype_limits for group in channel_readers
-                                     for limits in (_contrast_limits(group) or [None] * plane_shape[0])]
+                                     for limits in (_contrast_limits(group, workers=workers) or [None] * plane_shape[0])]
     return msim

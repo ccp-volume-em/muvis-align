@@ -1,4 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 import logging
 from enum import Enum, auto
@@ -17,7 +16,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, tiff_extension, default_transform_key, default_quality_key, \
-    default_interactive_preview_scale, default_preview_workers, default_chunk_size
+    default_interactive_preview_scale, default_chunk_size
 from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
                                              update_params)
 from muvis_align.MVSRegistration import MVSRegistration, RegState
@@ -132,10 +131,8 @@ class Interface:
         self.update_fusion_preview_enabled()
 
     def get_all_widgets(self):
-        # excludes widgets on a currently disabled tab - their .enabled always reads False
-        # (inherited from the disabled tab page), so snapshotting and restoring it as an explicit
-        # per-widget state (see modify_pair_registration) would leave them disabled even after
-        # their tab is enabled again
+        # excludes a disabled tab's widgets: their .enabled reads False from the tab, so restoring
+        # that state would keep them disabled once the tab is enabled again
         return {name: param_widget.widget for name, param_widget in self.param_widgets.items()
                if self.is_tab_enabled is None or self.is_tab_enabled(name.split('.', 1)[0])}
 
@@ -170,15 +167,13 @@ class Interface:
         self.resolve_output_settings()
 
     def get_project_dir(self):
-        # input/output path params are stored relative to this directory, so a project stays
-        # portable when the project file and its data are moved or shared together
+        # path params are stored relative to this directory, so a project moves with its data
         params_path = getattr(self, 'params_path', None)
         return os.path.dirname(os.path.abspath(params_path)) if params_path else None
 
     def update_widgets(self):
         for param_name, param_widget in self.param_widgets.items():
-            # input/output path widgets are handled separately by update_input_output_path(),
-            # which resolves them relative to the project directory before display
+            # path widgets are set by update_input_output_path(), relative to the project directory
             if param_name not in ('input_output.input_path', 'input_output.output_path'):
                 keys = param_name.split('.')
                 value = self.params.get(keys[0], {}).get(keys[1])
@@ -188,9 +183,7 @@ class Interface:
                         # set_value() blocks the table's signals, so channels_table() never sees the loaded value
                         if value:
                             self.set_channels(value)
-                        # a project loaded from disk already has channels, so
-                        # update_output_channels() (and its populate_channels_table() call)
-                        # never runs for it - attach the color pickers here instead
+                        # a loaded project skips update_output_channels(), so attach the color pickers here
                         self.populate_channels_table_color_pickers()
 
     def write_params(self):
@@ -271,9 +264,7 @@ class Interface:
         if isinstance(value, str):
             value = value.replace('\\', '/')
             if param_name in ('input_output.input_path', 'input_output.output_path'):
-                # the file dialog (and the FileEdit widget itself) always reports an
-                # absolute path - convert it back to relative-to-project-dir before storing,
-                # so the project file keeps portable relative paths
+                # the file dialog reports an absolute path: store it relative, keeping the project portable
                 value = relativize_to_project_dir(value, self.get_project_dir())
         self.params[keys[0]][keys[1]] = value
         self.write_params()
@@ -281,13 +272,10 @@ class Interface:
             self.update_fusion_preview_enabled()
 
     def update_input_output_path(self):
-        # display the path exactly as stored (relative-to-project-dir when the project file
-        # keeps it relative) - FileEdit.set_value() would force it absolute, so the inner
-        # line edit's text is set directly instead, bypassing that conversion
+        # shows paths as stored: FileEdit.set_value() would force them absolute, so the line edit is set directly
         params = self.params['input_output']
         widget = self.param_widgets.get('input_output.input_path')
-        # several comma-separated globs are one valid path value - show them as they are stored
-        # rather than leaving the widget empty (the widget holds plain text, not a single file)
+        # several comma-separated globs are one path value, shown as stored
         input_path = path_param_to_text(params.get('input_path', ''))
         if widget is not None:
             self._set_path_widget_text(widget, input_path)
@@ -348,7 +336,7 @@ class Interface:
         self.need_source_reinit = True
 
     def registration_dimension(self, value):
-        # Force reinitialization of extra metadata / channels when registration dimension changes
+        # channels depend on the registration dimension, so they are built again
         self.extra_metadata.pop('channels', None)
 
     def channels_table(self, value):
@@ -373,7 +361,7 @@ class Interface:
             show_info('Cancelled')
 
     def _input_output_process(self):
-        # re-sync path widget display to the normalised value now, not live while typing
+        # paths are shown normalised on Process, not live while typing
         self.update_input_output_path()
         params = self.params['input_output']
         project_dir = self.get_project_dir()
@@ -385,9 +373,7 @@ class Interface:
             if not output.endswith('/'):
                 output += '/'
             input_path = resolve_to_project_dir(path_param_to_text(params['input_path']), project_dir)
-            # one bar for opening the project - reading the sources and loading any saved
-            # registration. It finishes before the view work starts, which shows the one bar
-            # after it (see _show_loaded_project(), _operation_progress())
+            # one bar for reading the sources and any saved registration; the view gets its own bar after
             try:
                 ok = self._init_sources(input_path, output, params)
             except OperationCancelled:
@@ -416,16 +402,14 @@ class Interface:
                                pairing=self.params['registration'].get('pairing', ''),
                                verbose=self.verbose)
             if ok:
-                # resuming a saved registration does far more here than a fresh open (see
-                # _load_saved_progress) - reserve that room before reading the sources, the
-                # one phase a fresh open has, sizes itself against the whole bar
+                # resuming does far more than a fresh open: reserve its phases before the source read sizes
+                # itself against the whole bar
                 operation = self.params['registration'].get('operation', '')
                 fused_name = operation_to_past_participle(operation) if operation else None
                 if self.reg.has_saved_progress(fused_name, zarr_extension):
                     factory.ensure_phases(4)
                 self._show_middle_section()
-                # _show_loaded_project() below always ends by drawing the view, so drawing
-                # here would only draw once with the not-yet-registered transform
+                # _show_loaded_project() draws the view, so drawing here would only show the unregistered transform
                 ok = self.update_metadata_source(skip_view_update=True, progress_factory=factory)
                 if ok:
                     self.populate_image_selection()
@@ -433,14 +417,14 @@ class Interface:
         return ok
 
     def _show_middle_section(self):
-        """The middle section's sources read and drawn before the rest: at 34k sources on a network filesystem, reading
-        them all takes minutes, while the viewer stays usable. The full view replaces it once they are all read."""
+        """The middle section's sources read and drawn before the rest, so the viewer is usable while reading many
+        sources takes long. The full view replaces it once they are all read."""
         indices = self.reg.middle_section_indices()
         self._shown_section_indices = indices
         if indices is None:
             return
         section = self.reg.section_registration(indices)
-        # a second or two, left off the bar: sized for reading every source, its phases would take that share
+        # left off the bar: sized for reading every source, its phases would take a large share
         silent = SilentProgress()
         self._run_off_thread(
             lambda worker_factory: section.init_data(source_metadata=self.source_metadata,
@@ -463,23 +447,12 @@ class Interface:
                 dims.set_point(dims.ndim - 3, z_position)
 
     def _run_off_thread(self, work, progress_factory):
-        """Run work(progress_factory) on a worker thread, and wait for it here.
+        """Run work(progress_factory) on a worker thread and wait for it in a nested event loop, keeping the window
+        responsive.
 
-        The heavy calls (registration, fusion, pre-processing, source and view building) are
-        pure computation that never touches the viewer, but they used to run on the Qt thread,
-        which is what froze the window for as long as they took - global registration being the
-        worst of it, one blocking call in multiview_stitcher with nothing to report from inside.
-        Running them on a worker while a nested event loop keeps Qt going leaves the window
-        alive: the bar animates, the viewer still pans and zooms, and the plugin's own widgets
-        stay disabled for the duration as they already did.
-
-        `work` is handed a headless progress factory of its own (see NapariPhaseProgress's
-        `emit`), whose positions cross back to the bar here as a queued signal - a worker must
-        never touch a Qt widget itself. Anything a phase needs patched for it (dask callbacks,
-        multiview_stitcher's tqdm) belongs inside `work`, so that it too reports to that factory
-        rather than to the bar directly.
-
-        Without a Qt application - tests, and any headless caller - the work simply runs here.
+        `work` gets a headless progress factory whose positions reach the bar as a queued signal, as a worker must
+        never touch a Qt widget. Patches a phase needs (dask callbacks, tqdm) belong inside `work`.
+        Without a Qt application the work runs in the calling thread.
         """
         app = QApplication.instance() if QApplication is not None else None
         if app is None or progress_factory is None:
@@ -488,9 +461,7 @@ class Interface:
         bridge = _ProgressBridge()
         bridge.moved.connect(progress_factory.set_position, Qt.QueuedConnection)
         bridge.stepped.connect(progress_factory.set_step, Qt.QueuedConnection)
-        # started where the bar has got to, not at zero (NapariPhaseProgress.worker_twin()): an
-        # operation runs several of these in turn, and a twin re-planning from empty each time
-        # reported positions the bar was already past, freezing it partway
+        # starts where the bar has got to: a twin planning from empty would report positions the bar is past
         worker_factory = progress_factory.worker_twin(bridge.moved.emit, bridge.stepped.emit)
 
         def run():
@@ -499,9 +470,8 @@ class Interface:
 
         outcome = {}
         loop = QEventLoop()
-        # the handlers go in at creation: given none for 'errored', create_worker() adds one of
-        # its own that re-raises inside the Qt event loop, where nothing can catch it (the
-        # failure belongs to the caller here, and to @catch_run_errors above it)
+        # handlers set at creation: without an 'errored' one, create_worker() adds one re-raising uncatchably
+        # in the Qt event loop
         worker = create_worker(
             run,
             _start_thread=False,
@@ -515,8 +485,7 @@ class Interface:
         )
         worker.start()
         loop.exec_()
-        # whatever the twin accounted for is now the bar's own state, so the next off-thread
-        # call of this operation continues from here instead of dividing it up again
+        # the twin's accounting becomes the bar's, so the next off-thread call continues from here
         progress_factory.continue_from(worker_factory)
         if 'error' in outcome:
             raise outcome['error']
@@ -524,27 +493,16 @@ class Interface:
 
     @contextmanager
     def _operation_progress(self, desc, progress_factory=None, phases=1):
-        """Progress reporting for one user-facing operation: the activity dock, disabled widgets,
-        and a single NapariPhaseProgress bar that every phase of the operation reports into (see
-        NapariPhaseProgress - phases name themselves in its description rather than each opening
-        a bar of their own).
+        """Progress for one user-facing operation: the activity dock, disabled widgets and a single
+        NapariPhaseProgress bar that all its phases report into.
 
-        There is never more than one bar: an operation that runs inside another (the caller
-        passed its factory, or one is simply already running) reports into that one and leaves
-        the dock and the widget state to it.
-
-        Computing and then showing the result are deliberately kept as two operations, in that
-        order - one bar for the work (pre-processing, registration, fusion, opening a project),
-        which finishes and disappears, and then one for building and drawing the view.
-
-        `phases` is how many phases the operation expects to report - it sizes their slices of
-        the one bar, which fills once from empty to full (see NapariPhaseProgress); being out
-        by one only makes the bar move unevenly, never wrong.
+        An operation nested in another (its factory passed, or one already running) reports into that bar and
+        leaves the dock and widgets to it. `phases` sizes each phase's slice of the bar; being out by one only
+        makes it move unevenly.
         """
         factory = progress_factory or getattr(self, '_running_operation', None)
         if factory is not None:
-            # the bar is someone else's, but this operation's phase count still has to reach it,
-            # or its phases each take most of whatever the outer operation had left
+            # the outer bar still needs this phase count, or each phase takes most of what it had left
             factory.ensure_phases(phases)
             yield factory
             return
@@ -620,9 +578,7 @@ class Interface:
 
     def _load_saved_progress(self, progress_factory=None):
         output_filename = operation_to_past_participle(self.params['registration']['operation'])
-        # Resuming a saved project does real work: reg.init_progress() forces the per-source
-        # msim build (~15s for 328 sources) and loads/redimensions the saved registration, and
-        # a reloaded pair registration has to be re-preprocessed.
+        # resuming builds the per-source msims, loads the saved registration and may pre-process again
         with self._operation_progress('Initialising sources', progress_factory,
                                       phases=3) as progress_factory:
             self._run_off_thread(
@@ -631,8 +587,7 @@ class Interface:
                 progress_factory)
 
     def _show_loaded_project(self):
-        # building the view data and drawing it - the second bar of opening a project, shown
-        # once the load above has finished
+        # the second bar of opening a project: building and drawing the view
         section_tab = None
         if self.reg.is_fused():
             fused_path = self.reg.current_fused_output(
@@ -641,7 +596,7 @@ class Interface:
                 if fused_path is not None:
                     self._show_fused_output(fused_path, progress_factory=view_factory)
                 else:
-                    # registered again since: the export on disk would show the old registration
+                    # the export on disk predates the saved registration
                     logging.info('Fused output is older than the saved registration: previewing the fusion instead')
                     self._copy_transforms_to_view_msims(self.reg.reg_transform_key, progress_factory=view_factory)
                     self.preview_fusion(progress_factory=view_factory)
@@ -655,10 +610,7 @@ class Interface:
             self.update_registered(view_transform_key=self.reg.source_transform_key)
             section_tab = 3
         else:
-            # No prior registration to view with a specific transform - this is the one
-            # draw update_metadata_source()'s own (skipped, see input_output_process())
-            # would otherwise have done for a brand-new project. No pre-processing has run
-            # yet, so only shapes are shown - see update_views()'s show_images param.
+            # the draw update_metadata_source() skipped; before pre-processing only shapes are shown
             self.update_views(show_images=False)
         # every step can be reached from here: a later one runs whatever it needs first
         self.enable_tabs(True, 4)
@@ -682,59 +634,43 @@ class Interface:
                 logging.exception('Unable to read source data')
                 return False
 
-            # building each source's multiscale msim is deferred to the lazy view_msims
-            # property, forced only once something needs pixel-shaped data. The z-index
-            # remapping is cheap and stays eager, so reg.positions is immediately correct for
-            # the shapes, which are drawn instantly either way.
+            # msims are built lazily by view_msims; the cheap z remapping stays eager so the shapes are right
             z_positions = sorted(set([position.get('z', 0) for position in self.reg.positions]))
             if len(z_positions) > 1:
                 for position in self.reg.positions:
                     position['z'] = z_positions.index(position.get('z', 0))
             self._view_msims = None
-        # this function only ever runs pre-registration (both call sites guard on
-        # `not self.reg.is_pairs_registered()`), so self.reg.source_transform_key is the only
-        # transform key that can exist yet - no need to force self.reg.msims just to read it
-        # off a msim that would say the same thing
+        # only runs before registration, so the source transform key is the only one: no need to build msims
         coord_systems = [self.reg.source_transform_key]
         self.populate_channels()
         self.populate_coordinate_systems(coord_systems)
         if self.update_output_channels():
             self.populate_channels_table()
         if self.reg.is_initialised():
-            # populate_metadata_table() never reads its first arg when transform_keys is None
-            # (it reads self.reg.positions/scales directly) - passing None instead of
-            # self.reg.msims avoids forcing the expensive msim build just for this call
+            # without transform_keys the msims are not read, so None avoids forcing their build
             self.populate_metadata_table(None)
             self.check_3d_view()
             if not skip_view_update:
-                # no factory: by here the source initialisation above has finished, and drawing
-                # the view is the next operation (or a phase of the caller's, if one is still
-                # running - see _operation_progress())
+                # no factory: drawing is the next operation, or a phase of the caller's if one runs
                 self.update_views(show_images=False)
 
         return True
 
     @property
     def view_msims(self):
-        # per-source msim for the napari image data layer - built lazily, only once something
-        # (the fused image preview) actually needs it; shapes no longer depend on this at all
-        # (see _create_napari_shapes(), which builds its own cheap per-source sims directly)
+        # per-source msims for the image layer, built lazily only when the fused preview needs them
         return self.ensure_view_msims()
 
     def ensure_view_msims(self, progress_factory=None):
-        # the same lazy build view_msims triggers, callable ahead of time with a progress_factory
-        # so a caller forcing it can report per source - mirrors MVSRegistration.ensure_msims()
-        # kept 2D: sources at several heights are placed at their z by their consumers (z_positions,
-        # promoted_geometry) - promoting every level of every source took ~13 minutes at 34k
+        # the view_msims build, callable ahead with a progress_factory; kept 2D, as consumers place
+        # sources at their z (promoting every level of every source is slow)
         if self._view_msims is None:
             with Timer('build view msims', verbose=self._timing_verbose()):
                 self._view_msims = self._build_view_msims(progress_factory=progress_factory)
         return self._view_msims
 
     def _copy_transforms_to_view_msims(self, transform_key, progress_factory=None):
-        # forcing view_msims builds one msim per source (and, for a multi-z set, wraps the whole
-        # lot into a volume) - seconds to tens of seconds for a few hundred sources, so report it
-        # rather than letting it run silently as a side effect of an argument expression
+        # building view_msims takes a while, so it reports progress rather than running as a silent side effect
         with self._operation_progress('Building views', progress_factory) as factory:
             view_msims = self._run_off_thread(
                 lambda worker_factory: self.ensure_view_msims(progress_factory=worker_factory),
@@ -747,9 +683,7 @@ class Interface:
         self._view_msims = value
 
     def _build_view_msims(self, progress_factory=None):
-        # per-source msim for the napari image data layer: a source with a native multi-
-        # resolution pyramid is used as-is; a single-resolution source is downscaled by one
-        # constant factor when its largest spatial dimension exceeds 1000px
+        # a native pyramid is used as-is; a single-resolution source is downscaled to at most 1000px
         view_msims = []
         progress_context = progress_phase(progress_factory, total=len(self.reg.sources), desc='Building views')
         with progress_context as pbar:
@@ -772,32 +706,20 @@ class Interface:
     @catch_run_errors
     def run_pre_processing(self, progress_factory=None, full_pyramid=False):
         params_features = self.params['pre_processing']
-        # both phases below (per-source msim build, then pre-processing itself) report into the
-        # one bar this opens - or into the caller's, when pre-processing is a phase of a larger
-        # operation such as loading a saved project. The build only reports when it actually
-        # runs: reserving its half for msims already built left the bar (and its time estimate)
-        # finishing at 50%, the end of the one phase that did run.
-        # It also takes the bar in proportion to what it costs: opening every source is 15.6 of
-        # the 16.2 seconds of a 328-source run whose only step is scaling, and splitting the bar
-        # evenly put the end of the work at the halfway mark just the same. A step that computes
-        # over the data (flat-field, normalisation, foreground) makes the rest real work again.
+        # the msim build gets bar room only when pending, weighted by its cost: it dominates unless a step
+        # computes over the data (flat-field, normalisation, foreground)
         build_weight = 2 if self.reg.has_eager_pre_processing(params_features) else 8
-        # registration reads each source's finest level and the view's preview cap its coarsest,
-        # so only those are built (a quarter less); convert writes every level, so asks for them
+        # registration reads the finest level and the preview the coarsest; convert writes every level
         ends_only = not full_pyramid
         build_pending = self.reg.msims_build_pending(params_features.get('scale'), ends_only=ends_only)
         phases = build_weight + 1 if build_pending else 1
         with self._operation_progress('Pre-processing', progress_factory, phases=phases) as progress_factory, \
              Timer('pre_processing_process', verbose=self._timing_verbose()):
-            # self.reg.msims is built lazily (see MVSRegistration.msims) - building it here
-            # explicitly, through ensure_msims(), gives that per-source construction its own
-            # progress reporting instead of it happening silently (no progress feedback) as a
-            # side effect of evaluating `self.reg.msims` as a plain argument below
+            # msims built explicitly through ensure_msims() so the build reports progress
             def preprocess(worker_factory):
                 with Timer('run_pre_processing: build msims (load image data)',
                            verbose=self._timing_verbose()):
-                    # at pre-processing's own scale: building the finer levels only to have
-                    # select_msim_subpyramid_at_scale() drop them is most of this phase
+                    # at pre-processing's scale: finer levels would only be dropped again
                     msims = self.reg.ensure_msims(progress_factory=worker_factory,
                                                   target_scale=params_features.get('scale'),
                                                   ends_only=ends_only,
@@ -811,14 +733,12 @@ class Interface:
         return True
 
     def pre_processing_process(self):
-        # pre-processing reports its own bar, then the view it leaves on screen reports a second
-        # one of its own (update_views()) - the work and showing the result are two operations
+        # the work and showing its result are two operations, each with its own bar
         self.prepare_action()
         if not self.run_pre_processing():
             return
         if self.reg.is_pairs_registered():
-            # register_msims just changed - prior pair/global registration is stale, and the
-            # view of the new ones must not ask them for its transform
+            # register_msims changed: the prior registration is stale and must not give the view its transform
             self.reg.state = RegState.SIMS_INIT
         self.update_views(show_preprocessed=True)
         self.enable_modify_pair_registration(False)
@@ -864,9 +784,8 @@ class Interface:
 
     def update_output_channels(self):
         channels = self.extra_metadata.get('channels')
-        # a blank-labelled channel (e.g. an old save) is treated as unconfigured, so it re-derives
+        # blank-labelled channels count as unconfigured, so they are derived again
         if not channels or not any(channel.get('label') for channel in channels):
-            # get channels from source
             source0 = self.reg.sources[0]
             channels = source0.get_channels()
 
@@ -877,8 +796,7 @@ class Interface:
 
             self.extra_metadata['channels'] = channels
 
-            # convert to list dict - dict.get()'s default only applies when the key is missing,
-            # so an explicit but blank label (e.g. an unnamed OME channel) needs `or`, not `get`
+            # `or`, not a get() default: an unnamed OME channel has an explicit blank label
             data = [[channel.get('label') or f'channel {index}', channel.get('color', (1, 1, 1))]
                      for index, channel in enumerate(channels)]
             self.output_channels = create_dict_of_lists(data, ['label', 'color'])
@@ -892,11 +810,8 @@ class Interface:
         self.populate_channels_table_color_pickers()
 
     def populate_channels_table_color_pickers(self):
-        # replace the plain-text 'color' cells with a MagicColorPicker per channel row, so
-        # clicking a channel's color opens a color picker instead of typing a raw tuple
         table = self.param_widgets.get('input_output.channels_table').widget
         if 'color' not in table.column_headers:
-            # an empty table has no headers at all - nothing to put a picker on
             return
         color_coli = table.column_headers.index('color')
         for rowi in range(table.shape[0]):
@@ -909,8 +824,7 @@ class Interface:
     def channel_color_changed(self, rowi, color):
         table = self.param_widgets.get('input_output.channels_table').widget
         color_coli = table.column_headers.index('color')
-        # writing back into the table's own data model reuses the existing 'changed' wiring
-        # (param persistence + self.extra_metadata update), same as a manual text edit would
+        # written into the table so its 'changed' wiring saves it, as a manual edit would
         table.data[rowi, color_coli] = str(tuple(color))
 
     def populate_image_selection(self):
@@ -928,8 +842,7 @@ class Interface:
         widget2.set_value(labels[index], choices=labels)
 
     def select_pair_preview(self, ref):
-        # a plain image shape's ref is a single index (e.g. '0'); only an overlap shape's
-        # ref ('0 1') identifies a pair, so single-image clicks are ignored here
+        # only an overlap shape's ref ('0 1') names a pair; single-image clicks are ignored
         indices = ref.split()
         if len(indices) == 2:
             self.set_preview_images([int(index) for index in indices])
@@ -958,9 +871,7 @@ class Interface:
         #self.overview._qtwidget._viewer_model.dims.ndisplay = ndisplay
 
     def _timing_verbose(self):
-        # a few view-update methods below are unit-tested against a bare Interface with no
-        # self.reg at all (e.g. _napari_view_add_fused_data) - fall back to no timing logging
-        # rather than requiring self.reg just to gate these diagnostic Timer() calls
+        # some view methods are tested on a bare Interface without self.reg
         return getattr(getattr(self, 'reg', None), 'logging_time', False)
 
     def update_views(self, transform_key=None, show_preprocessed=False, show_images=True,
@@ -972,21 +883,15 @@ class Interface:
         is_multi_z_shapes = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
         force_2d = is_multi_z_shapes and not is_3d
 
-        # each step is a phase weighted by what it costs, not counted equally: building the view
-        # data is 10 of a 4733-source refresh's 11.6 minutes, and as one of five equal steps it
-        # left the bar at 18% for ten minutes. It also reports from the inside
-        # (_create_napari_data), so the long step moves rather than only bracketing itself.
+        # steps weighted by cost: building the view data dominates, and reports from the inside
         view_data_weight = 12
-        # building the shapes is the other step that grows with the source count (a geometry per
-        # source, then every overlapping pair), and it reports per source from the inside too
+        # shapes also grow with the source count, and report per source
         shapes_weight = 3
         phases = shapes_weight + 2 + (view_data_weight + 1 if show_images else 0)
 
         with self._operation_progress('Refreshing view', progress_factory, phases=phases) as factory:
             with Timer('update_views: create shapes', verbose=self._timing_verbose()):
-                # pure geometry, touching no viewer, so it runs off the Qt thread like the
-                # fusion below - on the Qt thread it froze the window, and the bar with it,
-                # for as long as it took (minutes on a large project)
+                # pure geometry, so off the Qt thread to keep the window responsive
                 shapes, refs, labels, face_colors = self._run_off_thread(
                     lambda worker_factory: self._create_napari_shapes(
                         transform_key, force_2d=force_2d, progress_factory=worker_factory,
@@ -1001,23 +906,18 @@ class Interface:
             # otherwise (a rotation, or sources it cannot overlay) the fused preview
             if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):
-                    # the fusion runs off the Qt thread; adding the result to the viewer, below,
-                    # must not (see _run_off_thread()). The worker's factory goes all the way in,
-                    # so the step reports its own sub-steps instead of being one silent block
+                    # fused off the Qt thread; adding it to the viewer below must stay on it
                     data = self._run_off_thread(
                         lambda worker_factory: self._create_napari_data(
                             transform_key, show_preprocessed=show_preprocessed,
                             progress_factory=worker_factory, weight=view_data_weight),
                         factory)
-            # cleared only once the new data is ready: an empty viewer shows the welcome screen,
-            # which hides the activity dialog - for 44 minutes on a 34k-source project
+            # cleared only once the new data is ready: an empty viewer's welcome screen hides the activity dialog
             self._clear_napari_view(self.viewer)
             if data is not None:
                 with factory(total=1) as pbar, \
                      Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
-                    # cheap=True: this is the general overview, not the accurate fusion-tab
-                    # preview (preview_fusion()) or the real exported result (fusion_process())
-                    # - a naive contrast guess is fine here, see _napari_view_add_fused_data()
+                    # an overview, not the fusion preview: a naive contrast guess is enough
                     self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data',
                                                      cheap=True)
                     pbar.update(1)
@@ -1061,10 +961,7 @@ class Interface:
 
     def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
                                  face_colors=None, is_3d=None):
-        # the overview widget always shows a flattened, top-down layout, independent of
-        # whatever the main viewer currently shows (a fused image, per-tile overview, or
-        # nothing loaded yet) - a genuinely 3D shape set (drawn as oriented 3D boxes for the
-        # main viewer) needs recomputing with force_2d=True for it instead of being reused as-is
+        # the overview is always flat and top-down, so a 3D shape set is built again with force_2d
         if is_3d is None:
             is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
         if shapes is None or is_3d:
@@ -1074,24 +971,19 @@ class Interface:
                                      f'{self.reg.fileset_label} shapes', show_labels=False)
 
     def _clear_napari_view(self, viewer):
-        # Avoid emitting an empty LayerList.clear() event.  Under xpra/Xvfb,
-        # that event can leave napari's VisPy canvas with broken blending for
-        # subsequently created Shapes and Points layers.
+        # no empty LayerList.clear() event: under xpra/Xvfb it breaks blending for later Shapes/Points layers
         if viewer is not None and len(viewer.layers) > 0:
             viewer.layers.clear()
         if viewer is not None and viewer is getattr(self, 'viewer', None):
             clear_napari_dask_cache()
 
     def _create_napari_shapes(self, transform_key, force_2d=False, progress_factory=None, weight=1):
-        # `weight` is what the caller's bar allows this step, divided below between the
-        # sub-steps in rough proportion to what each costs on a large project. Building the
-        # geometries is the one with a real per-source count, and most of the cost with it
+        # `weight` is this step's share of the caller's bar, split between sub-steps by rough cost
         def phase(share, total=None):
             return progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
-        # with no native 'z' but sources at different heights, each source's z must become a real
-        # dim or it is silently dropped rather than drawn at its actual height
+        # sources at different heights without a native 'z' need it as a dim, or their z is dropped
         promote_z = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
         with phase(3 / 5, total=len(self.reg.sources)) as pbar, \
              Timer(f'_create_napari_shapes: build {len(self.reg.sources)} source shape geometries',
@@ -1110,10 +1002,7 @@ class Interface:
         labels = list(self.reg.file_labels)
         face_colors = [(1, 1, 1) for _ in range(len(msims))]
 
-        # once pairwise registration has run, restrict overlap boxes to pairs actually
-        # registered: an intersection appearing only after alignment, between images never
-        # paired, has no quality behind it. Before registration there is no graph, so fall back
-        # to every geometrically-overlapping pair.
+        # once registered, only registered pairs: an overlap between unpaired images has no quality behind it
         overlap_pairs = list(self.reg.pairs_graph.edges()) if self.reg.is_pairs_registered() else None
         with phase(1 / 5, total=1) as pbar, \
              Timer(f'_create_napari_shapes: create_overlap_shapes ({len(msims)} images,'
@@ -1130,16 +1019,13 @@ class Interface:
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
                             progress_factory=None, weight=1):
-        # `weight` is what the caller's bar allows this step, divided below between the sub-steps
-        # in rough proportion to what each costs on a large project
+        # `weight` is this step's share of the caller's bar, split between sub-steps by rough cost
         def phase(share, total=None):
             return progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
 
-        # copy_transforms_to_msims() below is the only step here that writes into a msim,
-        # and before registration there is no registered transform for it to write. The
-        # steps between hand back the objects they were given whenever they have nothing
-        # to change, so anything added here that mutates one needs this flag too.
+        # only copy_transforms_to_msims() writes into a msim; the steps between may return their input
+        # unchanged, so any new mutating step needs this flag too
         writes_transforms = not (show_preprocessed
                                  and transform_key == self.reg.source_transform_key)
         if show_preprocessed:
@@ -1151,11 +1037,7 @@ class Interface:
                 if pbar is not None:
                     pbar.update(1)
         else:
-            # view_msims is never scale-reduced - every source's full native pyramid. Fusing
-            # that at scale0 to draw an overview builds (and, for get_contrast_limits(), runs)
-            # the graph for the largest levels of the combined output, when only its coarsest
-            # pixels are shown until the user zooms in. Reduce to the same coarse sub-pyramid
-            # create_preview() uses for its own exported preview.
+            # view_msims hold full pyramids: reduce to create_preview()'s coarse sub-pyramid before fusing
             preview_scale = parse_scale(self.params['input_output'].get('preview_scale'),
                                         default=default_interactive_preview_scale)
             with phase(1 / 12, total=1) as pbar, \
@@ -1177,14 +1059,8 @@ class Interface:
         z_positions = None
         if len(set(position.get('z', 0) for position in self.reg.positions)) > 1:
             z_positions = [self.reg.positions[index].get('z', index) for index in range(len(msims))]
-        # Whichever branch produced them, cap what this preview will fuse. The show_preprocessed
-        # branch takes its resolution from pre_processing's scale, never preview_scale, so at
-        # scale 1 the "preview" is the whole dataset: one run fused 396.9GB over 55 minutes to
-        # draw what an 8x-reduced one drew in 9. preview_scale could not have prevented it
-        # either, picking a level per source rather than bounding the combined result -
-        # and select_msim_subpyramid_at_scale() cannot be used here for the same reason: its
-        # level is relative to each source's own pyramid, and these are already scale-reduced.
-        # the promotion's share of the bar, where it no longer happens, goes to the cap
+        # cap the combined fused size: pre-processed msims ignore preview_scale, which only picks a level per source
+        # the cap also takes the bar share of the z promotion it replaces
         with phase((2 if z_positions is not None else 1) / 12, total=1) as pbar, \
              Timer('_create_napari_data: cap preview fusion size', verbose=self._timing_verbose()):
             msims = reduce_msims_to_fused_size(
@@ -1194,22 +1070,17 @@ class Interface:
                 pbar.update(1)
         with phase(1 / 12, total=1) as pbar, \
              Timer('_create_napari_data: copy_transforms_to_msims', verbose=self._timing_verbose()):
-            # before registration there is no registered transform to copy, and reading
-            # self.reg.msims for it forces the full build get_best_transform_key() just avoided.
-            # The view msims got theirs already (_copy_transforms_to_view_msims)
+            # before registration there is nothing to copy, and reading self.reg.msims would force their build
             if show_preprocessed and writes_transforms:
                 transform_msims = self.reg.msims
                 if self.reg.register_indices is not None:
-                    # pre-processing may have dropped sources (filter_foreground) - pair each
-                    # target with the source it came from, not with whatever sits beside it
+                    # pre-processing may drop sources (filter_foreground): pair each with its own source
                     transform_msims = [self.reg.msims[index] for index in self.reg.register_indices]
                 copy_transforms_to_msims(transform_msims, msims, transform_key)
             if pbar is not None:
                 pbar.update(1)
-        # output_chunksize is left to fuse(), which derives it after its own make_msims_3d
-        # promotion - sizing it here would mean reproducing that rule against msims that may not
-        # have a 'z' dim yet. No declared step count either: fuse() plans the whole graph in one
-        # call, so this moves by a share of its remaining slice at each boundary it does have.
+        # chunksize is left to fuse(), which derives it after its own z promotion; no step count, as
+        # fuse() plans the whole graph in one call
         with phase(7 / 12) as pbar, \
              Timer(f'_create_napari_data: fuse ({len(msims)} images)', verbose=self._timing_verbose()):
             if pbar is not None:
@@ -1223,9 +1094,7 @@ class Interface:
 
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name,
                                 show_labels=True):
-        # is_3d/is_multi_z_shapes read cheap per-source metadata (self.reg.sources/positions)
-        # rather than self.view_msims, so drawing shapes never forces the expensive msim build
-        # this is otherwise deferred to the fused image preview / pre-processing
+        # reads source metadata, not view_msims, so drawing shapes never forces the msim build
         bb_supported = True
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
@@ -1233,28 +1102,20 @@ class Interface:
         is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
         is_multi_z_shapes = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
         force_2d = not bb_supported or (is_multi_z_shapes and not is_3d)
-        # a shape actually carries a 'z' coordinate whenever the source is natively a z-stack
-        # (is_3d) or build_source_shape_sim()/make_msims_3d() promoted it to one (is_multi_z_shapes)
+        # shapes carry a 'z' for a native z-stack or for sources promoted to one
         do_3d = ((is_3d or is_multi_z_shapes) and not force_2d)
 
         if len(shapes) > 0:
-            # Depth-tested 'translucent' made overlap boxes lose to the opaque fused image
-            # volume they sit inside (worse, not better) - translucent_no_depth avoids that
-            # for both 2D and 3D, so shapes always draw regardless of what else is there.
+            # depth-tested blending hides boxes inside the opaque fused volume
             blending = 'translucent_no_depth'
             edge_color = 'cyan'
             if do_3d:
-                # a 'polygon' renders one flat face, not a non-planar box, and napari-bbox
-                # 0.1.1 (which drew real 3D boxes) is incompatible with current napari - so each
-                # box is 6 flat quad faces plus one edge-only 'path' wireframe, in one Shapes
-                # layer. Corner order is _minimal_bb_vertices': 0-3 one face, 4-7 the opposite
-                # in the same winding, so i and i+4 are the vertical edges between them.
+                # a polygon is one flat face, so a box is 6 quads plus a 'path' wireframe; corners 0-3 are
+                # one face and 4-7 the opposite, same winding
                 box_faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4],
                             [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]]
                 edge_path = [0, 1, 2, 3, 0, 4, 7, 3, 2, 6, 7, 4, 5, 6, 2, 1, 5]
-                # Matches _minimal_bb_vertices' own corner_bits convention (bottom face 0-3,
-                # top face 4-7, same x/y winding), applied here to plain axis-aligned min/max
-                # instead of an oriented frame.
+                # _minimal_bb_vertices' corner order, applied to an axis-aligned min/max
                 corner_bits = np.array([
                     [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
                     [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
@@ -1263,18 +1124,14 @@ class Interface:
                 face_shapes, face_only_colors, face_refs, face_labels = [], [], [], []
                 for shape, ref, color in zip(shapes, refs, face_colors):
                     corners = np.asarray(shape)
-                    # napari renders a 3D polygon's face fill only where the face's plane is
-                    # axis-orthogonal (napari/napari#6860), so a rotated box gets almost none.
-                    # Fill from its axis-aligned bounding box instead; the wireframe below keeps
-                    # the true oriented corners, which render fine as edges at any angle.
+                    # napari fills only axis-orthogonal 3D faces (napari/napari#6860): fill the axis-aligned
+                    # bounding box; the wireframe keeps the true oriented corners
                     mins, maxs = corners.min(axis=0), corners.max(axis=0)
                     aa_corners = mins + corner_bits * (maxs - mins)
                     centroid = aa_corners.mean(axis=0)
                     for face in box_faces:
                         quad = aa_corners[face]
-                        # box_faces' index order does not wind consistently outward, even for
-                        # an axis-aligned box, so flip any face whose normal points inward or
-                        # napari backface-culls about half of them
+                        # box_faces do not all wind outward: flip inward faces, or napari backface-culls them
                         normal = np.cross(quad[1] - quad[0], quad[2] - quad[0])
                         if np.dot(normal, quad.mean(axis=0) - centroid) < 0:
                             quad = quad[::-1]
@@ -1284,17 +1141,13 @@ class Interface:
                     face_labels += [''] * len(box_faces)
                 wire_shapes = [np.asarray(shape)[edge_path] for shape in shapes]
 
-                # Napari renders 3D paths as tubes whose width is measured in world
-                # coordinates, not screen pixels. Scale the tube radius to the scene so it
-                # remains visible for large physical units.
+                # 3D path width is in world units, so scale it to the scene to stay visible
                 vertices = np.concatenate([np.asarray(shape) for shape in shapes])
                 wire_width = np.ptp(vertices, axis=0).max() * 0.005
 
                 shape_data = face_shapes + wire_shapes
                 shape_type = ['polygon'] * len(face_shapes) + ['path'] * len(wire_shapes)
-                # every face_color/edge_color entry must be the same length or napari silently
-                # falls back to white for the whole layer. A 'path' has no face to color, so
-                # this is a length-matched placeholder, not a meaningful value.
+                # color lists must match in length or napari falls back to white; a path's face color is a placeholder
                 face_color = face_only_colors + [(0, 0, 0)] * len(wire_shapes)
                 edge_color = [(0, 0, 0)] * len(face_shapes) + [(0, 1, 1)] * len(wire_shapes)
                 edge_width = [0] * len(face_shapes) + [wire_width] * len(wire_shapes)
@@ -1306,13 +1159,9 @@ class Interface:
                 edge_width = 0.1
                 face_color = face_colors
 
-            # half napari's default (12), which reads oversized against these shapes
-            # the overview draws the same shapes much smaller, where a label per shape is
-            # unreadable and covers the layout it is there to show - so it takes them untexted
+            # half napari's default size, which reads oversized; the small overview's labels would be unreadable
             text = {'string': '{labels}', 'size': 6} if show_labels else None
-            # 'labels' is only ever read by that text string - with no text it is a per-shape
-            # column napari carries for nothing. 'refs' stays either way as the shapes' identity
-            # in the layer (the click handler below closes over its own copy of it)
+            # 'labels' only feeds the text; 'refs' identifies the shapes either way
             features = {'refs': refs, 'labels': labels} if show_labels else {'refs': refs}
             layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
                                       features=features, face_color=face_color, opacity=0.5,
@@ -1328,22 +1177,12 @@ class Interface:
                         self.select_pair_preview(refs[shape_index])
 
     def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False):
-        # fuse() always returns msims, and get_msim_level_data (each level's raw dask array off
-        # its own Dataset) is enough to show a genuine multiscale pyramid, so nothing here needs
-        # extract_sims_from_fused. `fused` is either one multiscale msim - already
-        # channel-combined by fuse(), so a 'c' dim just needs channel_axis - or, in 'compose'
-        # mode, a plain list of per-source msims shown as separate layers.
-        #
-        # cheap=True (update_views()'s overview, not the fusion tab's real preview) swaps
-        # get_contrast_limits()'s per-source dask.compute() for a naive dtype-range guess: exact
-        # limits don't matter for a first look, and it is the one per-source cost here that is
-        # neither Qt-only nor already cheap metadata.
+        # `fused` is one channel-combined multiscale msim, or in 'compose' mode a list of per-source msims;
+        # cheap=True guesses contrast limits from the dtype instead of computing them
         channels = self.extra_metadata.get('channels', [])
 
         if isinstance(fused, list):
-            # 'compose' mode: one napari layer per source, no real fusion. add_image() must stay
-            # on the GUI thread (Qt layers aren't thread-safe), so what a pool can take off it is
-            # gathering each source's metadata/contrast-limits first, joined in original order.
+            # one layer per source; add_image() must stay on the Qt thread, so only the layer prep is pooled
             def prep_layer(msim, channel):
                 image0 = get_msim_image0(msim)
                 scale = si_utils.get_spacing_from_sim(image0, asarray=True)
@@ -1357,16 +1196,7 @@ class Interface:
             channel_list = channels or [{}] * len(fused)
             with Timer(f'_napari_view_add_fused_data: prep {len(fused)} layers',
                       verbose=self._timing_verbose()):
-                layer_kwargs = [None] * len(fused)
-                if len(fused) > 1:
-                    max_workers = min(default_preview_workers, len(fused))
-                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                        futures = {executor.submit(prep_layer, msim, channel): index
-                                  for index, (msim, channel) in enumerate(zip(fused, channel_list))}
-                        for future in as_completed(futures):
-                            layer_kwargs[futures[future]] = future.result()
-                elif fused:
-                    layer_kwargs[0] = prep_layer(fused[0], channel_list[0])
+                layer_kwargs = [prep_layer(msim, channel) for msim, channel in zip(fused, channel_list)]
 
             with Timer(f'_napari_view_add_fused_data: add_image loop ({len(fused)} layers)',
                       verbose=self._timing_verbose()):
@@ -1417,8 +1247,7 @@ class Interface:
 
     def _napari_view_add_image(self, viewer, data, label, transform=None, color=None, affine_event=False):
         if isinstance(data, DataTree):
-            # a real multiscale msim (e.g. self.reg.register_msims) - napari's affine (used here
-            # for interactive per-pair drag adjustment) and multiscale lazy-loading work together
+            # a multiscale msim: napari's affine (pair drag adjustment) works with its lazy level loading
             image0 = get_msim_image0(data)
             scale = si_utils.get_spacing_from_sim(image0, asarray=True)
             position = si_utils.get_origin_from_sim(image0, asarray=True)
@@ -1506,16 +1335,13 @@ class Interface:
 
         with self._operation_progress('Preview registration', progress_factory, phases=2) as factory:
             def register_preview(worker_factory):
-                # dask's own task counting reports as one more phase of this bar
-                # (progress_class), rather than as a bar of its own
+                # dask's task counting reports as a phase of this bar, not a bar of its own
                 with NapariDaskProgress(progress_class=worker_factory,
                                         desc='Preview registration'):
                     registration_params = self.params['registration']
                     channel = registration_params.get('channel')
                     cache = self._preview_overlap_cache
-                    # the crop depends only on the source data (a new register_msims list
-                    # whenever pre-processing re-runs) and the selected pair/channel, never on the
-                    # method or its tuning - so parameter-only changes reuse it
+                    # the crop depends only on register_msims and the pair/channel, so parameter changes reuse it
                     if (cache is not None and cache['register_msims'] is self.reg.register_msims
                             and cache['index1'] == index1 and cache['index2'] == index2
                             and cache['channel'] == channel):
@@ -1603,7 +1429,7 @@ class Interface:
         # split pairing's group (e.g. section) pairs as rows after the tile pairs, keyed by their labels
         row_metrics = {row_label: pairs_metrics[indices] for row_label, indices in self.metrics_row_pairs.items()}
         row_metrics |= {' - '.join(labels): value for labels, value in metrics_dict.get('group_pairs', {}).items()}
-        # a dict for its order: `not in` the row list was quadratic, minutes at 229k pairs
+        # a dict keeps the order without a quadratic `not in` over the rows
         item_keys = list(dict.fromkeys(item_keys + list(row_metrics)))
         for pair_value in row_metrics.values():
             for transform_key, transform_value in pair_value.items():
@@ -1674,8 +1500,7 @@ class Interface:
 
     @catch_run_errors
     def run_pair_registration(self, progress_factory=None):
-        # pre-processing, when this is what triggers it, reports its own bar and finishes before
-        # the registration's starts - rather than taking a share of the registration's bar
+        # pre-processing reports its own bar, before the registration's
         if not self.reg.register_msims:
             if not self.run_pre_processing(progress_factory=progress_factory):
                 return None
@@ -1684,8 +1509,7 @@ class Interface:
         self.reg.registration_dimension = self.params.get('input_output', {}).get('registration_dimension')
         with self._operation_progress('Pair registration', progress_factory, phases=2) as factory:
             def register_pairs(worker_factory):
-                # the pairs, then their metrics, report per batch to the worker's factory - a dask
-                # callback here would open a phase for every batch's compute
+                # pairs and metrics report per batch: a dask callback would open a phase per batch
                 with Timer('pair registration', verbose=self._timing_verbose()):
                     return self.reg.register_pairs(
                         self.reg.register_msims,
@@ -1700,14 +1524,11 @@ class Interface:
 
     @catch_run_errors
     def run_global_registration(self, progress_factory=None):
-        # register_global() reports its own stage boundaries (progress_factory): the optimisation,
-        # applying the transforms, the summary plots, storing them, and the metrics. Declaring how
-        # many there are is what keeps the last of them from taking most of the bar each; the
-        # optimisation claims 4 of these 8 units, being most of the run (66 of 86 minutes once)
+        # register_global() reports its stages; declaring 8 units, half for the dominant optimisation,
+        # keeps the last stages from each taking most of the bar
         self.reg.registration_dimension = self.params.get('input_output', {}).get('registration_dimension')
         if self.reg.pair_msims is None or self.reg.register_msims is None:
-            # a loaded pair registration: its pairs were registered on the pre-processed msims, which an open leaves
-            # unbuilt - at full resolution the metrics can run out of memory
+            # a loaded pair registration needs the pre-processed msims: at full resolution metrics can run out of memory
             if not self.run_pre_processing(progress_factory=progress_factory):
                 return None
             self.reg.pair_msims = self.reg.register_msims
@@ -1720,8 +1541,7 @@ class Interface:
                                                     params=self.params['registration'],
                                                     progress_factory=worker_factory)
 
-            # it writes the registered transform onto the sources before its metrics run: a cancel
-            # there puts back what they had
+            # the transform is written onto the sources before the metrics: a cancel restores it
             key = self.reg.reg_transform_key
             snapshots = [(msims, snapshot_msims_transform(msims, key)) for msims in (self.reg.pair_msims, self.reg.msims)]
             try:
@@ -1762,7 +1582,6 @@ class Interface:
             reply = QMessageBox.question(None, 'muvis-align','Store modified registration?',
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
-                # update transforms back into graph
                 transform = self.calc_mod_pair_transform()
                 pair_transforms = nx.get_edge_attributes(self.reg.pairs_graph, default_transform_key)
                 qualities = nx.get_edge_attributes(self.reg.pairs_graph, default_quality_key)
@@ -1813,19 +1632,16 @@ class Interface:
                 self.pair_indices = indices
                 pair_transform = np.array(pair_transforms[indices].sel(t=0))
 
-                # everything below can bail out (pre-processing failing) or raise, and the
-                # widgets/tabs disabled just above are only ever re-enabled by leaving this mode
-                # - without restoring here a failure leaves the whole plugin permanently dead
+                # the widgets disabled above are only re-enabled on leaving this mode, so a failure must restore them
                 entered = False
                 try:
                     if not self.reg.register_msims:
                         if not self.run_pre_processing():
                             return
                     self._clear_napari_view(self.viewer)
-                    # register_msims is a real multiscale pyramid (built by preprocess()) - lets
-                    # napari lazily load whichever level it needs during interactive adjustment
+                    # a multiscale pyramid, so napari loads only the level it needs while dragging
                     register_images = self.reg.register_msims
-                    # each source keeps its own transform (e.g. a scan rotation); the pair transform maps fixed to moving
+                    # each source keeps its own transform (e.g. scan rotation); the pair transform maps fixed to moving
                     self.pair_source_affines = [
                         np.asarray(msi_utils.get_transform_from_msim(register_images[sim_index],
                                                                      self.reg.source_transform_key)).squeeze()
@@ -1861,8 +1677,7 @@ class Interface:
     def registration_process(self):
         self.prepare_action()
         if 'convert' in self.params['registration']['operation']:
-            # convert: each source written out individually at its own source/metadata
-            # position, no registration and no fusion/blending - never reaches the fusion tab
+            # each source written at its own position, without registration or fusion
             reply = QMessageBox.question(None, 'muvis-align', 'Convert data to OME-Zarr only?',
                                          QMessageBox.Yes|QMessageBox.No)
             if reply == QMessageBox.Yes:
@@ -1898,8 +1713,7 @@ class Interface:
 
     def _run_registration(self):
         """Pair registration where it has not run yet, then global; False if either did not complete."""
-        # a bar per registration, each finishing before the next starts: one bar over both would
-        # have the pair phases fill it, leaving the global registration with nothing to show
+        # a bar per registration: in one shared bar the pair phases would fill it
         with Timer('registration process', verbose=self._timing_verbose()):
             registered = ((self.reg.is_pairs_registered() or self.run_pair_registration())
                           and self.run_global_registration())
@@ -1908,8 +1722,7 @@ class Interface:
 
     @catch_run_errors
     def _show_fused_output(self, path, progress_factory=None):
-        """The fused export on disk, read lazily as fusion_process shows it after writing: every level as exported,
-        nothing fused again."""
+        """Show the fused export on disk, read lazily at every exported level, without fusing again."""
         transform_key = self.get_best_transform_key()
         with progress_phase(progress_factory, total=1, desc='Reading fused output') as pbar, \
              Timer('show fused output', verbose=self._timing_verbose()):
@@ -1923,12 +1736,9 @@ class Interface:
         self._refresh_overview_shapes(transform_key)
 
     def preview_fusion(self, progress_factory=None):
-        # not reg_transform_key directly: a merge fuses without ever registering, so there is no
-        # 'registered' transform to fuse by - get_best_transform_key() falls back to the sources'
-        # own metadata positions, and still returns the registered one wherever it exists
+        # a merge has no registered transform, so this falls back to the source positions
         transform_key = self.get_best_transform_key()
-        # as in update_views(): building the data is the long half, so it is weighted as such and
-        # reports from the inside rather than being one block with a tick on either side
+        # building the data dominates, so it is weighted as such and reports from the inside
         fusion_weight = 12
         with self._operation_progress('Fusion preview', progress_factory,
                                       phases=fusion_weight + 1) as factory:
@@ -1944,9 +1754,7 @@ class Interface:
                 self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
                 self.view_mode = ViewMode.FUSED
                 pbar.update(1)
-        # preview_fusion() is also what a resumed already-fused project draws (init_progress's
-        # is_fused() branch) - unlike every other init_progress branch, it never otherwise goes
-        # through update_views(), so the overview would stay empty without this
+        # this path skips update_views(), so the overview would stay empty
         self._refresh_overview_shapes(transform_key)
 
     @catch_run_errors
@@ -2021,15 +1829,12 @@ class Interface:
                                                self.extra_metadata)
         with self._operation_progress('Fusion', progress_factory, phases=1 if fuses_to_zarr else 2) as factory:
             def fuse(worker_factory):
-                # both the fusion and the write run on the worker thread, reporting to its own
-                # factory - see _run_off_thread()
                 with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_fusion=True), \
                         Timer('fusion', verbose=self._timing_verbose()):
                     fused_image, is_saved = self.reg.fuse(
                         self.reg.msims,
                         fusion_method=self.params['fusion']['method'],
-                        # fuse() defaults this to reg_transform_key, which a merge never
-                        # writes - see preview_fusion()
+                        # fuse()'s default reg_transform_key does not exist for a merge
                         transform_key=self.get_best_transform_key(),
                         output_spacing=self.params['fusion']['spacing'],
                         dimension=self.params['input_output']['registration_dimension'],
@@ -2038,8 +1843,7 @@ class Interface:
                         ome_version=self.params['fusion']['ome_version'],
                         extra_metadata=self.extra_metadata)
                     if not is_saved:
-                        # save() only accepts a single-resolution sim - fused_image is always the
-                        # whole multiscale pyramid now, so save its finest scale
+                        # save() takes a single-resolution sim: the pyramid's finest scale
                         save_sim = extract_sims_from_fused(fused_image)
                         self.reg.save(output_filename, save_sim,
                                       transform_key=self.get_best_transform_key(),

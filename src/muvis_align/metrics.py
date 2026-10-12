@@ -39,8 +39,7 @@ def create_metric_methods(metric_methods, msim):
 
 
 def quality_to_scalar(value):
-    # edge/mapping quality values are often an xr.DataArray with a 't' dim (e.g. from
-    # register_pair_of_msims_over_time) - reduce to the plain scalar these callers display
+    # quality values are often an xr.DataArray with a 't' dim
     if isinstance(value, DataArray):
         if 't' in value.dims:
             value = value.sel(t=0)
@@ -49,13 +48,13 @@ def quality_to_scalar(value):
 
 
 def _scheduler(name):
-    # callbacks given, so dask never swaps its global set: on a worker that raced napari's slicing cache
+    # callbacks given so dask never swaps its global set, which races napari's slicing cache on a worker
     get = partial(dask.threaded.get if name == 'threads' else dask.local.get_sync, callbacks=())
     if threading.current_thread() is threading.main_thread():
         return get
 
     def schedule(dsk, keys, **kwargs):
-        # the config is global: set on a worker, the main thread's own computes (napari's slicing) keep dask's default
+        # the config is global: the main thread's computes (napari's slicing) keep dask's default
         if threading.current_thread() is threading.main_thread():
             return dask.threaded.get(dsk, keys, **kwargs)
         return get(dsk, keys, **kwargs)
@@ -64,9 +63,9 @@ def _scheduler(name):
 
 @contextmanager
 def _pair_metrics_compute(scheduler='threads'):
-    """OpenBLAS is held to one thread per call: each pair's overlap mask is a matmul, and OpenBLAS
-    starting its own pool from many threads at once crashed the process."""
-    # fusion off for the fused key collision described in MVSRegistration.register_pairs
+    """Dask scheduler for pair metrics, with BLAS held to one thread: OpenBLAS pools started from many threads
+    at once crash the process."""
+    # fusion off: fused keys collide (see MVSRegistration.register_pairs)
     with (dask.config.set({'scheduler': _scheduler(scheduler), 'optimization.fuse.active': False}),
           threadpool_limits(1, user_api='blas')):
         yield
@@ -74,9 +73,8 @@ def _pair_metrics_compute(scheduler='threads'):
 
 def pair_image_metrics(msims, nodes, metric_methods, base_transform_key, query_transform_keys=None,
                        pairs_graph=None, scheduler=None):
-    """tile_pair_image_metrics for one pair, given only its two msims (every call builds a sim for each msim
-    it is given), with its keys renumbered back to `nodes`. Module-level, so a worker process can run it.
-    `scheduler` None: the caller holds _pair_metrics_compute - never entered per call from many threads."""
+    """tile_pair_image_metrics for one pair's two msims, keys renumbered back to `nodes`; module-level for worker
+    processes. `scheduler` None: the caller holds _pair_metrics_compute."""
     metric_funcs = create_metric_methods(metric_methods, msims[0])
     with (_pair_metrics_compute(scheduler) if scheduler is not None else nullcontext()):
         if pairs_graph is not None:
@@ -93,10 +91,9 @@ def pair_image_metrics(msims, nodes, metric_methods, base_transform_key, query_t
 
 def map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory=None, desc='Pair metrics',
                      threaded=True):
-    """pair_image_metrics for each edge (a sorted node pair), one pair per worker process when its arguments
-    pickle - on threads they are GIL-bound - else one per thread; results in completion order.
-    `threaded` False: without worker processes, one pair at a time in the calling thread - the overlap mode's
-    linprog (HiGHS) hung and crashed when called from changing threads. Worker processes are unaffected."""
+    """pair_image_metrics for each edge (a sorted node pair), in worker processes when the arguments pickle, else
+    threads; results in completion order. `threaded` False runs without processes in the calling thread, as
+    linprog (HiGHS) fails when called from changing threads."""
     pool = None
     if workers > 1 and len(edges) > workers and picklable(pair_arguments(edges[0])):
         pool = worker_process_pool(workers, max_tasks_per_child=default_pair_worker_tasks)
@@ -111,7 +108,7 @@ def map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory=Non
 
     results = []
     progress = progress_phase(progress_factory, total=len(edges), desc=desc)
-    # on threads, set once here: BLAS thread limits changed from many threads at once crash the process
+    # set once: BLAS thread limits changed from many threads at once crash the process
     compute = (_pair_metrics_compute('synchronous' if workers > 1 else 'threads') if pool is None
                else nullcontext())
     completed = (rolling_map(pair_metrics, edges, workers) if pool is not None or threaded
@@ -160,9 +157,8 @@ def _bbox_area(bbox):
 
 
 def merge_metric_results(results):
-    """One tile_pair_image_metrics() result from several over disjoint sets of pairs. Its summary
-    weights each pair by its overlap polygon's area, which is not returned: the pair's comparison
-    bbox area stands in, equal for axis-aligned tiles and close for slightly rotated ones."""
+    """Merge tile_pair_image_metrics() results over disjoint pairs; the summary weights pairs by bbox area,
+    standing in for the unreturned overlap area."""
     merged = {'pairs': {}, 'bboxes': {}, 'summary': {}}
     for result in results:
         merged['pairs'].update(result.get('pairs', {}))
@@ -188,8 +184,7 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
                         reg_results=None, n_parallel_pairs=None, progress_factory=None):
     query_transform_keys = [base_transform_key, reg_transform_key]
     if reg_results is not None:
-        # only the registered pairs, each on its own: over all msims at once the overlap mode measures every
-        # overlapping pair (1764 for 831 registered, locally) and the rest would be dropped below
+        # only the registered pairs: over all msims the overlap mode would measure every overlapping pair
         workers = n_parallel_pairs or default_pair_workers
         edges = sorted({tuple(sorted(edge)) for edge in reg_results['pairwise_registration']['graph'].edges()})
 
@@ -220,10 +215,7 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
                 metric_values[metric_key] = float(np.mean(values)) if values else None
 
         qualities = reg_results['pairwise_registration']['metrics']['qualities']
-        # a pair_key here may use the opposite (fixed, moving) direction from the one Mode 1
-        # happened to pick for the same logical pair, or (rarely, if Mode 1's own overlap
-        # detection missed it) not appear in metric_results['pairs'] at all - look it up (or
-        # create it) by its unordered identity rather than assuming an exact key match
+        # a pair_key may be reversed, or missing from metric_results['pairs']: match by unordered identity
         pairs_by_unordered_key = {frozenset(key): key for key in metric_results['pairs']}
 
         quality_values = []

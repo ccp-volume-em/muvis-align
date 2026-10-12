@@ -32,12 +32,8 @@ def get_channel_window(data, dimension_order, channeli):
 
 
 def ngff_dims_to_sim_dims(file_dims):
-    """The dims a sim built from `file_dims` ends up with: si_utils.SPATIAL_IMAGE_DIMS order,
-    keeping whichever spatial dims the file has and always including 't' and 'c' - which
-    si_utils.get_sim_from_array forces to exist at size 1 when the file has none (the same
-    multiview_stitcher convention util.ensure_spatial_image_dims matches). Reproducing the rule
-    here is what lets source metadata be read without building the msim (a DataTree of one sim
-    per level) just to ask it for its own shapes.
+    """The dims a sim built from `file_dims` ends up with: SPATIAL_IMAGE_DIMS order, the file's spatial dims
+    plus 't' and 'c', which get_sim_from_array always adds. Lets metadata be read without building the msim.
     """
     return [dim for dim in si_utils.SPATIAL_IMAGE_DIMS
             if dim in sim_forced_dims or dim in file_dims]
@@ -48,25 +44,13 @@ sim_spatial_dims = tuple(dim for dim in si_utils.SPATIAL_IMAGE_DIMS if dim not i
 
 
 def read_ome_zarr_source_metadata(path):
-    """Every piece of metadata an ImageSource needs from an OME-Zarr - per-level shapes and
-    pixel sizes, dtype, origin, channel count, omero - *without* constructing a msim.
+    """The metadata an ImageSource needs from an OME-Zarr, without constructing a msim.
 
-    Building the msim eagerly (read_msim_from_ome_zarr) costs one zarr.json read per pyramid
-    level plus a full xarray DataTree of one sim per level, measured at ~100ms per source: for
-    a few thousand sources that is minutes of project load spent on data nothing has asked for
-    yet. A v0.5/zarr-v3 store already carries every level's shape and dtype in its consolidated
-    root zarr.json, so the whole thing is one read (~1ms); ngff_zarr does not use that
-    consolidated metadata (it hands the *store*, not the opened group, to its own
-    Metadata._from_zarr_attrs, which reopens each level by path), hence reading it directly.
+    Read from the consolidated root zarr.json (which ngff_zarr does not use) when possible, else via ngff_zarr's
+    version-aware parse (non-consolidated, v0.4, remote, or other coordinate transformations).
 
-    Falls back to ngff_zarr's own (version-aware) metadata parse for anything the fast path
-    cannot fully account for - a non-consolidated store, v0.4, a remote URL, or any coordinate
-    transformation beyond the plain per-dataset scale/translation pair. That fallback still
-    skips the DataTree construction, so it is cheaper than building the msim either way.
-
-    Returns a dict of dimension_order, shapes, dtype, pixel_sizes, position, nchannels and
-    omero - all already expressed in the forced t/c sim dimension order (see above), so a
-    caller can assign them straight onto an ImageSource.
+    Returns a dict of dimension_order, shapes, dtype, pixel_sizes, position, nchannels, omero and paths, in the
+    sim's dimension order.
     """
     metadata = _read_consolidated_ome_zarr_metadata(path)
     if metadata is None:
@@ -75,13 +59,9 @@ def read_ome_zarr_source_metadata(path):
 
 
 def _build_source_metadata(file_dims, file_shapes, dtype, scales, translation, omero, paths=None):
-    """Shared tail of both read paths: map per-level file dims/shapes/scales onto the forced
-    t/c sim dimension order. scales is one dict per level (keyed by file dim), translation one
-    dict for the finest level; either may omit dims (defaulting to 1.0 / 0.0).
-
-    `paths` are the levels' own array paths within the store, so a caller can open each level's
-    array directly (see ZarrImageSource._load_data) instead of going back through a full msim
-    read - None whenever they could not be established.
+    """Map per-level file dims/shapes/scales onto the sim's dimension order. `scales` is one dict per level,
+    `translation` one for the finest level; missing dims default to 1.0 / 0.0. `paths` are the levels' array
+    paths within the store, None when unknown.
     """
     sim_dims = ngff_dims_to_sim_dims(file_dims)
     spatial_dims = [dim for dim in sim_dims if dim in sim_spatial_dims]
@@ -98,10 +78,8 @@ def _build_source_metadata(file_dims, file_shapes, dtype, scales, translation, o
 
 
 def _read_consolidated_ome_zarr_metadata(path):
-    """Fast path: parse the consolidated root zarr.json directly. Returns None (rather than
-    raising or guessing) for anything it cannot fully account for, leaving the caller to fall
-    back to ngff_zarr's own parse - the point of this path is to be exactly equivalent wherever
-    it applies, never to be approximately right more often.
+    """Parse the consolidated root zarr.json directly. Returns None, rather than guessing, for anything it
+    cannot fully account for, so it is exactly equivalent to ngff_zarr's parse wherever it applies.
     """
     root_file = os.path.join(str(path), 'zarr.json')
     if not os.path.isfile(root_file):
@@ -168,12 +146,9 @@ def _read_consolidated_ome_zarr_metadata(path):
 
 
 def _read_ngff_ome_zarr_metadata(path):
-    """Fallback: ngff_zarr's own version-aware parse (v0.4, non-consolidated, remote stores),
-    still without building the msim - only .dims/.data.shape/.scale/.translation are read off
-    each level's NgffImage, no sim or DataTree is constructed.
+    """ngff_zarr's version-aware parse (v0.4, non-consolidated, remote stores), still without building a msim.
     """
-    # imported here rather than at module scope: multiview_stitcher.ngff_utils pulls in a large
-    # dependency chain that the fast path above never needs
+    # imported here: ngff_utils pulls in a large dependency chain the fast path never needs
     from multiview_stitcher import ngff_utils
 
     multiscales = ngff_utils.read_ngff_multiscales(path)
@@ -186,7 +161,7 @@ def _read_ngff_ome_zarr_metadata(path):
     datasets = getattr(multiscales.metadata, 'datasets', None) or []
     paths = [getattr(dataset, 'path', None) for dataset in datasets]
     if len(paths) != len(images) or not all(paths):
-        # no usable per-level array paths - _load_data() then falls back to the msim reader
+        # makes _load_data() fall back to the msim reader
         paths = None
     return _build_source_metadata(
         file_dims,

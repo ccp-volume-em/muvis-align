@@ -28,7 +28,7 @@ class ParamWidget:
             self.widget.set_value(value)
 
     def _set_table_value(self, value):
-        # the header view handles a signal per row label, quadratically: 74s for 229k rows, 7s told once at the end
+        # signals blocked: the header view handles a signal per row label, quadratically; told once at the end
         model = self.widget.native.model()
         model.blockSignals(True)
         try:
@@ -49,8 +49,7 @@ class ParamWidget:
             if isinstance(value0, dict):
                 value = update_dict_value(value0, value)
         elif self.to_str:
-            # the widget's own text is left as typed - rewriting it live would erase a
-            # trailing '/' mid-typing; the display re-syncs on Process (update_input_output_path)
+            # the widget's text is left as typed: rewriting it live would erase a trailing '/' mid-typing
             value = to_posix_path(str(value))
         self.interface.change_param(self.param_name, value)
 

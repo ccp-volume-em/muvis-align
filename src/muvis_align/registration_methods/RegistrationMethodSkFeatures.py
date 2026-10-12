@@ -72,7 +72,7 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
                 # no upsampling: meant for small images, it quadruples a full-resolution overlap's scale space
                 feature_model = SIFT(upsampling=1)
                 feature_model.detect(data)
-                # sampled before extracting: descriptors for every keypoint were most of the time, then mostly dropped
+                # sampled before extracting, so no descriptors are computed for keypoints then dropped
                 if len(feature_model.keypoints) > self.nkeypoints:
                     indices = np.random.choice(len(feature_model.keypoints), self.nkeypoints, replace=False)
                     for name in ('keypoints', 'positions', 'scales', 'sigmas', 'octaves', 'orientations'):
@@ -169,8 +169,7 @@ class RegistrationMethodSkFeatures(RegistrationMethod):
         sizes = [[size for size in list(si_utils.get_shape_from_sim(data).values()) if size > 1]
                  for data in [fixed_data, moving_data]]
         mean_size_dist = np.mean([np.linalg.norm(size) for size in sizes])
-        # registration always runs at the pre-processed scale, so gaussian_sigma applies as
-        # configured - no more rescaling against an unrelated shared reference source
+        # registration runs at the pre-processed scale, so gaussian_sigma applies as configured
         gaussian_sigma = self.full_size_gaussian_sigma
         mean_size = np.mean([np.linalg.norm(data.shape) / np.sqrt(self.ndims) for data in [fixed_data, moving_data]])
         inlier_threshold = mean_size * self.inlier_threshold_factor

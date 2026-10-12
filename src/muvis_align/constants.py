@@ -11,21 +11,13 @@ default_ome_zarr_version = '0.5'
 
 default_chunk_size = 1024
 try:
-    # sched_getaffinity (Linux-only) reads the process' real cpuset, which on a SLURM node
-    # reflects the job's actual allocation - unlike os.cpu_count(), which reports the whole node
-    # regardless of what was allocated to this job.
+    # the process' cpuset reflects a SLURM job's allocation; os.cpu_count() reports the whole node
     _available_cpus = len(os.sched_getaffinity(0))
 except AttributeError:
     _available_cpus = os.cpu_count() or 8
 def _available_memory():
-    """Total memory this process may actually use, in bytes - the counterpart to
-    _available_cpus above, and read in the same spirit: what was *allocated* to this job, not
-    what the machine happens to have. A 2TB HPC node handed a 64GB job allocation must budget
-    against the 64GB, so the batch-system and cgroup limits are checked before the hardware.
-    Returns None if nothing here can tell, leaving callers to fall back to a fixed default.
-    """
-    # SLURM's own allocation, in MB (SLURM_MEM_PER_NODE wins; SLURM_MEM_PER_CPU is per
-    # allocated core, so scale it by the cpuset _available_cpus already reads)
+    """Memory allocated to this process in bytes (SLURM, then cgroup, then hardware), or None if unknown."""
+    # SLURM values are in MB; SLURM_MEM_PER_CPU is per allocated core
     for variable, multiplier in (('SLURM_MEM_PER_NODE', 1), ('SLURM_MEM_PER_CPU', _available_cpus)):
         value = os.environ.get(variable)
         if value:
@@ -47,8 +39,7 @@ def _available_memory():
     except (AttributeError, ValueError, OSError):
         pass
     try:
-        # Windows has no sysconf - ask the kernel directly rather than depend on psutil, which
-        # is not one of this package's declared dependencies
+        # Windows has no sysconf; psutil is not a declared dependency
         import ctypes
 
         class _MemoryStatus(ctypes.Structure):
@@ -68,30 +59,21 @@ def _available_memory():
 
 
 _available_memory_bytes = _available_memory()
-# Per-output-chunk memory budget for fusion (see image.util.get_chunk_sizes), per worker: one
-# chunk is held per worker at once, so a quarter of the allocation spread across them leaves the
-# rest for source data, napari and the fused result. The ceiling matters as much as the budget -
-# past a few GB a chunk stops being a useful unit of parallel work, one task holding a whole view
-# while the other cores idle - so extra headroom buys more chunks, not bigger ones.
+# per-worker fusion chunk budget: a quarter of memory across the workers, capped so one chunk
+# doesn't hold a whole view while the other cores idle
 default_fusion_chunk_bytes = min(4 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus))))
-# ...except for an export, which gets the same per-worker share without that ceiling. The ceiling
-# is a parallelism argument (one task holding a whole view leaves the other cores idle) and an
-# export has no such parallelism to protect: threads over its blocks were measured not to scale,
-# the per-block work being Python holding the GIL. It rarely raises a block above
-# default_export_chunk_size; what it stops is a source-dense one having to shrink below it.
+# an export's blocks don't parallelise (GIL-bound), so it gets a higher ceiling, sparing a
+# source-dense block from shrinking below default_export_chunk_size
 default_export_fusion_chunk_bytes = max(default_fusion_chunk_bytes, min(16 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus)))))
-# same-shaped float32 arrays multiview_stitcher holds per output chunk: every overlapping source
-# transformed into the chunk's grid, the blending-weight stack, and their product (fusion._core's
-# field_ims_t / field_ws_t). What makes a chunk's real cost differ from its own byte size by
-# orders of magnitude, for thousands of sources.
+# chunk-shaped float32 arrays multiview_stitcher holds per overlapping source: transformed sources,
+# blending weights and their product (fusion._core's field_ims_t / field_ws_t)
 fusion_stack_arrays = 3
-# get_contrast_limits() reads the coarsest pyramid level, which is lazy - so the compute runs its
-# whole fusion graph. Above this many tasks it is no longer the cheap up-front step it is meant
-# to be, and a naive dtype-range guess is used instead.
+# get_contrast_limits() computes the lazy coarsest level's whole fusion graph; above this many
+# tasks a dtype-range guess is used instead
 default_contrast_limits_max_tasks = 4096
 
 
@@ -105,63 +87,43 @@ def _source_init_worker_ceiling(default=64):
     return default
 
 
-# init_sources() mostly waits on a file open/header read per source, so this is deliberately not
-# capped at core count: threads blocked on I/O consume no CPU, and a 4733-source run was
-# near-perfectly I/O-bound. It still scales with cores up to a ceiling, so a small machine (and
-# likely a modest network link) doesn't take the same 64 threads a big one would.
-# MUVIS_SOURCE_INIT_WORKERS raises that ceiling, which a shared HPC filesystem needs - the
-# per-source open there is slower still, and more threads is the only way to overlap the wait.
+# init_sources() is I/O-bound, so threads exceed the core count; MUVIS_SOURCE_INIT_WORKERS raises
+# the ceiling for slow shared filesystems
 default_source_init_workers = min(_source_init_worker_ceiling(), _available_cpus * 8)
-# building sources' msims: GIL-bound xarray construction (one core whatever the count - 256 threads
-# only added contention) plus a header read that NFS makes slow, which 32 still overlap
+# msim building is GIL-bound xarray work plus a slow header read: more threads only add contention
 default_msim_build_workers = min(default_source_init_workers, 32)
-# zarr v3 routes its I/O through one process-wide thread pool (zarr.core.sync._get_executor()),
-# independent of the workers above. Unraised, reads stay bottlenecked on it however many of our
-# own threads are waiting to submit one - which is why OME-Zarr sources parallelized worse than
-# OME-TIFF. Set globally, not inside a with block, so it holds for the life of the process.
+# zarr v3 routes all I/O through one process-wide pool, which would otherwise bottleneck our workers;
+# set globally so it holds for the life of the process
 zarr.config.set({'threading.max_workers': default_source_init_workers})
-# Windows only: zarr renames each metadata document into place, which fails if anything holds the
-# destination open for that instant. Applied globally, before any store is written.
+# Windows: zarr's rename of metadata into place fails if anything holds the destination open
 apply_windows_atomic_write_retry()
-# per-source preview/fusion prep is CPU-bound, not I/O wait, so unlike the workers above it has
-# no file-handle concern capping it
-default_preview_workers = _available_cpus
-# multiview_stitcher's loop over an export's blocks is sequential (fusion._core: batch_func None,
-# n_batch 1), so without a batch_func of our own an export runs on one core. The per-chunk budget
-# above is already per-worker, sized for this many holding a chunk at once.
+# multiview_stitcher fuses an export's blocks sequentially unless given our own batch_func
 default_fusion_workers = _available_cpus
-# pairs registered or measured at once when n_parallel_pairwise_regs is blank, one a process: in
-# threads they are GIL-bound (~3 of 64 cores of pair work on the HPC)
+# pairs registered at once when n_parallel_pairwise_regs is blank, one per process: threads are GIL-bound
 default_pair_workers = _available_cpus
 # pairs a registration worker process handles before it is replaced, handing back what it kept
 default_pair_worker_tasks = 1000
 # smoothing of a fused z-plane or channel before it is registered, in tile sizes: a pattern every tile repeats
 # (e.g. a grid) would otherwise match at a shift of that pattern
 split_smoothing = 1 / 25
-# binning of a fused z-plane or channel when registering it against the next, when the setting is blank; MVS's own
-# only starts above 400^3 pixels, so a whole 2D section would be registered at its full pre-processed size
+# binning of a fused z-plane or channel registered against the next, when the setting is blank;
+# MVS's own binning would leave a 2D section at full size
 default_split_binning = 8
-# margin around the fused z-planes' grid, a fraction of each side, filled as their background: registered by FFT the
-# grid wraps around, and content touching its edges pulled the shift found towards zero (~0.5 px of 7)
+# background margin around the fused z-planes' grid, a fraction of each side: FFT registration wraps
+# around, and content touching the edges pulls the shift towards zero
 split_grid_margin = 0.05
-# What one output block of an *export* may span, where default_chunk_size (1024) is what a preview
-# wants: x/y chunks larger than the screen buy a preview nothing, while an export pays a fixed
-# cost (~0.5s measured) per block however small. Caps the block, does not overrule the budget -
-# and for a zarr export the block size is also the on-disk chunk size, so this bounds that too.
+# an export block's maximum size (also a zarr export's on-disk chunk size): an export pays a fixed
+# cost per block, while a preview gains nothing from chunks larger than the screen
 default_export_chunk_size = 4096
-# what the on-screen overview reduces each source by, matching create_preview()'s own
-# 'preview_scale' so a preview stays proportionate to an exported one
+# on-screen overview reduction per source, matching create_preview()'s 'preview_scale'
 default_interactive_preview_scale = 16
-# ...and an upper bound on the fused preview however it was reached. It is a few hundred pixels
-# on screen whatever is behind it, so fusing more is wasted: one run fused 396.9GB over 55
-# minutes to show what an 8x-reduced one showed in 9. preview_scale cannot prevent that (it is
-# relative to each source's own pyramid, and the post-pre-processing preview skips it), so the
-# guard is on the resulting size - see image.util.reduce_msims_to_fused_size.
+# upper bound on the fused preview, only a few hundred pixels on screen; preview_scale is relative to
+# each source, so the bound is on the result (see image.util.reduce_msims_to_fused_size)
 default_preview_max_bytes = 4 * 1024 ** 3
 
 prereg_mappings_name = 'prereg_mappings.csv'
 default_pair_mappings_name = 'pair_mappings.json'
-# the 'kind' of a split pairing group pair (e.g. section to section) in the pair mappings file, next to the tile pairs
+# the 'kind' of a split group pair (e.g. section to section) in the pair mappings file
 split_group_pair_kind = 'split_group'
 default_mappings_name = 'mappings.json'
 default_mappings_tabular_name = 'mappings.csv'

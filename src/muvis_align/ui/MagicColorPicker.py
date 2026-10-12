@@ -52,8 +52,7 @@ class QColorSwatchButton(QPushButton):
             f'background-color: {self._color.name()}; color: {text_color}; border: 1px solid gray;')
 
     def _pick_color(self):
-        # parent on the top-level window, not this button, so the dialog doesn't inherit
-        # this button's own background-color stylesheet
+        # parented on the window, so the dialog does not inherit this button's background stylesheet
         dialog = QColorDialog(self._color, self.window())
         if dialog.exec():
             color = dialog.currentColor()
@@ -76,9 +75,7 @@ class _QColorSwatchWidget(QBaseValueWidget):
         return color_to_tuple(value)
 
     def _mgui_bind_change_callback(self, callback) -> None:
-        # the native colorChanged signal carries a raw QColor - convert it to this widget's
-        # (r, g, b) tuple value before it reaches ValueWidget's changed signal, so listeners
-        # connected to `.changed` see the same type as `.value`
+        # colorChanged carries a QColor: convert it so `.changed` listeners get the same type as `.value`
         self._qwidget.colorChanged.connect(lambda color: callback(color_to_tuple(color)))
 
 
@@ -89,7 +86,6 @@ class MagicColorPicker(ValueWidget):
     """
 
     def __init__(self, **kwargs):
-        # when instantiated via create_widget(widget_type="...MagicColorPicker") magicgui
-        # leaves its own (string) 'widget_type' in kwargs alongside the one set below
+        # create_widget(widget_type="...MagicColorPicker") leaves its string 'widget_type' in kwargs
         kwargs.pop('widget_type', None)
         super().__init__(widget_type=_QColorSwatchWidget, **kwargs)

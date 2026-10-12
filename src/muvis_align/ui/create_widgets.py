@@ -129,7 +129,6 @@ def create_section_container(section_id, section_template, interface,
                 widget.tooltip = spec.description
             if function is not None:
                 widget.changed.connect(function)
-            # check if function with same name exists
             interface_function = interface.get_function(spec.param_name)
             if interface_function is not None:
                 widget.changed.connect(interface_function)
@@ -152,7 +151,7 @@ def create_section_container(section_id, section_template, interface,
         widget = create_widget(name=full_name, label='Process', widget_type='PushButton')
         interface_function = interface.get_function(name)
         if interface_function is not None:
-            # while an operation runs the button reads Cancel (MainWidget.enable_plugin_widget)
+            # while an operation runs the button reads Cancel
             if hasattr(interface, 'process_or_cancel'):
                 widget.clicked.connect(functools.partial(interface.process_or_cancel, interface_function))
             else:

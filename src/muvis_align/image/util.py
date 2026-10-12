@@ -51,30 +51,21 @@ def plt_close():
 
 
 def _adapt_transform_to_image_dims(sim, transform, transform_key):
-    """
-    Extract only the spatial dimensions from transform that match the image.
-    
-    For 2D images, extracts the 3x3 submatrix from a 4x4 transform.
-    Handles dimension mismatch between transforms and images.
-    """
+    """The sim's `transform_key` affine reduced to the image's spatial dims, e.g. 3x3 out of a 4x4 for a 2D image."""
     sim_spatial_dims = si_utils.get_spatial_dims_from_sim(sim)
     transform = sim.attrs['transforms'][transform_key]
     
-    # Get dimensions from transform coordinates
     transform_spatial_dims = list(transform.coords['x_in'].values)
     
-    # Count actual spatial dims (exclude '1' padding)
+    # '1' is the homogeneous coordinate, not a dim
     transform_spatial_dim_count = len([d for d in transform_spatial_dims if d != '1'])
     sim_spatial_dim_count = len(sim_spatial_dims)
     
     if transform_spatial_dim_count == sim_spatial_dim_count:
-        # Transform already matches - no adaptation needed
         return transform
     
-    # Find which spatial dims are in both sim and transform (ignoring '1' padding)
     relevant_dims = [d for d in sim_spatial_dims if d in transform_spatial_dims]
     
-    # Extract submatrix for only relevant dimensions (+ 1 for homogeneous coordinate)
     relevant_dim_names = relevant_dims + ['1']
     adapted = transform.sel(x_in=relevant_dim_names, x_out=relevant_dim_names)
     
@@ -150,25 +141,22 @@ def convert_image_sign_type(image: np.ndarray, target_dtype: np.dtype) -> np.nda
 
 
 def redimension_data(data, old_order, new_order, **indices):
-    # able to provide optional dimension values e.g. t=0, z=0
+    # indices: the index kept of each removed dim, e.g. t=0, z=0 (default 0)
     if new_order == old_order:
         return data
 
     new_data = data
     order = old_order
-    # remove
     for o in old_order:
         if o not in new_order:
             index = order.index(o)
             dim_value = indices.get(o, 0)
             new_data = np.take(new_data, indices=dim_value, axis=index)
             order = order[:index] + order[index + 1:]
-    # add
     for o in new_order:
         if o not in order:
             new_data = np.expand_dims(new_data, 0)
             order = o + order
-    # move
     old_indices = [order.index(o) for o in new_order]
     new_indices = list(range(len(new_order)))
     new_data = np.moveaxis(new_data, old_indices, new_indices)
@@ -176,11 +164,8 @@ def redimension_data(data, old_order, new_order, **indices):
 
 
 def redimension_sim_data(image, old_order, new_order, **indices):
-    # xarray-native equivalent of redimension_data: lazy isel/expand_dims/transpose on an
-    # already-dask-backed DataArray rather than numpy ops on a raw one, keeping whatever coords
-    # the dims have and touching only those old_order/new_order mention. Presence is checked
-    # against image.dims, never the order strings: the image can carry dims neither lists, and
-    # assuming those absent would make the final transpose miss a dim it does not know exists.
+    # lazy xarray equivalent of redimension_data; dims are checked against image.dims, not the order strings,
+    # as the image can carry dims neither lists that the final transpose must still include
     if new_order == old_order and set(new_order) == set(image.dims):
         return image
 
@@ -191,17 +176,14 @@ def redimension_sim_data(image, old_order, new_order, **indices):
     for o in new_order:
         if o not in image.dims:
             image = image.expand_dims(o, axis=0)
-    # any dim still on image but not in new_order (e.g. that untouched forced 't') is carried
-    # through as-is, ahead of the requested order
+    # dims new_order lacks (e.g. a forced 't') are kept, ahead of the requested order
     extra_dims = [dim for dim in image.dims if dim not in new_order]
     return image.transpose(*extra_dims, *list(new_order))
 
 
 def ensure_spatial_image_dims(image, c_coords=None, t_coords=None):
-    # si_utils.get_sim_from_array unconditionally forces 'c' and 't' dims to be present (size 1 if
-    # not already there) on every sim it builds - this is a hard multiview_stitcher convention that
-    # downstream code (channel detection, fusion, chunking) relies on. Match it exactly so a sim
-    # extracted from a msim built without going through get_sim_from_array is indistinguishable.
+    # si_utils.get_sim_from_array always adds size-1 'c' and 't' dims, which downstream code relies on:
+    # match it, so a sim not built through it is indistinguishable
     if c_coords is None and 'c' in image.coords:
         c_coords = np.atleast_1d(image.coords['c'].values)
     if t_coords is None and 't' in image.coords:
@@ -220,24 +202,19 @@ def ensure_spatial_image_dims(image, c_coords=None, t_coords=None):
 
 
 def rechunk_if_monolithic(image, chunk_size):
-    # a badly-chunked source (e.g. a single-chunk TIFF) needs splitting into smaller dask chunks
-    # for reasonable memory/parallelism downstream - a no-op if it's already chunked
+    # a single-chunk source (e.g. a TIFF) is split for memory and parallelism downstream
     if chunk_size and len(image.chunksizes.get('x', ())) == 1 and len(image.chunksizes.get('y', ())) == 1:
         image = image.chunk(xyz_to_dict([chunk_size] * 2 if isinstance(chunk_size, int) else chunk_size))
     return image
 
 
 def calc_pyramid_level_factors(sizes, pyramid_downsample=2, min_size=default_chunk_size):
-    """Cumulative per-dim downsample factor for each pyramid level needed *beyond* the one whose
-    spatial extents are `sizes` ({dim: size}), halving while the largest extent still exceeds
-    min_size - i.e. until a level small enough to draw a zoomed-out overview from exists.
+    """Cumulative per-dim downsample factor for each level needed beyond the one of `sizes` ({dim: size}),
+    halving while the largest extent exceeds min_size.
 
-    The single definition of "how many coarser levels does this need, and how much coarser":
-    build_missing_pyramid_levels() applies it to synthesize those levels on the reader side, and
-    ome_zarr_helper.get_padding_scale_factors() to write them on the export side, so a written
-    file carries exactly the levels a reader would otherwise have had to invent. Sizes are
-    rounded up as they shrink, matching the strided slicing build_missing_pyramid_levels() uses
-    (data[::2] of 4097 rows is 2049, not 2048).
+    Shared by build_missing_pyramid_levels() and the export side (ome_zarr_helper.get_padding_scale_factors()), so
+    a written pyramid and a synthesized one agree. Sizes round up as they shrink, matching strided slicing
+    (data[::2] of 4097 rows is 2049).
     """
     factors = []
     if not sizes:
@@ -257,21 +234,12 @@ def calc_pyramid_level_factors(sizes, pyramid_downsample=2, min_size=default_chu
 
 def build_missing_pyramid_levels(data, dimension_order, pixel_size, pyramid_downsample=2,
                                  min_size=default_chunk_size):
-    """Synthesize coarser levels for a source with only one real resolution.
+    """Synthesize coarser levels for a source with only one real resolution, so napari has something to draw
+    zoomed out instead of computing the whole finest level.
 
-    Without them napari has nothing to show while zoomed out, so drawing forces computing the
-    entire finest-level graph for a thumbnail - the usual cause of a slow first draw despite a
-    fast load. Full resolution is then only computed once the user zooms in that far.
-
-    Strided (nearest-neighbour) subsampling, not a mean-downsample: a non-pyramidal source is
-    typically one monolithic dask chunk that `data` has already paid to decode, and a
-    mean-downsample chain would run a full reduction pass per level on top of it for a thumbnail.
-    On a 47MP EM tile that took get_contrast_limits() from ~0.46s to ~0.07s, about the cost of
-    the one unavoidable decode.
-
-    Level count and factors come from calc_pyramid_level_factors(), shared with the export side
-    so a synthesized pyramid and a written one agree. Returns ([data] + extra levels,
-    [pixel_size] + matching per-level sizes), a no-op for a source with no spatial dims.
+    Strided (nearest-neighbour) rather than mean-downsampled: the source is usually one already-decoded chunk, and
+    a mean would add a reduction pass per level. Levels come from calc_pyramid_level_factors(). Returns
+    ([data] + extra levels, [pixel_size] + their pixel sizes).
     """
     spatial_axes = {dim: axis for axis, dim in enumerate(dimension_order) if dim in 'xyz'}
     datas = [data]
@@ -280,8 +248,7 @@ def build_missing_pyramid_levels(data, dimension_order, pixel_size, pyramid_down
         return datas, pixel_sizes
     sizes = {dim: data.shape[axis] for dim, axis in spatial_axes.items()}
     for factors in calc_pyramid_level_factors(sizes, pyramid_downsample, min_size):
-        # factors are cumulative against the finest level, so always slice `data` itself rather
-        # than the previous level - one strided view of the already-decoded array either way
+        # factors are cumulative against the finest level, so slice `data` itself, not the previous level
         slicing = tuple(slice(None, None, factors.get(dim, 1))
                         for dim in dimension_order)
         coarse = data[slicing]
@@ -295,8 +262,7 @@ def build_missing_pyramid_levels(data, dimension_order, pixel_size, pyramid_down
 
 def source_levels(source, from_level=0, ends_only=False):
     """The native levels a msim built from `source` carries: every one from `from_level` on, or with
-    `ends_only` just that and the coarsest - all registration and the view's preview cap read, at
-    ~3ms of xarray construction a level (a quarter of pre-processing at 34k sources)."""
+    `ends_only` just that and the coarsest - all that registration and the view's preview cap read."""
     count = len(getattr(source, 'pixel_sizes', None) or getattr(source, 'data', None) or [None])
     levels = list(range(from_level, count))
     return levels[:1] + levels[-1:] if ends_only and len(levels) > 2 else levels
@@ -304,19 +270,12 @@ def source_levels(source, from_level=0, ends_only=False):
 
 def build_source_redimensioned_msim(source, output_order, chunk_size=default_chunk_size,
                                     from_level=0, ends_only=False):
-    """Redimension `source.msim`'s own per-level 'image' DataArrays into `output_order` (lazy
-    transpose/expand_dims), ensure the 'c'/'t' dims every sim needs, and rechunk any level still
-    monolithic in x/y. Depends only on `source` and `output_order`, never on per-run geometry
-    (translation/transform) - build_source_msim() calls this through source.get_msim(), which
-    caches the result, rather than redoing this work on every call. Does not mutate source.msim -
-    a fresh DataTree is built and returned.
+    """A new msim of `source`'s levels lazily redimensioned into `output_order`, with the 'c'/'t' dims every sim
+    needs and any level monolithic in x/y rechunked.
 
-    `from_level` drops the finest levels, renumbering what remains from scale0: a consumer that
-    only ever works at some coarser scale (pre-processing, registration) would otherwise pay to
-    redimension full-resolution levels it discards on the next line.
-
-    Built from the source's own arrays where it has them, not from source.msim - see
-    _source_level_images().
+    Independent of per-run geometry, so source.get_msim() caches it. `from_level` drops the finest levels
+    (renumbered from scale0) for consumers that only work at a coarser scale. Built from the source's own arrays
+    where it has them - see _source_level_images().
     """
     # None, not []: a source reporting no channels at all still gets the forced 'c' dim, and an
     # empty label list cannot be assigned to it
@@ -362,13 +321,8 @@ def complete_translation(translation):
 def _source_level_images(source, output_order, levels):
     """One image per pyramid level, taken straight off the source's own arrays.
 
-    Reading them out of source.msim instead costs a get_sim_from_array per level and a whole
-    DataTree to hold them, and every coordinate that assigns is overwritten again by
-    build_source_msim()'s own geometry - ~18ms a source that this path never needs. A source
-    with no raw arrays to offer (an OME-Zarr read natively - see
-    ZarrImageSource._build_msim_natively) has nowhere else to come from, so it still goes
-    through its msim; test_level_images_from_raw_arrays_match_the_ones_from_the_source_msim
-    holds the two together.
+    Avoids building source.msim, whose coordinates build_source_msim() overwrites anyway. A source with no raw
+    arrays (an OME-Zarr read natively) still goes through its msim.
     """
     data = getattr(source, 'data', None)
     if not data:
@@ -391,16 +345,11 @@ def _source_level_images(source, output_order, levels):
 
 def build_source_msim(source, output_order, translation, transform, transform_key, z_scale=None,
                       from_level=0, ends_only=False):
-    """
-    Build a new msim for `source` covering every real pyramid level, redimensioned to `output_order`
-    and re-geometried with `translation` (intrinsic coords, per level) + `transform` (extrinsic affine,
-    same at every level) - starting from source.get_msim(output_order) (redimensioned once, then
-    cached on `source`) rather than reconstructing from raw arrays via si_utils.get_sim_from_array.
-    Does not mutate the cached msim - a fresh DataTree is built and returned.
+    """A new msim of `source`'s real pyramid levels, redimensioned to `output_order` and placed with
+    `translation` (intrinsic, per level) and `transform` (extrinsic, every level), built from the cached
+    source.get_msim(output_order), which is left unchanged.
 
-    `from_level` starts the pyramid at that native level instead of the finest, renumbered from
-    scale0 - see build_source_redimensioned_msim(); `ends_only` keeps just it and the coarsest
-    (see source_levels).
+    `from_level` and `ends_only` select levels as in source_levels().
     """
     if transform is None:
         spatial_dims = [dim for dim in output_order if dim in 'xyz']
@@ -435,20 +384,11 @@ def build_source_msim(source, output_order, translation, transform, transform_ke
 
 def build_source_stack_props(source, output_order, translation, transform, transform_key,
                              z_scale=None, level=0, promote_z=False):
-    """The geometry the shapes/overlap-shapes preview needs - shape, spacing, origin and
-    transform - derived straight from a source's metadata, allocating nothing.
+    """The geometry the shapes preview needs - shape, spacing, origin and transform - from a source's metadata
+    alone, allocating nothing and reading no pixels.
 
-    This is all si_utils.get_stack_properties_from_sim() would have read back off a sim, so
-    building one first (and, with it, an array for the sim to wrap) is pure ceremony for a path
-    that never touches a pixel: drawing bounding boxes should not need image data to exist, let
-    alone be read. build_source_shape_sim() below still produces that sim for the one caller
-    that genuinely needs one - multiview_stitcher's exact overlap test takes sims - and is
-    itself built on this, so the two can never describe different geometry.
-
-    Mirrors build_source_shape_sim()'s own conventions exactly (there is a test asserting so):
-    a dim of output_order the source lacks becomes size 1; x/y default to origin 0 as soon as
-    any translation is given; and promote_z adds a size-1 'z' at the source's own z position,
-    widening the transform to 3D with it.
+    A dim of output_order the source lacks becomes size 1; x/y default to origin 0 once any translation is given;
+    promote_z adds a size-1 'z' at the source's z position, widening the transform to 3D.
     """
     spatial_order = [dim for dim in si_utils.SPATIAL_IMAGE_DIMS if dim in 'zyx'
                      and (dim in output_order or (promote_z and dim == 'z'))]
@@ -458,9 +398,8 @@ def build_source_stack_props(source, output_order, translation, transform, trans
     pixel_size = dict(source.pixel_sizes[level])
     if 'z' in spatial_order and 'z' not in pixel_size:
         pixel_size['z'] = abs(z_scale) if z_scale else 1
-    # si_utils derives spacing from the differences between coordinates, which a size-1 dim has
-    # none of - it reports 1.0 there whatever the nominal pixel size, so match that rather than
-    # the value the coords were built from
+    # si_utils derives spacing from coordinate differences, so reports 1.0 for a size-1 dim whatever the pixel
+    # size: match that
     spacing = {dim: float(pixel_size.get(dim, 1)) if shape[dim] > 1 else 1.0
                for dim in spatial_order}
 
@@ -484,28 +423,17 @@ def build_source_stack_props(source, output_order, translation, transform, trans
 
 @functools.lru_cache(maxsize=None)
 def _xaffine_template(size):
-    # building a DataArray's coords costs ~10x a shallow copy of one: once a source matters at 34k sources
+    # a shallow copy is far cheaper than building a DataArray's coords for every source
     return param_utils.identity_transform(size - 1)
 
 
 def build_source_shape_sim(source, output_order, translation, transform, transform_key, z_scale=None, level=0,
                            promote_z=False):
-    """Cheap, single-level equivalent of build_source_msim(), for the one consumer that needs an
-    actual sim rather than plain geometry: multiview_stitcher's exact (linprog) overlap test
-    takes sims. Everything else in the shapes path works off build_source_stack_props() instead,
-    which allocates nothing - see there.
+    """A single-level placeholder sim with build_source_stack_props()' geometry, for multiview_stitcher's exact
+    overlap test, which takes sims. Reads no pixels, so never opens the source's file.
 
-    Built from those same stack properties, so the two cannot describe different geometry, and
-    wrapping a lazily-allocated placeholder of the right shape and dtype rather than the
-    source's own array: nothing here reads a pixel, while source.data/get_level_data() would
-    open the file (for OME-Zarr, build the whole msim), which is exactly the work source
-    initialisation defers - see ImageSource.data.
-
-    promote_z=True mirrors make_msims_3d()'s own promotion (see promote_sim_to_3d()) for the
-    case where output_order itself has no 'z' (every source is individually 2D) but different
-    sources sit at different z heights (e.g. a z-stack of 2D tiles) - without this, a source's
-    own z position/translation would otherwise be silently dropped instead of becoming a real,
-    if size-1, 'z' dim/coordinate on the returned sim.
+    promote_z=True mirrors make_msims_3d() where output_order has no 'z' but sources sit at different z heights:
+    a source's z position becomes a size-1 'z' dim instead of being dropped.
     """
     stack_props = build_source_stack_props(source, output_order, translation, transform,
                                            transform_key, z_scale=z_scale, level=level,
@@ -515,14 +443,11 @@ def build_source_shape_sim(source, output_order, translation, transform, transfo
 
 
 def sim_from_stack_props(stack_props, dtype, transform_key, c_coords=None):
-    """A sim carrying exactly the geometry in `stack_props` and no image data of its own - for
-    the multiview_stitcher entry points that take sims but only ever read geometry off them.
+    """A sim with exactly the geometry in `stack_props` and no image data, for multiview_stitcher entry points that
+    only read geometry off sims.
 
-    The array behind it is a lazy one-chunk placeholder: it has to carry a shape and a dtype,
-    nothing more. Deliberately a dask array and not, say, a zero-strided numpy view over a
-    single element - that is far cheaper to create, but xarray then materialises it into a real
-    array (measured at 90ms for a 6400x6400 tile) where it leaves a lazy one alone. name=False
-    skips dask's deterministic tokenization, pointless for a placeholder nothing looks up.
+    Backed by a lazy one-chunk dask placeholder, as xarray would materialise a zero-strided numpy view.
+    name=False skips dask's tokenization, pointless for a placeholder.
     """
     spatial_dims = list(stack_props['shape'])
     shape = tuple(stack_props['shape'][dim] for dim in spatial_dims)
@@ -537,12 +462,7 @@ def sim_from_stack_props(stack_props, dtype, transform_key, c_coords=None):
 
 
 def map_msim_levels(msim, level_func):
-    """Apply level_func(sim, scale_key) -> new_sim independently to every scale level of `msim`,
-    reassembling the results into a new multiscale msim covering the same levels. Each level is
-    extracted/rebuilt through the ordinary sim <-> msim helpers (msi_utils.get_sim_from_msim /
-    get_msim_from_sims) - the per-level results are genuinely new sims (e.g. gaussian-filtered,
-    normalised), not a restamp of existing data, so there's no coordinate-reuse trap to avoid here.
-    """
+    """Apply level_func(sim, scale_key) -> new_sim to every scale level of `msim`, reassembled into a new msim."""
     scale_keys = msi_utils.get_sorted_scale_keys(msim)
     level_sims = [level_func(msi_utils.get_sim_from_msim(msim, scale=scale_key), scale_key)
                   for scale_key in scale_keys]
@@ -550,47 +470,25 @@ def map_msim_levels(msim, level_func):
 
 
 def get_msim_level_data(msim):
-    """Raw dask array per pyramid level, straight off each scale node's own Dataset (ImageSource.
-    get_level_data's pattern, generalised to every level at once) - no sim wrapping needed, since
-    napari's multiscale add_image only ever wants the arrays themselves.
-    """
+    """Raw dask array per pyramid level, straight off each scale node, as napari's multiscale add_image takes them."""
     return [msim[scale_key].ds['image'].data for scale_key in msi_utils.get_sorted_scale_keys(msim)]
 
 
 def get_chunk_sizes(dtype, spatial_dims, num_sources=1, num_z_positions=1,
                     xy_chunk_size=default_chunk_size, target_bytes=64 * 1024 ** 2,
                     fusion_target_bytes=None, min_xy_chunk_size=64):
-    """Per-spatial-dim chunk sizes for a fused preview, budgeted against what fusing one output
-    chunk costs in memory - which is set by how many *sources* land in it, not by its own size.
+    """Per-spatial-dim chunk sizes for a fused preview, budgeted on the memory fusing one chunk takes, which is set
+    by how many sources land in it rather than its own size.
 
-    Fusion transforms every source overlapping a chunk into a full-chunk float32 array and
-    stacks them (fusion_stack_arrays of them), so one chunk peaks at ~views_in_chunk *
-    chunk_voxels * 4 * fusion_stack_arrays, independent of the output dtype. Sizing by output
-    bytes alone misses that factor entirely: for a few thousand sources it lands on chunks whose
-    fusion needs hundreds of GB.
+    Fusion stacks every overlapping source as a full-chunk float32 array (fusion_stack_arrays of them). Coarse
+    levels are the worst case: fuse() uses one chunk size for every level, so a level about xy_chunk_size across
+    puts every source in one chunk. With sources spread over z, a chunk spanning Nz planes costs Nz^2 as much.
 
-    Coarse pyramid levels are the worst case, not the finest:
-
-    - fuse() reuses one output_chunksize for every level, so an xy chunk larger than a coarse
-      level's whole extent collapses it into one chunk covering the field of view, and every
-      source in it. Cost peaks at the level whose extent is about xy_chunk_size, so bound that.
-    - with sources spread along z (a stack of 2D sections), a chunk spanning Nz planes pulls in
-      every source from Nz sections: Nz times the views and Nz times the voxels, so cost grows
-      with the square of the z chunk.
-
-    fusion_target_bytes budgets *one* chunk, defaulting to default_fusion_chunk_bytes, which is
-    derived from this job's own allocation - one chunk is fused per worker concurrently, so the
-    process peak is roughly the budget times the worker count. The same sizing then serves a
-    64-core/2TB node (landing on the generous xy_chunk_size, keeping the chunk count and its
-    graph-construction cost low) and a laptop, neither tuned for the other.
-
-    x/y stay as generous as the budget allows, rounded down to a multiple of min_xy_chunk_size:
-    napari shows both axes in full, so fragmenting them buys nothing. z takes the remainder,
-    driven to 1 wherever sources are spread over it, so that viewing one slice does not force
-    computing many slices' worth of fusion.
+    fusion_target_bytes budgets one chunk (default default_fusion_chunk_bytes, from this job's allocation, as one
+    chunk is fused per worker). x/y stay as large as the budget allows, in multiples of min_xy_chunk_size, since
+    napari shows them in full; z takes the rest, 1 wherever sources are spread over z.
     """
-    # sources that a single output plane can draw from - the per-z-plane tile count when
-    # sources are spread over z, otherwise every source (they all sit at the same height)
+    # sources one output plane can draw from: those at one z position, or all of them at a single height
     sources_per_plane = max(1, round(num_sources / max(1, num_z_positions)))
     # budget expressed in float32 voxels, across the stacked arrays fusion holds at once
     if fusion_target_bytes is None:
@@ -598,9 +496,8 @@ def get_chunk_sizes(dtype, spatial_dims, num_sources=1, num_z_positions=1,
     voxel_budget = max(1.0, fusion_target_bytes / (4 * fusion_stack_arrays))
 
     def fit_xy(views_per_chunk):
-        # largest x/y chunk whose fusion stays within budget, rounded down to a whole number of
-        # min_xy_chunk_size blocks (never below one such block - a smaller chunk grid than that
-        # costs more in dask tasks and graph build than it saves in peak memory)
+        # largest x/y chunk within budget, in whole min_xy_chunk_size blocks: never less than one, as smaller
+        # chunks cost more in tasks and graph build than they save in memory
         size = min(xy_chunk_size, np.sqrt(voxel_budget / views_per_chunk))
         return max(min_xy_chunk_size, int(size // min_xy_chunk_size) * min_xy_chunk_size)
 
@@ -612,14 +509,10 @@ def get_chunk_sizes(dtype, spatial_dims, num_sources=1, num_z_positions=1,
     xy_size = fit_xy(sources_per_plane)
     sizes = {dim: xy_size for dim in spatial_dims if dim in ('x', 'y')}
     if num_z_positions > 1:
-        # a z chunk of Nz sections costs sources_per_plane * Nz ** 2 * xy_size ** 2 voxels (Nz
-        # times the sources, Nz times the voxels) - quadratic in Nz, so once sources sit at
-        # distinct z positions the whole budget goes to x/y and z stays at a single plane
+        # a z chunk of Nz sections costs Nz^2 one plane's (Nz times the sources and the voxels): one plane only
         sizes['z'] = 1
     else:
-        # genuine z-stack: depth adds voxels but no extra views, so the output-byte budget
-        # binds. Floor, not round - z is the axis a deeper chunk hurts most, napari computing a
-        # whole chunk to show one slice.
+        # a genuine z-stack adds voxels but no views; floor, as napari computes a whole chunk to show one slice
         voxels_per_chunk = min(target_bytes / np.dtype(dtype).itemsize,
                                voxel_budget / sources_per_plane)
         sizes['z'] = max(1, int(voxels_per_chunk // xy_size ** 2))
@@ -629,18 +522,11 @@ def get_chunk_sizes(dtype, spatial_dims, num_sources=1, num_z_positions=1,
 def get_export_chunk_sizes(dtype, output_stack_properties, msims, num_z_positions=1,
                            xy_chunk_size=default_export_chunk_size,
                            fusion_target_bytes=None, min_xy_chunk_size=64):
-    """Per-dim block sizes for a full-resolution export, budgeted against the sources that
-    actually reach one block.
+    """Per-dim block sizes for a full-resolution export, budgeted on the sources that actually reach one block.
 
-    get_chunk_sizes() takes every source in a z-plane as landing in any one chunk. That is right
-    for the lazy multiscale preview it sizes, whose coarse levels do put the whole field of view
-    in one chunk, but an export writes one array at full resolution, where a block spans a few
-    microns and meets the tiles that overlap it - sized the other way, a 4733-source export lands
-    on 128-pixel blocks.
-
-    So the count comes from the geometry: sources lie at `density` per unit output area, and a
-    block meets those whose own extent brings them within reach, ~density * prod(B_d + E_d). The
-    budget is unchanged, so heavy overlap still shrinks the block; the largest size that fits wins.
+    Unlike the preview (get_chunk_sizes), whose coarse levels put the whole field of view in one chunk, an export
+    block meets only the tiles overlapping it: about density * prod(B_d + E_d) sources, for block size B and mean
+    source extent E. The largest block within the fusion budget wins.
     """
     if fusion_target_bytes is None:
         fusion_target_bytes = default_export_fusion_chunk_bytes
@@ -703,27 +589,12 @@ def get_dtype_contrast_limits(dtype):
 
 
 def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max_tasks, per_channel=False):
-    """Display range (see get_display_range) computed from just the coarsest pyramid level, so a caller
-    can pass it as add_image()'s contrast_limits without napari falling back to its own default:
-    for multiscale layers that already reads the coarsest level (data[-1]), but for anything
-    other than uint8 still computes a real min/max over it, which for a still-lazy dask array
-    means eagerly running that level's whole fusion graph just to pick initial display bounds
-    (see napari.layers.utils.layer_utils.calc_data_range). Doing it here instead is no cheaper
-    per se, but runs once, up front, on only the coarsest (by far the smallest) level.
+    """Display range (see get_display_range) from the coarsest pyramid level only, for add_image()'s
+    contrast_limits: without it napari computes a min/max itself, eagerly running that level's lazy graph.
 
-    cheap=True skips that compute entirely and returns a naive dtype-range guess instead - for
-    an interactive overview built from hundreds of sources, one dask.compute() per source adds
-    up fast even on just the coarsest level; the user can always auto-contrast a layer from
-    napari's own UI once it's up, so getting this exactly right up front isn't worth the cost
-    there.
-
-    That naive guess is also the automatic fallback whenever the coarsest level's own graph is
-    larger than max_tasks: "the coarsest level is small" holds for its pixel count, but not
-    necessarily for the work behind it - a level fused from thousands of sources is thousands of
-    transforms however few pixels come out. This step exists to be the fast one before anything
-    is on screen, so past that size it declines to be the thing that blocks first paint.
-
-    per_channel=True gives a list, one range a channel ('c'), each from that channel's own pixels.
+    cheap=True returns the dtype range instead, computing nothing; the same fallback applies when the coarsest
+    level's graph exceeds max_tasks, as a level fused from many sources is costly however few pixels it has.
+    per_channel=True gives a list, one range per channel ('c').
     """
     coarsest = get_msim_level_data(msim)[-1]
     dims = get_msim_image0(msim).dims
@@ -746,26 +617,18 @@ def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max
 
 
 def get_msim_image0(msim, level=0):
-    """The raw 'image' DataArray at a given pyramid level (default: the finest, scale0) - straight
-    off that scale node's own Dataset, no sim wrapping. si_utils.get_spacing_from_sim/
-    get_origin_from_sim/get_spatial_dims_from_sim, and plain .dims/.sizes/.dtype checks, all work
-    identically on this as they would on a full sim (they only ever read .dims/.coords) - a sim
-    is only needed once something reads .attrs['transforms'] (si_utils.get_affine_from_sim et al).
-    """
+    """The raw 'image' DataArray at pyramid `level` (default scale0), without building a sim: enough for anything
+    reading only .dims/.coords, not .attrs['transforms']."""
     scale_key = msi_utils.get_sorted_scale_keys(msim)[level]
     return msim[scale_key].ds['image']
 
 
 def get_msim_dims(msim):
-    # .dims is identical whether read off the full sim (get_sim_from_msim) or the scale node's
-    # own 'image' DataArray directly - no need to build a sim just to compare dims
     return get_msim_image0(msim).dims
 
 
 def get_msim_transform_keys(msim):
-    # every transform key is its own data_var (alongside 'image') on each scale node's Dataset -
-    # reading them directly answers "does this msim have transform_key set yet" without building
-    # a sim just to call si_utils.get_tranform_keys_from_sim
+    # each transform key is a data_var alongside 'image' on every scale node's Dataset
     scale_key = msi_utils.get_sorted_scale_keys(msim)[0]
     return set(msim[scale_key].ds.data_vars.keys()) - {'image'}
 
@@ -788,29 +651,22 @@ def restore_msims_transform(msims, transform_key, snapshot):
 
 
 def extract_sims_from_fused(result):
-    """Extract a concrete sim (or list of sims) from a fuse() result, which is always msims: a
-    single fused multiscale msim (DataTree), or, in 'compose' mode (no actual fusion), a list of
-    per-source msims. Used only at the boundary where a downstream consumer genuinely needs a sim
-    (save_image() has no multiscale support)."""
+    """The scale0 sim (or list of sims) of a fuse() result: one fused msim, or in 'compose' mode a list of
+    per-source msims. For consumers with no multiscale support, e.g. save_image()."""
     if isinstance(result, list):
         return [msi_utils.get_sim_from_msim(msim, scale=msi_utils.get_sorted_scale_keys(msim)[0]) for msim in result]
     return msi_utils.get_sim_from_msim(result, scale=msi_utils.get_sorted_scale_keys(result)[0])
 
 
 def wrap_sims_as_msims(sims):
-    # trivial single-level msim per sim - the escape hatch for callers that only have a concrete
-    # sim (an ad-hoc resolution with no corresponding real pyramid, e.g. a resized preview) but
-    # still need to satisfy a msims-only API (fuse()); scale_factors=[] avoids computing a
-    # synthetic downsample pyramid nothing here would use
+    # a single-level msim per sim with no real pyramid behind it, for msims-only APIs such as fuse();
+    # scale_factors=[] skips a downsample pyramid nothing uses
     return [msi_utils.get_msim_from_sim(sim, scale_factors=[]) for sim in sims]
 
 
 def combine_msims_as_channels(msims, channel_labels):
-    """Combine several single-channel msims (one per source) into one multichannel msim, stacking
-    along a new 'c' dim - per pyramid level, so the result stays a genuine multiscale msim rather
-    than collapsing to a single resolution. `msims` here are each expected to already share the
-    same geometry/levels (e.g. the per-source results of fusing each source individually against
-    the same output_stack_properties)."""
+    """Single-channel msims sharing the same geometry and levels, stacked per level along a new 'c' dim into one
+    multichannel msim."""
     scale_keys = msi_utils.get_sorted_scale_keys(msims[0])
     level_sims = []
     for scale_key in scale_keys:
@@ -857,10 +713,8 @@ def get_level_from_scale(source, target_scale=1):
         target_pixel_size = {dim: float(source_pixel_size * target_scale)
                              for dim, source_pixel_size in source.get_pixel_size().items()}
         target_scale = {dim: target_scale for dim in source.get_pixel_size()}
-    # Judged only on the dims this source's pyramid actually reduces. A dim the same size at
-    # every level - the size-1 'z' every OME-Zarr tile carries, or a z-stack downsampling only
-    # x/y - keeps a factor of 1 throughout, which let any level pass however coarse: a request
-    # for 6x loaded 16x data. Exact-factor requests matched the right level and hid it.
+    # only dims the pyramid actually reduces: one constant across levels (e.g. OME-Zarr's size-1 'z') keeps a
+    # factor of 1, which would let any level pass however coarse
     reducing_dims = [dim for dim in source.scale_factors[0]
                      if any(factors.get(dim, 1) > 1 for factors in source.scale_factors)] \
         if source.scale_factors else []
@@ -1025,7 +879,6 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
 
     point_dims = [pts.shape[1] for pts in (points1, points2) if len(pts) > 0]
 
-    # Infer spatial dims from points when present, otherwise from images.
     if len(point_dims) > 0:
         spatial_dims = min(max(point_dims), 3)
     elif len(images) > 0:
@@ -1033,7 +886,6 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
     else:
         spatial_dims = 2
 
-    # Infer spatial shape from images when present; otherwise from points.
     if len(images) > 0:
         shape = np.max([
             np.array(np.asarray(image).shape[:spatial_dims], dtype=int)
@@ -1232,9 +1084,8 @@ def calc_images_median(images):
 
 
 def get_image_quantile(image: np.ndarray, quantile: float, axis=None) -> float:
-    # np.asarray() computes a dask-backed image (a no-op for a plain numpy one). Only ever the
-    # small coarsest level, so materializing here avoids depending on dask's own quantile at all
-    # - e.g. dask 2025.10 still passing numpy's removed interpolation= kwarg internally.
+    # materialised first (only ever a small level) so dask's own quantile is never used: some versions pass
+    # numpy's removed interpolation= kwarg
     image = np.asarray(image)
     if axis is None:
         image = image.ravel()
@@ -1410,13 +1261,10 @@ def normalise_sim(sim, transform_key, min, range, dtype):
 
 
 def calc_normalise_stats(items, use_global=True):
-    """Per-source (mean, stddev) normalisation stats and dtype of sims or msims (each msim's scale0 sim is used).
-    Split out from normalise_sims so a caller that only wants the statistics (e.g. to then apply them separately
-    across a whole pyramid via map_msim_levels) doesn't have to build a full set of already-normalised sims.
-    """
+    """Per-source (mean, stddev) normalisation stats and the dtype of sims or msims (each msim's scale0 sim), without
+    normalising anything."""
     sims = sims_from_sims_or_msims(items)
     dtype = sims[0].dtype
-    # global mean and stddev
     if use_global:
         mins = [np.mean(sim, dtype=np.float32) for sim in sims]
         ranges = [np.std(sim, dtype=np.float32) for sim in sims]
@@ -1582,7 +1430,7 @@ def extract_z_scale(positions, scales=None):
 
 def _axis_aligned_bb_vertices_2d(lo, hi):
     """The corners _minimal_bb_vertices() returns for an axis-aligned 2D box, counter-clockwise
-    from the low one, without the hull search it would run to rediscover them (~1.2ms a box).
+    from the low one, without its hull search.
 
     `lo`/`hi` may be single (2,) corners or (N, 2) stacks, giving (4, 2) or (N, 4, 2).
     """
@@ -1736,10 +1584,8 @@ def sims_from_sims_or_msims(items):
 
 
 def stack_props_from_any(items, transform_key=None):
-    """Normalises sims, msims or already-built stack-properties dicts to stack properties -
-    the only thing the shapes path actually reads. A caller that has geometry but no image data
-    (build_source_stack_props()) can therefore feed these functions directly, without an array
-    having to be conjured up for it first.
+    """Stack properties of sims, msims or already-built stack-properties dicts - all the shapes path reads, so
+    geometry without image data (build_source_stack_props()) can be passed directly.
     """
     stack_props = []
     for item in items:
@@ -1773,19 +1619,10 @@ def create_image_shapes(items, transform_key=None,  force_2d=False):
 
 
 def _filter_candidate_overlap_pairs(all_stack_props):
-    """Every-pair candidates (np.triu_indices), narrowed to those whose axis-aligned bounding
-    boxes actually overlap - a cheap, vectorized numpy broad phase in front of
-    _get_overlap_bboxes' exact (linear-programming-based) intersection test, which is the
-    expensive part: on an n-source project with no pair_registration graph yet to restrict
-    candidates to (e.g. initial project load), the naive O(n^2) full pair set spends that solve
-    on the vast majority of pairs that don't overlap at all, dominating redraw time once there
-    are more than a few dozen sources. An AABB always contains the real (possibly rotated) box,
-    so filtering on it can never drop a pair that genuinely overlaps.
+    """Pairs whose axis-aligned bounding boxes overlap: a cheap broad phase in front of _get_overlap_bboxes' exact
+    linear-programming test. An AABB contains the real (possibly rotated) box, so no overlapping pair is dropped.
 
-    Also returns the per-sim mins/maxs themselves (not just which pairs survive) - the caller
-    reuses them to draw an approximate overlap shape directly from each surviving pair's own
-    AABB intersection, skipping the linprog solve entirely for this (pre-registration, no
-    rotation yet) case.
+    Also returns the per-sim mins/maxs, from which an unrotated pair's overlap shape can be drawn directly.
     """
     mins = np.empty((len(all_stack_props), 3))
     maxs = np.empty((len(all_stack_props), 3))
@@ -1811,17 +1648,14 @@ def _sweep_candidate_pairs(mins, maxs, chunk_candidates=4_000_000):
     """Index pairs whose axis-aligned boxes overlap, by sweeping one axis rather than comparing
     every box with every other - the same pairs, in the same (i < j, row-major) order.
 
-    All-pairs is n^2 in time and memory: at 34k sources, a 1.2-billion-element comparison per
-    axis and ~7GB of temporaries, for the ~0.01% of pairs that turn out to be neighbours.
-    Sorted by one axis' lower bound, each box is tested only against those starting before it
-    ends - for tiles in a grid, a handful each.
+    All-pairs is n^2 in time and memory; sorted by one axis' lower bound, each box is tested only against those
+    starting before it ends.
     """
     n = len(mins)
     if n < 2:
         return np.empty((0, 2), dtype=int)
 
-    # sweep whichever axis actually separates these boxes - a mosaic one section thick gains
-    # nothing from z. Counting each axis' candidates outright beats guessing from extents.
+    # sweep whichever axis separates these boxes best (a single-section mosaic gains nothing from z), by count
     best = None
     for axis in range(mins.shape[1]):
         order = np.argsort(mins[:, axis], kind='stable')
@@ -1838,7 +1672,7 @@ def _sweep_candidate_pairs(mins, maxs, chunk_candidates=4_000_000):
     blocks = []
     begin = 0
     while begin < n:
-        # at tens of millions of candidates (default pairing on a stack) this runs for minutes: a cancel stops it
+        # a large stack can take minutes here: let a cancel stop it
         raise_if_cancelled()
         # never fewer than one box: one whose own candidates exceed the budget still goes whole
         budget = (cumulative[begin - 1] if begin > 0 else 0) + chunk_candidates
@@ -1915,7 +1749,7 @@ def _tile_polygon_2d(stack_props):
 
 def _clip_convex_polygons_2d(subject, clip):
     """Sutherland-Hodgman: the intersection of two convex counter-clockwise polygons, or None where they do not
-    overlap in an area. The exact test's answer in 2D, without its linear program (4.7ms a pair on the HPC)."""
+    overlap in an area. The exact test's answer in 2D, without its linear program."""
     output = list(subject)
     for index in range(len(clip)):
         if not output:
@@ -1948,10 +1782,8 @@ def _clip_convex_polygons_2d(subject, clip):
 
 
 def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtype=np.uint8):
-    # accepts sims, msims or stack properties. Geometry is all this needs, and the common path
-    # (broad phase + the AABB fast path below) works off stack properties alone - only
-    # multiview_stitcher's exact overlap test insists on sims, so those are built, per pair that
-    # actually reaches it, from the same properties (see get_pair_sim).
+    # sims, msims or stack properties: only multiview_stitcher's exact test needs sims, built per pair from the
+    # stack properties where none were given (get_pair_sim)
     all_stack_props = stack_props_from_any(items, transform_key)
     sims = None if any(isinstance(item, dict) for item in items) else sims_from_sims_or_msims(items)
 
@@ -1996,10 +1828,8 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
         shape_z_position = props1['origin'].get('z', 0)
         process_pair = True
 
-        # Multi-section 2D data is promoted to singleton-z images for napari.
-        # Calculate same-section overlaps in 2D because zero-thickness 3D
-        # boxes produce invalid face normals in _get_overlap_bboxes.  The z
-        # coordinate is restored to the resulting shape below.
+        # promoted 2D sections (singleton z) overlap only within a section, tested in 2D: zero-thickness 3D
+        # boxes give invalid face normals in _get_overlap_bboxes
         if (
             force_2d
             and props1['shape'].get('z') == 1
@@ -2013,9 +1843,7 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
         if aabbs is not None and axis_aligned[pair[0]] and axis_aligned[pair[1]]:
             mins, maxs = aabbs
             if force_2d:
-                # sim1/sim2 still carry their (size-1) 'z' dim here - mins/maxs column 0 is that
-                # z axis (matching the exact path's own points[:, 1:] below), columns 1/2 the
-                # real spatial extent
+                # the size-1 'z' is still there: mins/maxs column 0 is z, columns 1/2 the real extent
                 axes = slice(1, 3)
             elif 'z' in props1['shape'] and 'z' in props2['shape']:
                 axes = slice(0, 3)
@@ -2023,8 +1851,7 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
                 axes = slice(0, 2)
             lo = np.maximum(mins[pair[0]], mins[pair[1]])[axes]
             hi = np.minimum(maxs[pair[0]], maxs[pair[1]])[axes]
-            # broad_phase already guarantees lo <= hi in every axis (that's its own overlap
-            # condition) - always a valid, non-empty box, no "no overlap" case to catch here
+            # the broad phase guarantees lo <= hi in every axis, so the box is never empty
             corners = np.array(list(itertools.product(*zip(lo, hi))))
             shape = _minimal_bb_vertices(corners)
             n_fast_shapes += 1
@@ -2069,10 +1896,7 @@ def create_overlap_shapes(items, transform_key, pairs=None, force_2d=False, dtyp
             n_exact_tests += 1
             exact_test_start = time.time()
             try:
-                # catch in case there is no overlap - _get_overlap_bboxes runs an exact
-                # (scipy.optimize.linprog-based) intersection test per pair, a solver call that
-                # costs low-single-digit milliseconds even for a trivial problem - the dominant
-                # cost here once thousands of pairs reach it, see the logging below
+                # no overlap raises AttributeError; this linprog solve per pair is the dominant cost here
                 result = _get_overlap_bboxes(
                     sim1,
                     sim2,
@@ -2201,9 +2025,7 @@ def squeeze_sim_transform_time(sim, transform_key):
 
 
 def promote_sim_to_3d(sim, z_position):
-    # a level with no native 'z' gets a size-1 one at its own z_position and every transform
-    # widened to 3D: the shared body behind make_msims_3d()'s per-level promotion, also used by
-    # build_source_shape_sim(), which builds a plain sim so map_msim_levels() does not apply
+    # a level with no native 'z' gets a size-1 one at z_position, and every transform is widened to 3D
     if 'z' not in sim.dims:
         sim = sim.expand_dims({'z': [z_position]}, axis=-3)
     for transform_key in si_utils.get_tranform_keys_from_sim(sim):
@@ -2215,14 +2037,10 @@ def promote_sim_to_3d(sim, z_position):
 
 
 def widen_xaffine_to_3d(transform):
-    """A 2D affine widened into 3D, its own block embedded in a 3D identity - returned unchanged
-    if it is already 3D. build_source_stack_props() widens the same way, on the plain array.
+    """A 2D affine embedded in a 3D identity, or unchanged if already 3D.
 
-    Placed by index into a plain numpy identity rather than by label into an xarray one: the
-    label-based .loc assignment this replaces goes through xarray's alignment machinery, which
-    cost 3.3ms per call - and make_msims_3d() makes one call per pyramid level of every source,
-    so it was the larger half of promoting a 2D stack. The index mapping is derived from the
-    same coordinate labels .loc matched on, so the result is identical (asserted by test).
+    Placed by index into a numpy identity, not by label with .loc, whose xarray alignment is costly per pyramid
+    level; the indices come from the coordinate labels, so the result is the same.
     """
     if 4 in transform.shape:
         return transform
@@ -2243,20 +2061,13 @@ def widened_affine_matrix(transform):
 
 
 def msim_is_already_3d(msim):
-    """True when every level of `msim` already has a 'z' dim and a 3D transform - i.e. promoting
-    it would produce exactly what is already there.
-
-    A msim reaches make_msims_3d() more than once on the ordinary preview path: the viewer
-    promotes each source's msim, takes a preview sub-pyramid from the result, and hands that to
-    fuse(), which promotes again because the sources still sit at several z positions. The
-    second pass rebuilds every level of every source to arrive back at the same geometry.
-    """
+    """True when every level of `msim` already has a 'z' dim and a 3D transform, so promoting it would change
+    nothing - a msim can reach make_msims_3d() more than once on the preview path."""
     for scale_key in msi_utils.get_sorted_scale_keys(msim):
         dataset = msim[scale_key].ds
         if 'z' not in dataset['image'].dims:
             return False
-        # each transform is its own data variable alongside 'image' (e.g. 'affine_metadata',
-        # 3x3 while the sim is 2D, 4x4 once widened) - the same test widen_xaffine_to_3d applies
+        # transforms are the data variables besides 'image': 3x3 while 2D, 4x4 once widened
         transforms = [name for name in dataset.data_vars if name != 'image']
         if not transforms:
             return False
@@ -2280,8 +2091,8 @@ def make_msims_3d(msims, z_scale=None, positions=None):
 
 
 def _promote_msim_to_3d(msim, z_position):
-    """promote_sim_to_3d() on each level, done on the levels' own datasets: the same tree
-    (asserted identical), without the sim <-> msim round trip per level, most of 9 minutes at 34k."""
+    """promote_sim_to_3d() on each level, done on the levels' own datasets: the same tree, without a
+    sim <-> msim round trip per level."""
     nodes = {}
     for scale_key in msi_utils.get_sorted_scale_keys(msim):
         dataset = msim[scale_key].ds
@@ -2321,10 +2132,8 @@ def _relabel_msim_channels(msim, labels):
 
 
 def msim_is_2d(msim):
-    """Whether this msim is already 2D - no z dim, and a 2D (3x3) affine on every transform.
-    make_msims_2d() rebuilds a msim's whole DataTree, which for a few thousand sources is
-    minutes of pure xarray object construction, so it is worth not rebuilding what is already
-    in the shape asked for."""
+    """Whether `msim` is already 2D - no z dim and a 3x3 affine on every transform - so make_msims_2d() need not
+    rebuild its whole DataTree."""
     sim = msi_utils.get_sim_from_msim(msim, scale='scale0')
     if 'z' in sim.dims:
         return False
@@ -2358,12 +2167,8 @@ def make_msims_2d(msims):
 
 
 def extract_sims_from_msims(msims, sources, transform_key, target_scale):
-    """Extract one working-resolution sim per source msim - the nearest native pyramid level to
-    `target_scale`, resized only when no native level matches exactly. For plain scale0 extraction,
-    use msi_utils.get_sim_from_msim(msim, scale='scale0') directly instead - this is only for the
-    on-demand resize case (preprocess()'s `scale` override, a preview resolution smaller than any
-    native level). msims are already properly chunked at creation (see ImageSource.get_msim) -
-    only a genuinely resized array needs rechunking here.
+    """One working-resolution sim per source msim: the native level nearest `target_scale`, resized when none
+    matches exactly. For plain scale0, use msi_utils.get_sim_from_msim(msim, scale='scale0').
     """
     sims = []
     for source, msim in zip(sources, msims):
@@ -2376,31 +2181,25 @@ def extract_sims_from_msims(msims, sources, transform_key, target_scale):
             translation = si_utils.get_origin_from_sim(sim)
             affine = si_utils.get_affine_from_sim(sim, transform_key)
             channel_labels = list(sim.coords['c'].values) if 'c' in sim.coords else None
-            # `scale` (from get_level_from_scale) only covers dims this source's own pixel size
-            # has - a 2D source stacked into a 3D output_order (output has 'z', source doesn't)
-            # would otherwise lose 'z' spacing entirely here, since get_sim_from_array requires
-            # `scale` to be either None or cover every spatial dim already on the array
+            # `scale` covers only the source's own pixel-size dims, but get_sim_from_array needs every spatial
+            # dim (e.g. 'z' for a 2D source in a 3D output_order)
             full_scale = si_utils.get_spacing_from_sim(sim)
             if scale:
                 full_scale.update(scale)
             sim = si_utils.get_sim_from_array(
                 data, dims=list(sim.dims), scale=full_scale, translation=translation,
                 affine=affine, transform_key=transform_key, c_coords=channel_labels)
-            # resize() builds a brand new array - unlike a native level (already chunked at
-            # msim-creation time), this one genuinely needs its own rechunk check
+            # native levels are chunked at msim creation; a resized array is new and needs its own check
             sim = rechunk_if_monolithic(sim, default_chunk_size)
         sims.append(sim)
     return sims
 
 
 def drop_finest_msim_level(msims, levels=1):
-    """Each msim minus its `levels` finest levels, as a genuine (shallower) sub-pyramid - pure
-    msim slicing, the same construction select_msim_subpyramid_at_scale() uses. Returns
-    (msims, changed); an msim already down to a single level is returned untouched, and
-    `changed` is False when none of them could be reduced any further.
+    """Each msim minus its `levels` finest levels, as a shallower sub-pyramid. Returns (msims, changed); a
+    single-level msim is returned untouched, and `changed` is False when none could be reduced.
 
-    Several levels at once, rather than a pass each: every pass rebuilds all of them, which on
-    a 34k-source project is minutes of DataTree construction per level dropped.
+    Several levels at once rather than a pass each, as every pass rebuilds all msims.
     """
     result = []
     changed = False
@@ -2418,20 +2217,12 @@ def drop_finest_msim_level(msims, levels=1):
 
 
 def coarsen_msims(msims, factor=2):
-    """Each msim as a single coarser level, by striding its own coarsest level in x/y.
+    """Each msim as a single coarser level, by striding its coarsest level in x/y - for msims with no coarser level
+    left to drop to.
 
-    The fallback for reducing something that has no coarser level left to drop to - a
-    preprocessed msim, say, which pre-processing has already reduced to one level. Strided
-    rather than mean-downsampled for the same reason build_missing_pyramid_levels() is: this
-    only ever feeds a preview, and a mean would add a full reduction pass over data that is
-    about to be thrown away at display resolution.
-
-    x/y only. The output's z extent comes from how many distinct heights the sources sit at,
-    not from any source's own z, so striding z would not shrink the fused result - it would
-    only throw away sections (or z resolution, for a real volume) that napari steps through.
-
-    Returns (msims, changed); `changed` is False when striding could not make anything smaller,
-    which ends the caller's loop rather than spinning on it.
+    Strided rather than mean-downsampled, as it only feeds a preview. x/y only: the output's z extent comes from
+    the sources' heights, so striding z would only lose sections. Returns (msims, changed); `changed` is False
+    when nothing got smaller.
     """
     result = []
     changed = False
@@ -2445,20 +2236,15 @@ def coarsen_msims(msims, factor=2):
             result.append(msim)
             continue
         changed = True
-        # the transforms travel as their own data variables alongside 'image' and are
-        # resolution-independent, so they carry over untouched; striding takes every factor'th
-        # coordinate, which leaves the origin where it was and scales the spacing to match
+        # transforms are resolution-independent and carry over; striding the coordinates keeps the origin and
+        # scales the spacing
         transforms = {name: dataset[name] for name in dataset.data_vars if name != 'image'}
         result.append(DataTree.from_dict({'scale0': xr.Dataset({'image': coarser, **transforms})}))
     return result, changed
 
 def estimate_fused_size(msims, transform_key, output_spacing_method=None, z_scale=None, z_positions=None):
-    """Bytes the fused output of `msims` would occupy, by the same reckoning MVSRegistration.
-    fuse() reports as 'Fusing ...' - the output stack's own shape times the source dtype.
-
-    Metadata only (calc_output_properties reads per-sim spacing/origin/affine, never pixel
-    data), so it is cheap enough to ask before committing to a fusion: measured at 0.27s for
-    328 sources, ~4s for 4733.
+    """(bytes, output properties) of fusing `msims`: the output shape times the source dtype. Metadata only, so
+    cheap enough to ask before committing to a fusion.
     """
     properties = calc_output_properties(msims, transform_key,
                                         output_spacing_method=output_spacing_method,
@@ -2480,10 +2266,9 @@ def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=No
     """mv_graph.build_view_adjacency_graph_from_msims() for known pairs: the same nodes and
     'stack_props', and an edge with its 'overlap' for each pair that overlaps.
 
-    That solves a linear program per pair, 2h16 for 233k pairs on the HPC. Boxes aligned with the
-    axes - every source before registration, which only translates them - overlap exactly in
-    their bounding boxes' intersection, so all pairs are measured at once; any other box hands
-    the whole graph to multiview_stitcher as before.
+    That solves a linear program per pair; boxes aligned with the axes (every source before registration) overlap
+    exactly in their bounding boxes' intersection, so all pairs are measured at once. Any other box defers the
+    whole graph to multiview_stitcher.
     """
     stack_props = msims_stack_props(msims, transform_key)
     if overlap_tolerance is not None:
@@ -2513,20 +2298,10 @@ def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=No
 
 
 def build_pairs_graph(stack_props, pairs, overlaps=None):
-    """The view adjacency graph for a set of pairs that is already known.
+    """The view adjacency graph for already known pairs, without multiview_stitcher's linear program per pair.
 
-    multiview_stitcher's build_view_adjacency_graph_from_msims() derives the pairs itself, and
-    even when handed them it still solves a linear program per pair to measure the overlap
-    (4.1ms each locally; 12823 pairs on a resumed 4733-source project). Resuming a saved pair
-    registration needs none of that: the pairs come from the saved mapping, and every edge
-    attribute that matters - the transform, its quality, its bounding box - is written straight
-    over the top of whatever the graph build put there.
-
-    So the graph is built directly: the same nodes carrying the same 'stack_props' (cheap
-    metadata, no pixel data), the same edges, and an 'overlap' weight taken from `overlaps` when
-    the caller has one (the saved bbox gives it for free). Downstream reads that weight as
-    .get('overlap', 1.0) - global_optimization, the default resolution method, ignores it
-    entirely - so an edge without one behaves as it always did.
+    Nodes carry 'stack_props'; an edge gets an 'overlap' weight only from `overlaps`. Downstream reads it as
+    .get('overlap', 1.0), so an edge without one is weighted 1.
     """
     graph = nx.Graph()
     graph.add_nodes_from(range(len(stack_props)))
@@ -2540,23 +2315,12 @@ def build_pairs_graph(stack_props, pairs, overlaps=None):
 def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_max_bytes,
                                output_spacing_method=None, z_scale=None, max_steps=16,
                                label='preview', z_positions=None):
-    """`msims` stepped to coarser pyramid levels until fusing them would produce at most
-    max_bytes - the guard that keeps an on-screen preview from fusing an arbitrarily large
-    stack.
+    """`msims` stepped to coarser levels until fusing them would produce at most max_bytes, keeping an on-screen
+    preview from fusing an arbitrarily large stack.
 
-    A preview occupies a few hundred pixels on screen whatever is behind it, so the size of the
-    fused result is the thing worth bounding, rather than any particular way of choosing a
-    level. preview_scale cannot do this job: it picks a level relative to each source's own
-    pyramid, so the result still scales with the dataset, and the post-pre-processing preview
-    is built from register_msims and never consults it at all. Working from the fused size
-    instead covers both, and needs no per-source assumptions: it just drops the finest level
-    while the result is too large and there is still a coarser one to drop to.
-
-    Sources whose pyramid runs out first simply stop contributing reductions - hence the
-    `changed` check, which ends the loop when nothing moved rather than spinning.
-
-    z_positions: 2D sources at several heights, sized as if promoted to 3D (see
-    calc_output_properties) - the levels kept are the same, and nothing is promoted.
+    Bounds the fused size itself, as preview_scale picks levels per source pyramid and so still scales with the
+    dataset. Stops when nothing can be reduced further. z_positions: 2D sources at several heights, sized as if
+    promoted to 3D (see calc_output_properties) without promoting them.
     """
     size, _ = estimate_fused_size(msims, transform_key, output_spacing_method, z_scale, z_positions)
     if size <= max_bytes:
@@ -2564,11 +2328,8 @@ def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_m
     original_size = size
     reduced = msims
     for _ in range(max_steps):
-        # how far over budget decides how many levels to drop, rather than dropping one and
-        # asking again: each round rebuilds every msim and re-estimates over all of them, which
-        # on a 34k-source project is minutes apiece. A level halves x and y, so it quarters the
-        # fused result - the estimate below still has the last word, since sources whose pyramid
-        # runs out first reduce by less than that.
+        # drop as many levels as the excess needs (each quarters the fused size), as every round rebuilds all
+        # msims; the estimate below has the last word, since a short pyramid reduces by less
         steps = max(int(np.ceil(np.log(size / max_bytes) / np.log(4))), 1)
         # a real coarser level where one exists (free - it is already in the file), otherwise
         # strided down for display only
@@ -2590,24 +2351,12 @@ def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_m
     return reduced
 
 def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn_factor=4):
-    """Select, per source, every native pyramid level from the nearest match to `target_scale`
-    down to the coarsest, as a genuine (smaller) sub-pyramid msim - pure msim slicing, no sim
-    extraction and no resize to an exact match.
+    """Per source, every native pyramid level from the nearest match to `target_scale` to the coarsest, as a
+    sub-pyramid msim - pure slicing, no resize.
 
-    A source whose pyramid does not reach `target_scale` silently yields the finest level it
-    does have, and everything downstream then fuses (and holds in memory) that much more than
-    was asked for: the residual factor multiplies the output's linear size, so falling short by
-    8x is 64x the pixels per plane to fuse. That is invisible in the result - it just looks
-    slow - so log it once, with the shortfall, whenever it exceeds shortfall_warn_factor.
-
-    The shortfall is measured only over dims the source could actually have downsampled. A
-    size-1 dim (the 'z' every OME-Zarr tile carries, say) is identical at every level, so its
-    residual is always the whole requested factor - counting it would report a 16x shortfall for
-    a perfectly good pyramid whose x/y reach 8 of the 16 asked for.
-
-    A msim built already truncated (MVSRegistration.ensure_msims' target_scale) is shorter than
-    its source's own pyramid, and that difference is where it starts - so it is sliced from
-    there, not from the source's level 0 all over again.
+    A pyramid that does not reach `target_scale` silently makes fusion cost the square of the shortfall more, so a
+    shortfall of at least shortfall_warn_factor is logged, measured only over dims the pyramid reduces. A msim
+    built already truncated is sliced from where it starts, not from the source's level 0.
     """
     result = []
     residuals = []
@@ -2617,9 +2366,7 @@ def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn
         # however many native levels this msim is missing is where it already starts
         from_level = max(len(source.scale_factors) - len(scale_keys), 0) if source.scale_factors else 0
         level = max(level - from_level, 0)
-        # only dims this pyramid actually reduces: one whose coarsest level is no smaller than
-        # its finest keeps the full target factor as its residual however complete the pyramid
-        # is, which had every OME-Zarr source report the maximum possible shortfall
+        # only dims this pyramid reduces: one constant across levels always keeps the full target factor
         coarsest = source.scale_factors[-1] if source.scale_factors else {}
         reducible = [value for dim, value in residual.items() if coarsest.get(dim, 1) > 1]
         residuals.append(max(reducible) if reducible else 1)
@@ -2638,10 +2385,8 @@ def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn
 
 
 def copy_transforms_to_msims(sources, target_msims, transform_key):
-    """Copy `transform_key`'s affine from each `sources[i]` (a sim or msim) onto every scale of
-    the corresponding `target_msims[i]` (msi_utils.set_affine_transform, one call per target - no
-    per-level loop needed, the transform is the same at every scale). A msim source reads its
-    transform directly (msi_utils.get_transform_from_msim) - no sim round-trip either.
+    """Copy `transform_key`'s affine from each of `sources` (sims or msims) onto every scale of the matching
+    `target_msims`, adapted to the targets' dims.
     """
     dims = list(si_utils.get_origin_from_sim(get_msim_image0(target_msims[0])).keys())
     for source, target_msim in zip(sources, target_msims):
@@ -2666,8 +2411,8 @@ def copy_transforms_to_msims(sources, target_msims, transform_key):
 
 
 def set_msim_affine(msim, xaffine, transform_key, base_transform_key=None):
-    """msi_utils.set_affine_transform at a third of the cost: one dataset per level, not a DataTree item set, whose
-    alignment took 9ms a source - minutes at 34k sources."""
+    """msi_utils.set_affine_transform, assigning one dataset per level rather than a DataTree item, whose alignment
+    is costly per source."""
     if base_transform_key is not None:
         xaffine = param_utils.rebase_affine(xaffine,
                                             msi_utils.get_transform_from_msim(msim, transform_key=base_transform_key))

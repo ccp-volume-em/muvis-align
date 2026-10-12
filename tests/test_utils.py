@@ -9,7 +9,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, get_metadata_z_scale, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
+    rolling_map, thread_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
     eval_context, convert_to_um, get_unique_file_labels, strip_common_path_prefix, format_phase_timing, \
     path_param_to_text
 
@@ -198,17 +198,6 @@ def test_timed_calls_records_each_call_and_keeps_the_signature():
     assert all(time_ >= 0 for time_ in times + cpu_times)
     # multiview_stitcher picks how to call a registration function by its keywords
     assert has_keyword(timed, 'fixed_data') and has_keyword(timed, 'moving_data')
-
-
-def test_timed_module_functions_times_calls_and_restores():
-    import types
-    module = types.SimpleNamespace(score=lambda value: value + 1)
-    original = module.score
-    with timed_module_functions(module, ['score']) as cpu_times:
-        assert module.score(1) == 2
-        module.score(2)
-    assert len(cpu_times['score']) == 2
-    assert module.score is original
 
 
 def test_rolling_map_yields_every_item_with_a_bounded_number_submitted():
@@ -655,3 +644,17 @@ def test_items_in_worker_processes_report_busy_workers_not_a_gil_verdict():
 ], ids=['number', 'source', 'no z', 'not a dict', 'one per file', 'none per file', 'a file'])
 def test_metadata_z_scale(metadata, expected):
     assert get_metadata_z_scale(metadata) == expected
+
+
+@pytest.mark.parametrize('workers', [1, 4])
+def test_thread_map_and_rolling_map_run_in_the_calling_thread_with_one_worker(workers):
+    import threading
+    threads = []
+
+    def record(item):
+        threads.append(threading.get_ident())
+        return item * 2
+
+    assert thread_map(record, range(6), workers) == [0, 2, 4, 6, 8, 10]
+    assert sorted(dict(rolling_map(record, range(6), workers)).items()) == [(item, item * 2) for item in range(6)]
+    assert (set(threads) == {threading.get_ident()}) == (workers == 1)

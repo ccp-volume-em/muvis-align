@@ -26,7 +26,7 @@ def scalar(value, default=1.0):
 
 def find_reference_view(graph, weight_key='quality'):
     """The node with the largest summed edge weight, as mv_graph.get_node_with_maximal_edge_weight_sum_from_graph
-    picks it, in one pass over the edges rather than one per node (hours at 34k nodes)."""
+    picks it, in one pass over the edges rather than one per node."""
     totals = dict.fromkeys(graph.nodes, 0.0)
     for node1, node2, data in graph.edges(data=True):
         weight = data[weight_key]
