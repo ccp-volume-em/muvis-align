@@ -15,7 +15,8 @@ from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_interactive_preview_scale
 from muvis_align.image.util import (build_source_stack_props, coarsest_level_within, combine_msims_as_channels,
-                                   get_display_range, get_dtype_contrast_limits, wrap_sims_as_msims)
+                                   get_display_level, get_display_range, get_dtype_contrast_limits,
+                                   wrap_sims_as_msims)
 from muvis_align.util import parse_scale, pixel_size_to_um, thread_map
 
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
@@ -168,15 +169,17 @@ def _read(image):
 
 
 def _contrast_limits(readers, max_sources=default_contrast_sources, workers=default_plane_readers):
-    """Per channel, the display range (get_display_range) of the coarsest level of up to `max_sources` readers spread
-    evenly, None where there is nothing to set it; empty without readers."""
+    """Per channel, the display range (get_display_range) and level (get_display_level) of the coarsest level of up
+    to `max_sources` readers spread evenly, None where there is nothing to set them: (ranges, levels), empty without
+    readers."""
     readers = [reader for reader in readers if reader is not None]
     if not readers:
-        return []
+        return [], []
     sample = [readers[int(index)] for index in np.linspace(0, len(readers) - 1, min(len(readers), max_sources))]
     datas = thread_map(lambda reader: _read(_level_image(reader, len(reader.pixel_sizes) - 1)), sample, workers)
-    return [get_display_range(np.concatenate([data[channel].ravel() for data in datas]))
-            for channel in range(datas[0].shape[0])]
+    channel_values = [np.concatenate([data[channel].ravel() for data in datas]) for channel in range(datas[0].shape[0])]
+    ranges = [get_display_range(values) for values in channel_values]
+    return ranges, [get_display_level(values, display_range) for values, display_range in zip(channel_values, ranges)]
 
 
 def _source_indices(count, plane_spacing, edge, spacing, size):
@@ -215,7 +218,8 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     faithfully: a rotated transform, 2D and 3D sources together, or sources with differing channels.
     `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place.
     `channel_labels` (one a single-channel source) make each source a channel of its own, on the same grid, as fuse()
-    does. attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one.
+    does. attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one;
+    attrs['display_levels'] where its typical value shows in it (get_display_level).
     `workers`: tile reads at once (one: none in other threads, and no planes built ahead)."""
     if readers is None:
         readers = [SourceLevels(source) for source in sources]
@@ -313,6 +317,11 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     msim.attrs['section_planes'] = section_planes
     dtype_limits = get_dtype_contrast_limits(dtype)
     channel_readers = [[reader] for reader in readers] if channel_labels else [readers]
-    msim.attrs['contrast_limits'] = [limits or dtype_limits for group in channel_readers
-                                     for limits in (_contrast_limits(group, workers=workers) or [None] * plane_shape[0])]
+    ranges, levels = [], []
+    for group in channel_readers:
+        group_ranges, group_levels = _contrast_limits(group, workers=workers)
+        ranges += group_ranges or [None] * plane_shape[0]
+        levels += group_levels or [None] * plane_shape[0]
+    msim.attrs['contrast_limits'] = [display_range or dtype_limits for display_range in ranges]
+    msim.attrs['display_levels'] = levels
     return msim

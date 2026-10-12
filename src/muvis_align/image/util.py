@@ -582,19 +582,32 @@ def get_display_range(values):
     return [low, high if high > low else low + 1]
 
 
+def get_display_level(values, display_range):
+    """Where the typical value of `values` (their median, zeros left out as in get_display_range) shows within
+    `display_range`, 0 (black) to 1 (full colour); None without either."""
+    values = np.asarray(values).ravel()
+    values = values[values != 0]
+    if not values.size or display_range is None:
+        return None
+    low, high = display_range
+    return float(np.clip((np.median(values) - low) / (high - low), 0, 1))
+
+
 def get_dtype_contrast_limits(dtype):
     if np.issubdtype(dtype, np.integer):
         return [0, np.iinfo(dtype).max]
     return [0.0, 1.0]
 
 
-def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max_tasks, per_channel=False):
+def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max_tasks, per_channel=False,
+                        with_levels=False):
     """Display range (see get_display_range) from the coarsest pyramid level only, for add_image()'s
     contrast_limits: without it napari computes a min/max itself, eagerly running that level's lazy graph.
 
     cheap=True returns the dtype range instead, computing nothing; the same fallback applies when the coarsest
     level's graph exceeds max_tasks, as a level fused from many sources is costly however few pixels it has.
-    per_channel=True gives a list, one range per channel ('c').
+    per_channel=True gives a list, one range per channel ('c'); with_levels=True also each one's display level
+    (get_display_level), None where nothing was computed: (limits, levels).
     """
     coarsest = get_msim_level_data(msim)[-1]
     dims = get_msim_image0(msim).dims
@@ -608,12 +621,16 @@ def get_contrast_limits(msim, cheap=False, max_tasks=default_contrast_limits_max
             cheap = True
     if cheap:
         limits = [get_dtype_contrast_limits(coarsest.dtype)] * nchannels
+        levels = [None] * nchannels
     else:
         values = np.asarray(dask.compute(coarsest)[0])
         channel_values = np.moveaxis(values, channel_axis, 0) if channel_axis is not None else [values]
-        limits = [get_display_range(channel) or get_dtype_contrast_limits(coarsest.dtype)
-                  for channel in channel_values]
-    return limits if per_channel else limits[0]
+        ranges = [get_display_range(channel) for channel in channel_values]
+        levels = [get_display_level(channel, display_range) for channel, display_range in zip(channel_values, ranges)]
+        limits = [display_range or get_dtype_contrast_limits(coarsest.dtype) for display_range in ranges]
+    if not per_channel:
+        limits, levels = limits[0], levels[0]
+    return (limits, levels) if with_levels else limits
 
 
 def get_msim_image0(msim, level=0):

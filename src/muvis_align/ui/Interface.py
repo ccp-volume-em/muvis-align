@@ -42,7 +42,8 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase
+    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase, \
+    background_luminance, contrasting_color
 
 
 patch_shapes_text_coords()
@@ -976,6 +977,7 @@ class Interface:
             viewer.layers.clear()
         if viewer is not None and viewer is getattr(self, 'viewer', None):
             clear_napari_dask_cache()
+            self._view_levels = None
 
     def _create_napari_shapes(self, transform_key, force_2d=False, progress_factory=None, weight=1):
         # `weight` is this step's share of the caller's bar, split between sub-steps by rough cost
@@ -1092,9 +1094,21 @@ class Interface:
                                           extra_metadata=self.extra_metadata)
         return fused_msim
 
+    def _view_background_luminance(self, viewer):
+        """The luminance of the image the main viewer shows (background_luminance), None for another viewer or none."""
+        if viewer is not getattr(self, 'viewer', None) or getattr(self, '_view_levels', None) is None:
+            return None
+        levels, colors = self._view_levels
+        if levels is not None and viewer.dims.ndisplay == 3:
+            # a volume renders as the brightest value along each ray, not the typical one
+            levels = [1.0] * len(levels)
+        return background_luminance(levels, colors)
+
     def _update_view_add_shapes(self, viewer, shapes, refs, labels, face_colors, layer_name,
                                 show_labels=True):
         # reads source metadata, not view_msims, so drawing shapes never forces the msim build
+        # labels and edges stand out against the image under them, if this viewer shows one
+        line_color = contrasting_color(self._view_background_luminance(viewer))
         bb_supported = True
         if isinstance(viewer, ViewerWidget):
             viewer = viewer._qtwidget._viewer_model
@@ -1108,7 +1122,7 @@ class Interface:
         if len(shapes) > 0:
             # depth-tested blending hides boxes inside the opaque fused volume
             blending = 'translucent_no_depth'
-            edge_color = 'cyan'
+            edge_color = line_color
             if do_3d:
                 # a polygon is one flat face, so a box is 6 quads plus a 'path' wireframe; corners 0-3 are
                 # one face and 4-7 the opposite, same winding
@@ -1149,7 +1163,7 @@ class Interface:
                 shape_type = ['polygon'] * len(face_shapes) + ['path'] * len(wire_shapes)
                 # color lists must match in length or napari falls back to white; a path's face color is a placeholder
                 face_color = face_only_colors + [(0, 0, 0)] * len(wire_shapes)
-                edge_color = [(0, 0, 0)] * len(face_shapes) + [(0, 1, 1)] * len(wire_shapes)
+                edge_color = ['#000000'] * len(face_shapes) + [line_color] * len(wire_shapes)
                 edge_width = [0] * len(face_shapes) + [wire_width] * len(wire_shapes)
                 refs = face_refs + refs
                 labels = face_labels + labels
@@ -1160,7 +1174,7 @@ class Interface:
                 face_color = face_colors
 
             # half napari's default size, which reads oversized; the small overview's labels would be unreadable
-            text = {'string': '{labels}', 'size': 6} if show_labels else None
+            text = {'string': '{labels}', 'size': 6, 'color': line_color} if show_labels else None
             # 'labels' only feeds the text; 'refs' identifies the shapes either way
             features = {'refs': refs, 'labels': labels} if show_labels else {'refs': refs}
             layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
@@ -1211,8 +1225,9 @@ class Interface:
         data = get_msim_level_data(fused)
         with Timer('_napari_view_add_fused_data: get_contrast_limits', verbose=self._timing_verbose()):
             # the quick overview brings its own, from a sample of its sources
-            channel_limits = (fused.attrs.get('contrast_limits')
-                              or get_contrast_limits(fused, cheap=cheap, per_channel=True))
+            channel_limits, levels = fused.attrs.get('contrast_limits'), fused.attrs.get('display_levels')
+            if not channel_limits:
+                channel_limits, levels = get_contrast_limits(fused, cheap=cheap, per_channel=True, with_levels=True)
         # the single-channel overview has c of size 1 even when the metadata lists more channels
         if len(channels) > 1 and image0.sizes.get('c', 1) == len(channels):
             channel_axis = image0.dims.index('c')
@@ -1227,6 +1242,10 @@ class Interface:
             name = channels[0].get('label') if len(channels) == 1 else None
             colormap = channels[0].get('color', (1, 1, 1, 1)) if len(channels) == 1 else None
             contrast_limits = channel_limits[0]
+        if viewer is getattr(self, 'viewer', None):
+            # the shapes drawn over it pick their colour from this (_update_view_add_shapes)
+            colors = colormap if channel_axis is not None else [colormap or (1, 1, 1)]
+            self._view_levels = (levels[:len(colors)] if levels else None, colors)
         with Timer('_napari_view_add_fused_data: add_image', verbose=self._timing_verbose()):
             viewer.add_image(data, name=name or layer_name, multiscale=True, channel_axis=channel_axis,
                              colormap=colormap, contrast_limits=contrast_limits,

@@ -658,3 +658,19 @@ def test_thread_map_and_rolling_map_run_in_the_calling_thread_with_one_worker(wo
     assert thread_map(record, range(6), workers) == [0, 2, 4, 6, 8, 10]
     assert sorted(dict(rolling_map(record, range(6), workers)).items()) == [(item, item * 2) for item in range(6)]
     assert (set(threads) == {threading.get_ident()}) == (workers == 1)
+
+
+@pytest.mark.parametrize('levels, colors, expected', [
+    ([0.9], [(1, 1, 1)], '#000080'),
+    ([0.2], [(1, 1, 1)], '#00ffff'),
+    # a bright level in a dark colour (blue) still makes a dark background
+    ([0.9], [(0, 0, 1)], '#00ffff'),
+    # channels add up: two half-bright channels in green and red
+    ([0.6, 0.6], [(0, 1, 0), (1, 0, 0)], '#000080'),
+    ([0.9, None], [(1, 1, 1), (1, 1, 1)], '#00ffff'),
+    (None, [(1, 1, 1)], '#00ffff'),
+], ids=['bright grey', 'dark grey', 'bright blue', 'two channels', 'a level unknown', 'nothing read'])
+def test_shape_lines_contrast_with_the_image_under_them(levels, colors, expected):
+    from muvis_align.util import background_luminance, contrasting_color
+    assert contrasting_color(background_luminance(levels, colors)) == expected
+

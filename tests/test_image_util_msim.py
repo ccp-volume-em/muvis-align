@@ -349,3 +349,14 @@ def test_a_natively_3d_source_is_left_alone_too():
 
     assert result[0] is msim
     assert result[0]['scale0'].ds['image'].sizes['z'] == 4
+
+
+def test_the_display_level_is_where_the_typical_nonzero_value_shows():
+    from muvis_align.image.util import get_display_level
+    values = np.array([0, 0, 10, 20, 30])
+
+    assert get_display_level(values, [10, 30]) == 0.5
+    assert get_display_level(values, [0, 10]) == 1.0
+    assert get_display_level(np.zeros(4), [0, 1]) is None
+    assert get_display_level(values, None) is None
+

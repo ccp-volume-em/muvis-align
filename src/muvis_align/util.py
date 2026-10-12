@@ -83,6 +83,23 @@ def find_file_list_index(filenames, match):
     return None
 
 
+def contrasting_color(background):
+    """A colour (hex: napari reads an RGB tuple as three colours) that stands out on a background of `background`
+    luminance (0 black to 1 white): dark on a bright one, cyan otherwise or when it is unknown (None)."""
+    if background is not None and background > 0.5:
+        return '#000080'
+    return '#00ffff'
+
+
+def background_luminance(levels, colors):
+    """The luminance channels shown additively at their display `levels` (get_display_level) in RGB `colors` give
+    their background, clipped to 1; None if any level is unknown."""
+    if not levels or any(level is None for level in levels):
+        return None
+    return float(min(1.0, sum(level * (0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2])
+                              for level, color in zip(levels, colors))))
+
+
 def file_list_index_finder(filenames):
     """find_file_list_index(filenames, match) for many matches: an exact name by dict, each other found once."""
     found = {filename: index for index, filename in reversed(list(enumerate(filenames)))}

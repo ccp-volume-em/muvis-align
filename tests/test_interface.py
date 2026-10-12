@@ -991,9 +991,7 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     # mixed 3- and 4-tuples make napari fall back to plain white for the whole layer
     assert len({len(color) for color in face_color}) == 1
     edge_color = kwargs["edge_color"]
-    assert len({len(color) for color in edge_color}) == 1
-    np.testing.assert_allclose(edge_color[:12], [(0, 0, 0)] * 12)
-    np.testing.assert_allclose(edge_color[12:], [(0, 1, 1)] * 2)
+    assert edge_color == ['#000000'] * 12 + ['#00ffff'] * 2
     np.testing.assert_allclose(
         kwargs["edge_width"], [0] * 12 + [expected_wire_width] * 2
     )
@@ -1081,7 +1079,7 @@ def test_update_napari_shapes_labels_only_where_asked(
     _, kwargs = viewer.add_shapes.call_args
     assert kwargs["shape_type"] == "polygon"
     assert kwargs["edge_width"] == 0.1
-    assert kwargs["text"] == {"string": "{labels}", "size": 6}
+    assert kwargs["text"] == {"string": "{labels}", "size": 6, "color": '#00ffff'}
     assert kwargs["features"]["labels"] == ["image-0"]
 
     overview = MagicMock()
@@ -2313,3 +2311,13 @@ def test_the_build_takes_the_bar_in_proportion_to_what_it_costs():
     # a step that computes over the data makes the rest of the run real work again
     phases, weight = _run_pre_processing(build_pending=True, eager=True)
     assert (phases, weight) == (3, 2)
+
+
+@pytest.mark.parametrize("ndisplay, expected", [(2, 0.1), (3, 1.0)], ids=["a slice", "a volume"])
+def test_the_main_views_background_is_its_typical_level_or_a_volumes_brightest(bare_interface, ndisplay, expected):
+    bare_interface.viewer = MagicMock()
+    bare_interface.viewer.dims.ndisplay = ndisplay
+    bare_interface._view_levels = ([0.1], [(1, 1, 1)])
+
+    assert bare_interface._view_background_luminance(bare_interface.viewer) == pytest.approx(expected)
+    assert bare_interface._view_background_luminance(MagicMock()) is None

@@ -51,9 +51,6 @@ ESSENTIAL
 
 MINOR
 
-- [ ] **Shape label and grid colours from the image** - choose the shapes' label (and grid) colours to stand out
-      against the shown channel's data, e.g. from its colormap and contrast limits, if it can be done cheaply
-      (no extra pixel reads).
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
@@ -124,6 +121,10 @@ REFACTORING
 
 ## Done
 
+- **Shape labels and edges contrast with the image** - the contrast-limit sample (quick view, or the coarsest level)
+  also gives where the typical value shows (get_display_level); with the channels' colours that is the background's
+  luminance, and labels and edges go navy on a bright one, cyan otherwise. A volume in the 3D view shows its brightest
+  values, so it counts as bright. Slides and the 3d set: navy, readable.
 - **Msim-free registered open** (branch `registered-open`) - init_progress keeps a loaded registration in
   self.mappings, applied when msims are first built (_apply_mappings), and finds files by dict; the pairs graph,
   registered shapes, the quick view's transforms and the size estimate come from MVSRegistration.source_geometry

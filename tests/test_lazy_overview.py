@@ -78,10 +78,12 @@ def test_contrast_comes_from_a_spread_sample_of_coarsest_levels_without_their_ze
                                level_data=lambda level, value=value: np.pad(np.full((4, 4), value + level), 2))
                for value in (100, 200, 300, 400, 500)]
 
-    assert _contrast_limits(readers, max_sources=2) == [[101.0, 501.0]]
-    assert _contrast_limits(readers[:1]) == [[101.0, 102.0]]
-    assert _contrast_limits([None]) == []
-    assert _contrast_limits([SimpleNamespace(pixel_sizes=[{}], level_data=lambda level: np.zeros((4, 4)))]) == [None]
+    # and where the typical value shows: halfway between two equally common values
+    assert _contrast_limits(readers, max_sources=2) == ([[101.0, 501.0]], [0.5])
+    assert _contrast_limits(readers[:1]) == ([[101.0, 102.0]], [0.0])
+    assert _contrast_limits([None]) == ([], [])
+    assert _contrast_limits([SimpleNamespace(pixel_sizes=[{}], level_data=lambda level: np.zeros((4, 4)))]) == (
+        [None], [None])
 
 
 def test_a_section_is_built_only_when_it_is_asked_for_and_once(tmp_path):
