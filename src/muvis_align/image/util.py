@@ -1394,20 +1394,19 @@ def calc_foreground_map(items):
     return map
 
 
+def sim_with_data(sim, data, transform_key):
+    """A new sim of `data` at `sim`'s geometry, coordinates and `transform_key` transform."""
+    return si_utils.get_sim_from_array(data, dims=sim.dims, scale=si_utils.get_spacing_from_sim(sim),
+                                       translation=si_utils.get_origin_from_sim(sim), transform_key=transform_key,
+                                       affine=si_utils.get_affine_from_sim(sim, transform_key), c_coords=sim.c.data,
+                                       t_coords=sim.t.data)
+
+
 def normalise_sim(sim, transform_key, min, range, dtype):
     #image = (sim - min) / range
     image = ((sim - min) / range + 1) / 2   # extended range
     image = float2int_image(image.clip(0, 1), dtype)    # np.clip(image) is not dask-compatible, use image.clip() instead
-    return si_utils.get_sim_from_array(
-        image,
-        dims=sim.dims,
-        scale=si_utils.get_spacing_from_sim(sim),
-        translation=si_utils.get_origin_from_sim(sim),
-        transform_key=transform_key,
-        affine=si_utils.get_affine_from_sim(sim, transform_key),
-        c_coords=sim.c.data,
-        t_coords=sim.t.data
-    )
+    return sim_with_data(sim, image, transform_key)
 
 
 def calc_normalise_stats(items, use_global=True):
@@ -1441,17 +1440,7 @@ def gaussian_filter_sim(sim, transform_key, sigma):
     spatial_dims = set(si_utils.get_spatial_dims_from_sim(sim))
     sigma_by_axis = [sigma if dim in spatial_dims else 0 for dim in sim.dims]
     blurred_image = gaussian(image, sigma=sigma_by_axis, preserve_range=True)
-    new_sim = si_utils.get_sim_from_array(
-        blurred_image.astype(sim.dtype),
-        dims=sim.dims,
-        scale=si_utils.get_spacing_from_sim(sim),
-        translation=si_utils.get_origin_from_sim(sim),
-        transform_key=transform_key,
-        affine=si_utils.get_affine_from_sim(sim, transform_key),
-        c_coords=sim.c.data,
-        t_coords=sim.t.data
-    )
-    return new_sim
+    return sim_with_data(sim, blurred_image.astype(sim.dtype), transform_key)
 
 
 def get_sim_physical_size(data):
