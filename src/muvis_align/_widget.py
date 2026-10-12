@@ -92,9 +92,7 @@ class MainWidget(QTabWidget):
                 self.setTabEnabled(index, enabled)
         if newly_enabled:
             self.show_tab(newly_enabled[-1])
-        # a tab enabled while hidden (e.g. fusion, right before a blocking QMessageBox) can be
-        # left showing stale disabled styling under a slow/remote display (xpra) until the next
-        # natural event-loop idle - flush immediately so it's interactive as soon as it's enabled
+        # under a remote display (xpra) a tab enabled before a blocking dialog can keep stale disabled styling
         flush_paint_events()
 
     def show_tab(self, tab_index):

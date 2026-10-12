@@ -55,8 +55,7 @@ class RegState(Enum):
 
 
 def normalisation_enabled(value):
-    # a project file carries this as text, where 'none' (or 'no'/'false'/empty) means off -
-    # plain truthiness would read every one of those as on
+    # a project file carries this as text, where 'none'/'no'/'false'/empty means off
     if isinstance(value, str) and value.lower() in ['false', 'no', 'none', '']:
         return False
     return bool(value)
@@ -76,8 +75,8 @@ class _DeferredQuality:
 
 @contextmanager
 def deferred_link_quality():
-    """Phase correlation scores every candidate shift (~11 a pair) with a spearman quality, then
-    keeps only the chosen one's: defer them, and let resolve_deferred_quality() compute that one."""
+    """Defer link qualities: phase correlation scores every candidate shift but keeps only the chosen
+    one's, which resolve_deferred_quality() then computes."""
     original = registration.link_quality_metric_func
     registration.link_quality_metric_func = lambda *args: _DeferredQuality(original, *args)
     try:
@@ -107,7 +106,7 @@ def register_pair_in_worker(msims, graph, pairwise_reg_func, kwargs):
 
 
 def estimated_pair_cost(graph, edge):
-    """A pair's overlap in pixels at the coarser of its two sources' pixel sizes, which its registration time follows."""
+    """A pair's overlap in pixels at the coarser of its sources' pixel sizes: a proxy for its registration time."""
     spacings = [graph.nodes[node]['stack_props']['spacing'] for node in edge]
     pixel_size = np.prod([max(spacing[dim] for spacing in spacings) for dim in spacings[0]])
     return graph.edges[edge].get('overlap', 0) / pixel_size
@@ -141,9 +140,7 @@ class MVSRegistration:
                  source_metadata={}, extra_metadata={},
                  global_rotation=None, global_center=None,
                  overwrite=True, clear=False, ui='', verbose=False, debug=False):
-        # set here (rather than only in init(), below) so verbose/logging_dask/logging_time are
-        # always defined, even for an instance that never gets init() called on it (e.g. Interface's
-        # placeholder self.reg before a project is loaded)
+        # set here as well as in init(): an instance may never have init() called on it
         self.verbose = verbose
         self.logging_dask = self.verbose
         self.logging_time = self.verbose
@@ -158,10 +155,7 @@ class MVSRegistration:
 
     @property
     def msims(self):
-        # built lazily from the cheap per-source geometry init_data() already resolved (sources/
-        # positions/_msim_transforms/_msim_output_order/_msim_z_scale) - real msim construction
-        # (the expensive part) is deferred until something genuinely needs pixel-shaped data
-        # (preview fusion, pre-processing/registration/fusion), not eagerly for every project load
+        # built lazily from the geometry init_data() resolved, only once pixel data is needed
         return self.ensure_msims()
 
     @msims.setter
@@ -170,27 +164,19 @@ class MVSRegistration:
 
     @staticmethod
     def has_eager_pre_processing(params):
-        """Whether pre-processing will compute over the image data, rather than only rebuild
-        the graph.
+        """Whether pre-processing will compute over the image data, rather than only rebuild the graph.
 
-        Scaling and Gaussian filtering are lazy - selecting a sub-pyramid, adding a map_blocks -
-        so with only those, the per-source msim build before them is nearly all of the run and
-        takes the bar accordingly (see Interface.run_pre_processing). Flat-field, normalisation
-        and foreground filtering read every source, which makes the rest of the run real work.
+        Scaling and Gaussian filtering are lazy; flat-field, normalisation and foreground filtering read every source.
         """
         return bool(params.get('flatfield_quantiles') or params.get('filter_foreground')
                     or normalisation_enabled(params.get('normalisation')))
 
     def ensure_msims(self, progress_factory=None, target_scale=None, weight=1, ends_only=False):
-        """The lazy build the msims property triggers, callable ahead of time with a
-        progress_factory - lets a caller about to force this (e.g. run_pre_processing()) show
-        per-source progress instead of it happening silently as a plain argument expression.
+        """The lazy build the msims property triggers, callable ahead of time to report its progress.
 
-        `target_scale` builds each source's pyramid from the level that scale needs, skipping
-        finer levels the caller is about to discard anyway. Those are cached per scale, never
-        as self.msims, which stays the full-resolution pyramid everything else reads.
-        `ends_only` builds just each source's finest level at that scale and its coarsest (see
-        source_levels): what pre-processing's consumers read, at a quarter less building.
+        `target_scale` builds each source's pyramid from the level that scale needs, cached per scale, never as
+        self.msims, which stays the full-resolution pyramid. `ends_only` builds just each source's finest level at
+        that scale and its coarsest (see source_levels): all pre-processing's consumers read.
         """
         # a factor as text ('2') or a pixel size ('10um'): one cache entry however it was written
         target_scale = parse_scale(target_scale, default=None)
@@ -198,9 +184,8 @@ class MVSRegistration:
         if (target_scale or ends_only) and key not in self._scaled_msims:
             from_levels = [get_level_from_scale(source, target_scale)[0] if target_scale else 0
                            for source in self.sources]
-            # nothing to skip (scale 1, or no source has a coarser level): the shared
-            # full-resolution build is this build, so take it rather than a private copy -
-            # unless only the ends are wanted, which that shared build must not be cut down to
+            # nothing to skip: the shared full-resolution build serves, unless only the ends are wanted,
+            # which the shared build must not be cut down to
             if any(from_levels) or ends_only:
                 self._scaled_msims[key] = self._build_msims(progress_factory=progress_factory,
                                                             from_levels=from_levels, store=False,
@@ -216,13 +201,7 @@ class MVSRegistration:
         return f'{target_scale}:ends' if ends_only else str(target_scale)
 
     def msims_build_pending(self, target_scale=None, ends_only=False):
-        """Whether ensure_msims() would actually build - i.e. report a phase of its own.
-
-        A caller sizes its bar by how many phases it expects (see Interface._operation_progress).
-        Reserving one for a build that is already cached leaves that slice unused, and the bar
-        stops at the end of the phases that did run - pre-processing over already-built msims
-        finished at half a bar, with a time estimate to match.
-        """
+        """Whether ensure_msims() would actually build, and so report a progress phase of its own."""
         target_scale = parse_scale(target_scale, default=None)
         key = self._scaled_msims_key(target_scale, ends_only)
         if key in self._scaled_msims:
@@ -236,8 +215,7 @@ class MVSRegistration:
         return self._msims is None
 
     def _build_msims(self, progress_factory=None, from_levels=None, store=True, weight=1, ends_only=False):
-        # where each source's pixels are first opened: a network filesystem's read is worth overlapping, in threads as
-        # each source's caches are its own
+        # where each source's pixels are first opened: threads overlap network reads, each source's caches its own
         def build_msim(index):
             return build_source_msim(self.sources[index], self._msim_output_order, self.positions[index],
                                      self._msim_transforms[index], self.source_transform_key,
@@ -254,7 +232,7 @@ class MVSRegistration:
 
     def _apply_mappings(self, msims):
         """The registration's corrections (self.mappings) chained onto each msim's source transform, as
-        register_global writes them - for msims built after a saved registration was loaded."""
+        register_global writes them: for msims built after a saved registration was loaded."""
         for index, mapping in (self.mappings or {}).items():
             msi_utils.set_affine_transform(msims[index], mapping, transform_key=self.reg_transform_key,
                                            base_transform_key=self.source_transform_key)
@@ -351,12 +329,8 @@ class MVSRegistration:
 
     @property
     def is_stack(self):
-        """Stack registration: pair consecutive views, and treat the set as a z-stack rather
-        than a tiled plane. Selected by `pairing: stack` - and only by that. It used to be read
-        from the operation ('register stack') as well, which the plugin can never produce: its
-        operations are register/merge/convert, so self.operation is empty throughout the UI and
-        every stack-specific step was silently skipped there.
-        """
+        """Stack registration: pair consecutive views, and treat the set as a z-stack rather than a tiled plane.
+        Selected by `pairing: stack` only, as the plugin never sets an operation."""
         return 'stack' in self.pairing
 
     def init(self, operation='', label='', input_path=None, input_labels=None, output_path=None,
@@ -473,7 +447,6 @@ class MVSRegistration:
             z_scale = self.scales[0].get('z', 1)
 
         with Timer('pre-process', verbose=self.logging_time):
-            # preprocess() is msims-in/msims-out - register() itself is msims-based too now
             self.preprocess(msims, **self.preprocess_params)
             register_msims, register_indices = self.register_msims, self.register_indices
 
@@ -530,10 +503,7 @@ class MVSRegistration:
         if self.reg_transform_key in get_msim_transform_keys(msims[0]):
             transform_key = self.reg_transform_key
             with Timer('plot positions', verbose=self.logging_time):
-                # plot_positions is a library function that needs concrete sims - derived here on
-                # demand from msims (the registered transform lives there now, see register_global).
-                # A stack is stored 2D (see fuse()), so it is promoted here, for this plot only,
-                # to keep plotting its slices spaced out in z rather than all at z=0
+                # plot_positions needs sims; a stack is stored 2D, so promoted for this plot to space its slices in z
                 plot_msims = make_msims_3d(msims, z_scale, self.positions) if is_stack else msims
                 plot_sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in plot_msims]
                 vis_utils.plot_positions(plot_sims, transform_key=transform_key,
@@ -562,8 +532,7 @@ class MVSRegistration:
                         fusion_method = self.fusion_params
                         output_spacing = self.params.get('output_spacing', 'mean')
                     zarr_output_filename = output_filename if 'zar' in output_format else None
-                    # msims are handed over as they are stored (2D for a stack) - fuse() promotes
-                    # what it needs to
+                    # msims as stored (2D for a stack): fuse() promotes what it needs to
                     fused_msim, is_saved = self.fuse(msims, fusion_method=fusion_method, output_spacing=output_spacing,
                                                      transform_key=transform_key, output_filename=zarr_output_filename,
                                                      tile_size=output_tile_size, ome_version=output_ome_version)
@@ -572,8 +541,7 @@ class MVSRegistration:
                 fused_msim = msims
                 is_saved = False
 
-            # save_image() (and save_video(), for a transition) only accept sims - extract them
-            # from the fused msim(s) here, once, right at the point they're actually needed
+            # save_image() and save_video() only accept sims
             fused_sims = extract_sims_from_fused(fused_msim)
 
             if not is_saved or 'tif' in output_format:
@@ -693,16 +661,11 @@ class MVSRegistration:
 
         last_z_position = None
         delta_zs = []
-        # the two per-source passes here (geometry, then transforms) are serial Python over
-        # every file, where init_sources() above is pooled - so on a large project they are
-        # worth timing separately rather than being the unaccounted-for remainder of a phase
-        # whose own log line only covers the pooled part
+        # timed apart from init_sources(): these serial per-source passes are not in its pooled timing
         geometry_timer = Timer('init_data: resolve per-source geometry', verbose=self.logging_time)
         geometry_timer.start()
         for filename, source in zip(self.filenames, sources):
-            # position/scale/rotation, and per-source corrections (SBEM, is_center, invert),
-            # are now resolved by ImageSource itself (see ImageSource.fix_metadata) - this pass
-            # reads only cached metadata off `source`, no pixel data is touched
+            # metadata ImageSource already resolved (fix_metadata); no pixel data is read
             # copies: the z and x/y filled in below are this run's, not the source's
             scale = dict(source.get_pixel_size())
             translation = dict(source.get_position())
@@ -749,10 +712,7 @@ class MVSRegistration:
 
         #translations = [np.array(translation) * 1.25 for translation in translations]
 
-        # only reached under `if 'z' in output_order` below, i.e. for sources that are already
-        # 3D: make_msims_3d() gives a stack of 2D slices its z positions instead, but skips a
-        # source that is already 3D (msim_is_already_3d), so this is the only thing that spaces
-        # a stack of volumes out in z
+        # applies only to 3D sources: make_msims_3d() spaces 2D slices but skips a source already 3D
         increase_z_positions = is_stack
 
         z_position = 0
@@ -790,12 +750,7 @@ class MVSRegistration:
             translation = complete_translation(translation)
             transforms.append(transform)
             if not store:
-                # build this source's own multiscale msim directly from its already-correct,
-                # cached msim (ImageSource.get_msim, itself built from fix_metadata/_build_msim/
-                # _restamp_msim) - only the run-level deltas that no single source can know about
-                # itself (cross-source normalisation, z-stacking, extra_metadata) are applied
-                # here, via assign_coords, never by reconstructing from raw arrays with
-                # si_utils.get_sim_from_array
+                # from the source's cached msim, adding only the run-level deltas no single source knows
                 msim = build_source_msim(source, output_order, translation, transform, self.source_transform_key,
                                          z_scale=z_scale)
                 msims.append(msim)
@@ -809,25 +764,20 @@ class MVSRegistration:
             self.positions = final_translations
             self.rotations = rotations
             self.state = RegState.SIMS_INIT
-            # defer the actual per-source msim build (build_source_msim(), the expensive part)
-            # until self.msims is genuinely read - see the msims property/_build_msims()
+            # the msim build itself waits until self.msims is read
             self._msim_output_order = output_order
             self._msim_z_scale = z_scale
             self._msim_transforms = transforms
             self._msims = None
-            # the geometry every msim was built with has just been re-resolved, so the
-            # per-scale builds are as stale as the full-resolution one
+            # the geometry was re-resolved, so the per-scale builds are stale too
             self._scaled_msims = {}
             return None
 
         return msims
 
     def has_saved_progress(self, output_filename=None, output_format=None):
-        """Whether there is a saved registration to resume - the same files check_progress()
-        reads, without moving the state machine, for a caller asking before init_data() has run.
-        Without an output filename only the mappings are checked, the fused output being the one
-        of the three that is named after the operation.
-        """
+        """Whether there is a saved registration to resume: the files check_progress() reads, without changing
+        the state. Without an output filename only the mappings are checked."""
         pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
         mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
         return bool((output_filename and self.output_exists(output_filename, output_format))
@@ -867,12 +817,10 @@ class MVSRegistration:
 
         load_pairs = self.is_pairs_registered() and os.path.exists(pair_mappings_filename)
         self.group_pairs = {}
-        # no msims built for any of this: the graph comes from source geometry, the mappings are applied when the
-        # msims are built (_apply_mappings) - those a caller already built get them now
+        # builds no msims: the graph comes from source geometry, mappings are applied as msims are built
         file_index = file_list_index_finder(self.filenames)
 
         if load_pairs:
-            # load pair mapping and initialise pair_graph
             logging.info(f'Loading pair mapping from {pair_mappings_filename}')
             pairs = import_json(pair_mappings_filename)
             indexed_pair_transforms = {}
@@ -892,9 +840,7 @@ class MVSRegistration:
                         indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
                         if 'bbox' in value:
                             indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
-            # neither of the two steps left is per-source-divisible (a whole-set redimension and
-            # one graph build over every pair), but together they are seconds to tens of seconds
-            # for a few hundred sources - count them rather than letting them run silently
+            # not per-source-divisible, but long enough to report as two steps
             progress_context = progress_phase(progress_factory, total=2, desc='Loading pair registration')
             with progress_context as pbar:
                 self.pair_msims = self._msims
@@ -906,10 +852,8 @@ class MVSRegistration:
                 }
                 if pbar is not None:
                     pbar.update(1)
-                # the pairs came from the saved mapping, so build the graph directly rather than
-                # have multiview_stitcher rediscover each edge's overlap with a linear program
-                # (4.1ms each, and every attribute below is written straight over it). The saved
-                # bboxes give the overlap weight that build would have measured, for nothing.
+                # built directly from the saved pairs, rather than multiview_stitcher rediscovering each overlap;
+                # the saved bboxes give the overlap weight
                 overlaps = {key: float(np.prod([abs(high - low) for low, high
                                                 in zip(*np.array(value).reshape(2, -1))]))
                             for key, value in indexed_bboxes.items()}
@@ -927,8 +871,7 @@ class MVSRegistration:
             mappings = read_transforms(mappings_filename)
             missing = [filename for filename in self.filenames if find_file_dict_item(mappings, filename) is None]
             if missing:
-                # mappings.json is from a run over a different fileset (e.g. a shared output
-                # dir) - it can't be trusted as this fileset's own global registration
+                # mappings for a different fileset (e.g. a shared output dir) can't be trusted as this one's
                 logging.warning(f'{mappings_filename} has no mapping for {len(missing)} of '
                                 f'{len(self.filenames)} files (e.g. {missing[0]}) - ignoring it')
                 self.state = RegState.INIT
@@ -965,7 +908,7 @@ class MVSRegistration:
             self.metrics['group_pairs'] = self.group_pair_metrics()
 
     def validate_overlap(self, items, labels, is_stack=False, expect_large_overlap=False):
-        # sims or msims (each msim's scale0 sim is used) - only position/size metadata is ever read here
+        # sims or msims: only position/size metadata is read
         sims = sims_from_sims_or_msims(items)
         min_dists = []
         has_overlaps = []
@@ -1005,10 +948,7 @@ class MVSRegistration:
                    progress_factory=None,
                    **kwargs):
         if kwargs:
-            # a project file may carry options this does not implement, so an unknown one is not
-            # fatal - but it must be visible. Silently swallowed, a mistyped option (or a whole
-            # params dict handed over as a single keyword) leaves pre-processing at its defaults,
-            # which shows up only as registration being unaccountably slow at full resolution.
+            # not fatal, but visible: a mistyped option otherwise silently leaves pre-processing at its defaults
             logging.warning('Ignoring unknown pre-processing option(s):'
                             f' {", ".join(sorted(str(key) for key in kwargs))}')
 
@@ -1044,10 +984,7 @@ class MVSRegistration:
             scales0 = self.scales
 
             if scale and scale != 1:
-                # select every native level at or coarser than the requested scale, as a real
-                # (smaller) sub-pyramid, rather than resizing to one exact resolution (unnecessary
-                # for registration - "coarse enough" is all it needs, and it can auto-select its
-                # own resolution from whatever real levels it's handed - see register_pairs)
+                # a sub-pyramid of native levels rather than a resize: registration picks its own resolution
                 msims = select_msim_subpyramid_at_scale(msims, self.sources, scale)
                 modified = True
                 update_progress()
@@ -1068,9 +1005,7 @@ class MVSRegistration:
                     msims_z_set = [msims[i] for i in msim_indices]
                     foreground_map_z_set = [foreground_map[i] for i in
                                             msim_indices] if foreground_map is not None else None
-                    # flatfield_correction is msims-in/msims-out: the correction model (quantile
-                    # images) is computed once per z-set at scale0, then resized to every other
-                    # pyramid level - the whole msim ends up corrected, not just scale0
+                    # the correction model is computed per z-set at scale0 and applied to every level
                     new_msims_z_set = flatfield_correction(msims_z_set, self.source_transform_key,
                                                            flatfield_quantiles,
                                                            foreground_map=foreground_map_z_set)
@@ -1084,9 +1019,7 @@ class MVSRegistration:
                 logging.info('Applying Gaussian filtering...')
 
                 def sigma_for_level(level_sim, scale0, sigma0):
-                    # keep the same physical blur radius at every resolution: scale the notional
-                    # level-0 pixel-space sigma by how much coarser this level's pixels are - a
-                    # no-op (ratio 1) at native level0's own resolution
+                    # the same physical blur radius at every resolution
                     level_scale = si_utils.get_spacing_from_sim(level_sim)
                     ratios = [scale0[dim] / level_scale[dim] for dim in scale0 if dim in level_scale]
                     return sigma0 * (np.mean(ratios) if ratios else 1)
@@ -1114,9 +1047,7 @@ class MVSRegistration:
                 norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=use_global)
                 new_msims = []
                 for msim, (norm_min, norm_range) in zip(msims, norm_stats):
-                    # reuse the exact same min/range computed at the working resolution (scale0)
-                    # at every pyramid level, rather than recomputing per level - keeps
-                    # normalisation constants identical across the whole pyramid
+                    # the scale0 min/range at every level, so the whole pyramid is normalised alike
                     def level_func(level_sim, scale_key, norm_min=norm_min, norm_range=norm_range):
                         return normalise_sim(level_sim, self.source_transform_key, norm_min, norm_range, norm_dtype)
                     new_msims.append(map_msim_levels(msim, level_func))
@@ -1178,7 +1109,6 @@ class MVSRegistration:
             except ImportError:
                 raise ImportError('ANTsPy is required for ANTsPy registration.')
             pairwise_reg_func = registration.registration_ANTsPy
-            # args for ANTsPy registration: used internally by ANYsPy algorithm
             pairwise_reg_func_kwargs = {
                 'transform_types': ['Rigid'],
                 "aff_random_sampling_rate": 0.5,
@@ -1194,21 +1124,13 @@ class MVSRegistration:
         return method, pairwise_reg_func, pairwise_reg_func_kwargs
 
     def select_pair_overlap(self, msim1, msim2, params=None):
-        """Determine the resolution register_pair_of_msims_over_time would auto-select for this
-        pair (using the same public multiview_stitcher helpers it uses internally:
-        get_optimal_registration_binning + msi_utils.get_res_level_from_binning_factors) and
-        extract the two sims' overlap region at that resolution. This crop depends only on the
-        source data and the registration channel - never on the registration method or its
-        tuning parameters - so a caller (e.g. a UI preview) can cache it across repeated
-        parameter-only changes, instead of re-selecting resolution and re-cropping from the
-        (possibly large) source data every time. See register_overlap() to actually register on
-        the returned crop.
+        """The pair's overlap images at the resolution multiview_stitcher would auto-select for it.
+
+        Depends only on the source data and the registration channel, not the method or its parameters, so it can
+        be cached across parameter changes. See register_overlap() to register on it.
         """
         params = params or {}
-        # select a single registration channel first - get_optimal_registration_binning/
-        # get_overlap_images below have no 'c' dim handling of their own, unlike register_pairs()'s
-        # own channel-selection (which only runs as part of its full multi-pair graph, not for a
-        # single ad-hoc pair)
+        # the binning and overlap helpers below do not handle a 'c' dim themselves
         if 'c' in get_msim_dims(msim1):
             chosen = {}
             msim1 = msi_utils.multiscale_sel_coords(
@@ -1233,11 +1155,9 @@ class MVSRegistration:
         return get_overlap_images(sim1, sim2, self.source_transform_key)
 
     def register_overlap(self, overlap1, overlap2, sims_pixel_space, params=None):
-        """Run pairwise_reg_func directly on an already-extracted overlap crop (see
-        select_pair_overlap()) - no msim-level resolution-selection or re-cropping, so a caller
-        can reuse the same crop across repeated registration-parameter-only changes. Returns the
-        physical-space transform, quality, and pairwise_reg_func's own raw result dict (feature
-        points/matches, for a napari preview overlay).
+        """Register an overlap crop from select_pair_overlap().
+
+        Returns the physical-space transform, quality, and pairwise_reg_func's raw result (e.g. feature matches).
         """
         params = params or {}
         _, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(overlap1, params=params)
@@ -1303,8 +1223,7 @@ class MVSRegistration:
                      f" workers {n_parallel_pairwise_regs or f'automatic ({default_pair_workers})'},"
                      f" registration dimension {getattr(self, 'registration_dimension', None) or 'space'}")
 
-        # the caller's params win over whatever init() was given - in the plugin the dropdown
-        # can change between initialising the sources and registering
+        # the caller's params win over init()'s: the plugin's dropdown can change in between
         self.pairing = pairing
         is_3d = (self.sources[0].get_size().get('z', 0) > 1)
         is_stack = self.is_stack
@@ -1320,18 +1239,14 @@ class MVSRegistration:
             register_msims = self.register_msims
 
         if is_stack and not is_3d:
-            # register in 2d; pairwise consecutive views - max-project every scale that has z
-            # (map_msim_levels keeps register_msims a real, internally-consistent pyramid
-            # throughout, rather than collapsing to a single level)
+            # register in 2D, pairing consecutive views: max-project every level that has z
             def level_func(level_sim, scale_key):
                 return si_utils.max_project_sim(level_sim, dim='z') if 'z' in level_sim.dims else level_sim
             register_msims = [map_msim_levels(msim, level_func) for msim in register_msims]
             pairs = [(index, index + 1) for index in range(len(register_msims) - 1)]
         elif 'ortho' in pairing or SPLIT in pairing:
-            # position/size for pairing distance must match self.positions 1:1 (every source,
-            # never a preprocessed/filtered register_msims subset). From each source's metadata, as
-            # the shapes are: the same geometry as self.msims' finest level, which cost 14.5 minutes
-            # to build at 34k sources just to be read here
+            # every source, never the filtered register_msims, so it matches self.positions; from metadata,
+            # as building self.msims just to read their geometry is expensive
             with Timer('pair registration: source geometry', verbose=self.logging_time):
                 shape_sims = [build_source_shape_sim(source, self._msim_output_order, position, transform,
                                                      self.source_transform_key, z_scale=self._msim_z_scale)
@@ -1351,23 +1266,17 @@ class MVSRegistration:
         else:
             pairs = None
 
-        # create_registration_method genuinely needs one concrete sim (feature-based/CPD methods
-        # read real pixel data via cv2/skimage) - extracted on demand, once
+        # feature-based/CPD methods read pixel data from one concrete sim
         reg_method, pairwise_reg_func, pairwise_reg_func_kwargs = self.create_registration_method(
             msi_utils.get_sim_from_msim(register_msims[0], scale='scale0'), params=params)
         logging.info(f'Registration method: {reg_method}')
         logging.info('Registering pairs...')
-        # register_msims is a real multiscale, preprocessed pyramid per source (built by
-        # preprocess()) - handing it to registration (instead of a single-level scale_factors=[]
-        # wrap) lets compute_pairwise_registrations auto-select a good resolution per pair from
-        # the real pyramid (no reg_res_level/registration_binning passed below)
+        # a full pyramid per source lets compute_pairwise_registrations select each pair's resolution
 
         overlap_tolerance = 0
 
         # ******* start MVS registration functions
 
-        # "c" in dims is read straight off each register_msim's own scale0 image DataArray
-        # (get_msim_dims) - no sim needs to be built just to ask
         with Timer('pair registration: select channel', verbose=self.logging_time):
             has_channel = ["c" in get_msim_dims(msim) for msim in register_msims]
             if has_channel[0]:
@@ -1386,34 +1295,27 @@ class MVSRegistration:
             else:
                 msims_reg = register_msims
 
-        # Normalize transforms to match image dimensions in each scale level
-        # (handles mixed 3D/4D transforms in multiscale images)
+        # match each level's transform to its image dimensions: a multiscale image can mix 3D/4D transforms
         for msim in msims_reg:
             for scale_node in msim.ds.values():
                 if 'source_metadata' in scale_node.ds.data_vars:
                     img_data = scale_node.ds['image']
                     if hasattr(img_data, 'data'):
                         img_data = img_data.data
-                    # Get spatial dims from image shape
                     spatial_dims = [d for d in img_data.dims if d not in ('t', 'c')]
-                    # Get current transform
                     current_transform = scale_node.ds.data_vars[self.source_transform_key]
                     transform_spatial_dims = [d for d in current_transform.coords['x_in'].values if d != '1']
-                    # Adapt if mismatch
                     if len(transform_spatial_dims) != len(spatial_dims):
                         relevant_dim_names = spatial_dims + ['1']
                         adapted = current_transform.sel(x_in=relevant_dim_names, x_out=relevant_dim_names)
                         scale_node.ds[self.source_transform_key] = adapted
 
         try:
-            # Linear fusion off: dask (default_fused_keys_renamer, still in 2026.8.0) renames a fused
-            # chain to its first 115 chars plus 4 hex digits of hash(), dropping the unique token. The
-            # per-pair crop chains of one compute (read-astype-affine_transform) then collide about 1 in
-            # 20 computes at 36 pairs, near certain at 256: a pair silently registers another pair's
-            # crop, and only when their shapes differ does phase correlation fail ('inhomogeneous shape').
+            # fusion off: dask's fused key names drop the unique token, so per-pair crop chains can collide
+            # and a pair silently registers another pair's crop
             with dask.config.set({'scheduler': 'threads', 'optimization.fuse.active': False}):
-                # left to find its own pairs, multiview_stitcher tests every source within the largest
-                # one's diameter: with overview images among tiles, nearly every pair of 34k sources
+                # multiview_stitcher would test every source within the largest one's diameter: with overview
+                # images among tiles, nearly every pair
                 graph_pairs = (pairs if pairs is not None
                                else find_candidate_overlap_pairs(msims_reg, self.source_transform_key))
                 if pairs is None:
@@ -1433,8 +1335,7 @@ class MVSRegistration:
 
                 pair_kwargs = dict(transform_key=self.source_transform_key, overlap_tolerance=overlap_tolerance,
                                    pairwise_reg_func_kwargs=pairwise_reg_func_kwargs, n_parallel_pairwise_regs=1)
-                # largest first: in source order the cheap overview pairs came first and the costliest last,
-                # leaving workers idle at the end and the bar's estimate far too short
+                # largest first, so workers are not left idle at the end and the bar's estimate holds
                 edges = sorted(g_reg.edges, key=lambda edge: estimated_pair_cost(g_reg, edge), reverse=True)
                 pool = None
                 # worker processes when a pair can be sent to one (its sources' arrays, the method)
@@ -1458,8 +1359,8 @@ class MVSRegistration:
                 scoring = (timed_module_functions(registration, ['structural_similarity', 'link_quality_metric_func'])
                            if self.logging_time else nullcontext({}))
                 phase_start, phase_cpu_start = time.time(), time.process_time()
-                # one pair per thread, each its own compute: a slow pair no longer holds up a batch. A lone
-                # thread keeps the threads scheduler, so a single (e.g. 3D) pair still runs its tasks in parallel.
+                # one pair per thread, each its own compute, so a slow pair holds up no batch; a single worker
+                # keeps the threads scheduler so one (e.g. 3D) pair still runs its tasks in parallel
                 with progress_phase(progress_factory, total=g_reg.number_of_edges(),
                                          desc='Registering pairs') as pbar, \
                         Timer(f'register {g_reg.number_of_edges()} pairs on {workers}'
@@ -1632,8 +1533,8 @@ class MVSRegistration:
                 weight_key="quality",
             )
 
-        # multiview_stitcher's own search is O(nodes x edges) (hours at 34k); a reference outside a
-        # component would send that component back to it, so only a connected graph gets one
+        # multiview_stitcher's own search is O(nodes x edges); a reference outside a component would send that
+        # component back to it, so only a connected graph gets one
         if g_reg_computed.number_of_nodes() > 2 and nx.is_connected(g_reg_computed):
             groupwise_resolution_kwargs['reference_view'] = find_reference_view(g_reg_computed)
 
@@ -1660,7 +1561,7 @@ class MVSRegistration:
             transforms = self._register_split_groups(pair_msims, transforms, register_indices, params,
                                                      progress_factory=progress_factory)
 
-        # the stages below are the last 20 minutes of an 86-minute run, and reported nothing
+        # the stages below take long enough on a large project to need progress of their own
         with progress_phase(progress_factory, total=len(pair_msims),
                                  desc='Applying transforms') as pbar, \
                 Timer('apply registered transforms', verbose=self.logging_time):
@@ -1715,9 +1616,7 @@ class MVSRegistration:
 
         # ******* end MVS registration functions
 
-        # copy transforms from the registration-stage msims onto self.msims (the persistent,
-        # full per-source pyramid) - msim -> msim, writes the same affine onto every scale,
-        # no sim round-trip needed
+        # onto self.msims, the persistent full per-source pyramid
         with progress_phase(progress_factory, total=len(pair_msims),
                                  desc='Storing transforms') as pbar, \
                 Timer('store transforms on sources', verbose=self.logging_time):
@@ -1768,12 +1667,8 @@ class MVSRegistration:
 
     @staticmethod
     def _fusion_batch_options(saving_zarr, max_workers=None):
-        """Fuse a zarr export's blocks concurrently instead of one at a time.
-
-        multiview_stitcher walks them in a plain sequential loop unless given a batch_func
-        (fusion._core), so an export ran on a single core. Each block writes its own chunk of the
-        store, and the per-block memory budget is already per worker.
-        """
+        """Batch options to fuse a zarr export's blocks concurrently, as multiview_stitcher otherwise fuses them
+        sequentially. Each block writes its own chunk, and the per-block memory budget is already per worker."""
         if not saving_zarr:
             return None
         max_workers = max(1, max_workers or default_fusion_workers)
@@ -1886,21 +1781,10 @@ class MVSRegistration:
              dimension=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
              output_chunksize=None, workers=None):
-        """Fuse each source's own multiscale msim into one output msim (a real multiscale
-        pyramid, not a single resolution) - msims in, msims out. A caller with only a concrete
-        sim per source (an ad-hoc resolution with no corresponding real pyramid) wraps it into a
-        trivial single-level msim first, via util.wrap_sims_as_msims - fuse() itself never takes
-        or produces sims directly; extract a sim from the result on demand (msi_utils.
-        get_sim_from_msim) wherever a downstream consumer (e.g. save_image()) needs one.
+        """Fuse the sources' msims into one multiscale output msim; returns (fused, whether it was written).
+        Sims are wrapped first with util.wrap_sims_as_msims.
 
-        output_chunksize, if given, is used as-is (a dict of chunk size per spatial dim, e.g.
-        {'x':.., 'y':.., 'z':..} - a value larger than that dimension just yields one chunk
-        covering it, dask clips it automatically). Otherwise fusion.fuse() defaults to the
-        input's own on-disk chunk grid, which for a source chunked one z-slice at a time
-        propagates that same z=1 chunking into every pyramid level of the fused output - each
-        level then has as many chunks (and dask graph tasks) in z as there are z-slices, even
-        once a level's XY extent has been downsampled to a handful of pixels.
-
+        output_chunksize, a chunk size per spatial dim, is used as-is; otherwise it is sized against memory.
         Written to a file, every level is fused from the sources (fusion_slabs.export_levels): with output_spacing
         None or 'native' each at its own pixel size from the sources at least that fine, else doubling from the set
         spacing. In memory, 'native' stays 'mean'.
@@ -1909,9 +1793,7 @@ class MVSRegistration:
         if output_filename is not None:
             output_filename = self.output + output_filename
 
-        # only .dtype is ever read from this below (data_size logging, create_fusion_method's
-        # source_type) - the scale node's own 'image' DataArray already has it, no need to build
-        # a full sim (with its attrs['transforms'] enrichment) just to read one attribute
+        # only its dtype is read, which needs no full sim
         sim0 = get_msim_image0(msims[0])
 
         if extra_metadata is None:
@@ -1945,33 +1827,25 @@ class MVSRegistration:
         # the bounding box, not what is written: see estimate_fusion_size()
         logging.info(f'Fusion output bounding box at full resolution: {print_hbytes(data_size)}')
 
-        # Peak memory while fusing is set by how many sources land in one output chunk, not by
-        # the output's size: every source overlapping a chunk is transformed into a full-chunk
-        # float32 array and stacked. Left unspecified, fuse() falls back to the input's own chunk
-        # grid, which for a coarse output means chunks spanning the whole field of view and so
-        # every source at once; get_chunk_sizes() sizes them against that real cost instead.
-        # A caller-supplied output_chunksize always wins, as does a configured tile_size below.
+        # peak memory follows the sources in one output chunk, each transformed to a full float32 chunk;
+        # the input's own chunk grid would put every source in one chunk of a coarse output
         default_output_chunksize = get_chunk_sizes(sim0.dtype, list(output_stack_properties['shape']),
                                                    num_sources=len(msims),
                                                    num_z_positions=num_z_positions)
         saving_zarr = False
         if is_channel_overlay:
-            # convert to multichannel images - one channel per source, still a real multiscale
-            # pyramid (combine_msims_as_channels stacks 'c' per level, not just at one resolution)
+            # one channel per source
             def build_channel_result(msim):
                 return fusion.fuse(
                     [msim],
                     transform_key=transform_key,
                     output_stack_properties=output_stack_properties,
-                    # one source per fuse() call here, so the per-chunk source count this
-                    # defaults against is 1 - recompute rather than reuse the all-sources value
+                    # one source per call, so not sized against all sources
                     output_chunksize=output_chunksize or get_chunk_sizes(
                         sim0.dtype, list(output_stack_properties['shape']))
                 )
 
-            # each call builds one source's own lazy graph against the shared
-            # output_stack_properties, independent per source, so a pool spreads that
-            # graph-construction cost across every core. Joined in submission order below.
+            # each source's lazy graph is independent, so its construction is spread over a pool
             channel_results = thread_map(build_channel_result, msims, workers or default_preview_workers)
             fused_image = combine_msims_as_channels(channel_results, [channel['label'] for channel in channels])
         else:
@@ -1992,9 +1866,7 @@ class MVSRegistration:
                 output_chunksize = {dim: min(int(size), output_stack_properties['shape'].get(dim, int(size)))
                                     for dim, size in output_chunksize.items()}
                 if self.verbose:
-                    # logged here, where it is finally settled: reported before the branches
-                    # above it named the preview-budgeted default whatever the export went on
-                    # to use, which is the one number this line exists to show
+                    # logged once settled by the branches above
                     logging.info(f'Fusion output_chunksize: {numpy_to_native(output_chunksize)}'
                                  f' ({len(msims)} sources over'
                                  f' {max(1, num_z_positions)} z position(s))')
@@ -2108,15 +1980,11 @@ class MVSRegistration:
         is_stack = self.is_stack
         z_scale = get_metadata_z_scale(self.extra_metadata)
 
-        # select this preview resolution directly from self.msims (already built by init_data())
-        # via pure msim slicing - no sim extraction, no resize, and (below) no wrapping back into
-        # a msim just to satisfy fuse(): this stays msims the whole way through
         msims = select_msim_subpyramid_at_scale(self.msims, self.sources, preview_scale)
         if is_stack:
             msims = make_msims_3d(msims, z_scale, self.positions)
 
         if nom_msims is not None:
-            # .sizes only - the scale node's own 'image' DataArray already has it
             preview_image0 = get_msim_image0(msims[0])
             nom_image0 = get_msim_image0(nom_msims[0])
             if preview_image0.sizes['x'] >= nom_image0.sizes['x']:
@@ -2149,15 +2017,9 @@ class MVSRegistration:
 
     def save_native_levels(self, output_filename, msim, position=None, channels=None, min_length=128,
                            compression=None, ome_version=default_ome_zarr_version):
-        """Write msim's own native pyramid levels exactly as-is (no resampling) - see
-        save_ome_multiscale_levels(). Used by convert, which never fuses/resamples a source.
+        """Write msim's own native pyramid levels as-is, without resampling (see save_ome_multiscale_levels()).
 
-        position: this source's own {'z': ..., ...} (self.positions[index]) - a source with no
-        native 'z' dim (e.g. a single 2D tile) only carries its z height as this separate,
-        external metadata, not in its own sim coords. Without promoting, the written file would
-        silently drop that z position entirely instead of storing it as a size-1 'z' dim/
-        translation - same promotion build_source_shape_sim()/make_msims_3d() already apply for
-        shapes/fusion.
+        position: this source's position; a source without a 'z' dim is promoted to keep its z position.
         """
         if output_filename is not None:
             output_filename = self.output + output_filename
@@ -2179,8 +2041,6 @@ class MVSRegistration:
 
     def save_video(self, output, msims, fused_msim):
         logging.info('Creating transition video...')
-        # rendering a video frame needs real pixel data (fusion.fuse, cv.resize, ...) - converted
-        # to concrete sims here, once, rather than requiring the caller to have already done so
         sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in msims]
         fused_image = extract_sims_from_fused(fused_msim)
         pixel_size = [si_utils.get_spacing_from_sim(sims[0]).get(dim, 1) for dim in 'xy']

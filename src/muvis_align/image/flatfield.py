@@ -9,11 +9,8 @@ from muvis_align.image.util import *
 
 
 def flatfield_correction(msims, transform_key, quantiles, foreground_map=None, cache_location=None):
-    """msims in, msims out - the flatfield correction model (quantile images) is computed once,
-    from each source's own working (scale0) resolution - the cross-source quantile stacking
-    genuinely needs concrete pixel data and can't be generalised per level - then resized to
-    match every other pyramid level before being applied there, so the whole msim ends up
-    consistently corrected instead of only ever its scale0 level.
+    """Flatfield-correct msims: the model (quantile images) is computed once at scale0, then resized to and
+    applied at every pyramid level.
     """
     sims = [get_msim_image0(msim) for msim in msims]
 
@@ -59,10 +56,8 @@ def calc_flatfield_images(sims, quantiles, foreground_map=None):
 
 
 def calc_flatfield_model(dims0, quantiles, quantile_images):
-    """The flatfield correction model derived once at a reference resolution - dark/bright
-    quantile images (moved to channel-last order, matching apply_flatfield_model's element-wise
-    formula) plus the scalar per-channel mean_bright_dark - reused (dark/bright resized as needed)
-    at every pyramid level, instead of being recomputed or only ever applied at one resolution.
+    """The flatfield correction model at a reference resolution: dark and bright-dark range images (channel
+    last, as apply_flatfield_model expects) and the per-channel mean_bright_dark.
     """
     has_c_dim = 'c' in dims0
     dark = 0
@@ -91,9 +86,6 @@ def calc_flatfield_model(dims0, quantiles, quantile_images):
 
 
 def _resize_correction_image(image, target_shape):
-    # dark/bright_dark_range are only ever computed at one reference resolution - resize (rather
-    # than recompute) to match a coarser/finer pyramid level's own shape; a no-op when already at
-    # the reference resolution (e.g. the level the model was itself computed from)
     if tuple(np.shape(image)) == tuple(target_shape):
         return image
     return resize(np.asarray(image), target_shape, preserve_range=True)

@@ -26,7 +26,6 @@ def init_logging(log_filename='log/muvis-align.log', log_format='%(asctime)s %(l
                         format=log_format, handlers=handlers, encoding='utf-8', force=True)
 
     if debug:
-        # expose multiview_stitcher.registration logger and make more verbose
         mvsr_logger = logging.getLogger('multiview_stitcher.registration')
         mvsr_logger.setLevel(logging.DEBUG)
         if len(mvsr_logger.handlers) == 0:

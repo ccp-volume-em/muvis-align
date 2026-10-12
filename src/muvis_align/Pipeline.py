@@ -63,7 +63,6 @@ class Pipeline(Thread):
 
         operation_parts = operation.split()
         if 'match' in operation_parts:
-            # check if match label provided
             index = operation_parts.index('match') + 1
             if index < len(operation_parts):
                 match_label = operation_parts[index]
@@ -100,7 +99,6 @@ class Pipeline(Thread):
             if use_global_metadata:
                 global_center = {dim: np.mean([metadata['center'][dim] for metadata in metadatas]) for dim in metadatas[0]['center']}
                 rotations = [metadata['rotation'] for metadata in metadatas]
-                # fix missing rotation values
                 rotations = pd.Series(rotations).interpolate(limit_direction='both').to_numpy()
 
         n_set_workers = params.get('n_set_workers', 1)

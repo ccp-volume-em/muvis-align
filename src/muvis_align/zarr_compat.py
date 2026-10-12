@@ -1,21 +1,8 @@
-"""Windows-only workaround for zarr's atomic metadata write losing a race for its own file.
+"""Windows-only retry for zarr's atomic metadata write (zarr.storage._local._atomic_write).
 
-zarr writes each metadata document by writing a temporary file and then os.replace()-ing it onto
-the real name (zarr.storage._local._atomic_write). On Windows that rename fails outright -
-PermissionError, WinError 5 - if anything holds the destination open at that instant, where on
-POSIX it would simply succeed. Something does, briefly and unpredictably: writing an OME-Zarr
-store failed this way in roughly one full test run in four, always inside the fusion export, and
-never reproducibly on its own.
-
-The hold is transient. Retrying the rename for a few seconds absorbed it in every case observed:
-nine full test runs with this in place passed, four of them absorbing a retry, against four
-outright failures in the fifteen runs before it. What holds the handle was never identified -
-the obvious candidates were each ruled out by experiment (the reader fusion.fuse() opens on its
-own output store does not block the rename, and the failure happens equally to a store no other
-code has touched) - so this waits the hold out rather than claiming to prevent it.
-
-Applies only on Windows, and only if zarr's private helper still looks the way this expects; on
-any other platform, or if zarr changes, it does nothing and the original is left alone.
+On Windows the temporary file's rename onto the real name fails (PermissionError) if anything briefly holds the
+destination open. The holder is unidentified and the hold transient, so the rename is retried for a few seconds.
+Does nothing on other platforms, or if zarr's private helper has changed.
 """
 import contextlib
 import logging
@@ -50,8 +37,7 @@ def apply_windows_atomic_write_retry():
     def _atomic_write_with_retry(path, mode, exclusive=False):
         path = Path(path)
         tmp_path = path.with_suffix(f'.{uuid.uuid4().hex}.partial')
-        # cleanup on failure only, exactly as the original does: on success the temp file has
-        # been renamed away, so there is nothing left to remove
+        # cleanup on failure only, as the original: on success the temp file has been renamed away
         try:
             with tmp_path.open(mode) as file:
                 yield file

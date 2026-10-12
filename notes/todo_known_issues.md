@@ -39,11 +39,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-**Remaining REFACTORING items** (branch `refactor-cleanup`): 1. tick the restructure item; 2. every pool runs in the
-calling thread with one worker (rolling_map, SectionPlanes, contrast sampling, MVS/Interface/Pipeline pools);
-3. efficiency audit written up per optimisation (gain from notes/commits vs code) for a decision; 4. comments to
-SKILLS.md (1-2 lines, why not what, no performance figures), file by file, the code unchanged (AST check).
-Status: step 2.
+Nothing.
 
 ## TODO
 
@@ -116,9 +112,21 @@ REFACTORING
         filename expressions and the multi-z check, section z spacing (fallbacks differ), the quality-into-metrics
         merges (key matching differs), the pair-key parse, the two affine widenings (equal for y, x, 1 labels).
         metrics.calc_msims_metrics still builds its graph with mv_graph's linear programs (a behaviour change).
-- [ ] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
-- [ ] add option to these efficiency classes to run without threading using an input argument
-- [ ] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
+- [x] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
+      Audit (2026-10-12): nearly all have order-of-magnitude gains at 34k sources, prevent out-of-memory, or work
+      around a library bug (sweep pairing, polygon clipping, worker processes, rolling_map, deferred link quality,
+      lazy overview, stack props, fusion budgets, preview cap, napari cache clearing, single_threaded_highs, ...).
+      Debt, to decide: (1) the direct byte-range TIFF reads (ome_tiff_helper contiguous_layout / _read_rows): +15-20%
+      export for ~1.4GB more peak memory, ~54 lines - remove; (2) the pair-scoring CPU instrumentation
+      (timed_module_functions, 'Pair scoring cpu' log): a diagnostic monkeypatching multiview_stitcher - remove;
+      (3) threads over GIL-bound per-source preview prep (fuse()'s channel overlay, compose-mode layers): unmeasured -
+      plain loops. After the next HPC run: estimated_pair_cost (meatballs unchanged; check workers busy) and
+      SectionPlanes' prefetch (unmeasured; keep its LRU and z-chunk cache). The 'Preview cap: one rebuild' TODO:
+      drop (~3.5% of a refresh).
+- [x] add option to these efficiency classes to run without threading using an input argument
+- [x] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
+      (1250 -> 764 comment lines; testing/code_unchanged.py proves code unchanged; tiff_metadata.py left as
+      the upstream napari-meta-tiff copy)
 
 
 ## Done

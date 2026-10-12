@@ -1,17 +1,9 @@
-"""Progress for multiview_stitcher's global optimization, read out of its own log.
+"""Progress for multiview_stitcher's global optimization, read out of its own debug log.
 
-groupwise_resolution() is one blocking call that can run for a day, with nothing to hook: its
-optimiser is plain numpy and networkx, so a dask callback never sees a task, and
-multiview_stitcher.param_resolution has no tqdm to patch. It does write a debug line per
-iteration of its inner loop, which is what this listens for.
-
-The bar counts passes of the outer loop rather than iterations: a pass removes exactly one edge
-and the loop stops when none is worth removing, so the graph's edge count is a real ceiling on
-them. Each pass also crosses its own share of the bar as its iterations go, since a pass can be
-500 iterations and minutes long.
-
-A headless run has no bar, so the same records go to the log every `heartbeat_seconds`, with the
-residual - over a run this long, a falling residual is what separates slow from stuck.
+groupwise_resolution() is one long blocking call with nothing to hook (no dask tasks, no tqdm), but it logs
+each inner-loop iteration. The bar counts outer-loop passes, each removing one edge, so the edge count bounds
+them; a pass also advances with its iterations. Headless, the progress and residual are logged every
+`heartbeat_seconds`, a falling residual telling slow from stuck.
 """
 import logging
 import time
@@ -19,8 +11,7 @@ import time
 from muvis_align.util import raise_if_cancelled
 
 
-# upstream's own logger and messages, so they can change: everything here degrades to a single
-# phase that moves when the call returns, rather than failing, if they ever do
+# upstream's logger and messages: if they change, this degrades to a single phase rather than failing
 GLOBAL_OPT_LOGGER = 'multiview_stitcher.param_resolution.global_optimization'
 ITERATION_MESSAGE = 'Glob opt iter %s, node %s, mean residual %s, max residual %s'
 MAX_ITER_MESSAGE = 'Global optimization: setting max_iter to %s'
@@ -30,11 +21,7 @@ DEFAULT_MAX_ITER = 500
 
 
 class GlobalOptProgress:
-    """Reports multiview_stitcher's global optimization into `progress_factory`'s bar.
-
-    Used in place of a plain progress phase around groupwise_resolution(); with no factory it
-    still logs, which is all a headless run can show.
-    """
+    """Reports multiview_stitcher's global optimization into `progress_factory`'s bar, or only the log without one."""
 
     heartbeat_seconds = 30
 
@@ -61,11 +48,8 @@ class GlobalOptProgress:
 
     def __enter__(self):
         self._logger = logging.getLogger(GLOBAL_OPT_LOGGER)
-        # the iteration line is debug, and hearing it means taking this logger down to debug -
-        # which would also flood an app logging at info with every other debug line the optimiser
-        # writes. So take the records rather than share them: propagation off, and anything not
-        # consumed passed on (forward()) if the level actually in force would have shown it. The
-        # level to restore is the logger's own, normally unset so that it follows the app's.
+        # debug level is needed for the iteration lines, so propagation is off and forward() passes on
+        # only what the level in force would have shown
         self._prior_level = self._logger.level
         self._forward_level = self._logger.getEffectiveLevel()
         self._prior_propagate = self._logger.propagate
@@ -84,7 +68,7 @@ class GlobalOptProgress:
             self._logger.propagate = self._prior_propagate
         self._handler = None
         if not self._saw_iterations and exc_type is None:
-            # nothing recognised: still cross one phase, as the plain phase this replaced did
+            # nothing recognised: still cross one phase
             self._open_phase()
         self._end_phase(exc_type)
         return False
@@ -121,8 +105,7 @@ class GlobalOptProgress:
             self._advance(self._pass)
 
     def _open_phase(self):
-        # opened at the first iteration, not at __enter__: the optimiser logs max_iter after this
-        # is already listening, and a phase opened earlier would size itself against the default
+        # opened at the first iteration: max_iter is only logged after __enter__
         if self._phase is not None or self.progress_factory is None:
             return
         self._phase = self.progress_factory(total=self.max_passes, desc=self.desc,

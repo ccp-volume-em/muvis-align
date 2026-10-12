@@ -1,7 +1,5 @@
-"""Fusion written to OME-Zarr level by level and block by block, each block from only the sources that reach it and
-only the blocks some source reaches: multiview_stitcher runs Python over every source it gives a block, so a block's
-cost grows with the source count. The steps are its own zarr path's, prepare_block_fusion(create_output=False)
-attaching to the store."""
+"""Fusion to OME-Zarr level by level and block by block, only the blocks some source reaches, each from only the
+sources reaching it: multiview_stitcher runs Python over every source it gives a block."""
 import copy
 from dataclasses import asdict
 import inspect
@@ -47,9 +45,8 @@ def _grid_aligned_dims(stacks, matrices, output_stack_properties, sdims, tol=1e-
 
 
 def view_bounds(views, output_stack_properties, interpolation_order=1):
-    """Per view - (stack properties, affine matrix) - and spatial dim, the (low, high) physical bounds of what it
-    reaches in the output: its box padded for interpolation, by multiview_stitcher's own rule - except in a dim the
-    views are grid-aligned in, or have a single plane in."""
+    """Per view (stack properties, affine matrix) and spatial dim, the (low, high) physical bounds it reaches in the
+    output, padded for interpolation as multiview_stitcher does, except in grid-aligned or single-plane dims."""
     stacks = [stack for stack, _ in views]
     sdims = list(stacks[0]['shape'])
     ndim = len(sdims)
@@ -67,7 +64,7 @@ def view_bounds(views, output_stack_properties, interpolation_order=1):
 
 
 def _block_overlaps(bounds, origin, spacing, chunk, nblocks):
-    """Per block along one dim and source, whether the source reaches the block: its padded bounds meet the block's pixel centres, widened by half a pixel."""
+    """Per block along one dim and source, whether the source's bounds meet the block (widened by half a pixel)."""
     low = origin + (np.arange(nblocks) * chunk - 0.5) * spacing
     high = low + chunk * spacing
     return (low[:, None] <= bounds[None, :, 1]) & (bounds[None, :, 0] <= high[:, None])
@@ -76,8 +73,7 @@ def _block_overlaps(bounds, origin, spacing, chunk, nblocks):
 def budget_chunksize(bounds, output_stack_properties, output_chunksize, sdims, budget_bytes, bytes_per_voxel,
                      min_xy_chunk=256):
     """The largest yx chunk, shrinking from output_chunksize, whose busiest block fits budget_bytes: a block holds
-    every source it meets transformed to its full size, so a coarse level's block meeting a whole section's tiles
-    at once costs many times a fine one's - counted from the sources' own bounds, not their average density."""
+    every source it meets transformed to its full size, counted from the sources' bounds."""
     chunk = {dim: int(size) for dim, size in output_chunksize.items()}
     xy_dims = [dim for dim in ('y', 'x') if dim in chunk]
     while True:
@@ -98,22 +94,20 @@ def budget_chunksize(bounds, output_stack_properties, output_chunksize, sdims, b
         needed = busiest * voxels * bytes_per_voxel
         if needed <= budget_bytes or all(chunk[dim] <= min_xy_chunk for dim in xy_dims):
             return chunk
-        # by just the factor needed (fewer sources may meet the smaller block, so check again): halving went from
-        # 1600 to 800 where ~1500 fits, and every extra block costs its own fixed overhead
+        # shrink by just the factor needed, then recheck: every extra block has a fixed overhead
         factor = min(0.95, np.sqrt(budget_bytes / needed))
         for dim in xy_dims:
             chunk[dim] = max(min_xy_chunk, int(chunk[dim] * factor) // 64 * 64)
 
 
 def block_sources(bounds, output_stack_properties, output_chunksize, sdims):
-    """The blocks some source reaches, grouped by exactly which: {source indices: [spatial block indices]}.
-    multiview_stitcher's per-block fusion runs Python over every source it is given, reaching the block or not."""
+    """The blocks some source reaches, grouped by exactly which: {source indices: [spatial block indices]}."""
     overlaps = [_block_overlaps(bounds[:, axis], output_stack_properties['origin'][dim],
                                 output_stack_properties['spacing'][dim], int(output_chunksize[dim]),
                                 int(np.ceil(output_stack_properties['shape'][dim] / int(output_chunksize[dim]))))
                 for axis, dim in enumerate(sdims)]
     groups = {}
-    # the first dim's blocks one at a time keeps the rest a small product (a section's sources, at most)
+    # the first dim's blocks one at a time keeps the remaining product small
     for first_block, first_overlap in enumerate(overlaps[0]):
         candidates = np.flatnonzero(first_overlap)
         if len(candidates):
@@ -176,8 +170,8 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
                          creation_kwargs=None, batch_options=None, interpolation_order=1, desc=None, ranks=None,
                          groups=None):
     """Fuse `sims` into a new zarr array at store_url: only the blocks some source reaches, each from only the sources
-    reaching it (one prepare_block_fusion per set of them, ~2ms). With `ranks` (lower first, e.g. pixel sizes), a
-    block whose sources differ in rank fuses only the lowest-ranked at each pixel. Returns dims and properties."""
+    reaching it. With `ranks` (lower first, e.g. pixel sizes), only the lowest-ranked source at each pixel is fused.
+    Returns dims and properties."""
     batch_options = batch_options or {}
     dims = list(sims[0].dims)
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
@@ -226,8 +220,8 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
 
 
 def _run_blocks(block_func, block_ids, total, batch_options, desc):
-    """block_func on each block id, in batches through batch_options' batch_func, the bar counting `total` blocks of
-    which those not given (none of their sources) are done already."""
+    """block_func on each block id, batched through batch_options' batch_func; the bar counts `total` blocks, those
+    not given counted as done."""
     batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
     progress = fusion_core.tqdm(total=total, desc=desc)
     progress.update(total - len(block_ids))
@@ -244,9 +238,8 @@ def _run_blocks(block_func, block_ids, total, batch_options, desc):
 
 def average_into_zarr_array(parent_url, store_url, factors, chunk, spatial_blocks, creation_kwargs=None,
                             batch_options=None, desc=None):
-    """A zarr array averaging the one at parent_url by whole `factors` (one a dim of its trailing spatial dims), its
-    blocks of `chunk` written only where listed in spatial_blocks: a level from the one above it, as multiview_stitcher's
-    pyramid does, without its z averaged across sections or its empty blocks computed."""
+    """A zarr array averaging the one at parent_url by whole `factors` per trailing spatial dim, writing only the
+    `chunk` blocks in spatial_blocks: a pyramid level without z averaged across sections or empty blocks computed."""
     batch_options = batch_options or {}
     parent = zarr.open_array(parent_url, mode='r')
     sdims = [dim for dim in 'zyx' if dim in chunk]
@@ -273,7 +266,7 @@ def average_into_zarr_array(parent_url, store_url, factors, chunk, spatial_block
 
 
 def storage_ngff_version(ngff_version):
-    # 0.6 changed the metadata, not the arrays: they are stored as 0.5's (zarr v3), which multiview_stitcher can create
+    # 0.6 changed the metadata, not the arrays: they are stored as 0.5's, which multiview_stitcher can create
     return '0.5' if str(ngff_version).startswith('0.6') else ngff_version
 
 
@@ -286,8 +279,7 @@ def _zarr_options(zarr_options):
 
 
 def write_multiscales_metadata(group, axes, datasets, ngff_version):
-    """multiview_stitcher's write_multiscales_metadata, and OME-Zarr 0.6 too, which it does not know: the same
-    metadata converted by ngff-zarr (axes in a coordinate system, each level's transforms a sequence into it)."""
+    """multiview_stitcher's write_multiscales_metadata, plus OME-Zarr 0.6 (which it lacks) converted by ngff-zarr."""
     if not str(ngff_version).startswith('0.6'):
         ngff_utils.write_multiscales_metadata(group, axes=axes, datasets=datasets, ngff_version=ngff_version)
         return
@@ -322,9 +314,8 @@ def _remove_existing(output_zarr_url, zarr_options):
 
 def native_level_spacings(source_spacings, finest_shape, min_shape=100, tolerance=0.05):
     """Output level pixel sizes that never upsample a source: the finest source's, doubling, with a level at each
-    coarser source pixel size (tiles at 0.01 and overviews at 0.249: 0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.498..),
-    until the largest dim would fall to min_shape - each source size gets its level, however small, or what only it
-    covers would be in none. Sizes within `tolerance` of each other count as one, the finest."""
+    coarser source pixel size, until the largest dim would fall to min_shape - every source size gets a level, or
+    what only it covers would be in none. Sizes within `tolerance` of each other count as one."""
     sizes = []
     for size in sorted(source_spacings):
         if not sizes or size > sizes[-1] * (1 + tolerance):
@@ -334,8 +325,7 @@ def native_level_spacings(source_spacings, finest_shape, min_shape=100, toleranc
     while pending or largest * levels[0] / (levels[-1] * 2) > min_shape:
         doubled = levels[-1] * 2
         if pending and doubled >= pending[0] * (1 - tolerance):
-            # a step of under sqrt(2) to a source's own size replaces a doubled level before it - never another
-            # source's size, whose sources would then be in no level at their own size
+            # a step under sqrt(2) to a source size replaces the doubled level before it, never another source size
             if len(levels) > 1 and levels[-1] not in sizes and pending[0] < levels[-1] * np.sqrt(2):
                 levels[-1] = pending.pop(0)
             else:
@@ -346,8 +336,8 @@ def native_level_spacings(source_spacings, finest_shape, min_shape=100, toleranc
 
 
 def native_level_stack_properties(level0_properties, level_spacings, scaled_dims):
-    """Each level's output stack: level 0's extent at the level's pixel size in `scaled_dims` (other dims, such as a
-    section stack's z, kept as they are), its origin by OME-Zarr's pixel-centre convention."""
+    """Each level's output stack: level 0's extent at the level's pixel size in `scaled_dims` (other dims kept), its
+    origin by OME-Zarr's pixel-centre convention."""
     spacing0 = level0_properties['spacing']
     levels = []
     for level_spacing in level_spacings:
@@ -399,8 +389,7 @@ def written_voxels(groups, output_properties, chunk):
 
 
 def level_paths(count):
-    """'0'..'9', zero-padded from 11 levels on: readers that list a group's arrays by name (napari's own) sort them
-    as text, putting '10' after '1' - the multiscales metadata, which names them, has them in order either way."""
+    """Level path names, zero-padded from 11 levels on: readers listing arrays by name (napari) sort them as text."""
     width = len(str(count - 1)) if count > 10 else 1
     return [str(index).zfill(width) for index in range(count)]
 
@@ -408,19 +397,17 @@ def level_paths(count):
 def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level0_properties, output_chunksize,
                             fusion_func=None, zarr_options=None, batch_options=None, interpolation_order=1,
                             ranks=None, average_levels=False):
-    """An OME-Zarr multiscale image of `levels` (export_levels), each level fused at its own pixel size from its
-    sources, each read at its own nearest level. With average_levels, every level after the first averages the one
-    above it instead: the same pixels resampled again cost more than the average of what is already fused. With
-    `ranks` (one a source, lower first), where a lower-ranked source covers a pixel, a higher-ranked one under it is
-    left out."""
+    """An OME-Zarr multiscale image of `levels` (export_levels), each fused at its own pixel size from its sources at
+    their nearest level. With average_levels, every level after the first averages the one above instead. With `ranks`
+    (one a source, lower first), a higher-ranked source under a lower-ranked one is left out."""
     ngff_version, creation_kwargs = _zarr_options(zarr_options)
     _remove_existing(output_zarr_url, zarr_options)
     logging.info(f'Fusion levels {[float(round(level[0], 4)) for level in levels]}')
     paths = level_paths(len(levels))
     for index, (level_spacing, properties, selected) in enumerate(levels):
         output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
-        # as multiview_stitcher picks them, exactly: a source level at the output's own pixel size, offset from its
-        # grid, leaves the output's edge pixels outside its interpolation
+        # tolerance 0, as multiview_stitcher picks: an offset source level at the output's pixel size leaves the
+        # output's edge pixels outside its interpolation
         sims = [msi_utils.get_sim_from_msim(msims[source], scale='scale%d' % coarsest_level_within(
             msim_level_spacings(msims[source]), output_properties['spacing'], dims=list(output_properties['spacing']),
             tolerance=0)) for source in selected]

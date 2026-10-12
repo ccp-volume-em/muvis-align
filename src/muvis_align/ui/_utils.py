@@ -33,7 +33,7 @@ def failure_message(label, error):
 
 
 def report_failure(label, error):
-    # a dialog, as a success gets: napari's corner notification fades within seconds, unseen behind the activity dock
+    # a dialog: napari's corner notification fades quickly, unseen behind the activity dock
     message = failure_message(label, error)
     application = QCoreApplication.instance()
     if application is not None and QThread.currentThread() is application.thread():
@@ -43,9 +43,8 @@ def report_failure(label, error):
 
 
 def catch_run_errors(func):
-    """Wrap a run_*() method so a failure shows a dialog and logs the full traceback to the main log
-    file, instead of surfacing as an opaque signal-emission error - and returns None instead of
-    propagating, so callers can bail out (e.g. skip a 'completed' dialog) by checking the return value.
+    """Wrap a run_*() method so a failure shows a dialog and logs the full traceback, then returns None
+    instead of propagating, so callers can bail out by checking the return value.
     """
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
@@ -92,8 +91,7 @@ class VisibleActivityDock(object):
     """
     Context manager to temporarily show the activity dock during long computation.
 
-    napari's welcome screen, shown whenever the viewer has no layers, is drawn over the dock -
-    the bar disappeared for the whole first refresh of a project. It is kept off meanwhile.
+    napari's welcome screen, shown while the viewer has no layers, is drawn over the dock, so it is kept off.
     """
     def __init__(self, viewer):
         self.viewer = viewer
@@ -126,10 +124,8 @@ def _private_napari_access():
 def flush_paint_events():
     """Let Qt repaint what was just changed, without delivering pending user input.
 
-    Excluding input is what makes this safe to call from inside an event handler: a plain
-    processEvents() also delivers queued mouse events, and a ButtonRelease consumed by that
-    nested pass leaves X's implicit pointer grab stuck - the cursor keeps whatever shape it
-    had (an I-beam, over a text field) and later clicks never reach the widget under it.
+    Safe inside an event handler: a ButtonRelease consumed by a nested processEvents() leaves X's pointer
+    grab stuck, so later clicks never reach the widget under the cursor.
     """
     try:
         from qtpy.QtCore import QEventLoop
@@ -143,7 +139,7 @@ def flush_paint_events():
 
 def patch_shapes_text_coords():
     """Make napari's Shapes label positions read the layer's shape list once, not once per shape
-    in view - quadratic otherwise: 12.6s of a 22.8s add_shapes at 150k shapes (napari 0.9.0)."""
+    in view, which is quadratic in the number of shapes."""
     from napari.layers import Shapes
 
     original = getattr(Shapes, '_view_text_coords', None)
@@ -193,8 +189,8 @@ def _parented_label_class(label_class):
 
 
 def clear_napari_dask_cache():
-    """Empty napari's dask cache: it keeps removed layers' computed chunks, up to a quarter of RAM (~500GB on a 2TB
-    HPC node), and the lazy overview has its own plane cache."""
+    """Empty napari's dask cache: it keeps removed layers' computed chunks, up to a quarter of RAM, and the lazy
+    overview has its own plane cache."""
     try:
         from napari.utils._dask_utils import _DASK_CACHE
     except ImportError:

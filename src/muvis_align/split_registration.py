@@ -95,7 +95,7 @@ def fuse_group(msims, transform_key, grid, tile_size):
     sim = si_utils.get_sim_from_array(data, dims=['y', 'x'], scale=grid['spacing'], translation=grid['origin'],
                                       transform_key=GROUP_KEY)
     msim = msi_utils.get_msim_from_sim(sim, scale_factors=[])
-    # as register_pairs' own msims: the (only) channel selected, so registration sees spatial dims alone
+    # the only channel selected, so registration sees spatial dims alone
     return msi_utils.multiscale_sel_coords(msim, {'c': sim.coords['c'].values[0]})
 
 
@@ -128,7 +128,7 @@ def register_groups(msims, transforms, groups, base_transform_key, pairwise_reg_
         for msim, transform in zip(msims, transforms):
             set_msim_affine(msim, transform, transform_key=STAGE1_KEY, base_transform_key=base_transform_key)
         grid, tile_size = group_grid(msims, STAGE1_KEY)
-        # two groups held at a time: at a thousand planes all of them would not fit in memory
+        # two groups held at a time: all of them may not fit in memory
         previous = None
         for index in range(ngroups):
             raise_if_cancelled()

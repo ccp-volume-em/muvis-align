@@ -1,6 +1,6 @@
 """An overview of the sources (raw or pre-processed), one plane per section (or z of a volume), each built only when
 it is viewed: the plane's own tiles read at the coarsest level no coarser than the plane and pasted at their position.
-Opening a large project then shows image data as soon as the shapes, instead of pasting every source before any."""
+Opening a large project then shows image data as soon as the shapes."""
 import logging
 import threading
 from collections import OrderedDict
@@ -20,7 +20,7 @@ from muvis_align.util import parse_scale, pixel_size_to_um, thread_map
 
 # tiles read at once while a plane is built: on a network filesystem each costs a round trip, not CPU
 default_plane_readers = 32
-# planes kept once built, the least recently viewed dropped first: all 1081 of a 34k-source stack would be ~17GB
+# planes kept once built, the least recently viewed dropped first: all planes of a large stack would not fit
 default_planes_max_bytes = 1_000_000_000
 # sections on either side of a viewed one built in the background, so scrolling finds them ready
 default_prefetch_radius = 4
@@ -116,7 +116,7 @@ class SectionPlanes:
         plane = np.zeros((self.nchannels, self.shape['y'], self.shape['x']), dtype=self.dtype)
         entries = self.entries.get(index, [])
         datas = thread_map(self._source_plane, entries, self.workers)
-        # in source order, as the pasted overview did: a later source covers an earlier one
+        # in source order: a later source covers an earlier one
         for entry, data in zip(entries, datas):
             _paste(plane, data, entry['edge'], entry['spacing'], self.spacing)
         return plane

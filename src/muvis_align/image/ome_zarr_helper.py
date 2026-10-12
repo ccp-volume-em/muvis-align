@@ -59,8 +59,7 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
     multiscales = to_multiscales(image, scale_factors=pyramid_downsample, chunks=create_chunk_dict(default_chunk_size, dim_order))
 
     if channels:
-        # dict.get()'s default only applies when the key is missing, so an explicit but blank
-        # label (e.g. an unnamed OME channel) needs `or`, not `get`
+        # `or`, not a get() default: a blank label is present but empty
         omero = Omero(channels=[OmeroChannel(label=channel.get('label') or f'Channel {index}',
                                              color=rgba_to_hexrgb(channel.get('color')),
                                              window=OmeroWindow(**get_channel_window(multiscales.images[-1].data, dim_order, index)))
@@ -76,16 +75,10 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
 
 
 def get_padding_scale_factors(shape, dim_order, **kwargs):
-    """Cumulative per-level downsample factors needed to extend a pyramid whose coarsest level
-    is `shape` down to one small enough to draw a zoomed-out overview from - calc_pyramid_level_
-    factors()' rule, the same one build_missing_pyramid_levels() applies when synthesizing those
-    levels on the reader side. Writing them means a store carries the levels a reader would
-    otherwise have to invent - and, for a chunked store, could not invent cheaply: strided
-    subsampling of a zarr array still reads every chunk it touches, unlike the already-decoded
-    single page of a non-pyramidal TIFF.
+    """Cumulative per-level downsample factors extending a pyramid whose coarsest level is `shape` down to
+    overview size, by the rule readers use to synthesize levels: a chunked store cannot synthesize them cheaply.
 
-    Already in ngff_zarr's own form: one dict per extra level, giving that level's factor
-    relative to the input, cumulative rather than per-step.
+    In ngff_zarr's form: one dict per extra level, its factor relative to the input.
     """
     return calc_pyramid_level_factors(
         {dim: size for dim, size in zip(dim_order, shape) if dim in 'xyz'}, **kwargs)
@@ -93,24 +86,11 @@ def get_padding_scale_factors(shape, dim_order, **kwargs):
 
 def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
                                min_length=128, compression=None, ome_version=default_ome_zarr_version):
-    """Write pre-built pyramid levels (e.g. a source's own native resolutions) exactly as
-    given - no resampling - unlike save_ome_image()/to_multiscales(), which always derives
-    every level but the first from one input via resampling.
+    """Write pre-built pyramid levels exactly as given, without resampling, then pad with resampled coarser
+    levels, halving until the largest spatial extent is at most min_length.
 
-    Pads with additional coarser levels beyond the smallest given one, halving until the largest
-    spatial extent is at most min_length - at or below the reader side's own threshold
-    (build_missing_pyramid_levels' min_size, i.e. default_chunk_size). Those extra levels are
-    genuinely resampled (via ngff_zarr's own default downsampling method) since nothing at that
-    resolution exists in the source to preserve.
-
-    The per-level factors are computed here rather than delegated to to_multiscales(
-    scale_factors=<int>): that int form calls ngff_zarr's private _ngff_image_scale_factors(),
-    which stops as soon as every spatial dim is below *twice* the chunk size and never emits a
-    level smaller than one chunk. For a 1024 chunk that leaves the coarsest written level at
-    >=1024px, a level coarser than which the reader would have synthesized for itself from a
-    non-pyramidal source - so a converted OME-Zarr ended up with a coarser-level gap exactly
-    where a zoomed-out preview needs one, and reading it back selected a much finer level than
-    the requested preview scale (fusing, and holding in memory, far more than asked for).
+    The padding factors are computed here: to_multiscales(scale_factors=<int>) never writes a level smaller
+    than one chunk, leaving no level coarse enough for a zoomed-out preview.
 
     levels: list of (data, pixel_size) pairs, finest first - data can be numpy or dask.
     """
@@ -127,8 +107,7 @@ def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
     datasets = []
     coordinate_systems = None
     for data, pixel_size in levels:
-        # to_multiscales(scale_factors=[]) just wraps one already-built level with correct OME
-        # metadata (axes/coordinateSystems/scale/translation) - no resampling happens for it
+        # scale_factors=[] only wraps the level in OME metadata, without resampling
         ngff_image = to_ngff_image(data, dims=dim_order, scale=pixel_size, translation=translation,
                                    axes_units=axes_units)
         level_multiscales = to_multiscales(ngff_image, scale_factors=[], chunks=chunks)
@@ -148,15 +127,13 @@ def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
         images += extra_multiscales.images[1:]
         datasets += extra_multiscales.metadata.datasets[1:]
 
-    # renumber every dataset path sequentially - each was independently built starting from
-    # 'scale0/image', so native and padding levels alike would otherwise collide/repeat
+    # each level was built separately as 'scale0/image', so paths would otherwise collide
     for index, dataset in enumerate(datasets):
         dataset.path = f'scale{index}/image'
 
     metadata = Metadata(coordinateSystems=coordinate_systems, datasets=datasets)
     if channels:
-        # dict.get()'s default only applies when the key is missing, so an explicit but blank
-        # label (e.g. an unnamed OME channel) needs `or`, not `get`
+        # `or`, not a get() default: a blank label is present but empty
         omero = Omero(channels=[OmeroChannel(label=channel.get('label') or f'Channel {index}',
                                              color=rgba_to_hexrgb(channel.get('color')),
                                              window=OmeroWindow(**get_channel_window(images[-1].data, dim_order, index)))
