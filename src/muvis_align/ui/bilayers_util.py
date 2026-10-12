@@ -57,8 +57,6 @@ class MagicGuiFieldSpec(BaseModel):
     is_output: bool = False
     is_file_type: bool = False
 
-    def get_choice_label(self, choice):
-        return self.choices[choice]
 
     def to_magicgui_choices(self):
         return to_magicgui_choices(self.choices)

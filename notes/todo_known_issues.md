@@ -39,7 +39,9 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Nothing.
+**Duplication list** (REFACTORING restructure item, branch `restructure`), in order: delete the unreferenced
+functions; then merge the listed duplications largest first, a commit each, with the targeted tests for each.
+Status: unreferenced functions.
 
 ## TODO
 
