@@ -97,8 +97,6 @@ default_msim_build_workers = min(default_source_init_workers, 32)
 zarr.config.set({'threading.max_workers': default_source_init_workers})
 # Windows: zarr's rename of metadata into place fails if anything holds the destination open
 apply_windows_atomic_write_retry()
-# per-source preview/fusion prep is CPU-bound
-default_preview_workers = _available_cpus
 # multiview_stitcher fuses an export's blocks sequentially unless given our own batch_func
 default_fusion_workers = _available_cpus
 # pairs registered at once when n_parallel_pairwise_regs is blank, one per process: threads are GIL-bound

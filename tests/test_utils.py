@@ -9,7 +9,7 @@ import pytest
 from muvis_align.util import calculate_rigid_difference, create_transform, get_metadata_z_scale, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
-    timed_module_functions, rolling_map, thread_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
+    rolling_map, thread_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
     eval_context, convert_to_um, get_unique_file_labels, strip_common_path_prefix, format_phase_timing, \
     path_param_to_text
 
@@ -198,17 +198,6 @@ def test_timed_calls_records_each_call_and_keeps_the_signature():
     assert all(time_ >= 0 for time_ in times + cpu_times)
     # multiview_stitcher picks how to call a registration function by its keywords
     assert has_keyword(timed, 'fixed_data') and has_keyword(timed, 'moving_data')
-
-
-def test_timed_module_functions_times_calls_and_restores():
-    import types
-    module = types.SimpleNamespace(score=lambda value: value + 1)
-    original = module.score
-    with timed_module_functions(module, ['score']) as cpu_times:
-        assert module.score(1) == 2
-        module.score(2)
-    assert len(cpu_times['score']) == 2
-    assert module.score is original
 
 
 def test_rolling_map_yields_every_item_with_a_bounded_number_submitted():

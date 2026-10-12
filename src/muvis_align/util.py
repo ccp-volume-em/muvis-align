@@ -670,21 +670,6 @@ def rolling_map(func, items, workers):
                 future.cancel()
 
 
-@contextmanager
-def timed_module_functions(module, names):
-    """For the duration, time calls to `module`'s functions `names` process-wide, yielding
-    {name: [thread CPU time per call]}.
-    """
-    cpu_times = {name: [] for name in names}
-    originals = {name: getattr(module, name) for name in names}
-    for name, func in originals.items():
-        setattr(module, name, timed_calls(func, [], cpu_times[name]))
-    try:
-        yield cpu_times
-    finally:
-        for name, func in originals.items():
-            setattr(module, name, func)
-
 def convert_to_um(value, unit):
     """`value` in `unit`, converted to um; an unrecognised unit is left unscaled, and logged.
     Takes both OME abbreviations and spelled-out NGFF unit names.

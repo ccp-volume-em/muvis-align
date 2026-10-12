@@ -89,15 +89,6 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       image shapes 1.3ms, tables 1.8 min; the preview cap and fused preview only where the lazy overview
       declines (a rotation, 2D and 3D sources together). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
-- [ ] **Preview cap: one rebuild instead of three** - only if the next HPC run still shows the cap running (it is
-      reached only where the lazy overview declines: a rotation, 2D and 3D sources together); otherwise drop. Time
-      only, not memory: the 343GB -> 4GB is the preview it keeps from being fused, and each round rebuilds lazy msim
-      trees, not pixels. 3 size estimates, 2 rounds dropping levels and 1 strided round (~11ms a source each on the
-      HPC, 3.4 min at 34k); choosing the levels from each level's geometry before rebuilding once needs a level
-      passed through estimate_fused_size, calc_output_properties and promoted_geometry. Expected saving, per refresh
-      that reaches the cap: ~1.7 min, half the cap, ~3.5% of the 48 min refresh (2026-10-03), under 0.2% of the
-      ~17h registration and fusion; none where the lazy overview draws the view.
-
 REFACTORING
 
 - [x] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
@@ -116,13 +107,15 @@ REFACTORING
       Audit (2026-10-12): nearly all have order-of-magnitude gains at 34k sources, prevent out-of-memory, or work
       around a library bug (sweep pairing, polygon clipping, worker processes, rolling_map, deferred link quality,
       lazy overview, stack props, fusion budgets, preview cap, napari cache clearing, single_threaded_highs, ...).
-      Debt, to decide: (1) the direct byte-range TIFF reads (ome_tiff_helper contiguous_layout / _read_rows): +15-20%
+      Debt removed (branch refactor-cleanup): (1) the direct byte-range TIFF reads (ome_tiff_helper contiguous_layout / _read_rows): +15-20%
       export for ~1.4GB more peak memory, ~54 lines - remove; (2) the pair-scoring CPU instrumentation
       (timed_module_functions, 'Pair scoring cpu' log): a diagnostic monkeypatching multiview_stitcher - remove;
       (3) threads over GIL-bound per-source preview prep (fuse()'s channel overlay, compose-mode layers): unmeasured -
       plain loops. After the next HPC run: estimated_pair_cost (meatballs unchanged; check workers busy) and
-      SectionPlanes' prefetch (unmeasured; keep its LRU and z-chunk cache). The 'Preview cap: one rebuild' TODO:
-      drop (~3.5% of a refresh).
+      SectionPlanes' prefetch (unmeasured; keep its LRU and z-chunk cache). The 'Preview cap: one rebuild' TODO
+      dropped (~3.5% of a refresh).
+- [ ] **After the next HPC run, keep or drop** estimated_pair_cost (pairs largest first: workers busy was 39.7/64)
+      and SectionPlanes' prefetch of neighbouring sections (a section's build time when scrolling).
 - [x] add option to these efficiency classes to run without threading using an input argument
 - [x] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
       (1250 -> 764 comment lines; testing/code_unchanged.py proves code unchanged; tiff_metadata.py left as

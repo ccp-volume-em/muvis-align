@@ -1355,9 +1355,6 @@ class MVSRegistration:
                     pair_cpu_times.append(cpu_time)
                     return registered
 
-                # phase correlation scores every candidate shift with these: their share of a pair's CPU
-                scoring = (timed_module_functions(registration, ['structural_similarity', 'link_quality_metric_func'])
-                           if self.logging_time else nullcontext({}))
                 phase_start, phase_cpu_start = time.time(), time.process_time()
                 # one pair per thread, each its own compute, so a slow pair holds up no batch; a single worker
                 # keeps the threads scheduler so one (e.g. 3D) pair still runs its tasks in parallel
@@ -1366,7 +1363,7 @@ class MVSRegistration:
                         Timer(f'register {g_reg.number_of_edges()} pairs on {workers}'
                               f' {"processes" if pool is not None else "threads"}', verbose=self.logging_time), \
                         (pool if pool is not None else nullcontext()), \
-                        scoring as scoring_cpu_times, deferred_link_quality(), \
+                        deferred_link_quality(), \
                         dask.config.set(scheduler='synchronous' if workers > 1 else 'threads'):
                     log_start = time.time()
                     for count, (edge, pair_computed) in enumerate(
@@ -1395,12 +1392,6 @@ class MVSRegistration:
                                  f' {format_phase_timing(time.time() - phase_start, pair_times, pair_cpu_times,
                                                          workers, time.process_time() - phase_cpu_start,
                                                          processes=pool is not None)}')
-                    # scoring is timed in this process only
-                    if pool is None:
-                        logging.info('Pair scoring cpu: '
-                                     + ', '.join(f'{name} {sum(cpu_times):.1f}s ({len(cpu_times)} calls)'
-                                                 for name, cpu_times in scoring_cpu_times.items())
-                                     + f' of {sum(pair_cpu_times):.1f}s in the pairs themselves')
 
                 # ******* end MVS registration functions
 
@@ -1845,8 +1836,7 @@ class MVSRegistration:
                         sim0.dtype, list(output_stack_properties['shape']))
                 )
 
-            # each source's lazy graph is independent, so its construction is spread over a pool
-            channel_results = thread_map(build_channel_result, msims, workers or default_preview_workers)
+            channel_results = [build_channel_result(msim) for msim in msims]
             fused_image = combine_msims_as_channels(channel_results, [channel['label'] for channel in channels])
         else:
             if fusion_method:

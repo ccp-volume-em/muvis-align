@@ -16,7 +16,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, tiff_extension, default_transform_key, default_quality_key, \
-    default_interactive_preview_scale, default_preview_workers, default_chunk_size
+    default_interactive_preview_scale, default_chunk_size
 from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
                                              update_params)
 from muvis_align.MVSRegistration import MVSRegistration, RegState
@@ -42,7 +42,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
-    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase, thread_map
+    resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase
 
 
 patch_shapes_text_coords()
@@ -1176,7 +1176,7 @@ class Interface:
                     if shape_index is not None:
                         self.select_pair_preview(refs[shape_index])
 
-    def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False, workers=default_preview_workers):
+    def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False):
         # `fused` is one channel-combined multiscale msim, or in 'compose' mode a list of per-source msims;
         # cheap=True guesses contrast limits from the dtype instead of computing them
         channels = self.extra_metadata.get('channels', [])
@@ -1196,7 +1196,7 @@ class Interface:
             channel_list = channels or [{}] * len(fused)
             with Timer(f'_napari_view_add_fused_data: prep {len(fused)} layers',
                       verbose=self._timing_verbose()):
-                layer_kwargs = thread_map(lambda item: prep_layer(*item), list(zip(fused, channel_list)), workers)
+                layer_kwargs = [prep_layer(msim, channel) for msim, channel in zip(fused, channel_list)]
 
             with Timer(f'_napari_view_add_fused_data: add_image loop ({len(fused)} layers)',
                       verbose=self._timing_verbose()):
