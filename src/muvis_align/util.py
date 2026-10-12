@@ -24,6 +24,8 @@ from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
 from xarray import DataArray
 
+from muvis_align.image.tiff_metadata import UM_CONVERSIONS
+
 
 def single_threaded_highs():
     """Run scipy's HiGHS (linprog, as multiview-stitcher's overlap tests use) on the calling thread alone."""
@@ -472,15 +474,8 @@ def eval_context(data, key, default_value, context):
 
 
 
-um_conversions = {
-    'Å': 1e-4, 'A': 1e-4, 'angstrom': 1e-4,
-    'pm': 1e-6, 'picometer': 1e-6,
-    'nm': 1e-3, 'nanometer': 1e-3,
-    'µm': 1, 'um': 1, 'micrometer': 1, 'micron': 1,
-    'mm': 1e3, 'millimeter': 1e3,
-    'cm': 1e4, 'centimeter': 1e4,
-    'm': 1e6, 'meter': 1e6
-}
+# tiff_metadata's table, plus the cased spellings OME writes
+um_conversions = UM_CONVERSIONS | {'Å': 1e-4, 'A': 1e-4}
 
 
 def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None,
