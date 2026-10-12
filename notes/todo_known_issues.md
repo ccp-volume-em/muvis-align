@@ -95,8 +95,10 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       reached only where the lazy overview declines: a rotation, 3D or multichannel sources); otherwise drop. Time
       only, not memory: the 343GB -> 4GB is the preview it keeps from being fused, and each round rebuilds lazy msim
       trees, not pixels. 3 size estimates, 2 rounds dropping levels and 1 strided round (~11ms a source each on the
-      HPC, 3.4 min at 34k); choosing the levels from each level's geometry before rebuilding once would save ~1.5-2
-      min, but needs a level passed through estimate_fused_size, calc_output_properties and promoted_geometry.
+      HPC, 3.4 min at 34k); choosing the levels from each level's geometry before rebuilding once needs a level
+      passed through estimate_fused_size, calc_output_properties and promoted_geometry. Expected saving, per refresh
+      that reaches the cap: ~1.7 min, half the cap, ~3.5% of the 48 min refresh (2026-10-03), under 0.2% of the
+      ~17h registration and fusion; none where the lazy overview draws the view.
 
 REFACTORING
 
