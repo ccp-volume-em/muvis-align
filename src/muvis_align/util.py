@@ -519,13 +519,17 @@ def get_metadata_z_scale(metadata):
     """
     if not isinstance(metadata, dict):
         return None
-    value = metadata.get('scale', {}).get('z')
-    if value is None or check_contains_value(value, 'source'):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    scales = metadata.get('scale', {})
+    # a list holds one scale per file: the run steps by the finest z, as init_data does by z positions
+    values = []
+    for scale in (scales if isinstance(scales, list) else [scales]):
+        value = scale.get('z') if isinstance(scale, dict) else None
+        if value is not None and not check_contains_value(value, 'source'):
+            try:
+                values.append(float(value))
+            except (TypeError, ValueError):
+                pass
+    return min(values, key=abs) if values else None
 
 
 def eval_context(data, key, default_value, context):

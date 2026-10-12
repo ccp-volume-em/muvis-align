@@ -6,7 +6,7 @@ import sys
 import numpy as np
 import pytest
 
-from muvis_align.util import calculate_rigid_difference, create_transform, \
+from muvis_align.util import calculate_rigid_difference, create_transform, get_metadata_z_scale, \
     pattern_base_dir, resolve_to_project_dir, relativize_to_project_dir, \
     find_sbemimage_meta_dir, to_posix_path, get_process_memory, print_memory_usage, timed_calls, \
     timed_module_functions, rolling_map, get_filetitle, find_labelled_numbers, print_dict_simple, print_significants, \
@@ -642,3 +642,16 @@ def test_items_in_worker_processes_report_busy_workers_not_a_gil_verdict():
 
     assert '6.0 of 8 busy' in line
     assert CPU_BOUND not in line and IO_BOUND not in line
+
+
+@pytest.mark.parametrize('metadata, expected', [
+    ({'scale': {'z': '2.5'}}, 2.5),
+    ({'scale': {'z': 'source'}}, None),
+    ({'scale': {'x': 1}}, None),
+    ({'scale': 0.5}, None),
+    ({'scale': [{'z': 3}, {'z': 'source'}, {'z': 2}, {'x': 1}]}, 2.0),
+    ({'scale': [{'x': 1}, {'x': 2}]}, None),
+    ('metadata.csv', None),
+], ids=['number', 'source', 'no z', 'not a dict', 'one per file', 'none per file', 'a file'])
+def test_metadata_z_scale(metadata, expected):
+    assert get_metadata_z_scale(metadata) == expected
