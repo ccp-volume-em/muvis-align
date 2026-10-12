@@ -45,24 +45,13 @@ Nothing.
 
 ESSENTIAL
 
-- [ ] **Opening a fused project re-fuses a blurry preview instead of loading the fused zarr** - HPC (large
-      meatballs-type set): ~2h to open, and the view is far blurrier than the 100nm preview pixel size.
-      Why: an already-fused project (check_progress: FUSED when the output exists) opens through
-      _show_loaded_project -> _copy_transforms_to_view_msims (every source's msim) -> preview_fusion ->
-      _create_napari_data: sub-pyramid, preview cap (reduce_msims_to_fused_size, 3 rebuilds of every msim), an
-      in-memory fuse() and its contrast compute - a new fusion from all sources, while the export is already on
-      disk. Blurry: the cap holds the whole fused stack to default_preview_max_bytes (4GB), shared by every section
-      (1081 sections leave ~4MB, ~2000x2000 px, a section), far coarser than 100nm; and in memory 'native' fuses
-      as 'mean', averaging the overview into the tiles (the export puts the tiles over it). After an export the
-      plugin shows the zarr it wrote (fusion_process: read back, lazy, multiscale) - sharp at every zoom.
-      Fix: open a fused project by reading its zarr (ngff_utils.read_msim_from_ome_zarr) after the sources and
-      shapes, as after an export: seconds, every level sharp. Stale output (registration or fusion settings changed
-      since) could be told from the zarr's RO-Crate fusion parameters - re-fuse only then, or on Preview. Check
-      the HPC log's Time lines first to confirm where the 2h goes (view msims, cap, fuse, contrast, shapes).
-
-
-PERFORMANCE
-
+- [ ] **Opening a registered project: ~50 min of msim builds and a pre-processing re-run** - HPC log 2026-10-12
+      (33996 sources, open 1h49 in all): init sources 3.6 min, Build msims 30.5 min (32 workers, 2.8 cores; for
+      loading the saved registration), pair mappings 9 min, global mappings ~11 min, pre-processing re-run 10.2 min
+      (builds the msims again, 9.2 min), view msims 3.3 min, then the fusion preview ~41 min (now skipped for a
+      current export, see Done). The re-run is only needed for steps on the pre-processed msims (pair registration,
+      modify pair): defer it to them. The msim builds feed the registered transforms; shapes and the overview could
+      take them from source geometry and the mappings, as estimate_fusion_size does, leaving msims to fusion.
 - [ ] 19:30 CET time close napari - long time to actually close node
 - [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
       preview size cap (3.4 min on the HPC).
@@ -137,6 +126,10 @@ REFACTORING
 
 ## Done
 
+- **A fused project opens its export** - _show_loaded_project reads the fused zarr (read_msim_from_ome_zarr) when it
+  was written after every saved registration file (MVSRegistration.current_fused_output), else previews as before.
+  The HPC open spent ~41 of 109 min on a capped preview fusion, at 1.13um where 100nm was asked (343GB capped to
+  2GB, the overview averaged into the tiles). Local meatballs: open ~15s, the export shown in 0.6s, every level sharp.
 - **Duplication list** (branch `restructure`) - ~40 unreferenced functions and ome_ngff_helper deleted (652 lines);
   one progress_phase (was 2 copies + 7 inline), one pooled_map for building sources and msims (single-threaded with
   one worker), one um unit table (util lacked nanometre/inch, tiff_metadata picometre), msims_stack_props for both

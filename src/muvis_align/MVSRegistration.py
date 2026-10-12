@@ -2259,6 +2259,19 @@ class MVSRegistration:
         else:
             return metrics
 
+    def current_fused_output(self, output_filename):
+        """The fused OME-Zarr's path if it was written after every saved registration file (it shows that
+        registration), else None."""
+        path = self.output + output_filename + zarr_extension
+        metadata = [os.path.join(path, name) for name in ('zarr.json', '.zattrs')
+                    if os.path.exists(os.path.join(path, name))]
+        if not metadata:
+            return None
+        registration_times = [os.path.getmtime(saved) for saved in self.saved_progress_paths()]
+        if registration_times and max(registration_times) > os.path.getmtime(metadata[0]):
+            return None
+        return path
+
     def output_exists(self, output_filename, output_format):
         if not output_format.startswith('.'):
             output_format = '.' + output_format

@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import logging
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
-from multiview_stitcher import msi_utils, spatial_image_utils as si_utils, param_utils
+from multiview_stitcher import msi_utils, ngff_utils, spatial_image_utils as si_utils, param_utils
 from napari.qt.threading import create_worker
 from napari.utils import progress
 from napari.utils.notifications import notification_manager, show_info, show_warning
@@ -642,10 +642,17 @@ class Interface:
         # once the load above has finished
         section_tab = None
         if self.reg.is_fused():
+            fused_path = self.reg.current_fused_output(
+                operation_to_past_participle(self.params['registration']['operation']))
             with self._operation_progress('Refreshing view', phases=2) as view_factory:
                 self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
                                                     progress_factory=view_factory)
-                self.preview_fusion(progress_factory=view_factory)
+                if fused_path is not None:
+                    self._show_fused_output(fused_path, progress_factory=view_factory)
+                else:
+                    # registered again since: the export on disk would show the old registration
+                    logging.info('Fused output is older than the saved registration: previewing the fusion instead')
+                    self.preview_fusion(progress_factory=view_factory)
             section_tab = 4
         elif self.reg.is_global_registered():
             with self._operation_progress('Refreshing view', phases=2) as view_factory:
@@ -1937,6 +1944,21 @@ class Interface:
         return bool(registered)
 
     @catch_run_errors
+    def _show_fused_output(self, path, progress_factory=None):
+        """The fused export on disk, read lazily as fusion_process shows it after writing: every level as exported,
+        nothing fused again."""
+        transform_key = self.get_best_transform_key()
+        with progress_phase(progress_factory, total=1, desc='Reading fused output') as pbar, \
+             Timer('show fused output', verbose=self._timing_verbose()):
+            fused = ngff_utils.read_msim_from_ome_zarr(path, transform_key=transform_key, array_backend='dask')
+            self._clear_napari_view(self.viewer)
+            self._napari_view_add_fused_data(self.viewer, fused, 'Fused')
+            self.view_mode = ViewMode.FUSED
+            if pbar is not None:
+                pbar.update(1)
+        logging.info(f'Fused output shown from {path}')
+        self._refresh_overview_shapes(transform_key)
+
     def preview_fusion(self, progress_factory=None):
         # not reg_transform_key directly: a merge fuses without ever registering, so there is no
         # 'registered' transform to fuse by - get_best_transform_key() falls back to the sources'

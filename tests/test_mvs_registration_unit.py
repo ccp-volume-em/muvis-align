@@ -1019,3 +1019,22 @@ def test_pair_results_are_saved_with_each_pairs_quality_and_bbox(with_t):
 
     reg.save_pair_mappings.assert_called_once_with({(0, 1): 'mapping'}, {(0, 1): 0.9}, {(0, 1): [[1, 2], [3, 4]]})
 
+
+@pytest.mark.parametrize('order, current', [(('mappings', 'fused'), True), (('fused', 'mappings'), False),
+                                            (('mappings',), False)],
+                         ids=['fused after registration', 'registered since', 'not fused'])
+def test_the_fused_output_is_current_when_written_after_the_saved_registration(tmp_path, order, current):
+    import os
+    reg = MVSRegistration()
+    reg.output = tmp_path.as_posix() + '/'
+    reg.output_params = {}
+    paths = {'mappings': tmp_path / 'mappings.json', 'fused': tmp_path / 'registered.ome.zarr' / 'zarr.json'}
+    for time_stamp, name in enumerate(order, start=1):
+        paths[name].parent.mkdir(exist_ok=True)
+        paths[name].write_text('{}')
+        os.utime(paths[name], (1000 * time_stamp, 1000 * time_stamp))
+
+    path = reg.current_fused_output('registered')
+
+    assert path == (reg.output + 'registered.ome.zarr' if current else None)
+
