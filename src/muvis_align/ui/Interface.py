@@ -629,13 +629,6 @@ class Interface:
                 lambda worker_factory: self.reg.init_progress(output_filename, zarr_extension,
                                                               progress_factory=worker_factory),
                 progress_factory)
-            if self.reg.is_pairs_registered() and self.reg.register_msims is None:
-                # loading a saved pair registration sets pair_msims straight from the raw full
-                # pyramid, bypassing the scale reduction a live run applies first - after which a
-                # global registration's metrics can select full resolution and run out of memory.
-                # Run the same preprocessing now, matching what a fresh run would have produced.
-                self.run_pre_processing(progress_factory=progress_factory)
-                self.reg.pair_msims = self.reg.register_msims
 
     def _show_loaded_project(self):
         # building the view data and drawing it - the second bar of opening a project, shown
@@ -645,19 +638,16 @@ class Interface:
             fused_path = self.reg.current_fused_output(
                 operation_to_past_participle(self.params['registration']['operation']))
             with self._operation_progress('Refreshing view', phases=2) as view_factory:
-                self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
-                                                    progress_factory=view_factory)
                 if fused_path is not None:
                     self._show_fused_output(fused_path, progress_factory=view_factory)
                 else:
                     # registered again since: the export on disk would show the old registration
                     logging.info('Fused output is older than the saved registration: previewing the fusion instead')
+                    self._copy_transforms_to_view_msims(self.reg.reg_transform_key, progress_factory=view_factory)
                     self.preview_fusion(progress_factory=view_factory)
             section_tab = 4
         elif self.reg.is_global_registered():
             with self._operation_progress('Refreshing view', phases=2) as view_factory:
-                self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
-                                                    progress_factory=view_factory)
                 self.update_registered(view_transform_key=self.reg.reg_transform_key,
                                        progress_factory=view_factory)
             section_tab = 4
@@ -958,20 +948,8 @@ class Interface:
         self.param_widgets.get('registration.reg_preview_image2').set_value(labels[indices[1]])
 
     def get_best_transform_key(self):
-        if not self.reg.is_pairs_registered():
-            # only self.reg.source_transform_key can exist yet - avoid forcing the expensive
-            # msim build (get_transforms() needs self.reg.msims) just to learn that
-            return self.reg.source_transform_key
-        transforms = get_transforms(self.reg.msims)
-        if self.reg.reg_transform_key in transforms:
-            transform_key = self.reg.reg_transform_key
-        elif default_transform_key in transforms:
-            transform_key = default_transform_key
-        elif self.reg.source_transform_key in transforms:
-            transform_key = self.reg.source_transform_key
-        else:
-            transform_key = None
-        return transform_key
+        # from the state, not off built msims: a loaded registration's are built only when needed
+        return self.reg.reg_transform_key if self.reg.is_global_registered() else self.reg.source_transform_key
 
     def check_3d_view(self):
         is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
@@ -1060,10 +1038,9 @@ class Interface:
         transforms, output_order = getattr(reg, '_msim_transforms', None), getattr(reg, '_msim_output_order', None)
         if transforms is None or output_order is None:
             return None
-        if transform_key != reg.source_transform_key:
-            # the registered transforms, already on the sources' msims: no file is read again for them
-            transforms = [np.asarray(msi_utils.get_transform_from_msim(msim, transform_key)).squeeze()
-                          for msim in reg.msims]
+        if transform_key == reg.reg_transform_key:
+            # from source geometry and the mappings, as the shapes: no msim built for them
+            transforms = [np.asarray(props['transform'], dtype=float) for props in reg.source_geometry(transform_key)[1]]
         readers, label = None, 'Overview'
         if show_preprocessed and reg.register_msims is not None:
             # a source pre-processing dropped (filter_foreground) is left out, not shown raw
@@ -1116,37 +1093,13 @@ class Interface:
         # with no native 'z' but sources at different heights, each source's z must become a real
         # dim or it is silently dropped rather than drawn at its actual height
         promote_z = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
-        if transform_key == self.reg.source_transform_key:
-            # not yet registered (or asked for original positions): build cheap single-level
-            # sims from the resolved per-source geometry, never touching the expensive msim
-            # build. Any other transform_key means registration has run, so view_msims is
-            # legitimately available and already carries that transform.
-            with phase(3 / 5, total=len(self.reg.sources)) as pbar, \
-                 Timer(f'_create_napari_shapes: build {len(self.reg.sources)} source shape geometries',
-                      verbose=self._timing_verbose()):
-                # stack properties, not sims: shapes need geometry only, so this reads, creates
-                # and allocates no image data at all (see build_source_stack_props)
-                msims = []
-                for source, translation, transform in zip(self.reg.sources, self.reg.positions,
-                                                          self.reg._msim_transforms):
-                    msims.append(
-                        build_source_stack_props(source, self.reg._msim_output_order, translation, transform,
-                                                 transform_key, z_scale=self.reg._msim_z_scale,
-                                                 promote_z=promote_z))
-                    if pbar is not None:
-                        pbar.update(1)
-        else:
-            with phase(3 / 5, total=1) as pbar, \
-                 Timer('_create_napari_shapes: get view_msims', verbose=self._timing_verbose()):
-                msims = self.view_msims
-                if promote_z:
-                    # the view msims stay 2D: each source's geometry as make_msims_3d() would promote it
-                    geometries = [promoted_geometry(msim, transform_key, position.get('z', index))
-                                  for index, (msim, position) in enumerate(zip(msims, self.reg.positions))]
-                    msims = [stack_props | {'transform': param_utils.affine_to_xaffine(affine)}
-                             for stack_props, affine in geometries]
-                if pbar is not None:
-                    pbar.update(1)
+        with phase(3 / 5, total=len(self.reg.sources)) as pbar, \
+             Timer(f'_create_napari_shapes: build {len(self.reg.sources)} source shape geometries',
+                   verbose=self._timing_verbose()):
+            # stack properties from source geometry and the registration's mappings: no msim built, no pixel read
+            _, msims = self.reg.source_geometry(
+                transform_key, promote_z=promote_z, z_scale=self.reg._msim_z_scale,
+                progress=pbar.update if pbar is not None else None)
 
         with phase(1 / 5, total=1) as pbar, \
              Timer(f'_create_napari_shapes: create_image_shapes ({len(msims)} images)', verbose=self._timing_verbose()):
@@ -1208,6 +1161,9 @@ class Interface:
             with phase(1 / 12, total=1) as pbar, \
                  Timer('_create_napari_data: build view_msims', verbose=self._timing_verbose()):
                 view_msims = self.view_msims
+                if transform_key == self.reg.reg_transform_key:
+                    # a source downscaled for the view has its own msim, without the registered transform
+                    copy_transforms_to_msims(self.reg.msims, view_msims, transform_key)
                 if pbar is not None:
                     pbar.update(1)
             with phase(1 / 12, total=1) as pbar, \
@@ -1695,11 +1651,12 @@ class Interface:
                         QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
 
     def update_registered(self, view_transform_key=None, progress_factory=None):
-        msims = self.reg.msims
         with Timer('update_registered: tables', verbose=self._timing_verbose()):
-            coord_systems = get_transforms(msims)
+            # the coordinate systems from the state: reading them off the msims would build every one
+            coord_systems = [self.reg.source_transform_key] + (
+                [self.reg.reg_transform_key] if self.reg.is_global_registered() else [])
             self.populate_coordinate_systems(coord_systems)
-            self.populate_metadata_table(msims)
+            self.populate_metadata_table(None)
             self.populate_metrics_table(self.reg.metrics)
         self.update_views(transform_key=view_transform_key, progress_factory=progress_factory)
 
@@ -1748,6 +1705,12 @@ class Interface:
         # many there are is what keeps the last of them from taking most of the bar each; the
         # optimisation claims 4 of these 8 units, being most of the run (66 of 86 minutes once)
         self.reg.registration_dimension = self.params.get('input_output', {}).get('registration_dimension')
+        if self.reg.pair_msims is None or self.reg.register_msims is None:
+            # a loaded pair registration: its pairs were registered on the pre-processed msims, which an open leaves
+            # unbuilt - at full resolution the metrics can run out of memory
+            if not self.run_pre_processing(progress_factory=progress_factory):
+                return None
+            self.reg.pair_msims = self.reg.register_msims
         with self._operation_progress('Global registration', progress_factory, phases=8) as factory:
             def register_global(worker_factory):
                 with NapariDaskProgress(progress_class=worker_factory, desc='Global registration'), \

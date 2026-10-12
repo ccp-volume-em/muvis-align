@@ -926,11 +926,10 @@ def test_eager_pre_processing_is_recognised_from_the_project_params():
     assert eager({'filter_foreground': True}) is True
 
 
-def test_init_progress_builds_the_msims_with_progress(monkeypatch, tmp_path):
-    """Both load branches read self.msims: that build reports per source through
-    ensure_msims(progress_factory=...), and the whole-set steps after it report as steps of one bar."""
+def test_init_progress_loads_a_pair_registration_without_building_msims(monkeypatch, tmp_path):
+    """The graph comes from source geometry, so loading builds no msim; its two whole-set steps report on one bar."""
     import networkx as nx
-    from unittest.mock import MagicMock, call
+    from unittest.mock import MagicMock
     from muvis_align import MVSRegistration as mvs_module
 
     (tmp_path / 'pair_mappings.json').write_text('{}', encoding='utf8')
@@ -938,20 +937,19 @@ def test_init_progress_builds_the_msims_with_progress(monkeypatch, tmp_path):
     reg.output = tmp_path.as_posix() + '/'
     reg.output_params = {}
     reg.state = RegState.PAIRS_REG
-    reg.sources = [SimpleNamespace(get_size=lambda: {'y': 10, 'x': 10})]
     reg.filenames = ['file-0']
     reg.source_transform_key = 'source_metadata'
     reg._msims = None
-    reg.ensure_msims = MagicMock(return_value=['msim-0'])
-    reg.msims = ['msim-0']
-    monkeypatch.setattr(mvs_module, 'make_msims_2d', lambda msims: msims)
-    monkeypatch.setattr(mvs_module, 'build_pairs_graph', lambda *_, **__: nx.Graph())
+    reg.ensure_msims = MagicMock()
+    reg.source_geometry = MagicMock(return_value=([{}], ['stack-props-0']))
+    graphs = []
+    monkeypatch.setattr(mvs_module, 'build_pairs_graph', lambda *args, **_: graphs.append(args) or nx.Graph())
     factory, records = recording_phase_factory()
 
     reg.init_progress('registered', 'zarr', progress_factory=factory)
 
-    # ensure_msims is mocked, so later reads reach it too: the first, building call carries the factory
-    assert reg.ensure_msims.call_args_list[0] == call(progress_factory=factory)
+    assert not reg.ensure_msims.called and reg._msims is None
+    assert graphs == [(['stack-props-0'], [])]
     assert [(record['total'], record['done']) for record in records] == [(2, 2)]
 
 
@@ -1037,4 +1035,35 @@ def test_the_fused_output_is_current_when_written_after_the_saved_registration(t
     path = reg.current_fused_output('registered')
 
     assert path == (reg.output + 'registered.ome.zarr' if current else None)
+
+
+@pytest.mark.parametrize('promote_z', [False, True], ids=['flat', 'at their sections z'])
+def test_registered_geometry_without_msims_is_what_the_registered_msims_give(tmp_path, promote_z):
+    """A loaded registration's stack properties from source geometry and the mappings equal those the msims give
+    once the mappings are applied to them (_apply_mappings) - plain, or promoted to their sections' z."""
+    from multiview_stitcher import param_utils
+    from muvis_align.image.util import msims_stack_props, promoted_geometry
+
+    reg = prepared_registration(ALL_TILES, tmp_path, preprocess=False)
+    angle = np.deg2rad(4)
+    reg.mappings = {index: param_utils.affine_to_xaffine(np.array([[np.cos(angle), -np.sin(angle), 2.0 + index],
+                                                                   [np.sin(angle), np.cos(angle), -1.0], [0, 0, 1]]))
+                    for index in range(len(reg.sources))}
+    reg._msims = None
+
+    _, from_geometry = reg.source_geometry(reg.reg_transform_key, promote_z=promote_z)
+    msims = reg.msims
+    if promote_z:
+        from_msims = [props | {'transform': param_utils.affine_to_xaffine(affine)} for props, affine in
+                      (promoted_geometry(msim, reg.reg_transform_key, position.get('z', index))
+                       for index, (msim, position) in enumerate(zip(msims, reg.positions)))]
+    else:
+        from_msims = msims_stack_props(msims, reg.reg_transform_key)
+
+    assert len({position.get('z', 0) for position in reg.positions}) > 1
+    for props, expected in zip(from_geometry, from_msims):
+        for key in ('shape', 'spacing', 'origin'):
+            assert props[key] == pytest.approx(expected[key])
+        np.testing.assert_allclose(np.asarray(props['transform']).squeeze(), np.asarray(expected['transform']).squeeze(),
+                                   atol=1e-9)
 

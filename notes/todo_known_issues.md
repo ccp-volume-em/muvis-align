@@ -45,13 +45,6 @@ Nothing.
 
 ESSENTIAL
 
-- [ ] **Opening a registered project: ~50 min of msim builds and a pre-processing re-run** - HPC log 2026-10-12
-      (33996 sources, open 1h49 in all): init sources 3.6 min, Build msims 30.5 min (32 workers, 2.8 cores; for
-      loading the saved registration), pair mappings 9 min, global mappings ~11 min, pre-processing re-run 10.2 min
-      (builds the msims again, 9.2 min), view msims 3.3 min, then the fusion preview ~41 min (now skipped for a
-      current export, see Done). The re-run is only needed for steps on the pre-processed msims (pair registration,
-      modify pair): defer it to them. The msim builds feed the registered transforms; shapes and the overview could
-      take them from source geometry and the mappings, as estimate_fusion_size does, leaving msims to fusion.
 - [ ] 19:30 CET time close napari - long time to actually close node
 - [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
       preview size cap (3.4 min on the HPC).
@@ -126,6 +119,14 @@ REFACTORING
 
 ## Done
 
+- **Msim-free registered open** (branch `registered-open`) - init_progress keeps a loaded registration in
+  self.mappings, applied when msims are first built (_apply_mappings), and finds files by dict; the pairs graph,
+  registered shapes, the quick view's transforms and the size estimate come from MVSRegistration.source_geometry
+  (equal to the registered msims', test); the transform key and coordinate systems from the state; no
+  pre-processing re-run on open (global registration runs it when it needs the pairs' msims); view msims only for a
+  fused preview. Local meatballs opens with no msim built: registered 9s, fused 7s (was ~15s). On the HPC's 109
+  min this removes the msim builds (30.5 + 9.2), the re-run (10.2), view msims (3.3) and the file lookups of the
+  mappings loads (~20, to confirm) - measure on the next HPC run.
 - **A fused project opens its export** - _show_loaded_project reads the fused zarr (read_msim_from_ome_zarr) when it
   was written after every saved registration file (MVSRegistration.current_fused_output), else previews as before.
   The HPC open spent ~41 of 109 min on a capped preview fusion, at 1.13um where 100nm was asked (343GB capped to

@@ -88,6 +88,17 @@ def find_file_list_index(filenames, match):
     return None
 
 
+def file_list_index_finder(filenames):
+    """find_file_list_index(filenames, match) for many matches: an exact name by dict, each other found once."""
+    found = {filename: index for index, filename in reversed(list(enumerate(filenames)))}
+
+    def find(match):
+        if match not in found:
+            found[match] = find_file_list_index(filenames, match)
+        return found[match]
+    return find
+
+
 def find_file_dict_item(dct, match):
     if match in dct:
         return dct[match]

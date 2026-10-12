@@ -4,7 +4,7 @@ import numpy as np
 from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.image.util import build_pairs_graph, make_msims_2d, msim_is_2d, wrap_sims_as_msims
+from muvis_align.image.util import build_pairs_graph, make_msims_2d, msims_stack_props, msim_is_2d, wrap_sims_as_msims
 from tests.data_builders import make_msim
 
 TRANSFORM_KEY = 'affine_metadata'
@@ -36,7 +36,7 @@ def test_pairs_graph_has_the_nodes_edges_and_stack_props_the_graph_build_would_g
     msims = [make_source((0, 0)), make_source((0, 6)), make_source((6, 0))]
     pairs = [(0, 1), (0, 2)]
 
-    graph = build_pairs_graph(msims, pairs, TRANSFORM_KEY)
+    graph = build_pairs_graph(msims_stack_props(msims, TRANSFORM_KEY), pairs)
 
     assert set(graph.nodes) == {0, 1, 2}
     assert set(map(frozenset, graph.edges)) == {frozenset((0, 1)), frozenset((0, 2))}
@@ -53,8 +53,8 @@ def test_pairs_graph_carries_an_overlap_weight_when_one_is_known():
     bboxes give it for nothing, and passing it keeps the resolution methods that use it honest."""
     msims = [make_source((0, 0)), make_source((0, 6))]
 
-    graph = build_pairs_graph(msims, [(0, 1)], TRANSFORM_KEY, overlaps={(0, 1): 16.0})
-    without = build_pairs_graph(msims, [(0, 1)], TRANSFORM_KEY)
+    graph = build_pairs_graph(msims_stack_props(msims, TRANSFORM_KEY), [(0, 1)], overlaps={(0, 1): 16.0})
+    without = build_pairs_graph(msims_stack_props(msims, TRANSFORM_KEY), [(0, 1)])
 
     assert graph.edges[0, 1]['overlap'] == 16.0
     assert without.edges[0, 1].get('overlap', 1.0) == 1.0
@@ -63,7 +63,7 @@ def test_pairs_graph_carries_an_overlap_weight_when_one_is_known():
 def test_pairs_graph_has_a_node_per_source_even_with_no_pairs():
     msims = [make_source((0, 0)), make_source((0, 6))]
 
-    graph = build_pairs_graph(msims, [], TRANSFORM_KEY)
+    graph = build_pairs_graph(msims_stack_props(msims, TRANSFORM_KEY), [])
 
     assert isinstance(graph, nx.Graph)
     assert set(graph.nodes) == {0, 1}

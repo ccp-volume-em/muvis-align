@@ -2512,7 +2512,7 @@ def build_view_adjacency_graph(msims, transform_key, pairs, overlap_tolerance=No
     return graph
 
 
-def build_pairs_graph(msims, pairs, transform_key, overlaps=None):
+def build_pairs_graph(stack_props, pairs, overlaps=None):
     """The view adjacency graph for a set of pairs that is already known.
 
     multiview_stitcher's build_view_adjacency_graph_from_msims() derives the pairs itself, and
@@ -2529,8 +2529,8 @@ def build_pairs_graph(msims, pairs, transform_key, overlaps=None):
     entirely - so an edge without one behaves as it always did.
     """
     graph = nx.Graph()
-    graph.add_nodes_from(range(len(msims)))
-    nx.set_node_attributes(graph, dict(enumerate(msims_stack_props(msims, transform_key))), name='stack_props')
+    graph.add_nodes_from(range(len(stack_props)))
+    nx.set_node_attributes(graph, dict(enumerate(stack_props)), name='stack_props')
     for pair in pairs:
         overlap = (overlaps or {}).get(tuple(pair))
         graph.add_edge(*pair, **({'overlap': overlap} if overlap is not None else {}))
