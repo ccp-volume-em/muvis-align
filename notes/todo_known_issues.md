@@ -47,12 +47,6 @@ PERFORMANCE
 
 MINOR
 
-- [ ] **Quick view through `MVSRegistration.fuse`** - have the view reuse `fuse()`, with the quick view
-      (`lazy_section_overview`) as a fusion method. It cannot be a multiview-stitcher fusion function: those only
-      combine views already resampled per chunk, while the quick view's savings come before that (no msims built,
-      the coarsest fitting pyramid level read, translation-only pasting, planes built when viewed). So it would be a
-      source-based branch at the top of `fuse()`, sharing the per-channel loop (fuse each channel on a shared grid,
-      then `combine_msims_as_channels`) that the channel overview already mirrors. A restructure: plan it first.
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
@@ -101,6 +95,12 @@ REFACTORING
 - [ ] restructure for maintainability, avoid unintuitive code (e.g. lazy_overview._paste), modularise where possible, avoid atomic one-line style functions, 
       avoid code duplication especially writing entirely new modules similar to exising functionality (e.g. lazy_overview.py (from commit d0f40c2), fusion_slabs.py (from commit 0872c726)),
       create detailed plan first
+      - One overview instead of two: lazy_section_overview and util.composite_msims_overview both paste
+        translation-only sources, overwriting overlaps; the composite one is reached only for 3D or multichannel
+        sources. A z/channel axis in SectionPlanes would let it go, with _create_napari_data's composite branch,
+        leaving the view as quick view or fuse() (rotations). Routing the quick view through fuse() instead was
+        weighed: it shares ~5 lines, needs msims=None and readers, a view-only fusion method to keep from export,
+        and leaves the msim preparation (view msims, sub-pyramid, cap) in Interface.
 - [ ] check if these efficiency type modifications are worth it or if they only add a lot of code debt for only e.g. 15% performance improvement
 - [ ] add option to these efficiency classes to run without threading using an input argument
 - [ ] reduce amount of comments, avoiding performance statistics in comment, focus on answering why over what
