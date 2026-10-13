@@ -89,9 +89,12 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
 
 From the HPC run of 2026-10-12 (4844e9f; 34k sources, 229725 pairs; registration 11.3h, fusion 10.4h, no errors):
 - [ ] **Fusion memory climbs through level 0 and stays** - rss 35 -> 288GB during level 0 (0.01um, 2h52), never
-      released, peak 510GB at level 6 (2026-10-09: 248GB). Not reproduced on meatballs (native: peak +2.1GB, no
-      growth, either read path). Check on the next HPC run, now with the direct TIFF reads back; if it stays, look at
-      what grows with the block count (the prepared block functions per source group, zarr's store per level).
+      released, peak 510GB at level 6; on 2026-10-09 (direct TIFF reads) level 0 stayed at 25-30GB, peak 248GB.
+      Likely the reads through zarr's I/O pool (256 threads, constants.py) leaving freed tiles in Linux's per-thread
+      malloc arenas: not reproduced on Windows (no memory held after reading every meatballs tile either way). Check
+      on the next HPC run with the direct reads back; zarr reads remain for compressed/tiled TIFFs and OME-Zarr, so if
+      it shows there, cap zarr's pool or MALLOC_ARENA_MAX. Robust linear was also +16% (1h23 -> 1h36), no pixels
+      read - compare on the next run.
 - [ ] **Fusion's fixed cost per level** - every level takes 13 min or more however small: 0.66-10.6um (hundreds of
       pixels) 27, 19, 16, 16, 13 min, 1.5h of the 10.4h. Per level and source: the level choice and sim
       (msim_level_spacings, get_sim_from_msim), sim_views, view_bounds, budget_chunksize and block_sources over 1081
@@ -121,6 +124,8 @@ REFACTORING
 - **Direct TIFF reads restored** - removing them (c5e66f1, judged on one local export) made the 2026-10-12 HPC run
   slower: pairs +34%, pair metrics +103%, global metrics +63% against 2026-10-09; meatballs on 8 worker processes:
   pairs 73.5 -> 93.9s, metrics 14.4 -> 19.7s without them. Native fusion locally: 94 vs 101s, the same memory.
+  With them back, main registers meatballs (8 processes, 831 pairs) as the 2026-10-09 code did: 112.7 vs 110.3s
+  (pairs 72.0 vs 66.0s, within run-to-run spread; metrics 14.8 vs 14.4s; global metrics 21.6 vs 21.0s).
 - **Fusion bar counts only the blocks it fuses** - those no source reaches were counted done at the start, so each
   level's bar sat at 88-99% for hours.
 - **Run without threading** (PR #65) - every worker pool runs in the calling thread with one worker (rolling_map,
