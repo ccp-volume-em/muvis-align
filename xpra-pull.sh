@@ -30,6 +30,10 @@ fi
 
 mkdir -p "${DEST_DIR}"
 
+# a fresh sandbox: --force does not clear what an interrupted or older build left behind
+echo "Removing ${SANDBOX_PATH} ..."
+rm -rf "${SANDBOX_PATH}"
+
 echo "Pulling ${IMAGE_REF} and building sandbox at ${SANDBOX_PATH} ..."
 apptainer build --sandbox --force "${SANDBOX_PATH}" "${IMAGE_REF}"
 
