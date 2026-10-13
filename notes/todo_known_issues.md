@@ -87,6 +87,16 @@ From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration
       declines (a rotation, 2D and 3D sources together). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
 
+From the HPC run of 2026-10-12 (4844e9f; 34k sources, 229725 pairs; registration 11.3h, fusion 10.4h, no errors):
+- [ ] **Fusion memory climbs through level 0 and stays** - rss 35 -> 288GB during level 0 (0.01um, 2h52), never
+      released, peak 510GB at level 6 (2026-10-09: 248GB). Not reproduced on meatballs (native: peak +2.1GB, no
+      growth, either read path). Check on the next HPC run, now with the direct TIFF reads back; if it stays, look at
+      what grows with the block count (the prepared block functions per source group, zarr's store per level).
+- [ ] **Fusion's fixed cost per level** - every level takes 13 min or more however small: 0.66-10.6um (hundreds of
+      pixels) 27, 19, 16, 16, 13 min, 1.5h of the 10.4h. Per level and source: the level choice and sim
+      (msim_level_spacings, get_sim_from_msim), sim_views, view_bounds, budget_chunksize and block_sources over 1081
+      z blocks, a prepare_block_fusion per source group. Time each on the next run or a meatballs profile.
+
 REFACTORING
 
 - [ ] **After the next HPC run, keep or drop** estimated_pair_cost (pairs largest first: workers busy was 39.7/64)
@@ -106,9 +116,13 @@ REFACTORING
 - **Efficiency audit** (PR #65) - nearly every optimisation has an order-of-magnitude gain at 34k sources, prevents
   out-of-memory, or works around a library bug (sweep pairing, polygon clipping, worker processes, rolling_map,
   deferred link quality, lazy overview, stack props, fusion budgets, preview cap, napari cache clearing,
-  single_threaded_highs, ...). Removed as debt: the direct byte-range TIFF reads (+15-20% export for ~1.4GB more peak
-  memory), the pair-scoring CPU instrumentation (a diagnostic monkeypatching multiview_stitcher), threads over
+  single_threaded_highs, ...). Removed as debt: the pair-scoring CPU instrumentation (a diagnostic monkeypatching multiview_stitcher), threads over
   GIL-bound per-source preview preparation; the 'Preview cap: one rebuild' TODO dropped (~3.5% of a refresh).
+- **Direct TIFF reads restored** - removing them (c5e66f1, judged on one local export) made the 2026-10-12 HPC run
+  slower: pairs +34%, pair metrics +103%, global metrics +63% against 2026-10-09; meatballs on 8 worker processes:
+  pairs 73.5 -> 93.9s, metrics 14.4 -> 19.7s without them. Native fusion locally: 94 vs 101s, the same memory.
+- **Fusion bar counts only the blocks it fuses** - those no source reaches were counted done at the start, so each
+  level's bar sat at 88-99% for hours.
 - **Run without threading** (PR #65) - every worker pool runs in the calling thread with one worker (rolling_map,
   thread_map, the quick view's reads and prefetch, contrast sampling, fusion batches); fuse() and
   lazy_section_overview take a `workers` argument.

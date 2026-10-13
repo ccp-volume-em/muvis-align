@@ -215,16 +215,15 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     def fuse_block(block_id):
         return funcs[block_id](block_id)
 
-    _run_blocks(fuse_block, sorted(funcs), int(np.prod(nblocks)), batch_options, desc)
+    _run_blocks(fuse_block, sorted(funcs), batch_options, desc)
     return dims, info['output_stack_properties']
 
 
-def _run_blocks(block_func, block_ids, total, batch_options, desc):
-    """block_func on each block id, batched through batch_options' batch_func; the bar counts `total` blocks, those
-    not given counted as done."""
+def _run_blocks(block_func, block_ids, batch_options, desc):
+    """block_func on each block id, batched through batch_options' batch_func; the bar counts only these blocks, as the
+    ones no source reaches cost nothing."""
     batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
-    progress = fusion_core.tqdm(total=total, desc=desc)
-    progress.update(total - len(block_ids))
+    progress = fusion_core.tqdm(total=len(block_ids), desc=desc)
     for start in range(0, len(block_ids), n_batch):
         batch = block_ids[start:start + n_batch]
         if batch_func is None:
@@ -261,8 +260,7 @@ def average_into_zarr_array(parent_url, store_url, factors, chunk, spatial_block
 
     block_ids = sorted(tuple(nonspatial_block) + tuple(spatial_block)
                        for nonspatial_block in np.ndindex(*shape[:nonspatial]) for spatial_block in spatial_blocks)
-    nblocks = int(np.prod([-(-size // size_chunk) for size, size_chunk in zip(shape, chunks)]))
-    _run_blocks(average_block, block_ids, nblocks, batch_options, desc)
+    _run_blocks(average_block, block_ids, batch_options, desc)
 
 
 def storage_ngff_version(ngff_version):
