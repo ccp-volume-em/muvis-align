@@ -149,7 +149,7 @@ def test_one_bar_runs_over_all_levels_each_its_share(tmp_path, monkeypatch, leve
     assert len(RecordingTqdm.instances) == 1
     bar = RecordingTqdm.instances[0]
     assert bar.total == pytest.approx(sum(expected))
-    assert list(bar.updates) == ['level 1 of 3 at 0.5 µm', 'level 2 of 3 at 1 µm', 'level 3 of 3 at 2 µm']
+    assert list(bar.updates) == ['1/3 @ 0.5 µm', '2/3 @ 1 µm', '3/3 @ 2 µm']
     assert list(bar.updates.values()) == pytest.approx(expected)
 
 

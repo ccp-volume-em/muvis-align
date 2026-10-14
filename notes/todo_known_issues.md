@@ -117,7 +117,7 @@ REFACTORING
 - **Fusion bar linear over its levels** - each level was a phase of its own, so level 0 ended at 90% and the rest
   crawled through the last 10. Now one bar over all levels, each its share of the size estimate's bytes (the
   export question's, else computed for the run; level voxels as fallback), the last level filling it; labelled
-  'Fusion (level 2 of 11 at 0.02 µm)'. Meatballs: 49% at 30s in level 1 (66% of the bytes), 89% at 1 min. Levels
+  'Fusion (2/11 @ 0.02 µm)'. Meatballs: 49% at 30s in level 1 (66% of the bytes), 89% at 1 min. Levels
   past the first few hold a few % of the bytes but take ~25s of 90 locally: see Fusion's fixed cost per level.
 - **Faster registration: robust linear and metrics** - from the HPC run of 2026-10-13 (registration 9.3h).
   Robust linear (78 min): each round's linear_two_pass built xarray transforms and per-node identity xarrays for

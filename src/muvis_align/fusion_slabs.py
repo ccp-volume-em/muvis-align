@@ -416,7 +416,7 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
             tolerance=0)) for source in selected]
         level_chunksize, groups = level_blocks(sim_views(sims, transform_key), output_properties, output_chunksize,
                                                interpolation_order)
-        progress.set_description(f'level {index + 1} of {len(levels)} at {print_significants(level_spacing, 3)} µm')
+        progress.set_description(f'{index + 1}/{len(levels)} @ {print_significants(level_spacing, 3)} µm')
         if average_levels and index > 0:
             factors = {dim: round(properties['factors'][dim] / levels[index - 1][1]['factors'][dim])
                        for dim in output_properties['shape']}
