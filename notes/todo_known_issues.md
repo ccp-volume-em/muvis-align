@@ -116,6 +116,11 @@ REFACTORING
 
 ## Done
 
+- **Odd source sizes no longer add a native level** - the HPC levels ran 0.16, 0.2469, 0.3322, 0.6644 (2026-10-13):
+  3 of 1081 overview sections (e.g. ov000_s00033) are at 0.3322, the rest at 0.2492/0.2469, debris images too;
+  every source size got a level. Sizes under sqrt(2) above a group's finest now join its level (upsampled by less
+  than that), export_levels selecting by the group's size: the HPC set gives 0.16, 0.2469, 0.4938, 0.9876..
+  Meatballs locally unchanged (0.2492, 0.4983..).
 - **Fusion's per-block plan on numpy** - each block's fusion plan (multiview_stitcher _build_spatial_fusion_plan)
   checked every source's affine through an xarray sel per entry: most of a small level's time (meatballs level 9:
   3 blocks, 5817 sel calls). The three checks are swapped for numpy versions during our fusion only; checks and

@@ -312,14 +312,24 @@ def _remove_existing(output_zarr_url, zarr_options):
         shutil.rmtree(output_zarr_url)
 
 
+def source_level_sizes(source_spacings):
+    """{source pixel size: the pixel size of the level it is first fused into}: a size under sqrt(2) above the finest
+    of its group joins that group's level, upsampled by less than that, rather than a few odd sources (overview
+    sections imaged coarser) adding a level of their own."""
+    level_sizes = {}
+    start = None
+    for size in sorted(set(source_spacings)):
+        if start is None or size >= start * np.sqrt(2):
+            start = size
+        level_sizes[size] = start
+    return level_sizes
+
+
 def native_level_spacings(source_spacings, finest_shape, min_shape=100, tolerance=0.05):
-    """Output level pixel sizes that never upsample a source: the finest source's, doubling, with a level at each
-    coarser source pixel size, until the largest dim would fall to min_shape - every source size gets a level, or
-    what only it covers would be in none. Sizes within `tolerance` of each other count as one."""
-    sizes = []
-    for size in sorted(source_spacings):
-        if not sizes or size > sizes[-1] * (1 + tolerance):
-            sizes.append(size)
+    """Output level pixel sizes: the finest source's, doubling, with a level at each coarser group of source pixel
+    sizes (source_level_sizes), until the largest dim would fall to min_shape - every group gets a level, or what
+    only it covers would be in none."""
+    sizes = sorted(set(source_level_sizes(source_spacings).values()))
     levels, pending = [sizes[0]], sizes[1:]
     largest = max(finest_shape)
     while pending or largest * levels[0] / (levels[-1] * 2) > min_shape:
@@ -354,17 +364,18 @@ def native_level_stack_properties(level0_properties, level_spacings, scaled_dims
 
 def export_levels(source_spacings, level0_properties, scaled_dims, native=True, tolerance=0.05):
     """(pixel size, its native_level_stack_properties, indices of the sources fused into it) per level of an export.
-    Native: the levels of native_level_spacings, each from the sources at least that fine. Otherwise level 0's own
-    pixel size doubling, every level from every source."""
+    Native: the levels of native_level_spacings, each from the sources whose group's size (source_level_sizes) is at
+    least that fine. Otherwise level 0's own pixel size doubling, every level from every source."""
     finest_shape = [level0_properties['shape'][dim] for dim in scaled_dims]
     if native:
         level_spacings = native_level_spacings(source_spacings, finest_shape, tolerance=tolerance)
     else:
         level_spacings = native_level_spacings([min(level0_properties['spacing'][dim] for dim in 'yx')], finest_shape)
     levels = native_level_stack_properties(level0_properties, level_spacings, scaled_dims)
+    level_sizes = source_level_sizes(source_spacings)
     return [(level_spacing, properties,
              [index for index, spacing in enumerate(source_spacings)
-              if not native or spacing <= level_spacing * (1 + tolerance)])
+              if not native or level_sizes[spacing] <= level_spacing * (1 + tolerance)])
             for level_spacing, properties in zip(level_spacings, levels)]
 
 

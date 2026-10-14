@@ -16,18 +16,31 @@ from tests.data_builders import make_msim, make_sim
     ([0.01] * 5 + [0.249] * 2, [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.16, 0.249]),
     # a coarser source gets its level even below the size the doubling stops at
     ([0.5, 2.0], [256, 256], [0.5, 1.0, 2.0]),
-    # sizes within the tolerance are one
+    # sizes under sqrt(2) apart are one level, at the finer
     ([0.01, 0.0102], [300, 400], [0.01, 0.02]),
     # a step of under sqrt(2) to a source size replaces the level before it
     ([0.01, 0.17], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.17, 0.34]),
-    # ...when that level is a doubled one, never another source's size (the HPC's overviews at 0.249 and 0.3322)
-    ([0.01, 0.249, 0.3322], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.3322]),
-    ([0.01, 0.2, 0.249], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.2, 0.249]),
+    # a few sections imaged coarser join their overviews' level, doubling on from it (the HPC's 0.3322 among 0.249)
+    ([0.01] + [0.2492] * 1048 + [0.2469] * 30 + [0.3322] * 3, [12000, 16000],
+     [0.01, 0.02, 0.04, 0.08, 0.16, 0.2469, 0.4938, 0.9876]),
+    # a size sqrt(2) or more above the group before it still gets its own level
+    ([0.01, 0.249, 0.36], [3000, 4000], [0.01, 0.02, 0.04, 0.08, 0.16, 0.249, 0.36]),
     # a single size: plain doubling, down to about 100 pixels
     ([1.0], [1000, 800], [1.0, 2.0, 4.0, 8.0]),
 ])
 def test_native_levels_never_upsample_and_meet_every_source_size(source_spacings, shape, expected):
     assert native_level_spacings(source_spacings, shape) == pytest.approx(expected)
+
+
+def test_a_source_joining_a_coarser_level_is_fused_from_that_level_on():
+    """An overview section imaged at 0.3322 among overviews at 0.2469 is in the 0.2469 level, not only from the next."""
+    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.01, 'x': 0.01}, 'shape': {'y': 12000, 'x': 16000}}
+
+    levels = export_levels([0.01, 0.2469, 0.3322], level0, ['y', 'x'])
+
+    assert [(round(spacing, 4), selected) for spacing, _, selected in levels] == [
+        (0.01, [0]), (0.02, [0]), (0.04, [0]), (0.08, [0]), (0.16, [0]), (0.2469, [0, 1, 2]), (0.4938, [0, 1, 2]),
+        (0.9876, [0, 1, 2])]
 
 
 def test_native_levels_share_one_extent_and_keep_an_unscaled_dim():
