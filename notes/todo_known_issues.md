@@ -114,6 +114,13 @@ REFACTORING
 
 ## Done
 
+- **Faster registration: robust linear and metrics** - from the HPC run of 2026-10-13 (registration 9.3h).
+  Robust linear (78 min): each round's linear_two_pass built xarray transforms and per-node identity xarrays for
+  its residuals; swapped for template/numpy versions during our calls, identical results, 8x a round locally
+  (3600 tiles, 3 rounds 24.8 -> 3.1s). Pair (1.2h) and global (1.0h) metrics computed every pair's overlap images
+  with no image metric configured, only to attach the quality: now skipped, the same pairs and summary built
+  directly. With metrics asked for, a pair no longer rescans every library for its BLAS limit nor searches sys.path
+  for xarray's optional dask_array: -32% a pair on tiny tiles. Expected on the next HPC run: ~3h less registration.
 - **Progress bars update at most once a second** - NapariPhaseProgress shows a move (a redraw, or a worker's
   signal to the Qt thread) at most every `min_update_seconds`; held-back moves raise the target, and a phase's end
   and the operation's completion always show.
