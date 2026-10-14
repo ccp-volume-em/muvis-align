@@ -46,11 +46,15 @@ Nothing.
 ESSENTIAL
 
 - [ ] 19:30 CET time close napari - long time to actually close node
-- [ ] **Faster per-source xarray construction** - building the msims in pre-processing (~16 min at 34k) and the
-      preview size cap (3.4 min on the HPC).
 
 MINOR
 
+- [ ] **Faster per-source xarray construction** - not worth a second build path on its own: building the msims is
+      CPU 1.9ms opening a source + 3.1ms xarray a source locally, 1.3ms for xarray in one pass (final dims, coords and
+      transform to the constructor): ~25-30% of each build. The HPC run of 2026-10-13 built them three times - 15.1
+      min pre-processing, 18.4 global registration, 13.4 fusion's make_msims_3d (47 min of ~20h, saving ~12) - so
+      building fewer times (see The msims build in global registration) gains more. The preview cap half has gone:
+      it only runs where the lazy overview declines.
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
@@ -69,11 +73,10 @@ MINOR
       text past 10 levels (its writer's '10' lands after '1' in napari's own reader).
 
 From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in all, no errors):
-- [ ] **The msims build in global registration** - 18 min on one core (GIL-bound) for the full per-source pyramids.
-      Not skippable: save_mappings_csv, the view refresh (copy_transforms_to_msims), the metadata table and fusion
-      all read them right after. The cost is the build itself (see Faster per-source xarray construction): ~10ms
-      CPU a single-level source locally - a third opening the tiff as a zarr store, the rest xarray (assign_coords,
-      alignment, DataTree.from_dict, expand_dims); 31ms on the HPC.
+- [ ] **The msims build in global registration** - 18 min on one core (GIL-bound) for the full per-source pyramids
+      (18.4 again on 2026-10-13). The view refresh no longer reads them (PR #66); check what still does -
+      save_mappings_csv, the metadata table - and whether source_geometry could serve them, as fusion builds its own
+      in make_msims_3d (13.4 min) anyway.
 
 From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration 7.2h, fusion 9.7h, no errors):
 - [ ] **Fusion pyramid levels: 5.5h at '100%'** - 'average' at 0.01um: after level 0,
@@ -91,14 +94,17 @@ From the HPC run of 2026-10-12 (4844e9f; 34k sources, 229725 pairs; registration
 - [ ] **Fusion memory climbs through level 0 and stays** - rss 35 -> 288GB during level 0 (0.01um, 2h52), never
       released, peak 510GB at level 6; on 2026-10-09 (direct TIFF reads) level 0 stayed at 25-30GB, peak 248GB.
       Likely the reads through zarr's I/O pool (256 threads, constants.py) leaving freed tiles in Linux's per-thread
-      malloc arenas: not reproduced on Windows (no memory held after reading every meatballs tile either way). Check
-      on the next HPC run with the direct reads back; zarr reads remain for compressed/tiled TIFFs and OME-Zarr, so if
-      it shows there, cap zarr's pool or MALLOC_ARENA_MAX. Robust linear was also +16% (1h23 -> 1h36), no pixels
-      read - compare on the next run.
+      malloc arenas: not reproduced on Windows. Confirmed by the run of 2026-10-13 (7ef399e, direct reads back):
+      level 0 rss 24-35GB, peak 39.4GB, in 2h39; level 1 peak 48.9GB. Close once the run's whole-fusion peak is in;
+      zarr reads remain for compressed/tiled TIFFs and OME-Zarr, so if it shows there, cap zarr's pool or
+      MALLOC_ARENA_MAX. Robust linear is back to 1h18 (msims built to converged; 1h23 on 2026-10-09, 1h36 on
+      2026-10-12).
 - [ ] **Fusion's fixed cost per level** - every level takes 13 min or more however small: 0.66-10.6um (hundreds of
       pixels) 27, 19, 16, 16, 13 min, 1.5h of the 10.4h. Per level and source: the level choice and sim
       (msim_level_spacings, get_sim_from_msim), sim_views, view_bounds, budget_chunksize and block_sources over 1081
       z blocks, a prepare_block_fusion per source group. Time each on the next run or a meatballs profile.
+      2026-10-13: 18 min before level 0 starts (make_msims_3d 13.4, output properties 1.0, export chunk sizes 0.9);
+      level 1 (averaged from level 0) 1.5h and counting, shown as 90-99% of the bar.
 
 REFACTORING
 
