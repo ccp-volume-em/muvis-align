@@ -485,13 +485,15 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
     """An OME-Zarr multiscale image of `levels` (export_levels), each fused at its own pixel size from its sources at
     their nearest level. With average_levels, every level after the first averages the one above instead. With `ranks`
     (one a source, lower first), a higher-ranked source under a lower-ranked one is left out. One progress bar runs
-    over all levels, each its share of `level_weights` (e.g. the bytes it writes), else of the level's voxels."""
+    over all levels, each its share of the square root of `level_weights` (the bytes it writes), else of its voxels."""
     ngff_version, creation_kwargs = _zarr_options(zarr_options)
     _remove_existing(output_zarr_url, zarr_options)
     logging.info(f'Fusion levels {[float(round(level[0], 4)) for level in levels]}')
     paths = level_paths(len(levels))
     if level_weights is None or len(level_weights) != len(levels) or not sum(level_weights) > 0:
         level_weights = [float(np.prod(list(properties['shape'].values()))) for _, properties, _ in levels]
+    # a level's time grows slower than its size, each block's cost being partly per source
+    level_weights = [float(np.sqrt(weight)) for weight in level_weights]
     progress = fusion_core.tqdm(total=float(sum(level_weights)))
     with _numpy_fusion_plan():
         for index, (level_spacing, properties, selected) in enumerate(levels):

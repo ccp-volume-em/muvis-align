@@ -192,11 +192,11 @@ class RecordingTqdm:
 
 
 @pytest.mark.parametrize('level_weights, expected', [
-    # the estimate's bytes a level, whatever their scale
-    ([600.0, 300.0, 100.0], [600.0, 300.0, 100.0]),
-    # none given, or not one a level: each level's voxels
-    (None, [256 * 256, 128 * 128, 64 * 64]),
-    ([1.0], [256 * 256, 128 * 128, 64 * 64]),
+    # the square root of the estimate's bytes a level, whatever their scale
+    ([900.0, 400.0, 100.0], [30.0, 20.0, 10.0]),
+    # none given, or not one a level: of each level's voxels
+    (None, [256, 128, 64]),
+    ([1.0], [256, 128, 64]),
 ])
 def test_one_bar_runs_over_all_levels_each_its_share(tmp_path, monkeypatch, level_weights, expected):
     """Each level was a bar of its own, which the operation's bar could only give what remained: level 0 ended at

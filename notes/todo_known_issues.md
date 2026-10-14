@@ -121,10 +121,11 @@ REFACTORING
   3 blocks, 5817 sel calls). The three checks are swapped for numpy versions during our fusion only; checks and
   fused output identical. Meatballs fusion 102 -> 80s, small levels ~2 -> ~1.2s each.
 - **Fusion bar linear over its levels** - each level was a phase of its own, so level 0 ended at 90% and the rest
-  crawled through the last 10. Now one bar over all levels, each its share of the size estimate's bytes (the
-  export question's, else computed for the run; level voxels as fallback), the last level filling it; labelled
-  'Fusion (2/11 @ 0.02 µm)'. Meatballs: 49% at 30s in level 1 (66% of the bytes), 89% at 1 min. Levels
-  past the first few hold a few % of the bytes but take ~25s of 90 locally: see Fusion's fixed cost per level.
+  crawled through the last 10. Now one bar over all levels, each its share of the square root of the size
+  estimate's bytes (the export question's, else computed for the run; level voxels as fallback), the last level
+  filling it; labelled 'Fusion (2/11 @ 0.02 µm)'. Square root, as a level's time grows slower than its size: on
+  meatballs the bar at each level's end is within 5 points of the time taken (raw bytes: 27, cube root: 13); in the
+  plugin 41% at 46% of the time, 72% at 73%, 99% at 99%.
 - **Faster registration: robust linear and metrics** - from the HPC run of 2026-10-13 (registration 9.3h).
   Robust linear (78 min): each round's linear_two_pass built xarray transforms and per-node identity xarrays for
   its residuals; swapped for template/numpy versions during our calls, identical results, 8x a round locally
