@@ -151,6 +151,16 @@ lscpu_value() { lscpu 2>/dev/null | awk -F: -v key="$1" '$1 == key { gsub(/^ +/,
 CPU_MODEL="$(lscpu_value 'Model name')"
 CPU_LAYOUT="$(lscpu_value 'Socket(s)') sockets x $(lscpu_value 'Core(s) per socket') cores x $(lscpu_value 'Thread(s) per core') threads"
 CPU_ALLOCATED="$(nproc) of $(lscpu_value 'CPU(s)') CPUs allocated (${SLURM_CPUS_ON_NODE:-?} by Slurm)"
+# fewer physical cores than CPUs: workers share cores as hyperthreads, each pair taking up to twice the CPU time
+CPU_LIST="$(awk '/^Cpus_allowed_list/ { print $2 }' /proc/self/status)"
+PHYSICAL_CORES="$(lscpu -p=CPU,CORE 2>/dev/null | awk -F, -v list="${CPU_LIST}" '
+    BEGIN { count = split(list, ranges, ",")
+            for (index_ = 1; index_ <= count; index_++) {
+                split(ranges[index_], bounds, "-"); last = (bounds[2] == "") ? bounds[1] : bounds[2]
+                for (cpu = bounds[1] + 0; cpu <= last + 0; cpu++) allowed[cpu] = 1 } }
+    /^#/ { next }
+    ($1 + 0) in allowed { cores[$2] = 1 }
+    END { for (core in cores) total++; print total + 0 }')"
 NODE_LOAD="$(cut -d' ' -f1-3 /proc/loadavg) (1/5/15 min), $(free -g 2>/dev/null | awk '/^Mem:/ { print $7 "GB of " $2 "GB free" }')"
 
 cat <<EOF
@@ -161,6 +171,7 @@ cat <<EOF
   Node    : ${COMPUTE_NODE} ${COMPUTE_NODE_TCP}
   CPU     : ${CPU_MODEL}
             ${CPU_LAYOUT}, ${CPU_ALLOCATED}
+            on ${PHYSICAL_CORES} physical cores (CPUs ${CPU_LIST})
   Load    : ${NODE_LOAD}
   Started : $(date)
 ----------------------------------------------------------------------
