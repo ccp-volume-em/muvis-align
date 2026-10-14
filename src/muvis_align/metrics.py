@@ -1,5 +1,7 @@
 from contextlib import contextmanager, nullcontext
 from functools import partial
+import importlib.util
+import sys
 import threading
 import dask
 import dask.local
@@ -11,7 +13,7 @@ from multiview_stitcher import mv_graph
 import numpy as np
 from skimage.metrics import structural_similarity, normalized_mutual_information, mean_squared_error
 from sklearn.metrics import euclidean_distances
-from threadpoolctl import threadpool_limits
+from threadpoolctl import ThreadpoolController
 from xarray import DataArray
 
 from muvis_align.constants import (default_pair_worker_tasks, default_pair_workers, default_quality_key,
@@ -61,13 +63,28 @@ def _scheduler(name):
     return schedule
 
 
+# xarray tries to import the optional dask_array package on each dask check: absent, every try searches sys.path
+if 'dask_array' not in sys.modules and importlib.util.find_spec('dask_array') is None:
+    sys.modules['dask_array'] = None
+
+_blas_controller = None
+
+
+def _blas_one_thread():
+    # one controller a process: each new one rescans every library loaded, for every pair measured
+    global _blas_controller
+    if _blas_controller is None:
+        _blas_controller = ThreadpoolController()
+    return _blas_controller.limit(limits=1, user_api='blas')
+
+
 @contextmanager
 def _pair_metrics_compute(scheduler='threads'):
     """Dask scheduler for pair metrics, with BLAS held to one thread: OpenBLAS pools started from many threads
     at once crash the process."""
     # fusion off: fused keys collide (see MVSRegistration.register_pairs)
     with (dask.config.set({'scheduler': _scheduler(scheduler), 'optimization.fuse.active': False}),
-          threadpool_limits(1, user_api='blas')):
+          _blas_one_thread()):
         yield
 
 
@@ -123,6 +140,13 @@ def map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory=Non
     return results
 
 
+def unmeasured_pair_results(edges, candidate_keys):
+    """merge_metric_results()' result when no image metric is asked for, without computing any pair's overlap images:
+    an empty entry per candidate key for each pair and the summary, for the quality to be added to."""
+    return {'pairs': {tuple(sorted(edge)): {key: {} for key in candidate_keys} for edge in edges},
+            'bboxes': {}, 'summary': {key: {} for key in candidate_keys}}
+
+
 def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
                       n_parallel_pairs=None, progress_factory=None):
     workers = n_parallel_pairs or default_pair_workers
@@ -134,8 +158,11 @@ def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, re
                                  {node: index for index, node in enumerate(nodes)})
         return [msims[node] for node in nodes], nodes, metric_methods, base_transform_key, None, graph
 
-    metric_results = merge_metric_results(
-        map_pair_metrics(msims, list(pairs_graph.edges), pair_arguments, workers, progress_factory))
+    if metric_methods:
+        metric_results = merge_metric_results(
+            map_pair_metrics(msims, list(pairs_graph.edges), pair_arguments, workers, progress_factory))
+    else:
+        metric_results = unmeasured_pair_results(pairs_graph.edges, [default_transform_key])
 
     qualities = nx.get_edge_attributes(pairs_graph, default_quality_key)
 
@@ -191,9 +218,12 @@ def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_met
         def pair_arguments(edge):
             return [msims[node] for node in edge], edge, metric_methods, base_transform_key, query_transform_keys
 
-        metric_results = merge_metric_results(
-            map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory, desc='Global metrics',
-                             threaded=False))
+        if metric_methods:
+            metric_results = merge_metric_results(
+                map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory, desc='Global metrics',
+                                 threaded=False))
+        else:
+            metric_results = unmeasured_pair_results(edges, query_transform_keys)
     else:
         metric_funcs = create_metric_methods(metric_methods, msims[0])
         with _pair_metrics_compute():

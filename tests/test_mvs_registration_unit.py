@@ -393,7 +393,8 @@ def test_register_pairs_computes_without_linear_fusion(tmp_path):
     with patch.object(mvs_registration_module, 'compute_pairwise_registrations',
                       recording('pairs', mvs_registration_module.compute_pairwise_registrations)),             patch.object(multiview_stitcher.metrics, 'tile_pair_image_metrics',
                          recording('metrics', multiview_stitcher.metrics.tile_pair_image_metrics)):
-        reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal'})
+        reg.register_pairs(reg.register_msims, params={'method': 'phase_correlation', 'pairing': 'orthogonal',
+                                                       'metrics': ['ncc']})
 
     assert seen['pairs']['fuse'] is False
     # one synchronous compute a pair, on several threads
@@ -707,7 +708,7 @@ def test_register_global_resolves_with_the_named_groupwise_method_and_reports_me
     import muvis_align.MVSRegistration as mvs_module
     reg = prepared_registration(S000_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid',
-              'groupwise_resolution_method': 'robust_linear'}
+              'groupwise_resolution_method': 'robust_linear', 'metrics': ['ncc']}
     reg.register_pairs(reg.register_msims, params=params)
     methods = []
     original = mvs_module.groupwise_resolution

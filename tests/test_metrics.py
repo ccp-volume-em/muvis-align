@@ -1,8 +1,10 @@
+from unittest.mock import patch
+
 import networkx as nx
 import numpy as np
 import pytest
 import xarray as xr
-from multiview_stitcher import param_utils
+from multiview_stitcher import msi_utils, param_utils
 
 from muvis_align.metrics import _pair_metrics_compute, calc_pair_metrics, quality_to_scalar
 from tests.data_builders import DATA_DIR, ZARR_FILES, prepared_registration
@@ -64,6 +66,39 @@ def test_pair_metrics_one_call_a_pair_match_one_call_over_all(register_msims):
         # axis-aligned tiles: each pair's bbox area equals the overlap area the summary weights by
         assert result['summary']['transform']['ncc'] == pytest.approx(whole['summary']['transform']['ncc'])
         assert result['summary']['transform']['quality'] == 0.5
+
+
+class EmptyButTruthy(list):
+    """No metric, but taking the path that computes each pair's overlap images."""
+
+    def __bool__(self):
+        return True
+
+
+def test_with_no_metric_asked_for_no_pair_is_imaged_but_the_results_are_the_same(register_msims):
+    """With no image metric asked for, pair and global metrics only carry the qualities: computing every pair's
+    overlap images first changes nothing."""
+    from muvis_align.metrics import calc_global_metrics
+
+    msims, transform_key = register_msims
+    for index, msim in enumerate(msims):
+        shift = param_utils.affine_to_xaffine(param_utils.affine_from_translation([0.0, 0.5 * index]))
+        msi_utils.set_affine_transform(msim, shift, transform_key='registered', base_transform_key=transform_key)
+    graph = nx.Graph()
+    for pair in [(0, 1), (0, 2), (2, 3)]:
+        graph.add_edge(*pair, transform=param_utils.identity_transform(ndim=2), quality=0.5)
+    reg_results = {'pairwise_registration': {'graph': graph, 'metrics': {'qualities': {edge: 0.5 for edge in graph.edges}}}}
+
+    def both(metric_methods):
+        return (calc_pair_metrics(msims, graph, metric_methods, transform_key, n_parallel_pairs=1),
+                calc_global_metrics(msims, transform_key, 'registered', metric_methods, reg_results=reg_results,
+                                    n_parallel_pairs=1))
+
+    with patch('muvis_align.metrics.map_pair_metrics', side_effect=AssertionError('imaged a pair')):
+        skipped = both([])
+    for skipped_result, imaged_result in zip(skipped, both(EmptyButTruthy())):
+        assert skipped_result['pairs'] == imaged_result['pairs']
+        assert skipped_result['summary'] == imaged_result['summary']
 
 
 def test_ssim_takes_the_crops_as_single_channel():
