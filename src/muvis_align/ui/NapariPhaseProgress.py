@@ -94,6 +94,7 @@ class NapariPhaseProgress:
         twin._position = self._position
         twin._target = self._target
         twin.min_update_seconds = self.min_update_seconds
+        twin.last_phase_share = self.last_phase_share
         twin.phases_left = self.phases_left
         return twin
 
@@ -103,7 +104,8 @@ class NapariPhaseProgress:
         self._move_to(twin._target, force=True)
 
     def set_step(self, step):
-        """Name the long step the operation is on (a fusion level) after its description, on the bar and in the log."""
+        """Name the long step the operation is on (a fusion level) in brackets after its description, on the bar and
+        in the log."""
         if self.emit is not None:
             if self.emit_step is not None:
                 self.emit_step(step)
@@ -114,7 +116,9 @@ class NapariPhaseProgress:
 
     @property
     def label(self):
-        return ': '.join(part for part in (self.desc, self.step) if part) or 'Working'
+        if self.desc and self.step:
+            return f'{self.desc} ({self.step})'
+        return self.desc or self.step or 'Working'
 
     def ensure_phases(self, phases):
         """Make room for a nested operation reporting `phases` of its own into this bar, so it does not keep
@@ -218,6 +222,13 @@ class NapariPhaseProgress:
             def update(self, n=1):
                 self._start()
                 super().update(n)
+
+            def set_description(self, desc=None, refresh=True):
+                # a library's bar over several steps (fusion's levels) names each as it starts it
+                if desc:
+                    self.desc = desc
+                    if self._open:
+                        owner.set_step(desc)
 
             def close(self):
                 if self._open:

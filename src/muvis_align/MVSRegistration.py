@@ -1772,14 +1772,15 @@ class MVSRegistration:
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
              dimension=None, output_filename=None,
              tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
-             output_chunksize=None, workers=None):
+             output_chunksize=None, workers=None, level_bytes=None):
         """Fuse the sources' msims into one multiscale output msim; returns (fused, whether it was written).
         Sims are wrapped first with util.wrap_sims_as_msims.
 
         output_chunksize, a chunk size per spatial dim, is used as-is; otherwise it is sized against memory.
         Written to a file, every level is fused from the sources (fusion_slabs.export_levels): with output_spacing
         None or 'native' each at its own pixel size from the sources at least that fine, else doubling from the set
-        spacing. In memory, 'native' stays 'mean'.
+        spacing. In memory, 'native' stays 'mean'. `level_bytes` (estimate_fusion_size's, a level) shares the progress
+        bar out over the levels.
         """
         logging.info('Fusion...')
         if output_filename is not None:
@@ -1885,7 +1886,8 @@ class MVSRegistration:
                             msims, levels, output_filename, transform_key, output_stack_properties, output_chunksize,
                             fusion_func=fuse_func, zarr_options=zarr_options,
                             batch_options=self._fusion_batch_options(saving_zarr, max_workers=workers),
-                            ranks=source_spacings if is_native else None, average_levels=not is_native)
+                            ranks=source_spacings if is_native else None, average_levels=not is_native,
+                            level_weights=level_bytes)
                     else:
                         fused_image = fusion.fuse(msims, fusion_func=fuse_func, transform_key=transform_key,
                                                   output_stack_properties=output_stack_properties,

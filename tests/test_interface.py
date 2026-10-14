@@ -166,6 +166,8 @@ def test_update_registered_refreshes_the_tables_and_the_view(make_napari_viewer)
 def bare_interface():
     interface = Interface.__new__(Interface)
     interface.reg = MagicMock()
+    # a mock reg has no geometry to estimate a fusion from
+    interface.reg.estimate_fusion_size.return_value = None
     interface.verbose = False
     interface.enable_plugin_widget = None
     interface.extra_metadata = {}

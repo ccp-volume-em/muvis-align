@@ -110,6 +110,7 @@ class Interface:
         self.pair_metrics_timer.timeout.connect(self.update_pair_metrics)
         self._pair_metrics_worker = None
         self._pair_metrics_pending = False
+        self._fusion_estimate = None
 
         self.reg = MVSRegistration()
         if initialize:
@@ -1820,8 +1821,8 @@ class Interface:
                 tile_size = int(tile_size)
         return tile_size
 
-    def _fusion_size_text(self):
-        """' Estimated output: ...' for the export question, logged per level; empty if it cannot be estimated."""
+    def _estimate_fusion_size(self):
+        """reg.estimate_fusion_size() for the fusion settings, logged per level; None if it cannot be estimated."""
         try:
             with Timer('fusion size estimate', verbose=self._timing_verbose()):
                 estimate = self.reg.estimate_fusion_size(
@@ -1830,15 +1831,22 @@ class Interface:
                     dimension=self.params['input_output']['registration_dimension'],
                     tile_size=self._fusion_tile_size(), extra_metadata=self.extra_metadata)
         except Exception as error:
-            # the question still stands without a size
+            # the question still stands without a size, and the bar without its level shares
             logging.warning(f'Could not estimate the fusion size: {error}')
+            return None
+        if estimate is not None:
+            logging.info(f'Fusion size estimate: {print_hbytes(estimate["bytes"])} uncompressed, per level '
+                         + ', '.join(f'{level["spacing"]:.4g}: {print_hbytes(level["bytes"])}'
+                                     for level in estimate['levels']))
+        return estimate
+
+    def _fusion_size_text(self):
+        """' Estimated output: ...' for the export question; empty if it cannot be estimated. The estimate is kept for
+        the fusion that follows, to share its bar out over the levels."""
+        self._fusion_estimate = self._estimate_fusion_size()
+        if self._fusion_estimate is None:
             return ''
-        if estimate is None:
-            return ''
-        levels = estimate['levels']
-        logging.info(f'Fusion size estimate: {print_hbytes(estimate["bytes"])} uncompressed, per level '
-                     + ', '.join(f'{level["spacing"]:.4g}: {print_hbytes(level["bytes"])}' for level in levels))
-        return f'\nEstimated output: {print_hbytes(estimate["bytes"])}'
+        return f'\nEstimated output: {print_hbytes(self._fusion_estimate["bytes"])}'
 
     @catch_run_errors
     def run_fusion(self, progress_factory=None):
@@ -1852,8 +1860,15 @@ class Interface:
         fuses_to_zarr = self.reg.fuses_to_zarr(self.params['fusion']['method'],
                                                self.params['input_output']['registration_dimension'],
                                                self.extra_metadata)
+        # used once: settings or registration may change before another fusion
+        estimate, self._fusion_estimate = getattr(self, '_fusion_estimate', None), None
+        nested = (progress_factory or getattr(self, '_running_operation', None)) is not None
         with self._operation_progress('Fusion', progress_factory, phases=1 if fuses_to_zarr else 2) as factory:
+            if fuses_to_zarr and not nested:
+                # the levels' one bar is the whole export: the last level fills it, not the close after it
+                factory.last_phase_share = 1.0
             def fuse(worker_factory):
+                level_estimate = estimate if estimate is not None or not fuses_to_zarr else self._estimate_fusion_size()
                 with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_fusion=True), \
                         Timer('fusion', verbose=self._timing_verbose()):
                     fused_image, is_saved = self.reg.fuse(
@@ -1866,7 +1881,8 @@ class Interface:
                         output_filename=output_filename,
                         tile_size=tile_size,
                         ome_version=self.params['fusion']['ome_version'],
-                        extra_metadata=self.extra_metadata)
+                        extra_metadata=self.extra_metadata,
+                        level_bytes=[level['bytes'] for level in level_estimate['levels']] if level_estimate else None)
                     if not is_saved:
                         # save() takes a single-resolution sim: the pyramid's finest scale
                         save_sim = extract_sims_from_fused(fused_image)
@@ -1919,8 +1935,11 @@ class Interface:
         reply = QMessageBox.question(None, 'muvis-align', message + self._fusion_size_text(),
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
-            if needs_registration and not self._run_registration():
-                return
+            if needs_registration:
+                # estimated from the transforms before this registration
+                self._fusion_estimate = None
+                if not self._run_registration():
+                    return
             fused_image = self.run_fusion()
             if fused_image is None:
                 return

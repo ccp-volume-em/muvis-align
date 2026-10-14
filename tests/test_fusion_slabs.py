@@ -107,6 +107,52 @@ def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff
     assert coarsest[28, 28] == 200
 
 
+class RecordingTqdm:
+    """fusion_core.tqdm recording each update under the description it was made with."""
+    instances = []
+
+    def __init__(self, total=None, desc=None, **_):
+        self.total, self.desc, self.updates = total, desc, {}
+        RecordingTqdm.instances.append(self)
+
+    def set_description(self, desc=None, refresh=True):
+        self.desc = desc
+
+    def update(self, n=1):
+        self.updates[self.desc] = self.updates.get(self.desc, 0) + n
+
+    def close(self):
+        pass
+
+
+@pytest.mark.parametrize('level_weights, expected', [
+    # the estimate's bytes a level, whatever their scale
+    ([600.0, 300.0, 100.0], [600.0, 300.0, 100.0]),
+    # none given, or not one a level: each level's voxels
+    (None, [256 * 256, 128 * 128, 64 * 64]),
+    ([1.0], [256 * 256, 128 * 128, 64 * 64]),
+])
+def test_one_bar_runs_over_all_levels_each_its_share(tmp_path, monkeypatch, level_weights, expected):
+    """Each level was a bar of its own, which the operation's bar could only give what remained: level 0 ended at
+    90% and the other levels crawled through the last 10."""
+    import multiview_stitcher.fusion._core as fusion_core
+
+    RecordingTqdm.instances.clear()
+    monkeypatch.setattr(fusion_core, 'tqdm', RecordingTqdm)
+    overview, tile = flat_msim(10, 64, 2.0, 0.0), flat_msim(200, 64, 0.5, 40.0)
+    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
+
+    fuse_levels_to_ome_zarr([overview, tile], export_levels([2.0, 0.5], level0, ['y', 'x']),
+                            (tmp_path / 'fused.ome.zarr').as_posix(), 'source', level0, {'y': 64, 'x': 64},
+                            ranks=[2.0, 0.5], level_weights=level_weights)
+
+    assert len(RecordingTqdm.instances) == 1
+    bar = RecordingTqdm.instances[0]
+    assert bar.total == pytest.approx(sum(expected))
+    assert list(bar.updates) == ['level 1 of 3 at 0.5 µm', 'level 2 of 3 at 1 µm', 'level 3 of 3 at 2 µm']
+    assert list(bar.updates.values()) == pytest.approx(expected)
+
+
 @pytest.mark.parametrize('bounds, side, chunk_side, budget, expected', [
     # ten sources stacked in one corner: a block holding them all must shrink, wherever else is empty
     ([[[0.0, 300.0], [0.0, 300.0]]] * 10, 4096, 4096, 10 * 512 * 512 * 12, 512),

@@ -167,11 +167,11 @@ def prioritise_finer_views(fusion_func, group_params, group_ranks):
 
 
 def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize, fusion_func=None,
-                         creation_kwargs=None, batch_options=None, interpolation_order=1, desc=None, ranks=None,
-                         groups=None):
+                         creation_kwargs=None, batch_options=None, interpolation_order=1, progress=None, share=0,
+                         ranks=None, groups=None):
     """Fuse `sims` into a new zarr array at store_url: only the blocks some source reaches, each from only the sources
     reaching it. With `ranks` (lower first, e.g. pixel sizes), only the lowest-ranked source at each pixel is fused.
-    Returns dims and properties."""
+    The blocks move `progress` by `share` in all. Returns dims and properties."""
     batch_options = batch_options or {}
     dims = list(sims[0].dims)
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
@@ -215,15 +215,14 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     def fuse_block(block_id):
         return funcs[block_id](block_id)
 
-    _run_blocks(fuse_block, sorted(funcs), batch_options, desc)
+    _run_blocks(fuse_block, sorted(funcs), batch_options, progress, share)
     return dims, info['output_stack_properties']
 
 
-def _run_blocks(block_func, block_ids, batch_options, desc):
-    """block_func on each block id, batched through batch_options' batch_func; the bar counts only these blocks, as the
-    ones no source reaches cost nothing."""
+def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0):
+    """block_func on each block id, batched through batch_options' batch_func, moving `progress` by `share` over
+    them: only these blocks count, as the ones no source reaches cost nothing."""
     batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
-    progress = fusion_core.tqdm(total=len(block_ids), desc=desc)
     for start in range(0, len(block_ids), n_batch):
         batch = block_ids[start:start + n_batch]
         if batch_func is None:
@@ -231,12 +230,14 @@ def _run_blocks(block_func, block_ids, batch_options, desc):
                 block_func(block_id)
         else:
             batch_func(block_func, batch, **(batch_options.get('batch_func_kwargs') or {}))
-        progress.update(len(batch))
-    progress.close()
+        if progress is not None:
+            progress.update(share * len(batch) / len(block_ids))
+    if progress is not None and not block_ids:
+        progress.update(share)
 
 
 def average_into_zarr_array(parent_url, store_url, factors, chunk, spatial_blocks, creation_kwargs=None,
-                            batch_options=None, desc=None):
+                            batch_options=None, progress=None, share=0):
     """A zarr array averaging the one at parent_url by whole `factors` per trailing spatial dim, writing only the
     `chunk` blocks in spatial_blocks: a pyramid level without z averaged across sections or empty blocks computed."""
     batch_options = batch_options or {}
@@ -260,7 +261,7 @@ def average_into_zarr_array(parent_url, store_url, factors, chunk, spatial_block
 
     block_ids = sorted(tuple(nonspatial_block) + tuple(spatial_block)
                        for nonspatial_block in np.ndindex(*shape[:nonspatial]) for spatial_block in spatial_blocks)
-    _run_blocks(average_block, block_ids, batch_options, desc)
+    _run_blocks(average_block, block_ids, batch_options, progress, share)
 
 
 def storage_ngff_version(ngff_version):
@@ -394,14 +395,18 @@ def level_paths(count):
 
 def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level0_properties, output_chunksize,
                             fusion_func=None, zarr_options=None, batch_options=None, interpolation_order=1,
-                            ranks=None, average_levels=False):
+                            ranks=None, average_levels=False, level_weights=None):
     """An OME-Zarr multiscale image of `levels` (export_levels), each fused at its own pixel size from its sources at
     their nearest level. With average_levels, every level after the first averages the one above instead. With `ranks`
-    (one a source, lower first), a higher-ranked source under a lower-ranked one is left out."""
+    (one a source, lower first), a higher-ranked source under a lower-ranked one is left out. One progress bar runs
+    over all levels, each its share of `level_weights` (e.g. the bytes it writes), else of the level's voxels."""
     ngff_version, creation_kwargs = _zarr_options(zarr_options)
     _remove_existing(output_zarr_url, zarr_options)
     logging.info(f'Fusion levels {[float(round(level[0], 4)) for level in levels]}')
     paths = level_paths(len(levels))
+    if level_weights is None or len(level_weights) != len(levels) or not sum(level_weights) > 0:
+        level_weights = [float(np.prod(list(properties['shape'].values()))) for _, properties, _ in levels]
+    progress = fusion_core.tqdm(total=float(sum(level_weights)))
     for index, (level_spacing, properties, selected) in enumerate(levels):
         output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
         # tolerance 0, as multiview_stitcher picks: an offset source level at the output's pixel size leaves the
@@ -411,20 +416,22 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
             tolerance=0)) for source in selected]
         level_chunksize, groups = level_blocks(sim_views(sims, transform_key), output_properties, output_chunksize,
                                                interpolation_order)
-        desc = f'Level {index} at {print_significants(level_spacing, 3)} µm'
+        progress.set_description(f'level {index + 1} of {len(levels)} at {print_significants(level_spacing, 3)} µm')
         if average_levels and index > 0:
             factors = {dim: round(properties['factors'][dim] / levels[index - 1][1]['factors'][dim])
                        for dim in output_properties['shape']}
             average_into_zarr_array(os.path.join(output_zarr_url, paths[index - 1]),
                                     os.path.join(output_zarr_url, paths[index]), factors, level_chunksize,
                                     [block for blocks in groups.values() for block in blocks],
-                                    creation_kwargs=creation_kwargs, batch_options=batch_options, desc=desc)
+                                    creation_kwargs=creation_kwargs, batch_options=batch_options, progress=progress,
+                                    share=level_weights[index])
         else:
             fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key, output_properties,
                                  level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
-                                 batch_options=batch_options, interpolation_order=interpolation_order, desc=desc,
-                                 ranks=[ranks[source] for source in selected] if ranks is not None else None,
+                                 batch_options=batch_options, interpolation_order=interpolation_order,
+                                 progress=progress, share=level_weights[index], ranks=[ranks[source] for source in selected] if ranks is not None else None,
                                  groups=groups)
+    progress.close()
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
         level0_properties, [properties['factors'] for _, properties, _ in levels],

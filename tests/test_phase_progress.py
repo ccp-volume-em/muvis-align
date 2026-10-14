@@ -232,7 +232,7 @@ def test_a_library_tqdm_loop_reports_into_the_same_bar(off_thread):
     assert len(FakeBar.instances) == 1
     bar = FakeBar.instances[0]
     assert (bar.n, bar.total) == (factory.ticks, factory.ticks)
-    assert bar.descriptions == ['Fusion', 'Fusion: Level 0 at 0.01']
+    assert bar.descriptions == ['Fusion', 'Fusion (Level 0 at 0.01)']
 
 
 def test_pyramid_levels_report_into_the_fusion_bar():
@@ -250,7 +250,7 @@ def test_pyramid_levels_report_into_the_fusion_bar():
                 pass
 
     assert mvs_ngff_utils.tqdm is unpatched
-    assert FakeBar.instances[0].descriptions == ['Fusion', 'Fusion: Pyramid level 1', 'Fusion: Pyramid level 2']
+    assert FakeBar.instances[0].descriptions == ['Fusion', 'Fusion (Pyramid level 1)', 'Fusion (Pyramid level 2)']
 
 
 def test_the_tqdm_stand_in_tolerates_the_rest_of_tqdm():
@@ -314,3 +314,27 @@ def test_the_bar_moves_at_most_once_a_second_but_always_shows_a_phase_end_and_co
                 phase.update(1)
             assert bar.n == factory.ticks // 2
     assert bar.n == factory.ticks
+
+
+def test_one_library_bar_over_several_steps_names_each_and_moves_on_without_a_new_phase():
+    """Fusion runs one bar over all its levels, renaming it as each starts: the operation's bar keeps one phase,
+    so a later level is not squeezed into what the earlier ones left."""
+    FakeBar.instances.clear()
+    factory = make_phase_factory(desc='Fusion')
+    # as a zarr export's: its last level, not the close after it, fills the bar
+    factory.last_phase_share = 1.0
+    with factory:
+        twin = factory.worker_twin(factory.set_position, factory.set_step)
+        with twin:
+            progress = twin.tqdm_class(total=4.0)
+            progress.set_description('level 1 of 2')
+            progress.update(3.0)
+            three_quarters = percent(factory)
+            progress.set_description('level 2 of 2')
+            progress.update(1.0)
+            progress.close()
+            full = percent(factory)
+        factory.continue_from(twin)
+
+    assert (three_quarters, full) == (pytest.approx(75, abs=0.1), 100)
+    assert FakeBar.instances[0].descriptions == ['Fusion', 'Fusion (level 1 of 2)', 'Fusion (level 2 of 2)']
