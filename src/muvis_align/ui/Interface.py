@@ -1253,7 +1253,9 @@ class Interface:
         if viewer is getattr(self, 'viewer', None):
             # the shapes drawn over it pick their colour from this (_update_view_add_shapes)
             colors = colormap if channel_axis is not None else [colormap or (1, 1, 1)]
-            self._view_levels = (levels[:len(colors)] if levels else None, colors)
+            # a volume shows as dark as a slice and as bright as its 3D projection: neither level, the colour for both
+            is_volume = self.reg.sources[0].get_size().get('z', 0) > 1 if self.reg.sources else False
+            self._view_levels = (levels[:len(colors)] if levels and not is_volume else None, colors)
         with Timer('_napari_view_add_fused_data: add_image', verbose=self._timing_verbose()):
             viewer.add_image(data, name=name or layer_name, multiscale=True, channel_axis=channel_axis,
                              colormap=colormap, contrast_limits=contrast_limits,

@@ -991,7 +991,7 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     # mixed 3- and 4-tuples make napari fall back to plain white for the whole layer
     assert len({len(color) for color in face_color}) == 1
     edge_color = kwargs["edge_color"]
-    assert edge_color == ['#000000'] * 12 + ['#00ffff'] * 2
+    assert edge_color == ['#000000'] * 12 + ['#ff00ff'] * 2
     np.testing.assert_allclose(
         kwargs["edge_width"], [0] * 12 + [expected_wire_width] * 2
     )
@@ -1079,7 +1079,7 @@ def test_update_napari_shapes_labels_only_where_asked(
     _, kwargs = viewer.add_shapes.call_args
     assert kwargs["shape_type"] == "polygon"
     assert kwargs["edge_width"] == 0.1
-    assert kwargs["text"] == {"string": "{labels}", "size": 6, "color": '#00ffff'}
+    assert kwargs["text"] == {"string": "{labels}", "size": 6, "color": '#ff00ff'}
     assert kwargs["features"]["labels"] == ["image-0"]
 
     overview = MagicMock()

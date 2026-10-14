@@ -661,15 +661,16 @@ def test_thread_map_and_rolling_map_run_in_the_calling_thread_with_one_worker(wo
 
 
 @pytest.mark.parametrize('levels, colors, expected', [
-    ([0.9], [(1, 1, 1)], '#000080'),
-    ([0.2], [(1, 1, 1)], '#00ffff'),
+    ([0.9], [(1, 1, 1)], '#990066'),
+    ([0.2], [(1, 1, 1)], '#ffd700'),
+    ([0.5], [(1, 1, 1)], '#ff00ff'),
     # a bright level in a dark colour (blue) still makes a dark background
-    ([0.9], [(0, 0, 1)], '#00ffff'),
+    ([0.9], [(0, 0, 1)], '#ffd700'),
     # channels add up: two half-bright channels in green and red
-    ([0.6, 0.6], [(0, 1, 0), (1, 0, 0)], '#000080'),
-    ([0.9, None], [(1, 1, 1), (1, 1, 1)], '#00ffff'),
-    (None, [(1, 1, 1)], '#00ffff'),
-], ids=['bright grey', 'dark grey', 'bright blue', 'two channels', 'a level unknown', 'nothing read'])
+    ([0.7, 0.7], [(0, 1, 0), (1, 0, 0)], '#990066'),
+    ([0.9, None], [(1, 1, 1), (1, 1, 1)], '#ff00ff'),
+    (None, [(1, 1, 1)], '#ff00ff'),
+], ids=['bright grey', 'dark grey', 'mid grey', 'bright blue', 'two channels', 'a level unknown', 'nothing read'])
 def test_shape_lines_contrast_with_the_image_under_them(levels, colors, expected):
     from muvis_align.util import background_luminance, contrasting_color
     assert contrasting_color(background_luminance(levels, colors)) == expected

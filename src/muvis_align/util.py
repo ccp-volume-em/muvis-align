@@ -84,11 +84,14 @@ def find_file_list_index(filenames, match):
 
 
 def contrasting_color(background):
-    """A colour (hex: napari reads an RGB tuple as three colours) that stands out on a background of `background`
-    luminance (0 black to 1 white): dark on a bright one, cyan otherwise or when it is unknown (None)."""
-    if background is not None and background > 0.5:
-        return '#000080'
-    return '#00ffff'
+    """A saturated colour, apart from greyscale by its hue, that stands out on a background of `background` luminance
+    (0 black to 1 white): dark on a bright one, bright on a dark one, magenta between or when unknown (None).
+    Hex: napari reads an RGB tuple as three colours."""
+    if background is not None and background > 0.6:
+        return '#990066'
+    if background is not None and background < 0.4:
+        return '#ffd700'
+    return '#ff00ff'
 
 
 def background_luminance(levels, colors):

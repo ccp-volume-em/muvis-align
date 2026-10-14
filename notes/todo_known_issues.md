@@ -51,8 +51,6 @@ ESSENTIAL
 
 MINOR
 
-- [ ] **Shape label colour still hard to read** - cyan is poor on a bright background too; choose a colour that
-      contrasts with greyscale either way (contrasting_color / background_luminance).
 - [ ] **Progress bars: at most one update a second** - throttle the bar's redraws (NapariPhaseProgress / the Qt bar).
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
@@ -146,7 +144,9 @@ REFACTORING
 
 - **Shape labels and edges contrast with the image** - the contrast-limit sample (quick view, or the coarsest level)
   also gives where the typical value shows (get_display_level); with the channels' colours that is the background's
-  luminance, and labels and edges go navy on a bright one, cyan otherwise - the same in the 2D and 3D view.
+  luminance, and labels and edges take a saturated colour apart from greyscale: dark magenta on a bright one, gold on
+  a dark one, magenta between, unknown, or for a volume (dark as a slice, bright as its 3D projection) - the same in
+  the 2D and 3D view.
 - **Msim-free registered open** (branch `registered-open`) - init_progress keeps a loaded registration in
   self.mappings, applied when msims are first built (_apply_mappings), and finds files by dict; the pairs graph,
   registered shapes, the quick view's transforms and the size estimate come from MVSRegistration.source_geometry
