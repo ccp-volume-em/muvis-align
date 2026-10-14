@@ -836,10 +836,10 @@ class MVSRegistration:
                     if index1 is not None and index2 is not None:
                         indexed_key = index1, index2
                         indexed_pair_transforms[indexed_key] = (
-                            param_utils.affine_to_xaffine(np.array(value['mapping'])).expand_dims({'t': [0]}))
+                            xaffine_from_matrix(value['mapping'], with_t=True))
                         indexed_qualities[indexed_key] = np.array(value.get(default_quality_key, 0))
                         if 'bbox' in value:
-                            indexed_bboxes[indexed_key] = xr.DataArray(value['bbox'])
+                            indexed_bboxes[indexed_key] = data_array_from_values(value['bbox'])
             # not per-source-divisible, but long enough to report as two steps
             progress_context = progress_phase(progress_factory, total=2, desc='Loading pair registration')
             with progress_context as pbar:
@@ -882,8 +882,7 @@ class MVSRegistration:
                 with progress_context as pbar:
                     for index, filename in enumerate(self.filenames):
                         # stored as registration produced it - 2D for a stack, whose msims are stored 2D too
-                        self.mappings[index] = param_utils.affine_to_xaffine(
-                            np.array(find_file_dict_item(mappings, filename)))
+                        self.mappings[index] = xaffine_from_matrix(find_file_dict_item(mappings, filename))
                         if pbar is not None:
                             pbar.update(1)
                 if self._msims is not None:

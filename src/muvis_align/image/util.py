@@ -427,6 +427,27 @@ def _xaffine_template(size):
     return param_utils.identity_transform(size - 1)
 
 
+@functools.lru_cache(maxsize=None)
+def _array_template(shape, affine, with_t):
+    if not affine:
+        return xr.DataArray(np.zeros(shape))
+    template = param_utils.identity_transform(shape[0] - 1)
+    return template.expand_dims({'t': [0]}) if with_t else template
+
+
+def xaffine_from_matrix(matrix, with_t=False):
+    """param_utils.affine_to_xaffine(matrix), with a 't' of one time point if asked: a shallow copy of a cached one,
+    as building each from scratch costs most of loading a saved registration's many."""
+    matrix = np.asarray(matrix, dtype=float)
+    return _array_template(matrix.shape, True, with_t).copy(deep=False, data=matrix[None] if with_t else matrix)
+
+
+def data_array_from_values(values):
+    """xr.DataArray(values) as a shallow copy of a cached one of its shape (see xaffine_from_matrix)."""
+    values = np.asarray(values, dtype=float)
+    return _array_template(values.shape, False, False).copy(deep=False, data=values)
+
+
 def build_source_shape_sim(source, output_order, translation, transform, transform_key, z_scale=None, level=0,
                            promote_z=False):
     """A single-level placeholder sim with build_source_stack_props()' geometry, for multiview_stitcher's exact
