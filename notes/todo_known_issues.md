@@ -95,16 +95,20 @@ From the HPC run of 2026-10-12 (4844e9f; 34k sources, 229725 pairs; registration
       released, peak 510GB at level 6; on 2026-10-09 (direct TIFF reads) level 0 stayed at 25-30GB, peak 248GB.
       Likely the reads through zarr's I/O pool (256 threads, constants.py) leaving freed tiles in Linux's per-thread
       malloc arenas: not reproduced on Windows. Confirmed by the run of 2026-10-13 (7ef399e, direct reads back):
-      level 0 rss 24-35GB, peak 39.4GB, in 2h39; level 1 peak 48.9GB. Close once the run's whole-fusion peak is in;
-      zarr reads remain for compressed/tiled TIFFs and OME-Zarr, so if it shows there, cap zarr's pool or
-      MALLOC_ARENA_MAX. Robust linear is back to 1h18 (msims built to converged; 1h23 on 2026-10-09, 1h36 on
+      level 0 rss 24-35GB, peak 39.4GB, in 2h39. The coarse levels are another matter: rss swings per block and drops
+      back (level 6 at 0.332: 27 -> 225GB), max 44, 65, 99, 96, 136, 233GB over levels 1-6 - a coarse block covers
+      thousands of tiles, each read at its coarsest level; the 510GB of 2026-10-12 was this. Compare on the run with
+      the numpy plan (and without the 0.332 level). Zarr reads remain for compressed/tiled TIFFs and OME-Zarr, so if
+      the level 0 climb shows there, cap zarr's pool or MALLOC_ARENA_MAX. Robust linear is back to 1h18 (msims built to converged; 1h23 on 2026-10-09, 1h36 on
       2026-10-12).
 - [ ] **Fusion's fixed cost per level** - every level takes 13 min or more however small: 0.66-10.6um (hundreds of
       pixels) 27, 19, 16, 16, 13 min, 1.5h of the 10.4h. Per level and source: the level choice and sim
       (msim_level_spacings, get_sim_from_msim), sim_views, view_bounds, budget_chunksize and block_sources over 1081
       z blocks, a prepare_block_fusion per source group. Time each on the next run or a meatballs profile.
       2026-10-13: 18 min before level 0 starts (make_msims_3d 13.4, output properties 1.0, export chunk sizes 0.9);
-      level 1 (averaged from level 0) 1.5h and counting, shown as 90-99% of the bar.
+      levels 0-5 2h38, 1h33, 1h08, 54, 53, 54 min (484, 172, 99, 47, 47, 41GB): levels 3-5 the same whatever
+      their size. Native levels are each fused from their sources; averaging the level above where the sources are
+      the same (levels 1-4, and after the overviews') was weighed and left - measure the numpy plan first.
       The per-block plan's per-source affine checks now run on numpy (see Done); what is left of a small level's
       time locally is spread over xarray/dask per source and block. Compare the levels on the next HPC run.
 
