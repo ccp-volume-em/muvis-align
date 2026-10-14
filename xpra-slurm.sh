@@ -4,7 +4,6 @@
 #SBATCH --cpus-per-task=64
 #SBATCH --time=2-00:00          # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH --mem=640G   # Memory pool for all cores (see also --mem-per-cpu)
-#SBATCH --exclusive  # the whole node: sharing it, or 64 hyperthreads of 32 cores, doubled CPU time per pair
 #SBATCH --output=muvis-align-%j.log
 #SBATCH --error=muvis-align-%j.log
 
