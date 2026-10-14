@@ -16,9 +16,6 @@ class ParamWidget:
     def get_value(self):
         return self.widget.get_value()
 
-    def get_native_item(self, rowi, coli):
-        return self.widget.native.item(rowi, coli)
-
     def set_value(self, value, choices=None):
         if choices is not None:
             self.set_choices(choices)

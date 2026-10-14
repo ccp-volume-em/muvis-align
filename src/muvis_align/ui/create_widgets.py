@@ -93,6 +93,10 @@ def create_section_container(section_id, section_template, interface,
                 widget_type_map=map_bilayers_to_widget_type,
             )
 
+            widget_type = spec.widget_type
+            if widget_type == 'Table' and spec.section_key == 'display_only':
+                # read-only, and possibly a row per source or pair: a view that draws only the rows shown
+                widget_type = 'muvis_align.ui.ModelTable.ModelTable'
             full_name = section_id + '.' + spec.param_name
             param_widget = ParamWidget(full_name, None, interface, to_str=spec.is_file_type)
 
@@ -110,7 +114,7 @@ def create_section_container(section_id, section_template, interface,
                 widget = create_widget(
                     name=full_name,
                     label=spec.param_label,
-                    widget_type=spec.widget_type,
+                    widget_type=widget_type,
                     options=options,
                     value=spec.value,
                 )
@@ -118,7 +122,7 @@ def create_section_container(section_id, section_template, interface,
                 widget = create_widget(
                     name=full_name,
                     label=spec.param_label,
-                    widget_type=spec.widget_type,
+                    widget_type=widget_type,
                     options=options,
                 )
             if spec.is_file_type and options.get('mode') == 'w' and hasattr(widget, '_show_file_dialog'):

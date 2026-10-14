@@ -850,9 +850,8 @@ class Interface:
 
     def metrics_table_selected(self):
         table = self.param_widgets.get('registration.metrics_table').widget.native
-        header_item = table.verticalHeaderItem(table.currentRow())
         # the summary and group (section) pair rows have no image pair
-        indices = getattr(self, 'metrics_row_pairs', {}).get(header_item.text()) if header_item else None
+        indices = getattr(self, 'metrics_row_pairs', {}).get(table.row_label(table.currentRow()))
         if indices:
             self.set_preview_images(indices)
 
@@ -1006,11 +1005,24 @@ class Interface:
 
         # once registered, only registered pairs: an overlap between unpaired images has no quality behind it
         overlap_pairs = list(self.reg.pairs_graph.edges()) if self.reg.is_pairs_registered() else None
+        # the overlaps an earlier refresh found under the same geometry: pair registration moves no source
+        signature = (transform_key, force_2d, id(self.reg.positions), id(self.reg._msim_transforms),
+                     id(self.reg.mappings) if transform_key == self.reg.reg_transform_key else None)
+        cache = getattr(self, '_overlap_shapes', None)
+        cache = cache if cache is not None and cache['signature'] == signature else None
         with phase(1 / 5, total=1) as pbar, \
              Timer(f'_create_napari_shapes: create_overlap_shapes ({len(msims)} images,'
                   f' {len(overlap_pairs) if overlap_pairs is not None else "all"} pairs)', verbose=self._timing_verbose()):
-            shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, pairs=overlap_pairs,
-                                                   force_2d=force_2d)
+            # a pass over all pairs found every overlap: a pair it did not find has none
+            if overlap_pairs is not None and cache is not None and (
+                    cache['all_pairs'] or all(tuple(sorted(pair)) in cache['shapes'] for pair in overlap_pairs)):
+                pairs = [pair for pair in overlap_pairs if tuple(sorted(pair)) in cache['shapes']]
+                shapes2 = [cache['shapes'][tuple(sorted(pair))] for pair in pairs]
+            else:
+                shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, pairs=overlap_pairs,
+                                                       force_2d=force_2d)
+                self._overlap_shapes = {'signature': signature, 'all_pairs': overlap_pairs is None, 'shapes': {
+                    tuple(sorted(int(index) for index in pair)): shape for pair, shape in zip(pairs, shapes2)}}
             if pbar is not None:
                 pbar.update(1)
         shapes.extend(shapes2)
@@ -1482,14 +1494,10 @@ class Interface:
 
         table_widget = self.param_widgets.get('registration.metrics_table')
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
+        table_widget.widget.native.set_background(
+            lambda value: QColor(*metric_to_rgb(value, max_light=0.5, output_range=255)))
         table_widget.set_value((metrics_table, item_keys, col_headers))
         table_widget.set_table_column_resize_mode()
-        for rowi in range(len(item_keys)):
-            for coli in range(len(col_headers)):
-                table_cell = table_widget.get_native_item(rowi, coli)
-                if table_cell is not None:
-                    table_cell.setBackground(
-                        QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
 
     def update_registered(self, view_transform_key=None, progress_factory=None):
         with Timer('update_registered: tables', verbose=self._timing_verbose()):
@@ -1718,13 +1726,13 @@ class Interface:
         if reply == QMessageBox.Yes:
             if not self._run_registration():
                 return
-            # one more bar for building and drawing the view the registration leaves on screen
-            with self._operation_progress('Refreshing view', phases=2) as view_factory:
-                self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
-                                                    progress_factory=view_factory)
-                self.update_registered(view_transform_key=self.reg.reg_transform_key,
-                                       progress_factory=view_factory)
+            self.refresh_registered_view()
             QMessageBox.information(None, 'muvis-align', completion_message)
+
+    def refresh_registered_view(self):
+        # from source geometry and the mappings: view msims are built only if a fused preview needs them
+        with self._operation_progress('Refreshing view', phases=2) as view_factory:
+            self.update_registered(view_transform_key=self.reg.reg_transform_key, progress_factory=view_factory)
 
     def _run_registration(self):
         """Pair registration where it has not run yet, then global; False if either did not complete."""
