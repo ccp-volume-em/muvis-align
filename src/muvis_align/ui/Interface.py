@@ -850,9 +850,8 @@ class Interface:
 
     def metrics_table_selected(self):
         table = self.param_widgets.get('registration.metrics_table').widget.native
-        header_item = table.verticalHeaderItem(table.currentRow())
         # the summary and group (section) pair rows have no image pair
-        indices = getattr(self, 'metrics_row_pairs', {}).get(header_item.text()) if header_item else None
+        indices = getattr(self, 'metrics_row_pairs', {}).get(table.row_label(table.currentRow()))
         if indices:
             self.set_preview_images(indices)
 
@@ -1482,14 +1481,10 @@ class Interface:
 
         table_widget = self.param_widgets.get('registration.metrics_table')
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
+        table_widget.widget.native.set_background(
+            lambda value: QColor(*metric_to_rgb(value, max_light=0.5, output_range=255)))
         table_widget.set_value((metrics_table, item_keys, col_headers))
         table_widget.set_table_column_resize_mode()
-        for rowi in range(len(item_keys)):
-            for coli in range(len(col_headers)):
-                table_cell = table_widget.get_native_item(rowi, coli)
-                if table_cell is not None:
-                    table_cell.setBackground(
-                        QColor(*metric_to_rgb(metrics_table[rowi][coli], max_light=0.5, output_range=255)))
 
     def update_registered(self, view_transform_key=None, progress_factory=None):
         with Timer('update_registered: tables', verbose=self._timing_verbose()):
@@ -1718,13 +1713,13 @@ class Interface:
         if reply == QMessageBox.Yes:
             if not self._run_registration():
                 return
-            # one more bar for building and drawing the view the registration leaves on screen
-            with self._operation_progress('Refreshing view', phases=2) as view_factory:
-                self._copy_transforms_to_view_msims(self.reg.reg_transform_key,
-                                                    progress_factory=view_factory)
-                self.update_registered(view_transform_key=self.reg.reg_transform_key,
-                                       progress_factory=view_factory)
+            self.refresh_registered_view()
             QMessageBox.information(None, 'muvis-align', completion_message)
+
+    def refresh_registered_view(self):
+        # from source geometry and the mappings: view msims are built only if a fused preview needs them
+        with self._operation_progress('Refreshing view', phases=2) as view_factory:
+            self.update_registered(view_transform_key=self.reg.reg_transform_key, progress_factory=view_factory)
 
     def _run_registration(self):
         """Pair registration where it has not run yet, then global; False if either did not complete."""

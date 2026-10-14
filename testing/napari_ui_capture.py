@@ -38,9 +38,7 @@ ACTIONS = {
     # the refresh after each registration step alone, on a project whose registration is already saved
     'refresh_pairs': lambda interface: interface.update_registered(
         view_transform_key=interface.reg.source_transform_key),
-    'refresh_global': lambda interface: (
-        interface._copy_transforms_to_view_msims(interface.reg.reg_transform_key),
-        interface.update_registered(view_transform_key=interface.reg.reg_transform_key)),
+    'refresh_global': lambda interface: interface.refresh_registered_view(),
 }
 
 

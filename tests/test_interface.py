@@ -1516,7 +1516,8 @@ def test_registration_process_confirmation_and_prerequisites(
         bare_interface.run_global_registration.assert_called_once_with()
         if run_pair:
             bare_interface.run_pair_registration.assert_called_once_with()
-        copy.assert_called_once_with(["sim"], ["preview"], "registered")
+        # the view comes from source geometry and the mappings: no view msims built or given the new transforms
+        assert not copy.called
         # the refresh is a phase of the registration operation's bar, not a bar of its own
         _, refresh_kwargs = bare_interface.update_registered.call_args
         assert refresh_kwargs['view_transform_key'] == "registered"
@@ -2204,8 +2205,7 @@ def test_selecting_a_metrics_row_picks_its_pair_for_preview(bare_interface, row,
          'group_pairs': {('S000', 'S001'): {'registered': {'quality': 0.3}}}})
     _, rows, _ = table.set_value.call_args[0][0]
     table.widget.native.currentRow.return_value = row
-    table.widget.native.verticalHeaderItem.side_effect = (
-        lambda index: SimpleNamespace(text=lambda: rows[index]) if index >= 0 else None)
+    table.widget.native.row_label.side_effect = lambda index: rows[index] if index >= 0 else None
 
     bare_interface.metrics_table_selected()
 
