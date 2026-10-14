@@ -897,11 +897,13 @@ class MVSRegistration:
                     if index1 is not None and index2 is not None:
                         indexed_key = index1, index2
                         indexed_metrics[indexed_key] = value
+                # each metric's mean under the registered key, as a global registration's own summary
+                metric_keys = list(dict.fromkeys(metric for value in indexed_metrics.values() for metric in value))
+                summary = {metric: float(np.mean([value[metric] for value in indexed_metrics.values()
+                                                  if value.get(metric) is not None]))
+                           for metric in metric_keys}
                 self.metrics = {
-                    'summary': {default_transform_key:
-                                    {self.reg_transform_key: np.mean([value[default_quality_key]
-                                                                      for value in indexed_metrics.values()
-                                                                      if default_quality_key in value])}},
+                    'summary': {self.reg_transform_key: summary},
                     'pairs': {key: {self.reg_transform_key: value} for key, value in indexed_metrics.items()}
                 }
         if self.group_pairs and self.metrics:

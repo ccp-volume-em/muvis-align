@@ -1067,3 +1067,23 @@ def test_registered_geometry_without_msims_is_what_the_registered_msims_give(tmp
         np.testing.assert_allclose(np.asarray(props['transform']).squeeze(), np.asarray(expected['transform']).squeeze(),
                                    atol=1e-9)
 
+
+def test_a_loaded_global_registration_summarises_each_metric_under_the_registered_key(tmp_path):
+    import json
+    import numpy as np
+    from muvis_align.file.transforms import write_transforms
+    from muvis_align.util import export_json
+
+    reg = MVSRegistration()
+    reg.output, reg.output_params = tmp_path.as_posix() + '/', {}
+    reg.filenames = ['a.tif', 'b.tif', 'c.tif']
+    reg._msims = None
+    write_transforms(reg.output + 'mappings.json', {name: np.eye(3) for name in reg.filenames})
+    export_json(reg.output + 'metrics.json', {json.dumps(['a.tif', 'b.tif']): {'quality': 0.4, 'ncc': 0.6},
+                                              json.dumps(['b.tif', 'c.tif']): {'quality': 0.8, 'ncc': 0.8}})
+
+    reg.init_progress('registered', 'zarr')
+
+    assert reg.metrics['summary'] == {reg.reg_transform_key: {'quality': pytest.approx(0.6), 'ncc': pytest.approx(0.7)}}
+    assert reg.metrics['pairs'][(0, 1)] == {reg.reg_transform_key: {'quality': 0.4, 'ncc': 0.6}}
+
