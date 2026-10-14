@@ -4,6 +4,7 @@
 #SBATCH --cpus-per-task=64
 #SBATCH --time=2-00:00          # Runtime in D-HH:MM, minimum of 10 minutes
 #SBATCH --mem=640G   # Memory pool for all cores (see also --mem-per-cpu)
+#SBATCH --exclusive  # the whole node: sharing it, or 64 hyperthreads of 32 cores, doubled CPU time per pair
 #SBATCH --output=muvis-align-%j.log
 #SBATCH --error=muvis-align-%j.log
 
@@ -146,12 +147,22 @@ COMPUTE_NODE="$(hostname -s)"
 COMPUTE_NODE_TCP="$(hostname -i)"
 LOCAL_PORT=9876
 
+# the node's hardware and load, so a slow run can be put down to the node it ran on
+lscpu_value() { lscpu 2>/dev/null | awk -F: -v key="$1" '$1 == key { gsub(/^ +/, "", $2); print $2; exit }'; }
+CPU_MODEL="$(lscpu_value 'Model name')"
+CPU_LAYOUT="$(lscpu_value 'Socket(s)') sockets x $(lscpu_value 'Core(s) per socket') cores x $(lscpu_value 'Thread(s) per core') threads"
+CPU_ALLOCATED="$(nproc) of $(lscpu_value 'CPU(s)') CPUs allocated (${SLURM_CPUS_ON_NODE:-?} by Slurm)"
+NODE_LOAD="$(cut -d' ' -f1-3 /proc/loadavg) (1/5/15 min), $(free -g 2>/dev/null | awk '/^Mem:/ { print $7 "GB of " $2 "GB free" }')"
+
 cat <<EOF
 
 ======================================================================
   muvis-align / XPRA SESSION READY
   Job ID  : ${SLURM_JOB_ID}
   Node    : ${COMPUTE_NODE} ${COMPUTE_NODE_TCP}
+  CPU     : ${CPU_MODEL}
+            ${CPU_LAYOUT}, ${CPU_ALLOCATED}
+  Load    : ${NODE_LOAD}
   Started : $(date)
 ----------------------------------------------------------------------
 

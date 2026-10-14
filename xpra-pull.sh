@@ -10,7 +10,9 @@
 # Refreshes the container used by xpra-slurm.sh: pulls "latest" from quay.io
 # and builds it into a fixed, version-less sandbox directory.
 #
-# Submit with: sbatch xpra-pull.sh
+# Usage, on the login node:   bash xpra-pull.sh
+#   Submits this job and shows its output here until it ends.
+#   "sbatch xpra-pull.sh" also works: the output is then in muvis-align-pull-<job id>.log.
 # Needs internet access to quay.io; if compute nodes lack it, run the
 # apptainer build line below on the login node instead.
 
@@ -19,6 +21,45 @@ set -euo pipefail
 IMAGE_REF="docker://quay.io/ccp-volume-em/muvis-align-xpra:latest"
 DEST_DIR="/nemo/stp/ddt/working/defoltj/muvis-align"
 SANDBOX_PATH="${DEST_DIR}/muvis-align-xpra_latest"
+
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+    JOB_ID="$(sbatch --parsable "$0")"
+    # --parsable adds ";cluster" on a multi-cluster setup
+    JOB_ID="${JOB_ID%%;*}"
+    LOG_FILE="muvis-align-pull-${JOB_ID}.log"
+    TAIL_PID=""
+    trap 'echo; echo "Stopped watching. Job ${JOB_ID} keeps going - log: ${LOG_FILE}, cancel: scancel ${JOB_ID}"; [ -n "${TAIL_PID}" ] && kill "${TAIL_PID}" 2>/dev/null; exit 130' INT
+    echo "Submitted job ${JOB_ID}. Its output follows (Ctrl-C stops watching, not the job)."
+    LAST_STATE=""
+    while true; do
+        STATE="$(squeue -h -j "${JOB_ID}" -o '%T %R' 2>/dev/null || true)"
+        if [ -z "${STATE}" ]; then
+            break
+        fi
+        if [ "${STATE}" != "${LAST_STATE}" ]; then
+            echo "[$(date +%T)] ${STATE}"
+            LAST_STATE="${STATE}"
+        fi
+        if [ -z "${TAIL_PID}" ] && [ -e "${LOG_FILE}" ]; then
+            tail -n +1 -F "${LOG_FILE}" 2>/dev/null &
+            TAIL_PID=$!
+        fi
+        sleep 5
+    done
+    # the last lines reach the shared filesystem after the job has left the queue
+    sleep 5
+    if [ -n "${TAIL_PID}" ]; then
+        kill "${TAIL_PID}" 2>/dev/null || true
+    else
+        cat "${LOG_FILE}" 2>/dev/null || true
+    fi
+    FINAL_STATE="$(sacct -n -X -j "${JOB_ID}" -o State 2>/dev/null | xargs || true)"
+    echo "Job ${JOB_ID} ended: ${FINAL_STATE:-unknown} (log: ${LOG_FILE})"
+    if [ "${FINAL_STATE%% *}" = "COMPLETED" ]; then
+        exit 0
+    fi
+    exit 1
+fi
 
 if ! command -v apptainer >/dev/null 2>&1; then
     module load Apptainer 2>/dev/null || module load apptainer 2>/dev/null || true
