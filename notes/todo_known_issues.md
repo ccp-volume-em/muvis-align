@@ -39,11 +39,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-**Faster refresh at scale** (branch `refresh-speed`), agreed. Synthetic 34k set (testing/make_synthetic_project.py,
-33990 tiles, 245733 pairs): open ~5 min, refresh after pairs 2.1, after global 7.9, pre-processing 5.0 min.
-1. no view msims built/copied after global registration (5.5 min); 2. metrics table as a Qt model (~40s each
-registered refresh); 3. time and cut the saved-pairs load (~1.5 min); 4. overlap shapes (~40s) only if still the
-largest. Timed on the 34k set after each; meatballs captures for the views. Status: step 1.
+Nothing.
 
 ## TODO
 
@@ -58,8 +54,6 @@ MINOR
 - [ ] **Shape label colour still hard to read** - cyan is poor on a bright background too; choose a colour that
       contrasts with greyscale either way (contrasting_color / background_luminance).
 - [ ] **Progress bars: at most one update a second** - throttle the bar's redraws (NapariPhaseProgress / the Qt bar).
-- [ ] **Metrics table keys after registration** - the summary (mean) metric shows under the transform column/key
-      ('transform'?) while every other metric is under 'registered': put the summary under the same key.
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
@@ -117,6 +111,13 @@ REFACTORING
 
 ## Done
 
+- **Faster refresh at scale** (branch `refresh-speed`) - timed on testing/make_synthetic_project.py (33990 tiles,
+  1133 sections, 245733 pairs) with the UI driver's refresh_pairs/refresh_global actions: open 4.9-6.0 -> 3.0-3.7
+  min, refresh after pairs 2.1 -> 1.4 min, after global 7.9 -> 1.8 min, pre-processing 5.0 -> 4.5 min (3.3 of it the
+  processing). No view msims after global registration (5.5 min); metrics and metadata tables as a Qt model
+  (ui/ModelTable, ~40s each refresh); a saved registration's transforms from cached templates (load 2.4 min -> 20s);
+  overlap shapes reused after pair registration (~45s). A loaded global registration's summary is under the
+  registered key, as the metrics table expects.
 - **Restructure for maintainability** (PRs #63, #65) - one overview (the quick view takes 3D and multichannel
   sources), one OME-Zarr writer (fusion_slabs.fuse_levels_to_ome_zarr), _paste rewritten, the duplication scan
   merged and ~40 unreferenced functions deleted. Weighed and left - a shared helper would remove a few lines for
