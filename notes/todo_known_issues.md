@@ -51,6 +51,11 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **Shape label colour still hard to read** - cyan is poor on a bright background too; choose a colour that
+      contrasts with greyscale either way (contrasting_color / background_luminance).
+- [ ] **Progress bars: at most one update a second** - throttle the bar's redraws (NapariPhaseProgress / the Qt bar).
+- [ ] **Metrics table keys after registration** - the summary (mean) metric shows under the transform column/key
+      ('transform'?) while every other metric is under 'registered': put the summary under the same key.
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
