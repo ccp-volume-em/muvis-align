@@ -35,6 +35,12 @@ ACTIONS = {
     'fusion': lambda interface: interface.fusion_process(),
     'modify_pair_registration': lambda interface: (interface.registration_process(),
                                                    interface.modify_pair_registration()),
+    # the refresh after each registration step alone, on a project whose registration is already saved
+    'refresh_pairs': lambda interface: interface.update_registered(
+        view_transform_key=interface.reg.source_transform_key),
+    'refresh_global': lambda interface: (
+        interface._copy_transforms_to_view_msims(interface.reg.reg_transform_key),
+        interface.update_registered(view_transform_key=interface.reg.reg_transform_key)),
 }
 
 
@@ -118,7 +124,9 @@ def main():
         interface.project_path(args.project)
         if args.action != 'open':
             state['step'] = 'open'
+            start = time.monotonic()
             interface.input_output_process()
+            logging.info(f'capture: open took {time.monotonic() - start:.1f}s')
         state['step'] = args.action
         state['t0'] = time.monotonic()
         threading.Thread(target=capture, daemon=True).start()
@@ -127,7 +135,9 @@ def main():
             QTimer.singleShot(int(args.cancel_after * 1000),
                               lambda: interface.process_or_cancel(lambda: logging.info('capture: nothing to cancel')))
         try:
+            start = time.monotonic()
             ACTIONS[args.action](interface)
+            logging.info(f'capture: {args.action} took {time.monotonic() - start:.1f}s')
             if args.pair_offset:
                 # the moving image is the pair's second layer; its metrics follow once it has moved
                 moving_layer = viewer.layers[-1]

@@ -39,7 +39,11 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Nothing.
+**Faster refresh at scale** (branch `refresh-speed`), agreed. Synthetic 34k set (testing/make_synthetic_project.py,
+33990 tiles, 245733 pairs): open ~5 min, refresh after pairs 2.1, after global 7.9, pre-processing 5.0 min.
+1. no view msims built/copied after global registration (5.5 min); 2. metrics table as a Qt model (~40s each
+registered refresh); 3. time and cut the saved-pairs load (~1.5 min); 4. overlap shapes (~40s) only if still the
+largest. Timed on the 34k set after each; meatballs captures for the views. Status: step 1.
 
 ## TODO
 
