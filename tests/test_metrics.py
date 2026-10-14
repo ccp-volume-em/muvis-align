@@ -52,9 +52,11 @@ def test_pair_metrics_one_call_a_pair_match_one_call_over_all(register_msims):
     for pair in [(0, 1), (0, 2), (1, 3), (2, 3)]:
         graph.add_edge(*pair, transform=param_utils.identity_transform(ndim=2), quality=0.5)
 
-    whole = multiview_stitcher.metrics.tile_pair_image_metrics(
-        msims, base_transform_key=transform_key, pairs_graph=graph,
-        metric_funcs=create_metric_methods(['ncc'], msims[0]))
+    # BLAS held to one thread as the code under test does: OpenBLAS pools started from many dask threads crash
+    with _pair_metrics_compute():
+        whole = multiview_stitcher.metrics.tile_pair_image_metrics(
+            msims, base_transform_key=transform_key, pairs_graph=graph,
+            metric_funcs=create_metric_methods(['ncc'], msims[0]))
     single = calc_pair_metrics(msims, graph, ['ncc'], transform_key, n_parallel_pairs=1)
     threaded = calc_pair_metrics(msims, graph, ['ncc'], transform_key, n_parallel_pairs=3)
 
@@ -133,9 +135,10 @@ def test_global_metrics_measure_only_the_registered_pairs_as_the_overlap_mode_do
         graph.add_edge(*pair, quality=0.5)
     reg_results = {'pairwise_registration': {'graph': graph, 'metrics': {'qualities': {edge: 0.5 for edge in graph.edges}}}}
 
-    whole = multiview_stitcher.metrics.tile_pair_image_metrics(
-        msims, base_transform_key=transform_key, query_transform_keys=[transform_key, 'registered'],
-        metric_funcs=create_metric_methods(['ncc'], msims[0]))
+    with _pair_metrics_compute():
+        whole = multiview_stitcher.metrics.tile_pair_image_metrics(
+            msims, base_transform_key=transform_key, query_transform_keys=[transform_key, 'registered'],
+            metric_funcs=create_metric_methods(['ncc'], msims[0]))
     with patch.object(metrics_module, 'worker_process_pool', wraps=metrics_module.worker_process_pool) as pool:
         result = calc_global_metrics(msims, transform_key, 'registered', ['ncc'], reg_results=reg_results,
                                      n_parallel_pairs=2)
