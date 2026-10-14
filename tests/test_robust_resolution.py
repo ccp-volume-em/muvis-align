@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -99,3 +101,21 @@ def test_one_flipping_edge_of_many_does_not_keep_the_rounds_going(monkeypatch):
 
     assert calls == [0.5, 0.2, 0.195]
     assert rounds == [1, 2, 3]
+
+
+@pytest.mark.parametrize('transform', ['translation', 'rigid'])
+def test_the_rounds_give_the_transforms_linear_two_pass_builds_itself(monkeypatch, transform):
+    """Each round's transforms come from cached templates and its residuals from plain matrices, instead of
+    linear_two_pass building xarrays for both."""
+    from muvis_align import robust_resolution
+    from muvis_align.robust_resolution import groupwise_resolution_robust_linear
+
+    graph = grid_graph(outlier=(0, 1))
+    fast, fast_info = groupwise_resolution_robust_linear(graph, transform=transform, scale=1.0, rounds=3)
+    monkeypatch.setattr(robust_resolution, '_numpy_internals', nullcontext)
+    built, built_info = groupwise_resolution_robust_linear(graph, transform=transform, scale=1.0, rounds=3)
+
+    assert fast.keys() == built.keys()
+    for node, params in built.items():
+        xr.testing.assert_identical(fast[node], params)
+    assert fast_info['metrics'].equals(built_info['metrics'])

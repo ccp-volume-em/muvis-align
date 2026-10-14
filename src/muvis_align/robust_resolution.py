@@ -2,11 +2,15 @@
 reweighted least squares. See notes/multiview_stitcher.md."""
 
 import logging
+from contextlib import contextmanager
+
 import numpy as np
 import xarray as xr
-from multiview_stitcher.param_resolution import register_groupwise_resolution_method
+from multiview_stitcher import transformation
+from multiview_stitcher.param_resolution import linear_two_pass, register_groupwise_resolution_method
 from multiview_stitcher.param_resolution.linear_two_pass import groupwise_resolution_linear_two_pass
 
+from muvis_align.image.util import xaffine_from_matrix
 from muvis_align.util import raise_if_cancelled
 
 ROBUST_LINEAR = 'robust_linear'
@@ -42,6 +46,59 @@ def voxel_diagonal(graph):
                for node in graph.nodes)
 
 
+def _build_params_from_templates(nodes, translations, rotations, scales, transform, ndim, x_in=None, x_out=None):
+    """linear_two_pass._build_params_from_components with each transform a copy of a cached xarray: building them
+    from scratch, twice a solve, is most of a round's time."""
+    params = {}
+    reorder = None
+    for node in nodes:
+        linear = np.eye(ndim)
+        if transform == 'rigid':
+            linear = linear_two_pass._vector_to_rotation(rotations[node], ndim)
+        elif transform != 'translation':
+            linear = np.exp(scales[node]) * linear_two_pass._vector_to_rotation(rotations[node], ndim)
+        matrix = np.eye(ndim + 1)
+        matrix[:ndim, :ndim] = linear
+        matrix[:ndim, ndim] = translations[node]
+        xparams = xaffine_from_matrix(matrix)
+        if reorder is None:
+            reorder = (x_in is not None and x_out is not None
+                       and not (np.array_equal(xparams.coords['x_in'], x_in)
+                                and np.array_equal(xparams.coords['x_out'], x_out)))
+        params[node] = xparams.sel(x_in=x_in, x_out=x_out) if reorder else xparams
+    return params
+
+
+def _edge_residuals(g_reg, params, ndim=None):
+    """param_resolution.utils.compute_edge_residuals on plain matrices: it builds an unused identity xarray per node
+    and converts an xarray for every point it transforms."""
+    matrices = {node: np.asarray(param.data if isinstance(param, xr.DataArray) else param, dtype=float)
+                for node, param in params.items()}
+    residuals = {}
+    for edge in g_reg.edges:
+        node1, node2 = sorted(edge)
+        lower, upper = g_reg.edges[edge]['bbox'].data
+        vertices = np.array(list(np.ndindex(tuple([2] * len(lower))))) * (upper - lower) + lower
+        affine = g_reg.edges[edge]['transform']
+        affine = np.asarray(affine.data if isinstance(affine, xr.DataArray) else affine)
+        points1 = transformation.transform_pts(vertices, matrices[node1])
+        points2 = transformation.transform_pts(transformation.transform_pts(vertices, affine), matrices[node2])
+        residuals[(node1, node2)] = float(np.sqrt(np.mean(np.sum((points1 - points2) ** 2, axis=1))))
+    return residuals
+
+
+@contextmanager
+def _numpy_internals():
+    # only while our own solves run: the originals stay for any other caller
+    originals = linear_two_pass._build_params_from_components, linear_two_pass.compute_edge_residuals
+    linear_two_pass._build_params_from_components = _build_params_from_templates
+    linear_two_pass.compute_edge_residuals = _edge_residuals
+    try:
+        yield
+    finally:
+        linear_two_pass._build_params_from_components, linear_two_pass.compute_edge_residuals = originals
+
+
 def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, transform='rigid', scale=None,
                                        rounds=default_robust_rounds, tolerance=default_robust_tolerance,
                                        change_quantile=default_robust_change_quantile, progress=None, **kwargs):
@@ -65,9 +122,10 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
         for edge in edges:
             graph.edges[edge]['quality'] = qualities[edge] * weights[edge]
         # pruning off: every edge stays in, down-weighted instead
-        params, info = groupwise_resolution_linear_two_pass(
-            graph, reference_view=reference_view, transform=transform, weight_mode='quality',
-            residual_threshold=np.inf, keep_mst=False, **kwargs)
+        with _numpy_internals():
+            params, info = groupwise_resolution_linear_two_pass(
+                graph, reference_view=reference_view, transform=transform, weight_mode='quality',
+                residual_threshold=np.inf, keep_mst=False, **kwargs)
         metrics = info['metrics']
         if metrics is None:
             break
