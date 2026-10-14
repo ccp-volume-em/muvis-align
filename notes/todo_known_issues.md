@@ -105,6 +105,8 @@ From the HPC run of 2026-10-12 (4844e9f; 34k sources, 229725 pairs; registration
       z blocks, a prepare_block_fusion per source group. Time each on the next run or a meatballs profile.
       2026-10-13: 18 min before level 0 starts (make_msims_3d 13.4, output properties 1.0, export chunk sizes 0.9);
       level 1 (averaged from level 0) 1.5h and counting, shown as 90-99% of the bar.
+      The per-block plan's per-source affine checks now run on numpy (see Done); what is left of a small level's
+      time locally is spread over xarray/dask per source and block. Compare the levels on the next HPC run.
 
 REFACTORING
 
@@ -114,6 +116,10 @@ REFACTORING
 
 ## Done
 
+- **Fusion's per-block plan on numpy** - each block's fusion plan (multiview_stitcher _build_spatial_fusion_plan)
+  checked every source's affine through an xarray sel per entry: most of a small level's time (meatballs level 9:
+  3 blocks, 5817 sel calls). The three checks are swapped for numpy versions during our fusion only; checks and
+  fused output identical. Meatballs fusion 102 -> 80s, small levels ~2 -> ~1.2s each.
 - **Fusion bar linear over its levels** - each level was a phase of its own, so level 0 ended at 90% and the rest
   crawled through the last 10. Now one bar over all levels, each its share of the size estimate's bytes (the
   export question's, else computed for the run; level voxels as fallback), the last level filling it; labelled

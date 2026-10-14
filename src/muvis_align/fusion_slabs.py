@@ -1,5 +1,6 @@
 """Fusion to OME-Zarr level by level and block by block, only the blocks some source reaches, each from only the
 sources reaching it: multiview_stitcher runs Python over every source it gives a block."""
+from contextlib import contextmanager
 import copy
 from dataclasses import asdict
 import inspect
@@ -393,6 +394,91 @@ def level_paths(count):
     return [str(index).zfill(width) for index in range(count)]
 
 
+def _affine_table(param):
+    """(matrix, x_in index, x_out index) of a 2D xaffine: param.sel(x_in=a, x_out=b) is matrix[ins[a], outs[b]]."""
+    matrix = np.asarray(param.data, dtype=float)
+    if param.dims.index('x_in') != 0:
+        matrix = matrix.T
+    ins = {label: index for index, label in enumerate(param.coords['x_in'].values.tolist())}
+    outs = {label: index for index, label in enumerate(param.coords['x_out'].values.tolist())}
+    return matrix, ins, outs
+
+
+def _affine_value(table, x_in, x_out):
+    matrix, ins, outs = table
+    return float(matrix[ins[x_in], outs[x_out]])
+
+
+def _axis_aligned_translation_dims(sparams, sdims, tol=1e-6):
+    """fusion_core._get_axis_aligned_translation_dims, each affine read once instead of an xarray sel per entry."""
+    tables = [_affine_table(param) for param in sparams]
+    aligned = []
+    for dim in sdims:
+        others = [other for other in sdims if other != dim]
+        if all(np.isclose(_affine_value(table, dim, dim), 1, atol=tol)
+               and all(np.isclose(_affine_value(table, dim, other), 0, atol=tol)
+                       and np.isclose(_affine_value(table, other, dim), 0, atol=tol) for other in others)
+               for table in tables):
+            aligned.append(dim)
+    return aligned
+
+
+def _grid_aligned_translation_dims(sparams, views_bb, output_stack_properties, sdims, tol=1e-6):
+    """fusion_core._get_grid_aligned_translation_dims on affines read once."""
+    aligned = set(_axis_aligned_translation_dims(sparams, sdims, tol=tol))
+    tables = [_affine_table(param) for param in sparams]
+    grid_aligned = []
+    for dim in sdims:
+        if (dim in aligned
+                and all(np.isclose(output_stack_properties['spacing'][dim], view_bb['spacing'][dim], atol=tol)
+                        for view_bb in views_bb)
+                and all(fusion_core._is_grid_aligned(
+                    output_stack_properties['origin'][dim] - _affine_value(table, dim, '1') - view_bb['origin'][dim],
+                    view_bb['spacing'][dim], tol=tol) for table, view_bb in zip(tables, views_bb))):
+            grid_aligned.append(dim)
+    return grid_aligned
+
+
+def _axis_aligned_translation_overlap(target_bb, query_bb, param, sdims, additional_extent_in_pixels=None, tol=1e-6):
+    """fusion_core._get_axis_aligned_translation_overlap on the affine read once."""
+    if additional_extent_in_pixels is None:
+        additional_extent_in_pixels = {dim: 0 for dim in sdims}
+    table = _affine_table(param)
+    overlap_origin, overlap_shape = {}, {}
+    for dim in sdims:
+        query_spacing = query_bb['spacing'][dim]
+        translation = _affine_value(table, dim, '1')
+        query_min = target_bb['origin'][dim] - translation
+        query_max = (target_bb['origin'][dim] + (int(target_bb['shape'][dim]) - 1) * target_bb['spacing'][dim]
+                     - translation)
+        query_min, query_max = sorted((query_min, query_max))
+        additional_extent = additional_extent_in_pixels[dim] * query_spacing
+        start = int(np.floor((query_min - additional_extent - query_bb['origin'][dim]) / query_spacing + tol))
+        stop = int(np.ceil((query_max + additional_extent - query_bb['origin'][dim]) / query_spacing - tol)) + 1
+        overlap_start, overlap_stop = max(start, 0), min(stop, int(query_bb['shape'][dim]))
+        if overlap_start >= overlap_stop:
+            return None
+        overlap_origin[dim] = query_bb['origin'][dim] + overlap_start * query_spacing
+        overlap_shape[dim] = overlap_stop - overlap_start
+    return {'origin': overlap_origin, 'shape': overlap_shape, 'spacing': query_bb['spacing']}
+
+
+@contextmanager
+def _numpy_fusion_plan():
+    # each block's fusion plan checks every source's affine: through xarray, that is most of a small level's time
+    patched = {'_get_axis_aligned_translation_dims': _axis_aligned_translation_dims,
+               '_get_grid_aligned_translation_dims': _grid_aligned_translation_dims,
+               '_get_axis_aligned_translation_overlap': _axis_aligned_translation_overlap}
+    originals = {name: getattr(fusion_core, name) for name in patched}
+    for name, function in patched.items():
+        setattr(fusion_core, name, function)
+    try:
+        yield
+    finally:
+        for name, function in originals.items():
+            setattr(fusion_core, name, function)
+
+
 def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level0_properties, output_chunksize,
                             fusion_func=None, zarr_options=None, batch_options=None, interpolation_order=1,
                             ranks=None, average_levels=False, level_weights=None):
@@ -407,31 +493,34 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
     if level_weights is None or len(level_weights) != len(levels) or not sum(level_weights) > 0:
         level_weights = [float(np.prod(list(properties['shape'].values()))) for _, properties, _ in levels]
     progress = fusion_core.tqdm(total=float(sum(level_weights)))
-    for index, (level_spacing, properties, selected) in enumerate(levels):
-        output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
-        # tolerance 0, as multiview_stitcher picks: an offset source level at the output's pixel size leaves the
-        # output's edge pixels outside its interpolation
-        sims = [msi_utils.get_sim_from_msim(msims[source], scale='scale%d' % coarsest_level_within(
-            msim_level_spacings(msims[source]), output_properties['spacing'], dims=list(output_properties['spacing']),
-            tolerance=0)) for source in selected]
-        level_chunksize, groups = level_blocks(sim_views(sims, transform_key), output_properties, output_chunksize,
-                                               interpolation_order)
-        progress.set_description(f'{index + 1}/{len(levels)} @ {print_significants(level_spacing, 3)} µm')
-        if average_levels and index > 0:
-            factors = {dim: round(properties['factors'][dim] / levels[index - 1][1]['factors'][dim])
-                       for dim in output_properties['shape']}
-            average_into_zarr_array(os.path.join(output_zarr_url, paths[index - 1]),
-                                    os.path.join(output_zarr_url, paths[index]), factors, level_chunksize,
-                                    [block for blocks in groups.values() for block in blocks],
-                                    creation_kwargs=creation_kwargs, batch_options=batch_options, progress=progress,
-                                    share=level_weights[index])
-        else:
-            fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key, output_properties,
-                                 level_chunksize, fusion_func=fusion_func, creation_kwargs=creation_kwargs,
-                                 batch_options=batch_options, interpolation_order=interpolation_order,
-                                 progress=progress, share=level_weights[index], ranks=[ranks[source] for source in selected] if ranks is not None else None,
-                                 groups=groups)
-    progress.close()
+    with _numpy_fusion_plan():
+        for index, (level_spacing, properties, selected) in enumerate(levels):
+            output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
+            # tolerance 0, as multiview_stitcher picks: an offset source level at the output's pixel size leaves the
+            # output's edge pixels outside its interpolation
+            sims = [msi_utils.get_sim_from_msim(msims[source], scale='scale%d' % coarsest_level_within(
+                msim_level_spacings(msims[source]), output_properties['spacing'],
+                dims=list(output_properties['spacing']), tolerance=0)) for source in selected]
+            level_chunksize, groups = level_blocks(sim_views(sims, transform_key), output_properties,
+                                                   output_chunksize, interpolation_order)
+            progress.set_description(f'{index + 1}/{len(levels)} @ {print_significants(level_spacing, 3)} µm')
+            if average_levels and index > 0:
+                factors = {dim: round(properties['factors'][dim] / levels[index - 1][1]['factors'][dim])
+                           for dim in output_properties['shape']}
+                average_into_zarr_array(os.path.join(output_zarr_url, paths[index - 1]),
+                                        os.path.join(output_zarr_url, paths[index]), factors, level_chunksize,
+                                        [block for blocks in groups.values() for block in blocks],
+                                        creation_kwargs=creation_kwargs, batch_options=batch_options,
+                                        progress=progress, share=level_weights[index])
+            else:
+                fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key,
+                                     output_properties, level_chunksize, fusion_func=fusion_func,
+                                     creation_kwargs=creation_kwargs, batch_options=batch_options,
+                                     interpolation_order=interpolation_order, progress=progress,
+                                     share=level_weights[index],
+                                     ranks=[ranks[source] for source in selected] if ranks is not None else None,
+                                     groups=groups)
+        progress.close()
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
         level0_properties, [properties['factors'] for _, properties, _ in levels],

@@ -107,6 +107,72 @@ def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff
     assert coarsest[28, 28] == 200
 
 
+@pytest.mark.parametrize('affine', [
+    # translated by a fraction of a pixel: axis-aligned, not grid-aligned
+    np.array([[1.0, 0.0, 0.3], [0.0, 1.0, -0.6], [0.0, 0.0, 1.0]]),
+    # rotated: the general overlap path
+    np.array([[np.cos(0.05), -np.sin(0.05), 2.0], [np.sin(0.05), np.cos(0.05), 1.0], [0.0, 0.0, 1.0]]),
+])
+def test_the_fusion_plan_checks_on_numpy_fuse_what_multiview_stitcher_does(tmp_path, monkeypatch, affine):
+    """The per-block plan's affine checks read each transform once instead of an xarray sel per entry."""
+    import zarr
+    from contextlib import nullcontext
+    import muvis_align.fusion_slabs as fusion_slabs
+
+    rng = np.random.default_rng(0)
+    tiles = [make_msim(rng.integers(0, 255, (64, 64), dtype=np.uint8), scale={'y': 0.5, 'x': 0.5},
+                       translation={'y': 0.0, 'x': offset}, transform_key='source', affine=affine)
+             for offset in (0.0, 28.0)]
+    # an overview below them gives the coarser levels
+    msims = [flat_msim(10, 64, 2.0, 0.0)] + tiles
+    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
+    levels = export_levels([2.0, 0.5, 0.5], level0, ['y', 'x'])
+
+    def fused(name):
+        url = (tmp_path / name).as_posix()
+        fuse_levels_to_ome_zarr(msims, levels, url, 'source', level0, {'y': 32, 'x': 32}, ranks=[2.0, 0.5, 0.5])
+        return [np.asarray(zarr.open_array(os.path.join(url, path), mode='r')[:])
+                for path in fusion_slabs.level_paths(len(levels))]
+
+    with_numpy = fused('numpy.ome.zarr')
+    monkeypatch.setattr(fusion_slabs, '_numpy_fusion_plan', nullcontext)
+    with_xarray = fused('xarray.ome.zarr')
+
+    assert len(with_numpy) == len(levels) > 1
+    for numpy_level, xarray_level in zip(with_numpy, with_xarray):
+        assert numpy_level.any()
+        np.testing.assert_array_equal(numpy_level, xarray_level)
+
+
+@pytest.mark.parametrize('matrices', [
+    [np.eye(3), np.array([[1.0, 0.0, 0.25], [0.0, 1.0, 3.0], [0.0, 0.0, 1.0]])],
+    [np.eye(3), np.array([[np.cos(0.05), -np.sin(0.05), 2.0], [np.sin(0.05), np.cos(0.05), 1.0], [0, 0, 1.0]])],
+    # x only translated: y is not axis-aligned, x is
+    [np.array([[1.0, 0.0, 0.0], [0.2, 1.0, 0.5], [0.0, 0.0, 1.0]])],
+])
+def test_the_numpy_plan_checks_match_multiview_stitchers(matrices):
+    import multiview_stitcher.fusion._core as fusion_core
+    from multiview_stitcher import param_utils
+    from muvis_align.fusion_slabs import (_axis_aligned_translation_dims, _axis_aligned_translation_overlap,
+                                          _grid_aligned_translation_dims)
+
+    sdims = ['y', 'x']
+    sparams = [param_utils.affine_to_xaffine(matrix) for matrix in matrices]
+    views_bb = [{'origin': {'y': 0.0, 'x': 10.0 * index}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 64, 'x': 64}}
+                for index in range(len(sparams))]
+    output = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 32, 'x': 32}}
+
+    assert (_axis_aligned_translation_dims(sparams, sdims)
+            == fusion_core._get_axis_aligned_translation_dims(sparams=sparams, sdims=sdims))
+    assert (_grid_aligned_translation_dims(sparams, views_bb, output, sdims)
+            == fusion_core._get_grid_aligned_translation_dims(sparams=sparams, views_bb=views_bb,
+                                                             output_stack_properties=output, sdims=sdims))
+    for param, view_bb in zip(sparams, views_bb):
+        for extent in (None, {'y': 1, 'x': 1}):
+            assert (_axis_aligned_translation_overlap(output, view_bb, param, sdims, extent)
+                    == fusion_core._get_axis_aligned_translation_overlap(output, view_bb, param, sdims, extent))
+
+
 class RecordingTqdm:
     """fusion_core.tqdm recording each update under the description it was made with."""
     instances = []
