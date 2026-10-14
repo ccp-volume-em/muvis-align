@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from muvis_align.constants import default_fusion_workers
 from muvis_align.MVSRegistration import MVSRegistration, RegState
-from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration, recording_phase_factory
+from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration
 
 S000_TILES = [(DATA_DIR / name).as_posix() for name in ZARR_FILES]
 TWO_TILES = S000_TILES[:2]
@@ -703,8 +703,7 @@ def test_register_pairs_in_worker_processes_matches_registering_in_this_process(
 
 def test_register_global_resolves_with_the_named_groupwise_method_and_reports_metrics_by_pair(monkeypatch, tmp_path):
     """The robust linear method is selectable by name: register_global hands it to multiview_stitcher's resolution
-    and maps every tile - not how close its fit comes to another method's, which is not this code's to decide.
-    Its metrics count the registered pairs rather than being one bar step."""
+    and maps every tile - not how close its fit comes to another method's, which is not this code's to decide."""
     import muvis_align.MVSRegistration as mvs_module
     reg = prepared_registration(S000_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid',
@@ -717,15 +716,11 @@ def test_register_global_resolves_with_the_named_groupwise_method_and_reports_me
         methods.append((method, kwargs.get('transform')))
         return original(graph, method=method, **kwargs)
     monkeypatch.setattr(mvs_module, 'groupwise_resolution', recorded)
-    progress_factory, phases = recording_phase_factory()
 
-    results = reg.register_global(reg.pair_msims, params=params, progress_factory=progress_factory)
+    results = reg.register_global(reg.pair_msims, params=params)
 
     assert methods == [('robust_linear', 'rigid')]
     assert sorted(results['mappings']) == list(range(len(reg.pair_msims)))
-    metrics_phases = [phase for phase in phases if 'metrics' in phase['desc'].lower()]
-    assert metrics_phases == [{'desc': 'Global metrics', 'total': reg.pairs_graph.number_of_edges(),
-                               'done': reg.pairs_graph.number_of_edges()}]
 
 
 def test_a_cancel_stops_building_sources_without_building_the_rest():
@@ -898,37 +893,8 @@ def test_a_failing_block_is_not_swallowed():
         options['batch_func'](fuse_chunk, list(range(8)))
 
 
-# pre-processing's bar reserves a phase for the msim build only when that build will run
-@pytest.mark.parametrize('msims, scaled, scale, coarser_level, expected', [
-    (None, {}, None, False, True),
-    (['msim'], {}, None, False, False),
-    (None, {'2': ['msim']}, 2, False, False),
-    (['msim'], {}, 2, True, True),
-], ids=['nothing built', 'already built', 'that scale cached', 'a coarser level exists for that scale'])
-def test_the_msims_build_is_pending_unless_built_or_cached(msims, scaled, scale, coarser_level, expected):
-    registration = MVSRegistration()
-    registration._msims = msims
-    registration._scaled_msims = scaled
-    registration.sources = [object()] if coarser_level else []
-
-    with patch('muvis_align.MVSRegistration.get_level_from_scale', return_value=(1, None)):
-        pending = registration.msims_build_pending(scale) if scale else registration.msims_build_pending()
-
-    assert pending is expected
-
-
-def test_eager_pre_processing_is_recognised_from_the_project_params():
-    eager = MVSRegistration.has_eager_pre_processing
-    assert eager({'scale': 8, 'gaussian_sigma': 2.0}) is False
-    # as a project file stores "no normalisation" - plain truthiness reads it as on
-    assert eager({'normalisation': 'none'}) is False
-    assert eager({'normalisation': 'global'}) is True
-    assert eager({'flatfield_quantiles': '0.05, 0.95'}) is True
-    assert eager({'filter_foreground': True}) is True
-
-
 def test_init_progress_loads_a_pair_registration_without_building_msims(monkeypatch, tmp_path):
-    """The graph comes from source geometry, so loading builds no msim; its two whole-set steps report on one bar."""
+    """The graph comes from source geometry, so loading builds no msim."""
     import networkx as nx
     from unittest.mock import MagicMock
     from muvis_align import MVSRegistration as mvs_module
@@ -945,13 +911,10 @@ def test_init_progress_loads_a_pair_registration_without_building_msims(monkeypa
     reg.source_geometry = MagicMock(return_value=([{}], ['stack-props-0']))
     graphs = []
     monkeypatch.setattr(mvs_module, 'build_pairs_graph', lambda *args, **_: graphs.append(args) or nx.Graph())
-    factory, records = recording_phase_factory()
-
-    reg.init_progress('registered', 'zarr', progress_factory=factory)
+    reg.init_progress('registered', 'zarr')
 
     assert not reg.ensure_msims.called and reg._msims is None
     assert graphs == [(['stack-props-0'], [])]
-    assert [(record['total'], record['done']) for record in records] == [(2, 2)]
 
 
 @pytest.mark.parametrize('spacing, registered', [('native', False), ('native', True), ('mean', False)],

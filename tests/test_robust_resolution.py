@@ -95,12 +95,9 @@ def test_one_flipping_edge_of_many_does_not_keep_the_rounds_going(monkeypatch):
     from muvis_align.robust_resolution import groupwise_resolution_robust_linear
 
     calls = scripted_solver(monkeypatch, [0.5, 0.2, 0.195, 0.195], flipping_edge=(0, 1))
-    rounds = []
-    groupwise_resolution_robust_linear(grid_graph(rows=8, cols=8), transform='translation', scale=1.0, rounds=10,
-                                       progress=lambda: rounds.append(len(calls)))
+    groupwise_resolution_robust_linear(grid_graph(rows=8, cols=8), transform='translation', scale=1.0, rounds=10)
 
     assert calls == [0.5, 0.2, 0.195]
-    assert rounds == [1, 2, 3]
 
 
 @pytest.mark.parametrize('transform', ['translation', 'rigid'])

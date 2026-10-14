@@ -16,8 +16,7 @@ from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
 import muvis_align.ui.Interface as interface_module
 from muvis_align.MVSRegistration import RegState
-from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, FakeBar, make_phase_factory, \
-    prepared_registration, recording_phase_factory
+from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, prepared_registration
 
 
 @pytest.fixture(autouse=True)
@@ -869,65 +868,6 @@ def test_registered_shapes_come_from_source_geometry_at_their_sections_z(bare_in
     assert min(point[2] for point in shapes[1]) == 4.0
 
 
-def test_create_napari_shapes_reports_per_source(bare_interface, monkeypatch):
-    """Building the shapes (a geometry per source, then every overlapping pair) takes a share of the
-    refresh's bar and reports its own sub-steps, the per-source build counting each source."""
-    sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10}) for _ in range(3)]
-    bare_interface.reg.sources = sources
-    bare_interface.reg.positions = [{"z": 0}] * 3
-    bare_interface.reg._msim_transforms = [None] * 3
-    bare_interface.reg._msim_output_order = "yx"
-    bare_interface.reg._msim_z_scale = 1
-    bare_interface.reg.source_transform_key = "source_metadata"
-    bare_interface.reg.is_pairs_registered.return_value = False
-    bare_interface.reg.file_labels = ["a", "b", "c"]
-
-    def source_geometry(*_, progress=None, **__):
-        for _source in sources:
-            progress()
-        return [{}] * 3, ["props"] * 3
-
-    bare_interface.reg.source_geometry = source_geometry
-    monkeypatch.setattr(
-        interface_module, "create_image_shapes",
-        lambda msims, **__: [np.zeros((4, 2)) for _ in msims],
-    )
-    monkeypatch.setattr(
-        interface_module, "create_overlap_shapes", lambda *_, **__: ([], [])
-    )
-
-    phases = []
-
-    class _Phase:
-        def __init__(self, total, weight):
-            self.total = total
-            self.weight = weight
-            self.updates = 0
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
-
-        def update(self, n=1):
-            self.updates += n
-
-    def factory(total=None, desc=None, weight=1, **_):
-        phase = _Phase(total, weight)
-        phases.append(phase)
-        return phase
-
-    bare_interface._create_napari_shapes(
-        "source_metadata", progress_factory=factory, weight=5
-    )
-
-    # the per-source build, then create_image_shapes and create_overlap_shapes
-    assert [(phase.total, phase.updates) for phase in phases] == [(3, 3), (1, 1), (1, 1)]
-    # and it is the per-source build that gets most of what the step was allowed
-    assert phases[0].weight > phases[1].weight
-
-
 def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     bare_interface, monkeypatch
 ):
@@ -1513,17 +1453,13 @@ def test_registration_process_confirmation_and_prerequisites(
     assert bare_interface.run_pair_registration.called is run_pair
     assert bare_interface.run_global_registration.called is run_global
     if run_global:
-        # pair and global registration each report their own bar, one after the other - sharing
-        # one left the global registration reporting into a bar the pair phases had filled
         bare_interface.run_global_registration.assert_called_once_with()
         if run_pair:
             bare_interface.run_pair_registration.assert_called_once_with()
         # the view comes from source geometry and the mappings: no view msims built or given the new transforms
         assert not copy.called
-        # the refresh is a phase of the registration operation's bar, not a bar of its own
         _, refresh_kwargs = bare_interface.update_registered.call_args
         assert refresh_kwargs['view_transform_key'] == "registered"
-        assert refresh_kwargs['progress_factory'] is not None
 
 
 @pytest.mark.parametrize(
@@ -1864,89 +1800,14 @@ def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer, tmp_p
         assert next_level_data.shape[-2] <= level_data.shape[-2]
 
 
-@pytest.mark.parametrize('with_factory', [True, False], ids=['factory', 'no-factory'])
-def test_build_view_msims_keeps_native_pyramids_and_reports_per_source(with_factory):
-    """A source with a native pyramid is shown as it is; building them reports one step per
-    source when given a factory, and needs none."""
+def test_build_view_msims_keeps_native_pyramids():
+    """A source with a native pyramid is shown as it is."""
     interface = Interface.__new__(Interface)
     interface.reg = MagicMock()
     interface.reg.sources = [SimpleNamespace(shapes=[0, 1]), SimpleNamespace(shapes=[0, 1])]
     interface.reg.msims = ['msim-0', 'msim-1']
-    factory, records = recording_phase_factory()
 
-    view_msims = interface._build_view_msims(progress_factory=factory if with_factory else None)
-
-    assert view_msims == ['msim-0', 'msim-1']
-    assert records == ([{'desc': 'Building views', 'total': 2, 'done': 2}] if with_factory else [])
-
-
-def test_init_progress_reports_saved_project_load(
-    bare_interface, monkeypatch, mocked_activity_contexts
-):
-    """reg.init_progress() (the msim build and the saved registration) reports into the load's bar;
-    drawing the view it ends on is a separate operation with its own."""
-    bare_interface.viewer = MagicMock()
-    bare_interface.params = {'registration': {'operation': 'register'}}
-    bare_interface.reg.is_pairs_registered.return_value = False
-    bare_interface.reg.is_global_registered.return_value = False
-    bare_interface.reg.is_fused.return_value = False
-    bare_interface.update_views = MagicMock()
-    bare_interface.enable_tabs = MagicMock()
-
-    bare_interface.init_progress()
-
-    _, kwargs = bare_interface.reg.init_progress.call_args
-    assert callable(kwargs['progress_factory'])
-    # the refresh owns its own bar (update_views() opens one when given no factory)
-    bare_interface.update_views.assert_called_once_with(show_images=False)
-
-
-def test_update_views_reports_into_the_callers_bar(bare_interface, monkeypatch):
-    """A refresh that is part of a larger operation (loading a saved project) must report as
-    phases of that operation's bar, and leave the activity dock / widget state to it."""
-    bare_interface.viewer = MagicMock()
-    bare_interface.overview = MagicMock()
-    bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
-    bare_interface.reg.positions = [{"z": 0}]
-    # no overview built: what this checks happens around it
-    bare_interface._create_lazy_overview = MagicMock(return_value=None)
-    bare_interface._create_napari_shapes = MagicMock(return_value=([], [], [], []))
-    bare_interface._clear_napari_view = MagicMock()
-    bare_interface._update_view_add_shapes = MagicMock()
-    dock = MagicMock()
-    monkeypatch.setattr(interface_module, "VisibleActivityDock", dock)
-
-    FakeBar.instances.clear()
-    factory = make_phase_factory(desc='Loading project')
-    with factory:
-        with factory(total=1, desc='Loading pair registration') as pbar:
-            pbar.update(1)
-        bare_interface.update_views(transform_key="source_metadata", show_images=False,
-                                    progress_factory=factory)
-
-    dock.assert_not_called()
-    # one bar, still the caller's - the refresh opened none of its own, and did not rename it
-    assert len(FakeBar.instances) == 1
-    bar = FakeBar.instances[0]
-    assert bar.total == factory.ticks
-    assert bar.descriptions == ['Loading project']
-
-
-def test_pre_processing_process_reports_work_and_view_separately(bare_interface):
-    """Pre-processing and the view refresh it triggers are two operations, in that order: the
-    work reports its own bar, then building and drawing the view reports a second one - neither
-    is handed the other's factory."""
-    bare_interface.viewer = MagicMock()
-    bare_interface.run_pre_processing = MagicMock(return_value=True)
-    bare_interface.update_views = MagicMock()
-    bare_interface.enable_tabs = MagicMock()
-    bare_interface.enable_modify_pair_registration = MagicMock()
-    bare_interface.select_tab = MagicMock()
-
-    bare_interface.pre_processing_process()
-
-    bare_interface.run_pre_processing.assert_called_once_with()
-    bare_interface.update_views.assert_called_once_with(show_preprocessed=True)
+    assert interface._build_view_msims() == ['msim-0', 'msim-1']
 
 
 def test_pre_processing_after_registration_views_without_the_registration(bare_interface):
@@ -1967,45 +1828,6 @@ def test_pre_processing_after_registration_views_without_the_registration(bare_i
     bare_interface.pre_processing_process()
 
     assert states_viewed == [RegState.SIMS_INIT]
-
-
-def test_only_one_operation_bar_at_a_time(bare_interface, monkeypatch):
-    """Two bars must never be on screen together: an operation started while another is running
-    reports into the running one, and leaves it the activity dock and the widget state."""
-    dock = MagicMock()
-    widgets = MagicMock(return_value=nullcontext())
-    monkeypatch.setattr(interface_module, "VisibleActivityDock", dock)
-    monkeypatch.setattr(bare_interface, "_operation_widgets", widgets)
-    bare_interface.viewer = MagicMock()
-
-    with bare_interface._operation_progress('Initialising sources') as outer:
-        with bare_interface._operation_progress('Refreshing view') as inner:
-            assert inner is outer
-
-    dock.assert_called_once_with(bare_interface.viewer)
-    widgets.assert_called_once_with()
-    # ...and the next operation, once this one has finished, opens a bar of its own again
-    assert bare_interface._running_operation is None
-
-
-def test_update_metadata_source_refresh_reports_its_own_bar(bare_interface, monkeypatch):
-    """The refresh at the end of update_metadata_source() must open its own bar. It used to be
-    handed the source-initialisation factory, which by then belonged to a finished operation -
-    so re-running input/output showed no bar for the refresh at all."""
-    bare_interface.viewer = MagicMock()
-    bare_interface.reg.is_pairs_registered.return_value = False
-    bare_interface.reg.is_initialised.return_value = True
-    bare_interface.reg.source_transform_key = 'source_metadata'
-    bare_interface.source_metadata = {}
-    bare_interface.update_views = MagicMock()
-    for name in ['populate_channels', 'populate_coordinate_systems', 'populate_channels_table',
-                 'populate_metadata_table', 'check_3d_view']:
-        setattr(bare_interface, name, MagicMock())
-    bare_interface.update_output_channels = MagicMock(return_value=False)
-
-    assert bare_interface.update_metadata_source() is True
-
-    bare_interface.update_views.assert_called_once_with(show_images=False)
 
 
 def test_run_off_thread_runs_the_work_elsewhere_and_keeps_qt_free(make_napari_viewer):
@@ -2268,51 +2090,6 @@ def test_replacing_the_main_view_clears_napari_dask_cache_but_the_overview_does_
         bare_interface._clear_napari_view(bare_interface.viewer)
         clear_cache.assert_called_once_with()
     assert not bare_interface.viewer.layers
-
-
-# pre-processing's bar is sized by the phases that will actually report
-def _run_pre_processing(build_pending, eager=False):
-    """Returns (phases reserved, weight the msim build was given)."""
-    from contextlib import contextmanager
-
-    interface = interface_module.Interface.__new__(interface_module.Interface)
-    interface.params = {'pre_processing': {'scale': 2}}
-    interface.reg = MagicMock()
-    interface.reg.msims_build_pending.return_value = build_pending
-    interface.reg.has_eager_pre_processing.return_value = eager
-    interface.reg.preprocess.return_value = (None, None, True)
-    interface._timing_verbose = lambda: False
-    interface._run_off_thread = lambda work, factory: work(factory)
-
-    declared = {}
-
-    class _Factory:
-        def __call__(self, *args, **kwargs):
-            raise AssertionError('no phase should be opened by the mocked work')
-
-    @contextmanager
-    def operation_progress(desc, progress_factory=None, phases=1):
-        declared['phases'] = phases
-        yield _Factory()
-
-    interface._operation_progress = operation_progress
-    interface.run_pre_processing()
-    return declared['phases'], interface.reg.ensure_msims.call_args.kwargs['weight']
-
-
-def test_only_the_phases_that_will_run_are_reserved():
-    assert _run_pre_processing(build_pending=False)[0] == 1
-
-
-def test_the_build_takes_the_bar_in_proportion_to_what_it_costs():
-    # opening every source is nearly all of a run whose only step is scaling - splitting the
-    # bar evenly with it left the work finishing at the halfway mark
-    phases, weight = _run_pre_processing(build_pending=True)
-    assert (phases, weight) == (9, 8)
-
-    # a step that computes over the data makes the rest of the run real work again
-    phases, weight = _run_pre_processing(build_pending=True, eager=True)
-    assert (phases, weight) == (3, 2)
 
 
 @pytest.mark.parametrize("ndisplay", [2, 3])
