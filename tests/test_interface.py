@@ -2321,3 +2321,39 @@ def test_the_main_views_background_is_its_typical_level_whether_shown_in_2d_or_3
 
     assert bare_interface._view_background_luminance(bare_interface.viewer) == pytest.approx(0.1)
     assert bare_interface._view_background_luminance(MagicMock()) is None
+
+
+def test_overlap_shapes_are_reused_while_the_geometry_they_came_from_holds(bare_interface, monkeypatch):
+    """Pair registration moves no source: its refresh takes the overlaps the one before found, until positions change."""
+    bare_interface.reg.sources = [SimpleNamespace(), SimpleNamespace(), SimpleNamespace()]
+    bare_interface.reg.positions = [{"z": 0}] * 3
+    bare_interface.reg._msim_transforms = [None] * 3
+    bare_interface.reg._msim_z_scale = None
+    bare_interface.reg.file_labels = ["a", "b", "c"]
+    bare_interface.reg.source_transform_key = "source_metadata"
+    bare_interface.reg.reg_transform_key = "registered"
+    bare_interface.reg.source_geometry.return_value = ([{}] * 3, ["props"] * 3)
+    bare_interface.reg.get_metrics.return_value = 0.5
+    monkeypatch.setattr(interface_module, "create_image_shapes", lambda msims, **__: [np.zeros((4, 2)) for _ in msims])
+    computed = []
+
+    def create_overlaps(_, pairs=None, **__):
+        computed.append(pairs)
+        found = [(0, 1), (1, 2)] if pairs is None else pairs
+        return [np.full((4, 2), sum(pair)) for pair in found], found
+
+    monkeypatch.setattr(interface_module, "create_overlap_shapes", create_overlaps)
+    bare_interface.reg.is_pairs_registered.return_value = False
+    bare_interface._create_napari_shapes("source_metadata")
+
+    bare_interface.reg.is_pairs_registered.return_value = True
+    # (0, 2) was not found by the pass over all pairs: it has no overlap
+    bare_interface.reg.pairs_graph.edges.return_value = [(2, 1), (0, 2)]
+    shapes, refs, _, _ = bare_interface._create_napari_shapes("source_metadata")
+
+    assert computed == [None]
+    assert refs[3:] == ["2 1"] and np.all(shapes[-1] == 3)
+
+    bare_interface.reg.positions = [{"z": 0}] * 3
+    bare_interface._create_napari_shapes("source_metadata")
+    assert computed == [None, [(2, 1), (0, 2)]]

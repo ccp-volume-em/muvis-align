@@ -1005,11 +1005,24 @@ class Interface:
 
         # once registered, only registered pairs: an overlap between unpaired images has no quality behind it
         overlap_pairs = list(self.reg.pairs_graph.edges()) if self.reg.is_pairs_registered() else None
+        # the overlaps an earlier refresh found under the same geometry: pair registration moves no source
+        signature = (transform_key, force_2d, id(self.reg.positions), id(self.reg._msim_transforms),
+                     id(self.reg.mappings) if transform_key == self.reg.reg_transform_key else None)
+        cache = getattr(self, '_overlap_shapes', None)
+        cache = cache if cache is not None and cache['signature'] == signature else None
         with phase(1 / 5, total=1) as pbar, \
              Timer(f'_create_napari_shapes: create_overlap_shapes ({len(msims)} images,'
                   f' {len(overlap_pairs) if overlap_pairs is not None else "all"} pairs)', verbose=self._timing_verbose()):
-            shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, pairs=overlap_pairs,
-                                                   force_2d=force_2d)
+            # a pass over all pairs found every overlap: a pair it did not find has none
+            if overlap_pairs is not None and cache is not None and (
+                    cache['all_pairs'] or all(tuple(sorted(pair)) in cache['shapes'] for pair in overlap_pairs)):
+                pairs = [pair for pair in overlap_pairs if tuple(sorted(pair)) in cache['shapes']]
+                shapes2 = [cache['shapes'][tuple(sorted(pair))] for pair in pairs]
+            else:
+                shapes2, pairs = create_overlap_shapes(msims, transform_key=transform_key, pairs=overlap_pairs,
+                                                       force_2d=force_2d)
+                self._overlap_shapes = {'signature': signature, 'all_pairs': overlap_pairs is None, 'shapes': {
+                    tuple(sorted(int(index) for index in pair)): shape for pair, shape in zip(pairs, shapes2)}}
             if pbar is not None:
                 pbar.update(1)
         shapes.extend(shapes2)
