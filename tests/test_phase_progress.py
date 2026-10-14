@@ -288,3 +288,29 @@ def test_the_bar_does_not_recurse_when_it_reports_back():
     assert FakeBar.instances[0].n == factory.ticks
     # each position was applied by the loop, not by re-entering it
     assert len(updates) <= factory.ticks // 50 + 1
+
+
+def test_the_bar_moves_at_most_once_a_second_but_always_shows_a_phase_end_and_completion():
+    """A redraw per step of a long loop, or a signal to the Qt thread per block a worker fuses, slows the work
+    it reports on: moves within the interval only raise the target, which the next shown move catches up to."""
+    FakeBar.instances.clear()
+    factory = make_phase_factory(phases=2)
+    factory.min_update_seconds = 60
+    emitted = []
+    with factory:
+        twin = factory.worker_twin(emitted.append)
+        twin.heartbeat_seconds = 0
+        with twin:
+            with twin(total=100) as phase:
+                for _ in range(100):
+                    phase.update(1)
+                assert len(emitted) == 1
+            # the phase end goes through at once
+            assert emitted[-1] == factory.ticks // 2
+        factory.continue_from(twin)
+        bar = FakeBar.instances[0]
+        with factory(total=100) as phase:
+            for _ in range(100):
+                phase.update(1)
+            assert bar.n == factory.ticks // 2
+    assert bar.n == factory.ticks

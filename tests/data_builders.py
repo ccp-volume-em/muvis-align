@@ -194,6 +194,8 @@ def make_phase_factory(phases=1, desc='Operation', progress_class=FakeBar, **kwa
     factory = NapariPhaseProgress(progress_class=progress_class, desc=desc, phases=phases, **kwargs)
     # the heartbeat only logs; nothing here waits long enough for it to fire
     factory.heartbeat_seconds = 0
+    # every move shown, so a test sees each position without waiting
+    factory.min_update_seconds = 0
     return factory
 
 

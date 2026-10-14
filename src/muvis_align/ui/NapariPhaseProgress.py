@@ -41,6 +41,9 @@ class NapariPhaseProgress:
     # long enough that a short operation never logs, short enough to see a long one is alive
     heartbeat_seconds = 30
 
+    # the bar, and a worker's position, shown at most this often: each move is a redraw, or a signal to the Qt thread
+    min_update_seconds = 1.0
+
     # share of the remainder for the last expected phase: only the operation's end fills the bar,
     # and an unexpected extra phase still has room
     last_phase_share = 0.9
@@ -64,6 +67,7 @@ class NapariPhaseProgress:
         self._position = 0.0
         self._target = 0.0
         self._moving = False
+        self._shown_at = None
         self._heartbeat = None
         self._done = threading.Event()
 
@@ -89,13 +93,14 @@ class NapariPhaseProgress:
         twin = NapariPhaseProgress(emit=emit, emit_step=emit_step, phases=self.phases)
         twin._position = self._position
         twin._target = self._target
+        twin.min_update_seconds = self.min_update_seconds
         twin.phases_left = self.phases_left
         return twin
 
     def continue_from(self, twin):
         """Take over a twin's position and phases used, so later phases do not re-divide used slices."""
         self.phases_left = twin.phases_left
-        self._move_to(twin._position)
+        self._move_to(twin._target, force=True)
 
     def set_step(self, step):
         """Name the long step the operation is on (a fusion level) after its description, on the bar and in the log."""
@@ -156,7 +161,7 @@ class NapariPhaseProgress:
         self._heartbeat = None
         if self._pbar is not None:
             if exc_type is None:
-                self._move_to(self.ticks)
+                self._move_to(self.ticks, force=True)
                 # filling and closing in one pass would read as giving up rather than finishing
                 _paint_now()
                 self._report_completed()
@@ -169,6 +174,7 @@ class NapariPhaseProgress:
             self.step = None
             self._position = 0.0
             self._target = 0.0
+            self._shown_at = None
         if self._started_at is not None and self.min_duration > 0:
             # an instant operation would otherwise flash the activity dock open and shut
             wait_s = self.min_duration - (time.monotonic() - self._started_at)
@@ -255,18 +261,23 @@ class NapariPhaseProgress:
         self._move_to(phase_slice.start + phase_slice.span * fraction)
 
     def _end_phase(self, phase_slice):
-        self._move_to(phase_slice.start + phase_slice.span)
+        # shown at once: a phase's last update may have been held back, and the next phase can be long
+        self._move_to(phase_slice.start + phase_slice.span, force=True)
 
     def set_position(self, position):
-        """Move the bar to a position reported by a twin on a worker thread."""
-        self._move_to(position)
+        """Move the bar to a position reported by a twin on a worker thread, which already reports at most once a
+        second."""
+        self._move_to(position, force=True)
 
-    def _move_to(self, position):
+    def _move_to(self, position, force=False):
         # never re-entered: a repaint pumps the Qt loop, which can deliver the next position back here and
         # overflow the stack; a move in progress just raises its target
         self._target = min(max(position, self._position, self._target), self.ticks)
-        if self._moving:
+        now = time.monotonic()
+        if self._moving or (not force and self._shown_at is not None
+                            and now - self._shown_at < self.min_update_seconds):
             return
+        self._shown_at = now
         self._moving = True
         try:
             while True:

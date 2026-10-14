@@ -51,7 +51,6 @@ ESSENTIAL
 
 MINOR
 
-- [ ] **Progress bars: at most one update a second** - throttle the bar's redraws (NapariPhaseProgress / the Qt bar).
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
@@ -109,6 +108,9 @@ REFACTORING
 
 ## Done
 
+- **Progress bars update at most once a second** - NapariPhaseProgress shows a move (a redraw, or a worker's
+  signal to the Qt thread) at most every `min_update_seconds`; held-back moves raise the target, and a phase's end
+  and the operation's completion always show.
 - **Faster refresh at scale** (branch `refresh-speed`) - timed on testing/make_synthetic_project.py (33990 tiles,
   1133 sections, 245733 pairs) with the UI driver's refresh_pairs/refresh_global actions: open 4.9-6.0 -> 3.0-3.7
   min, refresh after pairs 2.1 -> 1.4 min, after global 7.9 -> 1.8 min, pre-processing 5.0 -> 4.5 min (3.3 of it the
