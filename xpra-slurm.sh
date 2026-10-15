@@ -16,11 +16,18 @@ export PYTHONUNBUFFERED=TRUE
 # Slurm partition: this one where the cluster has it, else the cluster's default (partitions differ per cluster).
 # Override with  MUVIS_PARTITION=<name> bash xpra-slurm.sh  (empty: the cluster's default)
 PREFERRED_PARTITION="ncpu"
-# Paths follow the directory you run this from (a job sees it as SLURM_SUBMIT_DIR); run xpra-pull.sh from the same.
-BASE_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
-CONTAINER_PATH="${MUVIS_CONTAINER_DIR:-${BASE_DIR}}/muvis-align-xpra_latest"   # built there by xpra-pull.sh
-# directory napari can open data from: by default the top-level one this is run in (e.g. /nemo)
-DATA_DIR="${MUVIS_DATA_DIR:-/$(echo "${BASE_DIR}" | cut -d/ -f2)}"
+# the muvis-align folder these scripts are in: a job runs a spool copy, so the launcher below passes it on
+if [ -n "${MUVIS_SCRIPT_DIR:-}" ]; then
+    SCRIPT_DIR="${MUVIS_SCRIPT_DIR}"
+elif [ -n "${SLURM_JOB_ID:-}" ]; then
+    # submitted with sbatch directly: from the folder itself
+    SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
+else
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+CONTAINER_PATH="${MUVIS_CONTAINER_DIR:-${SCRIPT_DIR}}/muvis-align-xpra_latest"   # built there by xpra-pull.sh
+# directory napari can open data from: by default the top-level one the folder is in (e.g. /nemo)
+DATA_DIR="${MUVIS_DATA_DIR:-/$(echo "${SCRIPT_DIR}" | cut -d/ -f2)}"
 LOGIN_NODE="${MUVIS_LOGIN_NODE:-${SLURM_SUBMIT_HOST:-$(hostname -f)}}"         # what you ssh into
 XPRA_PORT=9876                            # port on the compute node
 
@@ -92,6 +99,7 @@ if [ -z "${SLURM_JOB_ID:-}" ]; then
         PARTITION=""
     fi
     echo "Partition: ${PARTITION:-default of the cluster}"
+    export MUVIS_SCRIPT_DIR="${SCRIPT_DIR}"
     JOB_ID="$(sbatch --parsable ${PARTITION:+--partition="${PARTITION}"} "$0")"
     # --parsable adds ";cluster" on a multi-cluster setup
     JOB_ID="${JOB_ID%%;*}"
@@ -134,7 +142,7 @@ if ! command -v apptainer >/dev/null 2>&1; then
 fi
 if [ ! -e "${CONTAINER_PATH}" ]; then
     echo "ERROR: container not found at ${CONTAINER_PATH}" >&2
-    echo "       Run bash xpra-pull.sh from ${BASE_DIR}, or set MUVIS_CONTAINER_DIR to where it is" >&2
+    echo "       Run: bash ${SCRIPT_DIR}/xpra-pull.sh  (or set MUVIS_CONTAINER_DIR to where it is)" >&2
     exit 1
 fi
 

@@ -86,3 +86,6 @@ venv/
 /log
 */output*
 /output
+# the HPC container and job logs, made in the checkout by xpra-pull.sh / xpra-slurm.sh
+muvis-align-xpra_latest/
+muvis-align-*.log

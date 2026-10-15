@@ -21,8 +21,17 @@ IMAGE_REF="docker://quay.io/ccp-volume-em/muvis-align-xpra:latest"
 # Slurm partition: this one where the cluster has it, else the cluster's default.
 # Override with  MUVIS_PARTITION=<name> bash xpra-pull.sh  (empty: the cluster's default)
 PREFERRED_PARTITION="ncpu"
-# the directory you run this from (a job sees it as SLURM_SUBMIT_DIR), where xpra-slurm.sh looks for it
-DEST_DIR="${MUVIS_CONTAINER_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
+# the muvis-align folder these scripts are in: a job runs a spool copy, so the launcher below passes it on
+if [ -n "${MUVIS_SCRIPT_DIR:-}" ]; then
+    SCRIPT_DIR="${MUVIS_SCRIPT_DIR}"
+elif [ -n "${SLURM_JOB_ID:-}" ]; then
+    # submitted with sbatch directly: from the folder itself
+    SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
+else
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+fi
+# where xpra-slurm.sh looks for it
+DEST_DIR="${MUVIS_CONTAINER_DIR:-${SCRIPT_DIR}}"
 SANDBOX_PATH="${DEST_DIR}/muvis-align-xpra_latest"
 
 if [ -z "${SLURM_JOB_ID:-}" ]; then
@@ -35,6 +44,7 @@ if [ -z "${SLURM_JOB_ID:-}" ]; then
         PARTITION=""
     fi
     echo "Partition: ${PARTITION:-default of the cluster}"
+    export MUVIS_SCRIPT_DIR="${SCRIPT_DIR}"
     JOB_ID="$(sbatch --parsable ${PARTITION:+--partition="${PARTITION}"} "$0")"
     # --parsable adds ";cluster" on a multi-cluster setup
     JOB_ID="${JOB_ID%%;*}"
