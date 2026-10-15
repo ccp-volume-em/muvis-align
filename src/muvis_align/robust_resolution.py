@@ -2,6 +2,7 @@
 reweighted least squares. See notes/multiview_stitcher.md."""
 
 import logging
+import time
 from contextlib import contextmanager
 
 import numpy as np
@@ -9,6 +10,7 @@ import xarray as xr
 from multiview_stitcher import transformation
 from multiview_stitcher.param_resolution import linear_two_pass, register_groupwise_resolution_method
 from multiview_stitcher.param_resolution.linear_two_pass import groupwise_resolution_linear_two_pass
+from threadpoolctl import threadpool_limits
 
 from muvis_align.image.util import xaffine_from_matrix
 from muvis_align.util import raise_if_cancelled
@@ -121,8 +123,10 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
         raise_if_cancelled()
         for edge in edges:
             graph.edges[edge]['quality'] = qualities[edge] * weights[edge]
-        # pruning off: every edge stays in, down-weighted instead
-        with _numpy_internals():
+        round_start, round_cpu = time.perf_counter(), time.process_time()
+        # pruning off: every edge stays in, down-weighted instead. One BLAS thread: a round is many tiny numpy calls,
+        # which a pool spread over every core only slows, its threads spinning
+        with _numpy_internals(), threadpool_limits(limits=1):
             params, info = groupwise_resolution_linear_two_pass(
                 graph, reference_view=reference_view, transform=transform, weight_mode='quality',
                 residual_threshold=np.inf, keep_mst=False, **kwargs)
@@ -140,7 +144,8 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
         logging.info(f'Robust linear resolution: round {round_index + 1}/{rounds}, {len(edges)} edges,'
                      f' median residual {np.median(list(residuals.values())):.3g},'
                      f' change {change_quantile:.0%} {change:.3g} (largest {largest_change:.3g},'
-                     f' tolerance {tolerance * scale:.3g})')
+                     f' tolerance {tolerance * scale:.3g}) in {time.perf_counter() - round_start:.0f}s,'
+                     f' {time.process_time() - round_cpu:.0f}s cpu')
         if progress is not None:
             progress()
         if change <= tolerance * scale:
