@@ -494,7 +494,8 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
                             fusion_func=None, zarr_options=None, batch_options=None, interpolation_order=1,
                             ranks=None, average_levels=False, level_weights=None):
     """An OME-Zarr multiscale image of `levels` (export_levels), each fused at its own pixel size from its sources at
-    their nearest level. With average_levels, every level after the first averages the one above instead. With `ranks`
+    their nearest level - or, where its sources are the level above's (every level, with average_levels), averaged
+    from that level: a source's own coarse levels end before the output's, and reading a finer one aliases. With `ranks`
     (one a source, lower first), a higher-ranked source under a lower-ranked one is left out. One progress bar runs
     over all levels, each its share of the square root of `level_weights` (the bytes it writes), else of its voxels."""
     ngff_version, creation_kwargs = _zarr_options(zarr_options)
@@ -509,15 +510,14 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
     with _numpy_fusion_plan():
         for index, (level_spacing, properties, selected) in enumerate(levels):
             output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
-            # tolerance 0, as multiview_stitcher picks: an offset source level at the output's pixel size leaves the
-            # output's edge pixels outside its interpolation
+            # the source level at the output's pixel size: spacings read off coordinates differ in the last digits
             sims = [msi_utils.get_sim_from_msim(msims[source], scale='scale%d' % coarsest_level_within(
                 msim_level_spacings(msims[source]), output_properties['spacing'],
-                dims=list(output_properties['spacing']), tolerance=0)) for source in selected]
+                dims=list(output_properties['spacing']))) for source in selected]
             level_chunksize, groups = level_blocks(sim_views(sims, transform_key), output_properties,
                                                    output_chunksize, interpolation_order)
             progress.set_description(f'{index + 1}/{len(levels)} @ {print_significants(level_spacing, 3)} µm')
-            if average_levels and index > 0:
+            if index > 0 and (average_levels or selected == levels[index - 1][2]):
                 factors = {dim: round(properties['factors'][dim] / levels[index - 1][1]['factors'][dim])
                            for dim in output_properties['shape']}
                 average_into_zarr_array(os.path.join(output_zarr_url, paths[index - 1]),

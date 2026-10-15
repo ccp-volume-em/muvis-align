@@ -937,14 +937,15 @@ def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, s
                                            base_transform_key=reg.source_transform_key)
         transform_key = reg.reg_transform_key
     written = []
-    fuse_into_zarr_array = fusion_slabs.fuse_into_zarr_array
+    level_blocks = fusion_slabs.level_blocks
 
-    def recording(sims, store_url, key, output_properties, chunk, **kwargs):
-        if kwargs.get('groups') is not None:
-            written.append(fusion_slabs.written_voxels(kwargs['groups'], output_properties, chunk))
-        return fuse_into_zarr_array(sims, store_url, key, output_properties, chunk, **kwargs)
+    # every level, fused or averaged from the one above, writes the blocks level_blocks gives it
+    def recording(views, output_properties, chunksize, *args, **kwargs):
+        chunk, groups = level_blocks(views, output_properties, chunksize, *args, **kwargs)
+        written.append(fusion_slabs.written_voxels(groups, output_properties, chunk))
+        return chunk, groups
 
-    monkeypatch.setattr(fusion_slabs, 'fuse_into_zarr_array', recording)
+    monkeypatch.setattr(fusion_slabs, 'level_blocks', recording)
 
     estimate = reg.estimate_fusion_size('average', spacing, transform_key=transform_key)
     fused, _ = reg.fuse(reg.msims, fusion_method='average', output_spacing=spacing, transform_key=transform_key,
