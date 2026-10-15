@@ -18,12 +18,22 @@
 set -euo pipefail
 
 IMAGE_REF="docker://quay.io/ccp-volume-em/muvis-align-xpra:latest"
-# Slurm partition: empty for the cluster's default; override with  MUVIS_PARTITION=<name> bash xpra-pull.sh
-PARTITION="${MUVIS_PARTITION-ncpu}"
+# Slurm partition: this one where the cluster has it, else the cluster's default.
+# Override with  MUVIS_PARTITION=<name> bash xpra-pull.sh  (empty: the cluster's default)
+PREFERRED_PARTITION="ncpu"
 DEST_DIR="/nemo/stp/ddt/working/defoltj/muvis-align"
 SANDBOX_PATH="${DEST_DIR}/muvis-align-xpra_latest"
 
 if [ -z "${SLURM_JOB_ID:-}" ]; then
+    AVAILABLE_PARTITIONS="$(sinfo -h -o %R 2>/dev/null || true)"
+    if [ -n "${MUVIS_PARTITION+set}" ]; then
+        PARTITION="${MUVIS_PARTITION}"
+    elif grep -qx "${PREFERRED_PARTITION}" <<< "${AVAILABLE_PARTITIONS}"; then
+        PARTITION="${PREFERRED_PARTITION}"
+    else
+        PARTITION=""
+    fi
+    echo "Partition: ${PARTITION:-default of the cluster}"
     JOB_ID="$(sbatch --parsable ${PARTITION:+--partition="${PARTITION}"} "$0")"
     # --parsable adds ";cluster" on a multi-cluster setup
     JOB_ID="${JOB_ID%%;*}"

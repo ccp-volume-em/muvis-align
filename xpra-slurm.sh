@@ -13,9 +13,9 @@ export PYTHONUNBUFFERED=TRUE
 #  EDIT THESE LINES
 # ===========================================================================
 # Refresh with: bash xpra-pull.sh
-# Slurm partition: empty for the cluster's default. Not an #SBATCH line, which differs per cluster:
-# override with  MUVIS_PARTITION=<name> bash xpra-slurm.sh
-PARTITION="${MUVIS_PARTITION-ncpu}"
+# Slurm partition: this one where the cluster has it, else the cluster's default (partitions differ per cluster).
+# Override with  MUVIS_PARTITION=<name> bash xpra-slurm.sh  (empty: the cluster's default)
+PREFERRED_PARTITION="ncpu"
 CONTAINER_PATH="/nemo/stp/ddt/working/defoltj/muvis-align/muvis-align-xpra_latest"          # container on shared storage
 DATA_DIR="/nemo/project"              # directory to expose
 LOGIN_NODE="login.nemo.thecrick.org"         # what you ssh into
@@ -80,6 +80,15 @@ set -euo pipefail
 #  muvis-align-<job id>.log, and the password in ~/.xpra/job-<job id>/passwd.
 # ===========================================================================
 if [ -z "${SLURM_JOB_ID:-}" ]; then
+    AVAILABLE_PARTITIONS="$(sinfo -h -o %R 2>/dev/null || true)"
+    if [ -n "${MUVIS_PARTITION+set}" ]; then
+        PARTITION="${MUVIS_PARTITION}"
+    elif grep -qx "${PREFERRED_PARTITION}" <<< "${AVAILABLE_PARTITIONS}"; then
+        PARTITION="${PREFERRED_PARTITION}"
+    else
+        PARTITION=""
+    fi
+    echo "Partition: ${PARTITION:-default of the cluster}"
     JOB_ID="$(sbatch --parsable ${PARTITION:+--partition="${PARTITION}"} "$0")"
     # --parsable adds ";cluster" on a multi-cluster setup
     JOB_ID="${JOB_ID%%;*}"
