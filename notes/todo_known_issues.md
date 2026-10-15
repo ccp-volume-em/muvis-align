@@ -120,7 +120,7 @@ REFACTORING
 
 ## Done
 
-- **Native levels from the level above, weighed** (2026-10-15, meatballs headless): a level with the same sources
+- **Native levels from the level above, measured** (2026-10-15, meatballs headless): a level with the same sources
   as the one above (all but 0.01 and 0.2492 here) averaged 2x2 from it instead of fused from the sources:
 
   | Level | Fused from sources | Averaged from above | Pixels differing | Mean / p99 diff (uint8) |
@@ -131,10 +131,13 @@ REFACTORING
   | 0.16 um | 3.9 s | 0.1 s | 98% | 14.4 / 55 |
   | 0.50-7.97 um (5 levels) | 2.2-4.4 s each | ~0.1 s each | 61-77% | 7.7-11.1 / 42-57 |
 
-  All levels 82 -> ~40s, and no coarse-level memory peak (HPC 2026-10-15: 368GB at 0.494). Not taken: the sources'
-  own pyramid levels are already 2x2 means (a tile's level 1 within 0.1 of the mean of level 0), so the fused
-  levels come from properly averaged data, and averaged levels differ by a growing amount (edges are not it: only
-  0.03-0.4% of pixels covered in one and not the other) - against no quality trade-offs in fusion.
+  All levels 82 -> ~40s, and no coarse-level memory peak (HPC 2026-10-15: 368GB at 0.494). Not a shift (best-fit
+  0.00-0.05 px) and not blur: the fused levels are aliased. Fine detail (mean squared Laplacian) stays ~5000-8500
+  at every fused level, the averaged ones drop to 0.26 -> 0.06 of it, as averaging noisy data should. Each fused
+  level reads its sources one pyramid level too fine: the level chosen with tolerance 0 against spacings read off
+  coordinates (a tile's 0.04 level as 0.040000000000020464, the output's 0.03999999999996362), so output 0.02
+  reads tiles at 0.01 ... 0.16 at 0.08, overviews likewise; below 0.16 tiles (their coarsest) are sampled from
+  0.16 down to 7.97 - point sampling, the per-level fixed cost and the coarse levels' memory. Open.
 - **One-pass average fusion** - of a meatballs level-0 block (profiled headless, 40 blocks): resampling 48%,
   multiview_stitcher's simple_average_fusion 22% (a stack and a NaN-free copy built per view), per-block fuse()
   setup 6%, dask and the zarr write ~12%. FusionMethodAverage does the same sums in one pass: bit-identical
