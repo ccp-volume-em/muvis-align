@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -58,16 +60,22 @@ def test_exclusive_fuse_keeps_the_earlier_source_where_tiles_overlap(order):
     (1, (64, 64), np.float32), (3, (1, 128, 96), np.float32), (7, (40, 50), np.float64)])
 def test_the_one_pass_average_is_multiview_stitchers_exactly(views, shape, dtype):
     """The average, built without a stack and a NaN-free copy per view, gives multiview_stitcher's values bit for bit,
-    including the pixels no view reaches."""
+    including the pixels no view reaches - and additive, the average clipped, numpy's clipped nanmean."""
     from multiview_stitcher.fusion import simple_average_fusion
-    from muvis_align.fusion_slabs import average_fusion
+    from muvis_align.fusion_methods.FusionMethodAdditive import FusionMethodAdditive
+    from muvis_align.fusion_methods.FusionMethodAverage import FusionMethodAverage
 
     rng = np.random.default_rng(0)
-    stack = rng.uniform(0, 65535, (views,) + shape).astype(dtype)
+    stack = rng.uniform(-10, 65545, (views,) + shape).astype(dtype)
     stack[rng.random(stack.shape) < 0.4] = nan
     stack[..., :3] = nan
 
-    result = average_fusion(stack)
+    result = FusionMethodAverage(np.zeros(1, np.uint16)).fusion(stack)
+    additive = FusionMethodAdditive(np.zeros(1, np.uint16)).fusion(stack)
 
     assert result.dtype == stack.dtype
     np.testing.assert_array_equal(result, simple_average_fusion(stack))
+    with np.errstate(invalid='ignore'), warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        expected_additive = np.nanmean(stack, axis=0, dtype=stack.dtype).clip(0, 65535)
+    np.testing.assert_array_equal(additive, expected_additive)

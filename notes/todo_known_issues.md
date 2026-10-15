@@ -122,9 +122,10 @@ REFACTORING
 
 - **One-pass average fusion** - of a meatballs level-0 block (profiled headless, 40 blocks): resampling 48%,
   multiview_stitcher's simple_average_fusion 22% (a stack and a NaN-free copy built per view), per-block fuse()
-  setup 6%, dask and the zarr write ~12%. fusion_slabs.average_fusion does the same sums in one pass: bit-identical
+  setup 6%, dask and the zarr write ~12%. FusionMethodAverage does the same sums in one pass: bit-identical
   (every level of the meatballs fusion compared), 3.2x faster on a 3-view 4096x4096 block, the full meatballs
-  fusion 116.6 -> ~94s (-19%). What is left around the resampling is small and spread out.
+  fusion 116.6 -> ~94s (-19%). Additive is the same average clipped (was numpy's nanmean: bit-identical, 2.2x
+  faster). What is left around the resampling is small and spread out.
 - **Fusion methods weighed for speed** (2026-10-15, meatballs headless, all 11 levels, saved registration):
 
   | Method | Wall | CPU |
