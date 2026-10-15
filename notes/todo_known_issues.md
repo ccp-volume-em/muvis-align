@@ -120,6 +120,21 @@ REFACTORING
 
 ## Done
 
+- **Native levels from the level above, weighed** (2026-10-15, meatballs headless): a level with the same sources
+  as the one above (all but 0.01 and 0.2492 here) averaged 2x2 from it instead of fused from the sources:
+
+  | Level | Fused from sources | Averaged from above | Pixels differing | Mean / p99 diff (uint8) |
+  |---|---|---|---|---|
+  | 0.02 um | 13.7 s | 3.5 s | 91% | 5.2 / 24 |
+  | 0.04 um | 8.6 s | 1.1 s | 96% | 9.5 / 35 |
+  | 0.08 um | 5.7 s | 0.4 s | 97% | 12.1 / 45 |
+  | 0.16 um | 3.9 s | 0.1 s | 98% | 14.4 / 55 |
+  | 0.50-7.97 um (5 levels) | 2.2-4.4 s each | ~0.1 s each | 61-77% | 7.7-11.1 / 42-57 |
+
+  All levels 82 -> ~40s, and no coarse-level memory peak (HPC 2026-10-15: 368GB at 0.494). Not taken: the sources'
+  own pyramid levels are already 2x2 means (a tile's level 1 within 0.1 of the mean of level 0), so the fused
+  levels come from properly averaged data, and averaged levels differ by a growing amount (edges are not it: only
+  0.03-0.4% of pixels covered in one and not the other) - against no quality trade-offs in fusion.
 - **One-pass average fusion** - of a meatballs level-0 block (profiled headless, 40 blocks): resampling 48%,
   multiview_stitcher's simple_average_fusion 22% (a stack and a NaN-free copy built per view), per-block fuse()
   setup 6%, dask and the zarr write ~12%. FusionMethodAverage does the same sums in one pass: bit-identical
