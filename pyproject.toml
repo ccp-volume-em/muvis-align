@@ -37,8 +37,6 @@ dependencies = [
     "threadpoolctl",
     "dask>=2024.8.0,<2026.9.0",
     "tifffile>=2023.9.26",
-    # napari's TIFF reader with the vendor metadata (pixel size, stage position) muvis-align reads too
-    "napari-meta-tiff>=0.1.1",
     "imagecodecs",
     "zarr",
     "ome-zarr",
