@@ -1764,7 +1764,7 @@ class MVSRegistration:
                 # as fusion picks it (fuse_levels_to_ome_zarr)
                 level = coarsest_level_within([stack(index, level)['spacing'] for level in range(len(
                     self.sources[index].shapes))], output_properties['spacing'],
-                    dims=list(output_properties['spacing']), tolerance=0)
+                    dims=list(output_properties['spacing']))
                 views.append((stack(index, level), matrices[index]))
             chunk, groups = level_blocks(views, output_properties, chunksize)
             levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],

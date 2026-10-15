@@ -137,7 +137,10 @@ REFACTORING
   level reads its sources one pyramid level too fine: the level chosen with tolerance 0 against spacings read off
   coordinates (a tile's 0.04 level as 0.040000000000020464, the output's 0.03999999999996362), so output 0.02
   reads tiles at 0.01 ... 0.16 at 0.08, overviews likewise; below 0.16 tiles (their coarsest) are sampled from
-  0.16 down to 7.97 - point sampling, the per-level fixed cost and the coarse levels' memory. Open.
+  0.16 down to 7.97 - point sampling, the per-level fixed cost and the coarse levels' memory. Done (branch
+  averaged-levels): such levels are averaged from the one above, and the levels still fused read their sources at
+  their own size (the default 1e-6 relative tolerance). Meatballs native fusion 90.6 -> 50.0s; fine detail now
+  falls level by level (1803, 1207, 1085, then 822 -> ~400) instead of staying at ~5000-8500.
 - **One-pass average fusion** - of a meatballs level-0 block (profiled headless, 40 blocks): resampling 48%,
   multiview_stitcher's simple_average_fusion 22% (a stack and a NaN-free copy built per view), per-block fuse()
   setup 6%, dask and the zarr write ~12%. FusionMethodAverage does the same sums in one pass: bit-identical

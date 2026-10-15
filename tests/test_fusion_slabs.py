@@ -120,6 +120,31 @@ def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff
     assert coarsest[28, 28] == 200
 
 
+def test_a_native_level_with_the_sources_of_the_level_above_is_averaged_from_it(tmp_path):
+    """Fused from a source level finer than itself, a coarser level samples rather than averages it (aliasing);
+    where its sources are the level above's, it is that level's 2x2 mean. A level a new source joins is fused. The
+    tile is off the output grid, as real ones are: on it, sampling the middle of 2x2 pixels is their mean."""
+    import zarr
+    import muvis_align.fusion_slabs as fusion_slabs
+
+    rng = np.random.default_rng(0)
+    tile = make_msim(rng.integers(50, 250, (64, 64), dtype=np.uint8), scale={'y': 0.5, 'x': 0.5},
+                     translation={'y': 40.3, 'x': 40.1}, transform_key='source')
+    overview = flat_msim(10, 64, 2.0, 0.0)
+    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
+    levels = export_levels([2.0, 0.5], level0, ['y', 'x'])
+    url = (tmp_path / 'fused.ome.zarr').as_posix()
+
+    fuse_levels_to_ome_zarr([overview, tile], levels, url, 'source', level0, {'y': 64, 'x': 64}, ranks=[2.0, 0.5])
+
+    finest, middle, coarsest = (np.asarray(zarr.open_array(os.path.join(url, path), mode='r')[:]).squeeze()
+                                for path in fusion_slabs.level_paths(len(levels)))
+    assert [selected for _, _, selected in levels] == [[1], [1], [0, 1]]
+    np.testing.assert_array_equal(middle, finest.reshape(128, 2, 128, 2).mean(axis=(1, 3)).astype(np.uint8))
+    # the overview's level is fused: the overview where the tile is not
+    assert coarsest[5, 5] == 10
+
+
 @pytest.mark.parametrize('affine', [
     # translated by a fraction of a pixel: axis-aligned, not grid-aligned
     np.array([[1.0, 0.0, 0.3], [0.0, 1.0, -0.6], [0.0, 0.0, 1.0]]),

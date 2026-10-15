@@ -156,6 +156,9 @@ def test_each_source_is_read_at_its_coarsest_level_no_coarser_than_the_plane():
     assert coarsest_level_within(source.pixel_sizes, {'y': 3, 'x': 3}) == 1
     assert coarsest_level_within(source.pixel_sizes, {'y': 4, 'x': 4}) == 2
     assert coarsest_level_within(source.pixel_sizes, {'y': 0.5, 'x': 0.5}) == 0
+    # a source level and an output level of one size, read off coordinates and doubled: apart in the last digits
+    coordinates_read = [{'y': 0.02, 'x': 0.02}, {'y': 0.040000000000020464, 'x': 0.040000000000020464}]
+    assert coarsest_level_within(coordinates_read, {'y': 0.03999999999996362, 'x': 0.03999999999996362}) == 1
 
 
 def test_readers_give_the_pixels_at_the_sources_place_and_a_missing_one_is_left_empty(tmp_path):
