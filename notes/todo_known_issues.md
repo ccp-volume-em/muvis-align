@@ -122,11 +122,18 @@ REFACTORING
 
 ## Done
 
-- **Fusion methods weighed for speed** (2026-10-15, meatballs headless, all 11 levels, saved registration): average
-  99.6s wall / 394s cpu (116s / 438s on a cold first run), exclusive 95.3s / 361s, additive 92.1s / 360s - the
-  custom methods 4-8% faster, as combining is ~20% of a block (resampling ~48%, the rest plan, dask and zarr
-  write). Not a speed option: exclusive and additive are different outputs, and fusion speed-ups must leave the
-  fused pixels identical (no cheaper method, no lower interpolation order).
+- **Fusion methods weighed for speed** (2026-10-15, meatballs headless, all 11 levels, saved registration):
+
+  | Method | Wall | CPU |
+  |---|---|---|
+  | average (1st run, includes warm-up) | 116 s | 438 s |
+  | average (repeat) | 99.6 s | 394 s |
+  | exclusive (custom) | 95.3 s | 361 s |
+  | additive (custom) | 92.1 s | 360 s |
+
+  The custom methods are 4-8% faster, as combining is ~20% of a block (resampling ~48%, the rest plan, dask and
+  zarr write). Not a speed option: exclusive and additive are different outputs, and fusion speed-ups must leave
+  the fused pixels identical (no cheaper method, no lower interpolation order).
 - **Odd source sizes no longer add a native level** - the HPC levels ran 0.16, 0.2469, 0.3322, 0.6644 (2026-10-13):
   3 of 1081 overview sections (e.g. ov000_s00033) are at 0.3322, the rest at 0.2492/0.2469, debris images too;
   every source size got a level. Sizes under sqrt(2) above a group's finest now join its level (upsampled by less
