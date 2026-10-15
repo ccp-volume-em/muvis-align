@@ -44,12 +44,17 @@ cost. Four parts, each useful on its own.
 
 - **Problem:** per call, `_build_params_from_components` builds an xarray transform per node twice (after pass 1
   and pass 2), and pass 2 re-solves even when no edge was pruned - then giving pass 1's result again.
+  `compute_edge_residuals` (`param_resolution.utils`) builds the bead graph each call, with an identity xarray per
+  node it never reads, and converts an xarray transform for every point it transforms.
 - **Measured (local, profiled, 9 calls with pruning off):** 9.7s in all, of which the sparse solves 0.15s,
   `_build_params_from_components` 6.5s (18 calls), `compute_edge_residuals` 2.7s. So about a third of every call
   repeats pass 1 when nothing is pruned, and two thirds are xarray construction. On the HPC a call is ~10 min.
 - **Suggestion:** skip pass 2 (and its parameter build) when every edge is kept; keep the per-node components in
   numpy between passes and build the xarray transforms once, for the result returned.
-- **muvis-align:** nothing - the solver is reached only through `groupwise_resolution_linear_two_pass`.
+- **muvis-align:** `robust_resolution._numpy_internals` swaps `linear_two_pass._build_params_from_components`
+  (transforms copied from a cached xarray template) and `linear_two_pass.compute_edge_residuals` (plain matrices)
+  in while its own rounds run, other callers keeping the originals. Transforms and residuals identical; a round
+  8x faster locally (3600 tiles, 3 rounds 24.8 -> 3.1s); 34k tiles / 230k edges ~31s a round on one thread.
 
 ### 1c. Reference view search: one pass over the edges
 
@@ -136,7 +141,9 @@ cost. Four parts, each useful on its own.
 - **muvis-align:** calls it per registered pair with only that pair's two msims, in worker processes when there
   are more pairs than workers; without workers, one pair at a time in the calling thread.
 
-## 8. Fusion: the plan once per fusion, not once per block
+## 8. Fusion
+
+### 8a. The plan once per fusion, not once per block
 
 - **Problem:** writing to zarr, `_fuse_chunk_to_zarr` calls `fuse()` for every output block with that block as
   the output, so the fusion plan (`_build_spatial_fusion_plan`, `_get_axis_aligned_translation_dims`,
@@ -148,10 +155,27 @@ cost. Four parts, each useful on its own.
   with the total source count, so at 34k sources a block would cost ~100x more.
 - **Suggestion:** build the plan (and the per-source transform checks, on plain numpy arrays) once per fusion and
   hand each block only the sources it meets.
-- **muvis-align:** for a stack, `fusion_slabs.fuse_to_zarr_by_z_slabs` fuses each z-slab of blocks from only the
-  sources that reach it, by multiview-stitcher's own rule, through `prepare_block_fusion(create_output=False)`
-  (identical output). Slides export ~31 -> ~9 min, ~1.5 -> ~4.3 cores, together with direct TIFF reads (see the
-  tifffile item below; ~15-20% of that).
+- **muvis-align:** `fusion_slabs.fuse_into_zarr_array` (each level of `fuse_levels_to_ome_zarr`) fuses each block
+  from only the sources that reach it, by multiview-stitcher's own rule, through
+  `prepare_block_fusion(create_output=False)` once per group of sources (identical output). Slides export ~31 ->
+  ~9 min, ~1.5 -> ~4.3 cores, together with direct TIFF reads (see the tifffile item below; ~15-20% of that).
+  The per-block plan still checks every source in the block's group: `fusion_slabs._numpy_fusion_plan` swaps in
+  numpy versions of `_get_axis_aligned_translation_dims`, `_get_grid_aligned_translation_dims` and
+  `_get_axis_aligned_translation_overlap` (each affine read once, not an xarray `.sel` per entry) while our fusion
+  runs. Checks and fused output identical; meatballs fusion 102 -> 80s, a small level's few blocks ~2 -> ~1.2s
+  (level 9: 3 blocks, 5817 `.sel` calls).
+
+### 8b. `simple_average_fusion` in one pass
+
+- **Problem:** to count the views reaching each pixel it builds, per view, a stack of the running count and that
+  view's mask and takes its `nansum`; then `nansum` over all views copies the whole stack once more to replace NaNs.
+- **Measured (meatballs, level-0 blocks, profiled):** 22% of a block's time (resampling 48%, `fuse()` setup 6%,
+  dask and the zarr write ~12%). In one pass - one validity mask, counts summed from it, values summed with NaNs
+  zeroed by `np.where` - the same sums in the same order: bit-identical (every level of a meatballs fusion
+  compared), 3.2x faster on a 3-view 4096x4096 block, the whole meatballs fusion ~19% faster (116.6 -> ~94s).
+- **Suggestion:** the one-pass form in `simple_average_fusion`; the same applies to a `np.nanmean` combine.
+- **muvis-align:** `fusion_methods.FusionMethodAverage` for the 'average' method; `FusionMethodAdditive` is that
+  average clipped (it was `np.nanmean`, clipped: bit-identical, 2.2x faster).
 
 ## 9. Registration binning budget for 2D images
 
