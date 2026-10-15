@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=muvis_align_pull
-#SBATCH --part=ncpu
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:30:00
 #SBATCH --mem=8G
@@ -19,11 +18,13 @@
 set -euo pipefail
 
 IMAGE_REF="docker://quay.io/ccp-volume-em/muvis-align-xpra:latest"
+# Slurm partition: empty for the cluster's default; override with  MUVIS_PARTITION=<name> bash xpra-pull.sh
+PARTITION="${MUVIS_PARTITION-ncpu}"
 DEST_DIR="/nemo/stp/ddt/working/defoltj/muvis-align"
 SANDBOX_PATH="${DEST_DIR}/muvis-align-xpra_latest"
 
 if [ -z "${SLURM_JOB_ID:-}" ]; then
-    JOB_ID="$(sbatch --parsable "$0")"
+    JOB_ID="$(sbatch --parsable ${PARTITION:+--partition="${PARTITION}"} "$0")"
     # --parsable adds ";cluster" on a multi-cluster setup
     JOB_ID="${JOB_ID%%;*}"
     LOG_FILE="muvis-align-pull-${JOB_ID}.log"

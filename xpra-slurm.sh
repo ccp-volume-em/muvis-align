@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=muvis_align
-#SBATCH --part=ncpu
 #SBATCH --cpus-per-task=64
 #SBATCH --hint=nomultithread  # 64 whole cores: given both threads of 32, each worker ran at half speed
 #SBATCH --time=2-00:00          # Runtime in D-HH:MM, minimum of 10 minutes
@@ -11,9 +10,12 @@
 export PYTHONUNBUFFERED=TRUE
 
 # ===========================================================================
-#  EDIT THESE FOUR LINES
+#  EDIT THESE LINES
 # ===========================================================================
-# Refresh with: sbatch xpra-pull.sh
+# Refresh with: bash xpra-pull.sh
+# Slurm partition: empty for the cluster's default. Not an #SBATCH line, which differs per cluster:
+# override with  MUVIS_PARTITION=<name> bash xpra-slurm.sh
+PARTITION="${MUVIS_PARTITION-ncpu}"
 CONTAINER_PATH="/nemo/stp/ddt/working/defoltj/muvis-align/muvis-align-xpra_latest"          # container on shared storage
 DATA_DIR="/nemo/project"              # directory to expose
 LOGIN_NODE="login.nemo.thecrick.org"         # what you ssh into
@@ -78,7 +80,7 @@ set -euo pipefail
 #  muvis-align-<job id>.log, and the password in ~/.xpra/job-<job id>/passwd.
 # ===========================================================================
 if [ -z "${SLURM_JOB_ID:-}" ]; then
-    JOB_ID="$(sbatch --parsable "$0")"
+    JOB_ID="$(sbatch --parsable ${PARTITION:+--partition="${PARTITION}"} "$0")"
     # --parsable adds ";cluster" on a multi-cluster setup
     JOB_ID="${JOB_ID%%;*}"
     LOG_FILE="muvis-align-${JOB_ID}.log"
