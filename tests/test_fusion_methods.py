@@ -52,3 +52,22 @@ def test_exclusive_fuse_keeps_the_earlier_source_where_tiles_overlap(order):
     np.testing.assert_array_equal(fused[:, 6:8], first)
     np.testing.assert_array_equal(fused[:, :6], 10)
     np.testing.assert_array_equal(fused[:, 8:], 20)
+
+
+@pytest.mark.parametrize('views, shape, dtype', [
+    (1, (64, 64), np.float32), (3, (1, 128, 96), np.float32), (7, (40, 50), np.float64)])
+def test_the_one_pass_average_is_multiview_stitchers_exactly(views, shape, dtype):
+    """The average, built without a stack and a NaN-free copy per view, gives multiview_stitcher's values bit for bit,
+    including the pixels no view reaches."""
+    from multiview_stitcher.fusion import simple_average_fusion
+    from muvis_align.fusion_slabs import average_fusion
+
+    rng = np.random.default_rng(0)
+    stack = rng.uniform(0, 65535, (views,) + shape).astype(dtype)
+    stack[rng.random(stack.shape) < 0.4] = nan
+    stack[..., :3] = nan
+
+    result = average_fusion(stack)
+
+    assert result.dtype == stack.dtype
+    np.testing.assert_array_equal(result, simple_average_fusion(stack))

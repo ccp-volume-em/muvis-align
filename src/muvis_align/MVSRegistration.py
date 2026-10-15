@@ -37,7 +37,7 @@ from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
-from muvis_align.fusion_slabs import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
+from muvis_align.fusion_slabs import average_fusion, export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
@@ -1190,7 +1190,7 @@ class MVSRegistration:
             fusion_method = FusionMethodAdditive(sim0, self.debug)
             fuse_func = fusion_method.fusion
         else:
-            fuse_func = fusion.simple_average_fusion
+            fuse_func = average_fusion
 
         self.fusion_method = fusion_method
 

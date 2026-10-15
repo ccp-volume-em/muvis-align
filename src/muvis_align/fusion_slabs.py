@@ -122,6 +122,15 @@ def block_sources(bounds, output_stack_properties, output_chunksize, sdims):
     return groups
 
 
+def average_fusion(transformed_views):
+    """fusion_core.simple_average_fusion in one pass: the mean of the views reaching each pixel (NaN where none do),
+    without a stack and a NaN-free copy built per view. The same sums in the same order, so the same values."""
+    valid = ~np.isnan(transformed_views)
+    counts = valid.sum(axis=0, dtype=np.float32)
+    counts[counts == 0] = np.nan
+    return (np.where(valid, transformed_views, 0).sum(axis=0) / counts).astype(transformed_views[0].dtype)
+
+
 def _view_ranks(params, group_params, group_ranks):
     """Each fused view's rank: multiview_stitcher passes a block only the views it finds there, in order - a
     subsequence of the block's sources, told apart by their affines."""

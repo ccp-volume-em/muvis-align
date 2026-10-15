@@ -39,9 +39,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-**Per-block fusion overhead** - of a meatballs level-0 block, resampling ~27% and combining ~19%; the per-block
-plan, dask graph and zarr write are the rest. Profile blocks headless (MVSRegistration + saved registration, no
-napari), cut what leaves the fused pixels identical (no quality trade-offs), check by identical output.
+Nothing.
 
 ## TODO
 
@@ -122,6 +120,11 @@ REFACTORING
 
 ## Done
 
+- **One-pass average fusion** - of a meatballs level-0 block (profiled headless, 40 blocks): resampling 48%,
+  multiview_stitcher's simple_average_fusion 22% (a stack and a NaN-free copy built per view), per-block fuse()
+  setup 6%, dask and the zarr write ~12%. fusion_slabs.average_fusion does the same sums in one pass: bit-identical
+  (every level of the meatballs fusion compared), 3.2x faster on a 3-view 4096x4096 block, the full meatballs
+  fusion 116.6 -> ~94s (-19%). What is left around the resampling is small and spread out.
 - **Fusion methods weighed for speed** (2026-10-15, meatballs headless, all 11 levels, saved registration):
 
   | Method | Wall | CPU |
