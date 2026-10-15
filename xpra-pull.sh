@@ -21,7 +21,8 @@ IMAGE_REF="docker://quay.io/ccp-volume-em/muvis-align-xpra:latest"
 # Slurm partition: this one where the cluster has it, else the cluster's default.
 # Override with  MUVIS_PARTITION=<name> bash xpra-pull.sh  (empty: the cluster's default)
 PREFERRED_PARTITION="ncpu"
-DEST_DIR="/nemo/stp/ddt/working/defoltj/muvis-align"
+# the directory you run this from (a job sees it as SLURM_SUBMIT_DIR), where xpra-slurm.sh looks for it
+DEST_DIR="${MUVIS_CONTAINER_DIR:-${SLURM_SUBMIT_DIR:-$PWD}}"
 SANDBOX_PATH="${DEST_DIR}/muvis-align-xpra_latest"
 
 if [ -z "${SLURM_JOB_ID:-}" ]; then
