@@ -93,11 +93,20 @@ fi
 
 mkdir -p "${DEST_DIR}"
 
-# a fresh sandbox: --force does not clear what an interrupted or older build left behind
-echo "Removing ${SANDBOX_PATH} ..."
-rm -rf "${SANDBOX_PATH}"
+# built beside the sandbox and swapped in once complete: a session started meanwhile gets the old one, never a part
+BUILD_PATH="${SANDBOX_PATH}.building"
+OLD_PATH="${SANDBOX_PATH}.old"
+# a fresh build: --force does not clear what an interrupted or older build left behind
+rm -rf "${BUILD_PATH}" "${OLD_PATH}"
 
-echo "Pulling ${IMAGE_REF} and building sandbox at ${SANDBOX_PATH} ..."
-apptainer build --sandbox --force "${SANDBOX_PATH}" "${IMAGE_REF}"
+echo "Pulling ${IMAGE_REF} and building sandbox at ${BUILD_PATH} ..."
+apptainer build --sandbox --force "${BUILD_PATH}" "${IMAGE_REF}"
+
+if [ -e "${SANDBOX_PATH}" ]; then
+    mv "${SANDBOX_PATH}" "${OLD_PATH}"
+fi
+mv "${BUILD_PATH}" "${SANDBOX_PATH}"
+echo "Removing the previous sandbox ..."
+rm -rf "${OLD_PATH}"
 
 echo "Done: ${SANDBOX_PATH}"
