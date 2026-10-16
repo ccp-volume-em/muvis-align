@@ -78,44 +78,31 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
       save_mappings_csv, the metadata table - and whether source_geometry could serve them, as fusion builds its own
       in make_msims_3d (13.4 min) anyway.
 
-From the HPC run of 2026-10-03 (c73720b; 34k sources, 229725 pairs; registration 7.2h, fusion 9.7h, no errors):
-- [ ] **Fusion pyramid levels: 5.5h at '100%'** - 'average' at 0.01um: after level 0,
-      ngff_utils.write_sim_to_ome_zarr built the lower levels from it, uncounted by the bar; its 250GB peak was
-      expected (see Known issues). Now each level averages the one above in our own blocks (one zarr writer, see
-      Done): only blocks some source reaches, z never averaged across sections, each level on the bar. Measure on the
-      next HPC run, with the 14 min at 0% before 'Output stack' (timers: fusion: make_msims_3d, output properties,
-      export chunk sizes) and 'Fusion output_chunksize'.
+From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pairs; registration 4.7h, fusion
+3.4h, no errors; fusion 10.4h on 2026-10-12):
+- [ ] **Fusion level 6 (0.2469um) fused from its sources: 35 min, rss 27 -> 131GB a block** - the only coarse level
+      not averaged, as the overviews join there; tiles read at their coarsest (0.16) for each block. Peak 152.5GB
+      (233GB at this level on 2026-10-13, 368GB at 0.494 before). Levels 0-5 took 1h46, 14, 9, 5, 4.5 min (2h38,
+      1h33, 1h08, 54, 53, 54 on 2026-10-13), levels 7-12 1-2.5 min each (13+ before); level 0 rss stayed 26-36GB.
+- [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
+      3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
+      registration 18.4, fusion 12.8 min): see The msims build in global registration.
+- [ ] **Pair registration dispatch-bound once pairs are cheap** - largest first: the first 10% of pairs took 64 min,
+      the next 37, then ~8 min a 10%; the last half at 0.09s a pair ran 128 pairs in ~2.7s with 4-6 of 64 workers
+      busy (process cpu 1.6 cores): ~20ms a pair in the main process. 38.6 of 64 busy overall (39.7 before).
+- [ ] **Channel name warnings** - 'Registration channel 'channel 0' not found - using the only channel, '#0'' and
+      'Fusion: 137 source(s) with another channel name given '#0'': check the 137 (overviews?) and the setting.
+- Robust linear 17 min (8 rounds, ~110s each; 78 min before), pair metrics 37 min, global 31 min (+18 min msims).
+  Refresh after registration not exercised (fusion ran straight after); after fusion 1 min.
 - [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
       image shapes 1.3ms, tables 1.8 min; the preview cap and fused preview only where the lazy overview
       declines (a rotation, 2D and 3D sources together). Check on the next HPC run. (Promotion, the second transform
       copy, the cap's estimate and the lazy overview after registration: see Done.)
 
-From the HPC run of 2026-10-12 (4844e9f; 34k sources, 229725 pairs; registration 11.3h, fusion 10.4h, no errors):
-- [ ] **Fusion memory climbs through level 0 and stays** - rss 35 -> 288GB during level 0 (0.01um, 2h52), never
-      released, peak 510GB at level 6; on 2026-10-09 (direct TIFF reads) level 0 stayed at 25-30GB, peak 248GB.
-      Likely the reads through zarr's I/O pool (256 threads, constants.py) leaving freed tiles in Linux's per-thread
-      malloc arenas: not reproduced on Windows. Confirmed by the run of 2026-10-13 (7ef399e, direct reads back):
-      level 0 rss 24-35GB, peak 39.4GB, in 2h39. The coarse levels are another matter: rss swings per block and drops
-      back (level 6 at 0.332: 27 -> 225GB), max 44, 65, 99, 96, 136, 233GB over levels 1-6 - a coarse block covers
-      thousands of tiles, each read at its coarsest level; the 510GB of 2026-10-12 was this. Compare on the run with
-      the numpy plan (and without the 0.332 level). Zarr reads remain for compressed/tiled TIFFs and OME-Zarr, so if
-      the level 0 climb shows there, cap zarr's pool or MALLOC_ARENA_MAX. Robust linear is back to 1h18 (msims built to converged; 1h23 on 2026-10-09, 1h36 on
-      2026-10-12).
-- [ ] **Fusion's fixed cost per level** - every level takes 13 min or more however small: 0.66-10.6um (hundreds of
-      pixels) 27, 19, 16, 16, 13 min, 1.5h of the 10.4h. Per level and source: the level choice and sim
-      (msim_level_spacings, get_sim_from_msim), sim_views, view_bounds, budget_chunksize and block_sources over 1081
-      z blocks, a prepare_block_fusion per source group. Time each on the next run or a meatballs profile.
-      2026-10-13: 18 min before level 0 starts (make_msims_3d 13.4, output properties 1.0, export chunk sizes 0.9);
-      levels 0-5 2h38, 1h33, 1h08, 54, 53, 54 min (484, 172, 99, 47, 47, 41GB): levels 3-5 the same whatever
-      their size. Native levels are each fused from their sources; averaging the level above where the sources are
-      the same (levels 1-4, and after the overviews') was weighed and left - measure the numpy plan first.
-      The per-block plan's per-source affine checks now run on numpy (see Done); what is left of a small level's
-      time locally is spread over xarray/dask per source and block. Compare the levels on the next HPC run.
-
 REFACTORING
 
-- [ ] **After the next HPC run, keep or drop** estimated_pair_cost (pairs largest first: workers busy was 39.7/64)
-      and SectionPlanes' prefetch of neighbouring sections (a section's build time when scrolling).
+- [ ] **Keep or drop** estimated_pair_cost (2026-10-15: workers busy 38.6/64, 39.7 without; the slow part is now
+      the cheap pairs' dispatch) and SectionPlanes' prefetch of neighbouring sections (not seen in the log).
 
 
 ## Done
