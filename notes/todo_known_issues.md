@@ -5,6 +5,38 @@ Test projects: slides `C:/project/slides` (328 tiffs, 5 sections; the repo's `mu
 3 sections, SBEMimage), Ciqtek `C:/Project/slides/Ciqtek`, data_subset (54 tiffs, 6 sections).
 HPC: 34k sources in 1081 sections, xpra container (software GL).
 
+## HPC runs compared
+
+34k sources, 229725 pairs, 64 CPUs. Job 60804208 (2026-10-14) hit its 6h limit at 9% of pair registration (~10s a
+pair); the 2026-10-12/13 logs are not kept (numbers in the TODO items below).
+
+| Task | 2026-10-09 (9eb38ac) | 2026-10-14/15 (b70c752) | 2026-10-15 (c1baed5) |
+|---|---|---|---|
+| Open: init sources + view | 2.4 + 1.2 min | 3.1 + 1.2 min | 2.6 + 1.3 min |
+| Pre-processing (msims build) | 16.4 min (15.4) | 17.2 min (16.2) | 16.8 min (15.8) |
+| Pair registration | 5.1h | 3.5h | 3.5h |
+| - setup (geometry, pairs, channel, graph) | 6.5 min | 6.7 min | 6.9 min |
+| - register pairs (workers busy of 64) | 4.1h (47.1) | 2.7h (37.4) | 2.8h (38.6) |
+| - pair metrics | 56 min | 45 min | 37 min |
+| Global registration (+ msims build) | 2.4h (+19 min) | 2.7h (+19 min) | 31 min (+18 min) |
+| - robust linear (8 rounds) | 1h23 | 2h26 | 17 min |
+| - apply + store transforms | 8.7 min | 9.5 min | 9.9 min |
+| - global metrics | 48 min | 0.5 min | 0.5 min |
+| Registration in all | 8.2h | 6.9h | 4.7h |
+| Fusion | 9.8h | 9.4h | 3.4h |
+| - before level 0 (make_msims_3d ~13 min) | ~16 min | 18.6 min | 19.0 min |
+| - memory peak | 248GB | 368GB | 152GB |
+| Pre-processing + registration + fusion | 18.3h | 16.6h | 8.4h |
+
+| Fusion level | 2026-10-14/15 | 2026-10-15 |
+|---|---|---|
+| 0.01 um | 2h37 | 1h46 |
+| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min |
+| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min |
+| 0.247 um (fused from sources) | 46.2 min | 34.9 min |
+| 0.494 um | 26.8 min | 2.5 min |
+| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each |
+
 ## Known issues
 
 ### Refresh bar stalls during single-step phases
