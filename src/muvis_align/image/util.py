@@ -1047,10 +1047,10 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
     return layers
 
 
-def metric_to_rgb(value, min_light=0, max_light=1, output_range=1.0):
-    # metric range 0...1 to red-yellow-green ranged rgb
+def metric_to_rgb(value, min_light=0, max_light=1, output_range=1.0, missing=(0, 0, 0)):
+    # metric range 0...1 to red-yellow-green ranged rgb; `missing` (in output range) where there is no value
     if value is None or np.isnan(value):
-        return 0, 0, 0
+        return missing
     colormap = plt.colormaps.get('RdYlGn')
     index = int(value * colormap.N)
     r, g, b, a = [float(value) for value in colormap(index)]

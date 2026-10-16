@@ -1124,7 +1124,9 @@ class Interface:
         shapes.extend(shapes2)
         refs += [f'{index1} {index2}' for index1, index2 in pairs]
         labels += ['' for _ in pairs]
-        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair))) for pair in pairs]
+        # grey for an overlap without a quality (not registered): black would hide the image under overlapping tiles
+        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair), missing=(0.5, 0.5, 0.5)))
+                        for pair in pairs]
         return shapes, refs, labels, face_colors
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,

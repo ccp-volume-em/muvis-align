@@ -146,7 +146,8 @@ REFACTORING
   the metrics too. At 34k on the HPC a refresh built and added shapes for ~1 min (build 21s, add 21.5s, overview
   15s); locally at 149k shapes adding takes 7.4s, recolouring 1.3s, re-attaching 0.9s. The plugin's viewer is
   napari's PublicOnlyProxy, which wraps each layer anew at every access: layers are compared unwrapped.
-  Unregistered overlaps are drawn black (metric_to_rgb(None)), hiding heavily overlapping tiles (data/S000).
+  Overlaps without a quality (not registered) are grey, not black; on heavily overlapping tiles (data/S000) the
+  stacked half-opaque shapes still hide the image.
 - **Native levels from the level above, measured** (2026-10-15, meatballs headless): a level with the same sources
   as the one above (all but 0.01 and 0.2492 here) averaged 2x2 from it instead of fused from the sources:
 

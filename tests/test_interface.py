@@ -924,7 +924,7 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
         interface_module, "create_overlap_shapes", create_overlaps
     )
     monkeypatch.setattr(
-        interface_module, "metric_to_rgb", lambda _: (0.1, 0.2, 0.3)
+        interface_module, "metric_to_rgb", lambda *_, **__: (0.1, 0.2, 0.3)
     )
 
     shape_data = bare_interface._create_napari_shapes("registered")
@@ -2151,8 +2151,12 @@ def test_overlap_shapes_are_reused_while_the_geometry_they_came_from_holds(bare_
 
     monkeypatch.setattr(interface_module, "create_overlap_shapes", create_overlaps)
     bare_interface.reg.is_pairs_registered.return_value = False
-    bare_interface._create_napari_shapes("source_metadata")
+    bare_interface.reg.get_metrics.return_value = None
+    _, _, _, face_colors = bare_interface._create_napari_shapes("source_metadata")
+    # an overlap without a quality is grey, not black over the image
+    np.testing.assert_allclose(face_colors[3:], [(0.5, 0.5, 0.5)] * 2)
 
+    bare_interface.reg.get_metrics.return_value = 0.5
     bare_interface.reg.is_pairs_registered.return_value = True
     # (0, 2) was not found by the pass over all pairs: it has no overlap
     bare_interface.reg.pairs_graph.edges.return_value = [(2, 1), (0, 2)]
