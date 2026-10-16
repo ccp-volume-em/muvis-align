@@ -6,6 +6,7 @@ from multiview_stitcher import msi_utils, ngff_utils, spatial_image_utils as si_
 from napari.qt.threading import create_worker
 from napari.utils import progress
 from napari.utils.notifications import notification_manager, show_info, show_warning
+from napari.utils.colormaps.standardize_color import transform_color
 import networkx as nx
 import numpy as np
 import os.path
@@ -69,6 +70,12 @@ class ViewMode(Enum):
     FUSED = auto()
 
 
+def has_layer(viewer, layer):
+    # a plugin's viewer hands out a new proxy of a layer at every access, and napari compares layers by value
+    layer = getattr(layer, '__wrapped__', layer)
+    return any(getattr(shown, '__wrapped__', shown) is layer for shown in viewer.layers)
+
+
 def position_sort_key(position):
     return position.get('z', 0), position.get('y', 0), position.get('x', 0)
 
@@ -111,6 +118,9 @@ class Interface:
         self._pair_metrics_worker = None
         self._pair_metrics_pending = False
         self._fusion_estimate = None
+        # per viewer (by id): the shape layer drawn and the signature of what it was drawn from
+        self._shape_layers = {}
+        self._detached_view = None
 
         self.reg = MVSRegistration()
         if initialize:
@@ -124,6 +134,8 @@ class Interface:
         self._preview_overlap_cache = None
         self._view_msims = None
         self.reg.reset()
+        self._shape_layers = {}
+        self._detached_view = None
         self._clear_napari_view(self.overview)
         self._clear_napari_view(self.viewer)
         if self.enable_tabs:
@@ -146,7 +158,7 @@ class Interface:
 
     def tab_changed(self, tab_label):
         self.current_tab = tab_label
-        if tab_label != 'registration' and self.view_mode == ViewMode.FEATURES:
+        if tab_label != 'registration' and self.view_mode == ViewMode.FEATURES and not self._restore_view():
             self._clear_napari_view(self.viewer)
             self.view_mode = None
         self.pair_metrics_timer.stop()
@@ -884,20 +896,24 @@ class Interface:
         is_multi_z_shapes = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
         force_2d = is_multi_z_shapes and not is_3d
 
+        # shapes drawn from the same geometry, pairs and qualities are kept, only the image under them replaced
+        shapes = None
+        build_shapes = self._current_shape_layer(self.viewer, transform_key, force_2d) is None
         # steps weighted by cost: building the view data dominates, and reports from the inside
         view_data_weight = 12
         # shapes also grow with the source count, and report per source
         shapes_weight = 3
-        phases = shapes_weight + 2 + (view_data_weight + 1 if show_images else 0)
+        phases = (shapes_weight if build_shapes else 0) + 2 + (view_data_weight + 1 if show_images else 0)
 
         with self._operation_progress('Refreshing view', progress_factory, phases=phases) as factory:
-            with Timer('update_views: create shapes', verbose=self._timing_verbose()):
-                # pure geometry, so off the Qt thread to keep the window responsive
-                shapes, refs, labels, face_colors = self._run_off_thread(
-                    lambda worker_factory: self._create_napari_shapes(
-                        transform_key, force_2d=force_2d, progress_factory=worker_factory,
-                        weight=shapes_weight),
-                    factory)
+            if build_shapes:
+                with Timer('update_views: create shapes', verbose=self._timing_verbose()):
+                    # pure geometry, so off the Qt thread to keep the window responsive
+                    shapes = self._run_off_thread(
+                        lambda worker_factory: self._create_napari_shapes(
+                            transform_key, force_2d=force_2d, progress_factory=worker_factory,
+                            weight=shapes_weight),
+                        factory)
 
             # each section built only when viewed: image data as soon as the shapes
             with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
@@ -913,24 +929,17 @@ class Interface:
                             transform_key, show_preprocessed=show_preprocessed,
                             progress_factory=worker_factory, weight=view_data_weight),
                         factory)
-            # cleared only once the new data is ready: an empty viewer's welcome screen hides the activity dialog
-            self._clear_napari_view(self.viewer)
-            if data is not None:
-                with factory(total=1) as pbar, \
-                     Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
-                    # an overview, not the fusion preview: a naive contrast guess is enough
-                    self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data',
-                                                     cheap=True)
-                    pbar.update(1)
-
+            # replaced only once the new data is ready: an empty viewer's welcome screen hides the activity dialog
             with factory(total=1) as pbar, \
-                 Timer('update_views: add shapes to viewer', verbose=self._timing_verbose()):
-                self._update_view_add_shapes(self.viewer, shapes, refs, labels, face_colors, f'{self.reg.fileset_label} shapes')
+                 Timer('update_views: add fused data to viewer', verbose=self._timing_verbose()):
+                # an overview, not the fusion preview: a naive contrast guess is enough
+                self._show_view_image(self.viewer, data, f'{self.reg.fileset_label} data', cheap=True,
+                                      keep_shapes=not build_shapes)
                 pbar.update(1)
 
             with factory(total=1) as pbar, \
-                 Timer('update_views: refresh overview shapes', verbose=self._timing_verbose()):
-                self._refresh_overview_shapes(transform_key, shapes, refs, labels, face_colors, is_3d=is_3d)
+                 Timer('update_views: add shapes to viewers', verbose=self._timing_verbose()):
+                self._refresh_view_shapes(transform_key, shapes)
                 pbar.update(1)
         self.view_mode = ViewMode.OVERVIEW
 
@@ -960,21 +969,108 @@ class Interface:
                                      readers=readers, label=f'{label} ({len(reg.sources)} images)',
                                      channel_labels=channel_labels)
 
-    def _refresh_overview_shapes(self, transform_key, shapes=None, refs=None, labels=None,
-                                 face_colors=None, is_3d=None):
-        # the overview is always flat and top-down, so a 3D shape set is built again with force_2d
-        if is_3d is None:
-            is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
-        if shapes is None or is_3d:
-            shapes, refs, labels, face_colors = self._create_napari_shapes(transform_key, force_2d=True)
-        self._clear_napari_view(self.overview)
-        self._update_view_add_shapes(self.overview, shapes, refs, labels, face_colors,
-                                     f'{self.reg.fileset_label} shapes', show_labels=False)
+    def _shapes_signature(self, transform_key, force_2d):
+        # the source geometry a shape set is drawn from; pair registration moves no source
+        return (transform_key, force_2d, id(self.reg.positions), id(self.reg._msim_transforms),
+                id(self.reg.mappings) if transform_key == self.reg.reg_transform_key else None)
 
-    def _clear_napari_view(self, viewer):
+    def _shape_layer_signature(self, transform_key, force_2d):
+        # a pair registration or load brings a new pairs graph and metrics: other overlaps, other colours
+        pairs_graph = self.reg.pairs_graph if self.reg.is_pairs_registered() else None
+        return self._shapes_signature(transform_key, force_2d) + (id(pairs_graph), id(self.reg.metrics))
+
+    def _current_shape_layer(self, viewer, transform_key, force_2d):
+        """The viewer's shape layer if drawn from this geometry, these pairs and their qualities, else None."""
+        drawn_signature, layer = self._shape_layers.get(id(viewer), (None, None))
+        if (drawn_signature == self._shape_layer_signature(transform_key, force_2d)
+                and layer is not None and has_layer(viewer, layer)):
+            return layer
+        return None
+
+    def _refresh_view_shapes(self, transform_key, shapes=None):
+        """Both viewers' shape layers drawn for this geometry, each kept if it already is."""
+        is_3d = (self.reg.sources[0].get_size().get('z', 0) > 1)
+        is_multi_z_shapes = (len(set(position.get('z', 0) for position in self.reg.positions)) > 1)
+        force_2d = is_multi_z_shapes and not is_3d
+        # the overview is always flat and top-down, so a 3D shape set is built again with force_2d
+        overview_force_2d = True if is_3d else force_2d
+        for viewer, viewer_force_2d, show_labels in [(self.viewer, force_2d, True),
+                                                     (self.overview, overview_force_2d, False)]:
+            if self._current_shape_layer(viewer, transform_key, viewer_force_2d) is None:
+                viewer_shapes = shapes
+                if viewer_shapes is None or viewer_force_2d != force_2d:
+                    viewer_shapes = self._create_napari_shapes(transform_key, force_2d=viewer_force_2d)
+                _, old_layer = self._shape_layers.pop(id(viewer), (None, None))
+                if old_layer is not None and has_layer(viewer, old_layer):
+                    viewer.layers.remove(old_layer)
+                layer = self._update_view_add_shapes(viewer, *viewer_shapes, f'{self.reg.fileset_label} shapes',
+                                                     show_labels=show_labels)
+                self._shape_layers[id(viewer)] = (self._shape_layer_signature(transform_key, viewer_force_2d),
+                                                  layer)
+
+    def _show_view_image(self, viewer, data, layer_name, cheap=False, keep_shapes=True):
+        """The viewer's image replaced by `data` (None: none), the shape layer drawn over it kept."""
+        _, kept = self._shape_layers.get(id(viewer), (None, None))
+        kept = kept if keep_shapes and kept is not None and has_layer(viewer, kept) else None
+        self._detached_view = None
+        self._clear_napari_view(viewer, keep=kept)
+        if data is not None:
+            self._napari_view_add_fused_data(viewer, data, layer_name, cheap=cheap)
+        if kept is not None:
+            viewer.layers.move(viewer.layers.index(kept), len(viewer.layers))
+            self._set_shapes_line_color(kept, contrasting_color(self._view_background_luminance(viewer)))
+
+    def _set_shapes_line_color(self, layer, line_color):
+        # only the lines drawn (a 3D box's faces have none) and the labels follow the image under them
+        if layer.metadata.get('line_color') != line_color:
+            edge_colors = np.array(layer.edge_color)
+            edge_colors[np.asarray(layer.edge_width) > 0] = transform_color(line_color)[0]
+            layer.edge_color = edge_colors
+            layer.text.color = line_color
+            layer.metadata['line_color'] = line_color
+
+    def _detach_view(self, view_mode):
+        """The main view's layers set aside for a pair or feature view, to be put back as they were."""
+        # entering one of these views from the other keeps the view set aside first
+        if self._detached_view is None:
+            layers = [getattr(layer, '__wrapped__', layer) for layer in self.viewer.layers]
+            self._detached_view = (layers, view_mode, getattr(self, '_view_levels', None))
+        self._clear_napari_view(self.viewer)
+
+    def _restore_view(self):
+        """The main view set aside by _detach_view put back; False if there was none."""
+        detached, self._detached_view = self._detached_view, None
+        if detached is None:
+            return False
+        self._clear_napari_view(self.viewer)
+        layers, self.view_mode, self._view_levels = detached
+        for layer in layers:
+            self.viewer.layers.append(layer)
+        self.viewer.reset_view()
+        return True
+
+    def _recolor_pair_shapes(self, pair):
+        """A pair's overlap coloured by its quality now in both viewers' shapes, the others left as drawn."""
+        color = transform_color(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair)))[0]
+        pair_refs = [f'{pair[0]} {pair[1]}', f'{pair[1]} {pair[0]}']
+        for viewer in (self.viewer, self.overview):
+            _, layer = self._shape_layers.get(id(viewer), (None, None))
+            if layer is not None and has_layer(viewer, layer):
+                rows = np.isin(np.asarray(layer.features['refs']), pair_refs)
+                if rows.any():
+                    face_colors = np.array(layer.face_color)
+                    face_colors[rows] = color
+                    layer.face_color = face_colors
+
+    def _clear_napari_view(self, viewer, keep=None):
         # no empty LayerList.clear() event: under xpra/Xvfb it breaks blending for later Shapes/Points layers
         if viewer is not None and len(viewer.layers) > 0:
-            viewer.layers.clear()
+            if keep is None:
+                viewer.layers.clear()
+            else:
+                kept = getattr(keep, '__wrapped__', keep)
+                for layer in [layer for layer in viewer.layers if getattr(layer, '__wrapped__', layer) is not kept]:
+                    viewer.layers.remove(layer)
         if viewer is not None and viewer is getattr(self, 'viewer', None):
             clear_napari_dask_cache()
             self._view_levels = None
@@ -1007,8 +1103,7 @@ class Interface:
         # once registered, only registered pairs: an overlap between unpaired images has no quality behind it
         overlap_pairs = list(self.reg.pairs_graph.edges()) if self.reg.is_pairs_registered() else None
         # the overlaps an earlier refresh found under the same geometry: pair registration moves no source
-        signature = (transform_key, force_2d, id(self.reg.positions), id(self.reg._msim_transforms),
-                     id(self.reg.mappings) if transform_key == self.reg.reg_transform_key else None)
+        signature = self._shapes_signature(transform_key, force_2d)
         cache = getattr(self, '_overlap_shapes', None)
         cache = cache if cache is not None and cache['signature'] == signature else None
         with phase(1 / 5, total=1) as pbar, \
@@ -1188,7 +1283,8 @@ class Interface:
             features = {'refs': refs, 'labels': labels} if show_labels else {'refs': refs}
             layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
                                       features=features, face_color=face_color, opacity=0.5,
-                                      edge_width=edge_width, edge_color=edge_color, blending=blending)
+                                      edge_width=edge_width, edge_color=edge_color, blending=blending,
+                                      metadata={'line_color': line_color})
 
             @layer.mouse_drag_callbacks.append
             def on_shape_click(clicked_layer, event, refs=refs):
@@ -1198,6 +1294,8 @@ class Interface:
                     shape_index = value[0] if value is not None else None
                     if shape_index is not None:
                         self.select_pair_preview(refs[shape_index])
+            return layer
+        return None
 
     def _napari_view_add_fused_data(self, viewer, fused, layer_name, cheap=False):
         # `fused` is one channel-combined multiscale msim, or in 'compose' mode a list of per-source msims;
@@ -1429,6 +1527,7 @@ class Interface:
             fixed_points, moving_points, matches, inliers = grid_point_pairs(
                 np.shape(overlap1), np.shape(overlap2), results['affine_matrix'])
         with Timer('preview_registration: show feature layers', verbose=self._timing_verbose()):
+            self._detach_view(self.view_mode)
             self._napari_view_show_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches,
                                             inliers)
         self.view_mode = ViewMode.FEATURES
@@ -1618,11 +1717,23 @@ class Interface:
                 nx.set_edge_attributes(self.reg.pairs_graph, pair_transforms, default_transform_key)
                 nx.set_edge_attributes(self.reg.pairs_graph, qualities, default_quality_key)
                 self.reg.save_pair_results(pair_transforms, qualities=qualities)
+                # the view and table colour a pair by its metrics, which would still hold the replaced quality
+                pair_metrics = self.reg.metrics.setdefault('pairs', {}).setdefault(self.pair_indices, {})
+                if not pair_metrics:
+                    pair_metrics[default_transform_key] = {}
+                for transform_metrics in pair_metrics.values():
+                    transform_metrics[default_quality_key] = 1.0
 
-            self.view_mode = ViewMode.OVERVIEW
-            self.update_registered(view_transform_key=self.reg.source_transform_key)
+            if self._restore_view():
+                if reply == QMessageBox.Yes:
+                    self._recolor_pair_shapes(self.pair_indices)
+                    self.populate_metrics_table(self.reg.metrics)
+            else:
+                self.view_mode = ViewMode.OVERVIEW
+                self.update_registered(view_transform_key=self.reg.source_transform_key)
             self._restore_pair_modify_state()
         else:
+            previous_view_mode = self.view_mode
             self.view_mode = ViewMode.PAIRS
             labels = self.reg.file_labels
             label1 = self.param_widgets.get('registration.reg_preview_image1').get_value()
@@ -1637,7 +1748,7 @@ class Interface:
                 indices = tuple(reversed(indices))
 
             if indices not in pair_transforms:
-                self.view_mode = ViewMode.OVERVIEW
+                self.view_mode = previous_view_mode
                 if self.reg.is_pairs_registered():
                     show_warning(f'No pair registration for {label1} and {label2}: choose a registered pair')
                 else:
@@ -1664,7 +1775,7 @@ class Interface:
                     if not self.reg.register_msims:
                         if not self.run_pre_processing():
                             return
-                    self._clear_napari_view(self.viewer)
+                    self._detach_view(previous_view_mode)
                     # a multiscale pyramid, so napari loads only the level it needs while dragging
                     register_images = self.reg.register_msims
                     # each source keeps its own transform (e.g. scan rotation); the pair transform maps fixed to moving
@@ -1681,7 +1792,8 @@ class Interface:
                     entered = True
                 finally:
                     if not entered:
-                        self.view_mode = ViewMode.OVERVIEW
+                        if not self._restore_view():
+                            self.view_mode = previous_view_mode
                         self._restore_pair_modify_state()
 
     def _restore_pair_modify_state(self):
@@ -1753,13 +1865,12 @@ class Interface:
         with progress_phase(progress_factory, total=1, desc='Reading fused output') as pbar, \
              Timer('show fused output', verbose=self._timing_verbose()):
             fused = ngff_utils.read_msim_from_ome_zarr(path, transform_key=transform_key, array_backend='dask')
-            self._clear_napari_view(self.viewer)
-            self._napari_view_add_fused_data(self.viewer, fused, 'Fused')
+            self._show_view_image(self.viewer, fused, 'Fused')
             self.view_mode = ViewMode.FUSED
             if pbar is not None:
                 pbar.update(1)
         logging.info(f'Fused output shown from {path}')
-        self._refresh_overview_shapes(transform_key)
+        self._refresh_view_shapes(transform_key)
 
     def preview_fusion(self, progress_factory=None):
         # a merge has no registered transform, so this falls back to the source positions
@@ -1776,12 +1887,11 @@ class Interface:
 
             data = self._run_off_thread(fuse, factory)
             with factory(total=1) as pbar:
-                self._clear_napari_view(self.viewer)
-                self._napari_view_add_fused_data(self.viewer, data, f'{self.reg.fileset_label} data')
+                self._show_view_image(self.viewer, data, f'{self.reg.fileset_label} data')
                 self.view_mode = ViewMode.FUSED
                 pbar.update(1)
-        # this path skips update_views(), so the overview would stay empty
-        self._refresh_overview_shapes(transform_key)
+        # this path skips update_views(), so the shapes may be of another geometry or not drawn yet
+        self._refresh_view_shapes(transform_key)
 
     @catch_run_errors
     def run_convert(self):
@@ -1946,8 +2056,9 @@ class Interface:
             # the export reported its own bar; drawing the result reports a second one
             with self._operation_progress('Refreshing view') as factory, \
                  factory(total=1):
-                self._clear_napari_view(self.viewer)
-                self._napari_view_add_fused_data(self.viewer, fused_image, 'Fused')
+                self._show_view_image(self.viewer, fused_image, 'Fused')
+                # registration may have run straight into the fusion, with no view of its geometry
+                self._refresh_view_shapes(self.get_best_transform_key())
             self.reg.state = RegState.FUSED
             self.view_mode = ViewMode.FUSED
             QMessageBox.information(None, 'muvis-align', 'Fusion completed')

@@ -172,6 +172,8 @@ def bare_interface():
     interface.extra_metadata = {}
     interface.param_widgets = {}
     interface.need_source_reinit = False
+    interface._shape_layers = {}
+    interface._detached_view = None
     interface.reg.file_labels = ["image-0"]
     interface.view_msims = [
         SimpleNamespace(dims=("z", "y", "x"), sizes={"z": 2})
@@ -365,6 +367,7 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     }
     bare_interface.reg.file_labels = ["image-0"]
     bare_interface.reg.register_msims = ["msim"]
+    bare_interface.reg.metrics = {}
     transform = xr.DataArray(
         np.eye(3).reshape(1, 3, 3), dims=["t", "x_in", "x_out"], coords={"t": [0]}
     )
@@ -377,6 +380,9 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
     bare_interface._clear_napari_view = MagicMock()
     bare_interface._napari_view_add_image = MagicMock()
     bare_interface.update_pair_metrics = MagicMock()
+    bare_interface._restore_view = MagicMock(return_value=True)
+    bare_interface._recolor_pair_shapes = MagicMock()
+    bare_interface.populate_metrics_table = MagicMock()
     _stub_source_affines(monkeypatch, {"msim": np.eye(3)})
 
     bare_interface.modify_pair_registration()
@@ -401,9 +407,15 @@ def test_modify_pair_registration_disables_other_tabs_and_restores_them(
         "registration": True, "fusion": False,
     }
     assert bare_interface.reg.save_pair_results.called is store
+    # the view set aside comes back as it was, not drawn again; only a stored pair is recoloured
+    bare_interface.update_registered.assert_not_called()
+    assert bare_interface._recolor_pair_shapes.called is store
     if store:
-        # the modified pair's quality set to 1, saved with the rest
+        # the modified pair's quality set to 1, saved with the rest and shown by its metrics
         assert bare_interface.reg.save_pair_results.call_args.kwargs['qualities'][bare_interface.pair_indices] == 1
+        assert bare_interface.reg.metrics['pairs'][(0, 0)] == {interface_module.default_transform_key: {
+            interface_module.default_quality_key: 1.0}}
+        bare_interface._recolor_pair_shapes.assert_called_once_with((0, 0))
 
 
 def _stub_source_affines(monkeypatch, affines):
@@ -459,7 +471,7 @@ def _arm_pair_modify_entry(bare_interface, monkeypatch):
     """Set a bare_interface up so modify_pair_registration() enters pair-modification mode."""
     import xarray as xr
 
-    bare_interface.view_mode = None
+    bare_interface.view_mode = ViewMode.OVERVIEW
     bare_interface.viewer = MagicMock()
     bare_interface.template = {"input_output": [], "registration": [], "fusion": []}
     tab_states = {
@@ -548,6 +560,22 @@ def test_modify_pair_registration_restores_state_when_entering_raises(
         "project": True, "input_output": True, "registration": True, "fusion": True
     }
     assert bare_interface.view_mode is ViewMode.OVERVIEW
+
+
+def test_tab_changed_puts_back_the_view_a_feature_view_set_aside(make_napari_viewer):
+    with patch('muvis_align._widget.ViewerWidget'):
+        interface = Interface(make_napari_viewer(), MagicMock(), MagicMock(), MagicMock())
+    image = interface.viewer.add_image(np.zeros((4, 4)))
+    shapes = interface.viewer.add_shapes([np.zeros((4, 2))])
+    interface.view_mode = ViewMode.FUSED
+
+    interface._detach_view(interface.view_mode)
+    interface.viewer.add_image(np.ones((2, 2)), name='features')
+    interface.view_mode = ViewMode.FEATURES
+    interface.tab_changed("fusion")
+
+    assert list(interface.viewer.layers) == [image, shapes]
+    assert interface.view_mode is ViewMode.FUSED
 
 
 def test_tab_changed_clears_feature_view_and_stops_timer(bare_interface):
@@ -788,12 +816,10 @@ def test_update_views_adds_enabled_preview_layers(
 
     bare_interface.update_views(show_preprocessed=True)
 
-    assert bare_interface._clear_napari_view.call_args_list == [
-        call(bare_interface.viewer),
-        call(bare_interface.overview),
-    ]
+    # nothing drawn before: the view is replaced whole
+    assert bare_interface._clear_napari_view.call_args_list == [call(bare_interface.viewer, keep=None)]
     # the viewer's shapes are built off the Qt thread, reporting per source into the refresh's
-    # own bar; the overview's are rebuilt flattened (see _refresh_overview_shapes)
+    # own bar; the overview's are rebuilt flattened (see _refresh_view_shapes)
     assert bare_interface._create_napari_shapes.call_args_list == [
         call("registered", force_2d=False, progress_factory=ANY, weight=3),
         call("registered", force_2d=True),
@@ -815,6 +841,7 @@ def test_update_views_adds_enabled_preview_layers(
     bare_interface._update_view_add_shapes.assert_any_call(
         bare_interface.viewer,
         *expected_shape_call,
+        show_labels=True,
     )
     # the overview reuses the viewer's own shapes, drawn much smaller - a label per shape is
     # unreadable there and covers the layout it is there to show
@@ -1488,8 +1515,8 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     bare_interface.reg.is_fused.return_value = False
     bare_interface.reg.fuse.return_value = ("fused", None)
     bare_interface.get_all_widgets = MagicMock(return_value={})
-    bare_interface._clear_napari_view = MagicMock()
-    bare_interface._napari_view_add_fused_data = MagicMock()
+    bare_interface._show_view_image = MagicMock()
+    bare_interface._refresh_view_shapes = MagicMock()
     bare_interface.reg.estimate_fusion_size.return_value = {
         "levels": [{"spacing": 0.01, "bytes": 1500}, {"spacing": 0.02, "bytes": 500}], "bytes": 2000, "native": True}
     messages = []
@@ -1509,7 +1536,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
     assert messages[0].endswith("Estimated output: 2.0 KB")
     if reply == "No":
         assert not bare_interface.reg.fuse.called
-        assert not bare_interface._napari_view_add_fused_data.called
+        assert not bare_interface._show_view_image.called
         return
     assert bare_interface.reg.estimate_fusion_size.call_args.kwargs["tile_size"] == expected
     assert bare_interface.reg.fuse.call_args.kwargs["tile_size"] == expected
@@ -1517,9 +1544,11 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         bare_interface.reg.fuse.call_args.kwargs["output_filename"]
         == "registered"
     )
-    bare_interface._napari_view_add_fused_data.assert_called_once_with(
+    bare_interface._show_view_image.assert_called_once_with(
         bare_interface.viewer, "fused", "Fused"
     )
+    # registration may have run straight into the fusion: the shapes follow its geometry
+    bare_interface._refresh_view_shapes.assert_called_once_with(bare_interface.get_best_transform_key())
     assert bare_interface.reg.state is RegState.FUSED
     assert bare_interface.view_mode is ViewMode.FUSED
 
@@ -1543,8 +1572,8 @@ def test_fusion_process_runs_missing_registration_first(
     bare_interface.reg.is_pairs_registered.return_value = pairs_registered
     bare_interface.reg.is_global_registered.return_value = global_registered
     bare_interface._fusion_size_text = MagicMock(return_value="")
-    bare_interface._clear_napari_view = MagicMock()
-    bare_interface._napari_view_add_fused_data = MagicMock()
+    bare_interface._show_view_image = MagicMock()
+    bare_interface._refresh_view_shapes = MagicMock()
     calls = []
     bare_interface.run_pair_registration = MagicMock(side_effect=lambda: calls.append("pair") or {"pairs": 1})
     bare_interface.run_global_registration = MagicMock(side_effect=lambda: calls.append("global") or {"global": 1})
@@ -1647,18 +1676,17 @@ def test_a_fused_project_opens_its_export_unless_registered_since(bare_interface
 def test_the_fused_output_is_read_and_shown_as_after_an_export(bare_interface, monkeypatch):
     bare_interface.viewer = MagicMock()
     bare_interface.get_best_transform_key = MagicMock(return_value="registered")
-    bare_interface._clear_napari_view = MagicMock()
-    bare_interface._napari_view_add_fused_data = MagicMock()
-    bare_interface._refresh_overview_shapes = MagicMock()
+    bare_interface._show_view_image = MagicMock()
+    bare_interface._refresh_view_shapes = MagicMock()
     read = MagicMock(return_value="fused-msim")
     monkeypatch.setattr(interface_module.ngff_utils, "read_msim_from_ome_zarr", read)
 
     bare_interface._show_fused_output("output/registered.ome.zarr")
 
     read.assert_called_once_with("output/registered.ome.zarr", transform_key="registered", array_backend="dask")
-    bare_interface._napari_view_add_fused_data.assert_called_once_with(bare_interface.viewer, "fused-msim", "Fused")
+    bare_interface._show_view_image.assert_called_once_with(bare_interface.viewer, "fused-msim", "Fused")
     assert bare_interface.view_mode == interface_module.ViewMode.FUSED
-    bare_interface._refresh_overview_shapes.assert_called_once_with("registered")
+    bare_interface._refresh_view_shapes.assert_called_once_with("registered")
 
 
 def test_build_view_msims_downscales_large_single_resolution_source():
@@ -2136,3 +2164,95 @@ def test_overlap_shapes_are_reused_while_the_geometry_they_came_from_holds(bare_
     bare_interface.reg.positions = [{"z": 0}] * 3
     bare_interface._create_napari_shapes("source_metadata")
     assert computed == [None, [(2, 1), (0, 2)]]
+
+
+def _three_tile_interface(make_napari_viewer):
+    """An Interface on three side-by-side 2D tiles (metadata only), its overview a second napari viewer."""
+    from napari.utils._proxies import PublicOnlyProxy
+
+    # a plugin is handed its viewer behind this proxy, which wraps each layer anew at every access
+    with patch('muvis_align._widget.ViewerWidget'):
+        interface = Interface(PublicOnlyProxy(make_napari_viewer()), make_napari_viewer(), MagicMock(), MagicMock())
+    reg = interface.reg
+    reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10}) for _ in range(3)]
+    reg.positions = [{"y": 0, "x": index * 8} for index in range(3)]
+    reg.file_labels = ["a", "b", "c"]
+    reg.fileset_label = "tiles"
+    reg._msim_transforms, reg._msim_z_scale = [None] * 3, None
+    reg.source_geometry = MagicMock(return_value=([{}] * 3, ["props"] * 3))
+    interface._create_lazy_overview = MagicMock(return_value=None)
+    interface._create_napari_data = MagicMock(return_value=None)
+    return interface
+
+
+def _tile_shapes(_, pairs=None, **__):
+    found = [(0, 1), (1, 2)] if pairs is None else pairs
+    return [np.array([[0, 8 * min(pair)], [0, 10 + 8 * min(pair)], [10, 10 + 8 * min(pair)], [10, 8 * min(pair)]])
+            for pair in found], found
+
+
+def test_shape_layers_are_kept_while_their_geometry_pairs_and_qualities_hold(make_napari_viewer, monkeypatch):
+    """Pre-processing and fusion keep the drawn shapes, only the image under them replaced; a pair registration
+    (new pairs graph and metrics) draws them again; a stored modified pair recolours only its own overlap."""
+    import networkx as nx
+
+    interface = _three_tile_interface(make_napari_viewer)
+    monkeypatch.setattr(interface_module, "create_image_shapes", lambda msims, **__: [
+        np.array([[0, 8 * index], [0, 10 + 8 * index], [10, 10 + 8 * index], [10, 8 * index]])
+        for index in range(len(msims))])
+    monkeypatch.setattr(interface_module, "create_overlap_shapes", _tile_shapes)
+    created = []
+    create_shapes = interface._create_napari_shapes
+    monkeypatch.setattr(interface, "_create_napari_shapes",
+                        lambda *args, **kwargs: created.append(kwargs.get("force_2d")) or create_shapes(*args, **kwargs))
+    interface.viewer.add_image(np.zeros((10, 26)), name="old data")
+
+    interface.update_views(show_images=False)
+    shapes = interface.viewer.layers["tiles shapes"]
+    overview_shapes = interface.overview.layers["tiles shapes"]
+    assert created == [False]
+    # an image read since (pre-processed, or a fusion): the same shape layers, over it
+    interface._show_view_image(interface.viewer, None, "data")
+    interface.viewer.add_image(np.zeros((10, 26)), name="new data")
+    interface.update_views(show_images=False)
+    assert created == [False]
+    assert interface.viewer.layers["tiles shapes"].__wrapped__ is shapes.__wrapped__
+    assert interface.overview.layers["tiles shapes"] is overview_shapes
+    assert "old data" not in interface.viewer.layers
+
+    interface.reg.state = RegState.PAIRS_REG
+    interface.reg.pairs_graph = nx.Graph([(0, 1), (1, 2)])
+    interface.reg.metrics = {"pairs": {(0, 1): {interface_module.default_transform_key: {
+        interface_module.default_quality_key: 0.0}}}}
+    interface.update_views(show_images=False)
+    assert created == [False, False]
+    shapes = interface.viewer.layers["tiles shapes"]
+    assert list(shapes.features["refs"]) == ["0", "1", "2", "0 1", "1 2"]
+    assert len(interface.overview.layers) == 1
+
+    face_colors = np.array(shapes.face_color)
+    interface.reg.metrics["pairs"][(0, 1)][interface_module.default_transform_key][
+        interface_module.default_quality_key] = 1.0
+    interface._recolor_pair_shapes((1, 0))
+    changed = np.any(np.array(shapes.face_color) != face_colors, axis=1)
+    assert list(changed) == [False, False, False, True, False]
+    np.testing.assert_allclose(np.array(interface.overview.layers["tiles shapes"].face_color)[3],
+                               np.array(shapes.face_color)[3])
+
+
+def test_a_kept_shape_layer_takes_the_line_colour_of_the_image_now_under_it(make_napari_viewer):
+    with patch('muvis_align._widget.ViewerWidget'):
+        interface = Interface(make_napari_viewer(), MagicMock(), MagicMock(), MagicMock())
+    interface.reg.sources = [SimpleNamespace(get_size=lambda: {"y": 10, "x": 10})]
+    interface.reg.positions = [{}]
+    layer = interface._update_view_add_shapes(interface.viewer, [np.zeros((4, 2))], ["0"], ["a"], [(1, 1, 1)], "s")
+    interface._shape_layers[id(interface.viewer)] = ("signature", layer)
+    # a bright image: a dark line
+    interface._napari_view_add_fused_data = MagicMock(
+        side_effect=lambda *_, **__: setattr(interface, "_view_levels", ([0.9], [(1, 1, 1)])))
+
+    interface._show_view_image(interface.viewer, "bright", "data")
+
+    expected = interface_module.transform_color(interface_module.contrasting_color(0.9))[0]
+    np.testing.assert_allclose(np.array(layer.edge_color)[0], expected)
+    assert layer.metadata["line_color"] == interface_module.contrasting_color(0.9)

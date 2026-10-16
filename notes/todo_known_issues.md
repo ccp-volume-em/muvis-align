@@ -139,6 +139,14 @@ REFACTORING
 
 ## Done
 
+- **Shape layers kept across steps** - each viewer's shape layer is keyed by the geometry, pairs graph and metrics
+  it was drawn from: pre-processing and fusion (export, preview, the output shown) swap only the image under it,
+  its line colour reset; pair and global registration draw it again. Preview and modify pair registration set the
+  view aside and put it back on leaving (tab change, either answer), a stored pair recoloured with quality 1 in
+  the metrics too. At 34k on the HPC a refresh built and added shapes for ~1 min (build 21s, add 21.5s, overview
+  15s); locally at 149k shapes adding takes 7.4s, recolouring 1.3s, re-attaching 0.9s. The plugin's viewer is
+  napari's PublicOnlyProxy, which wraps each layer anew at every access: layers are compared unwrapped.
+  Unregistered overlaps are drawn black (metric_to_rgb(None)), hiding heavily overlapping tiles (data/S000).
 - **Native levels from the level above, measured** (2026-10-15, meatballs headless): a level with the same sources
   as the one above (all but 0.01 and 0.2492 here) averaged 2x2 from it instead of fused from the sources:
 
