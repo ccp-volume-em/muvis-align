@@ -136,6 +136,7 @@ def main():
             start = time.monotonic()
             ACTIONS[args.action](interface)
             logging.info(f'capture: {args.action} took {time.monotonic() - start:.1f}s')
+            log_layers('after action')
             if args.pair_offset:
                 # the moving image is the pair's second layer; its metrics follow once it has moved
                 moving_layer = viewer.layers[-1]
@@ -146,6 +147,12 @@ def main():
             state['step'] = 'finished'
             # waited for with Qt running, so the last frames show the result painted
             QTimer.singleShot(int(2 * args.interval * 1000), finish)
+
+    def log_layers(when):
+        # each layer with its id: a layer kept across steps is the same object
+        for name, layers in [('viewer', viewer.layers), ('overview', interface.overview.layers)]:
+            logging.info(f'capture: {when} {name} layers ' + ', '.join(f'{layer.name}#{id(layer) % 10000}'
+                                                                      for layer in layers))
 
     def save_window():
         geometry = viewer.window._qt_window.frameGeometry()
@@ -169,6 +176,7 @@ def main():
             save_window()
         if args.tabs:
             save_tabs()
+            log_layers('after tabs')
         # still alive two minutes after closing: show every thread's stack
         faulthandler.dump_traceback_later(120)
         QTimer.singleShot(1000, viewer.close)
