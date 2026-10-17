@@ -822,7 +822,7 @@ def test_update_views_adds_enabled_preview_layers(
     # own bar; the overview's are rebuilt flattened (see _refresh_view_shapes)
     assert bare_interface._create_napari_shapes.call_args_list == [
         call("registered", force_2d=False, progress_factory=ANY, weight=3),
-        call("registered", force_2d=True),
+        call("registered", force_2d=True, progress_factory=ANY, weight=3),
     ]
     assert bare_interface._create_napari_data.call_count == 1
     args, kwargs = bare_interface._create_napari_data.call_args
@@ -874,6 +874,27 @@ def test_update_views_detects_multi_z_from_view_msims(
     bare_interface._create_napari_shapes.assert_called_once_with(
         "source_metadata", force_2d=True, progress_factory=ANY, weight=3
     )
+
+
+@pytest.mark.parametrize(("size", "expected_force_2d"), [({"y": 10, "x": 10}, [True]),
+                                                          ({"z": 4, "y": 10, "x": 10}, [False, True])],
+                         ids=["2d", "3d"])
+def test_both_viewers_share_one_shape_set_unless_the_main_view_is_3d(bare_interface, size, expected_force_2d):
+    bare_interface.viewer = MagicMock()
+    bare_interface.overview = MagicMock()
+    bare_interface.reg.sources = [SimpleNamespace(get_size=lambda: size)]
+    bare_interface.reg.positions = [{"z": 0}, {"z": 1}]
+    bare_interface._current_shape_layer = MagicMock(return_value=None)
+    shape_sets = {force_2d: ([force_2d], ["0"], ["a"], [(1, 1, 1)]) for force_2d in (False, True)}
+    bare_interface._create_napari_shapes = MagicMock(side_effect=lambda _, force_2d, **__: shape_sets[force_2d])
+    bare_interface._update_view_add_shapes = MagicMock()
+
+    bare_interface._refresh_view_shapes("registered")
+
+    assert [kwargs["force_2d"] for _, kwargs in bare_interface._create_napari_shapes.call_args_list] == \
+           expected_force_2d
+    assert [(args[0], args[1]) for args, _ in bare_interface._update_view_add_shapes.call_args_list] == [
+        (bare_interface.viewer, [expected_force_2d[0]]), (bare_interface.overview, [True])]
 
 
 def test_registered_shapes_come_from_source_geometry_at_their_sections_z(bare_interface):
@@ -1548,7 +1569,8 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         bare_interface.viewer, "fused", "Fused"
     )
     # registration may have run straight into the fusion: the shapes follow its geometry
-    bare_interface._refresh_view_shapes.assert_called_once_with(bare_interface.get_best_transform_key())
+    bare_interface._refresh_view_shapes.assert_called_once_with(bare_interface.get_best_transform_key(),
+                                                                progress_factory=ANY)
     assert bare_interface.reg.state is RegState.FUSED
     assert bare_interface.view_mode is ViewMode.FUSED
 
@@ -1686,7 +1708,7 @@ def test_the_fused_output_is_read_and_shown_as_after_an_export(bare_interface, m
     read.assert_called_once_with("output/registered.ome.zarr", transform_key="registered", array_backend="dask")
     bare_interface._show_view_image.assert_called_once_with(bare_interface.viewer, "fused-msim", "Fused")
     assert bare_interface.view_mode == interface_module.ViewMode.FUSED
-    bare_interface._refresh_view_shapes.assert_called_once_with("registered")
+    bare_interface._refresh_view_shapes.assert_called_once_with("registered", progress_factory=None)
 
 
 def test_build_view_msims_downscales_large_single_resolution_source():
@@ -2166,8 +2188,14 @@ def test_overlap_shapes_are_reused_while_the_geometry_they_came_from_holds(bare_
     assert refs[3:] == ["2 1"] and np.all(shapes[-1] == 3)
 
     bare_interface.reg.positions = [{"z": 0}] * 3
+    computed_pairs = []
+    monkeypatch.setattr(interface_module, "create_overlap_shapes", lambda _, pairs=None, **__: (
+        computed_pairs.append(pairs) or ([np.full((4, 2), 3)], [(2, 1)])))
     bare_interface._create_napari_shapes("source_metadata")
-    assert computed == [None, [(2, 1), (0, 2)]]
+    # a registered pair checked without an overlap found is not checked again
+    _, refs, _, _ = bare_interface._create_napari_shapes("source_metadata")
+    assert computed_pairs == [[(2, 1), (0, 2)]]
+    assert refs[3:] == ["2 1"]
 
 
 def _three_tile_interface(make_napari_viewer):
