@@ -26,8 +26,18 @@ else
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
 CONTAINER_PATH="${MUVIS_CONTAINER_DIR:-${SCRIPT_DIR}}/muvis-align-xpra_latest"   # built there by xpra-pull.sh
-# directory napari can open data from: by default the top-level one the folder is in (e.g. /nemo)
-DATA_DIR="${MUVIS_DATA_DIR:-/$(echo "${SCRIPT_DIR}" | cut -d/ -f2)}"
+# directory napari can open data from: the first of these the cluster has, else the top-level one the folder is in
+# Override with  MUVIS_DATA_DIR=<directory> bash xpra-slurm.sh
+PREFERRED_DATA_DIRS="/nemo"
+DATA_DIR="${MUVIS_DATA_DIR:-}"
+if [ -z "${DATA_DIR}" ]; then
+    for PREFERRED_DATA_DIR in ${PREFERRED_DATA_DIRS}; do
+        if [ -z "${DATA_DIR}" ] && [ -d "${PREFERRED_DATA_DIR}" ]; then
+            DATA_DIR="${PREFERRED_DATA_DIR}"
+        fi
+    done
+fi
+DATA_DIR="${DATA_DIR:-/$(echo "${SCRIPT_DIR}" | cut -d/ -f2)}"
 LOGIN_NODE="${MUVIS_LOGIN_NODE:-${SLURM_SUBMIT_HOST:-$(hostname -f)}}"         # what you ssh into
 XPRA_PORT=9876                            # port on the compute node
 
@@ -89,6 +99,16 @@ set -euo pipefail
 #  "sbatch xpra-slurm.sh" also works: the instructions are then in
 #  muvis-align-<job id>.log, and the password in ~/.xpra/job-<job id>/passwd.
 # ===========================================================================
+# bound over the job folder (in ~/.xpra) it hides it in the container: apptainer fails to chdir into it
+XPRA_HOME_REAL="$(realpath -m "${HOME}/.xpra")"
+DATA_DIR_REAL="$(realpath -m "${DATA_DIR}")"
+case "${HOME}/.xpra/ ${XPRA_HOME_REAL}/" in
+    "${DATA_DIR%/}/"* | *" ${DATA_DIR_REAL%/}/"*)
+        echo "ERROR: the data directory ${DATA_DIR} contains your home (${HOME}), which the job runs from." >&2
+        echo "       Set the one your data is in: MUVIS_DATA_DIR=<directory> bash xpra-slurm.sh" >&2
+        exit 1
+        ;;
+esac
 if [ -z "${SLURM_JOB_ID:-}" ]; then
     AVAILABLE_PARTITIONS="$(sinfo -h -o %R 2>/dev/null || true)"
     if [ -n "${MUVIS_PARTITION+set}" ]; then
