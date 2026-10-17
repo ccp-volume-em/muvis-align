@@ -100,10 +100,9 @@ set -euo pipefail
 #  muvis-align-<job id>.log, and the password in ~/.xpra/job-<job id>/passwd.
 # ===========================================================================
 # bound over the job folder (in ~/.xpra) it hides it in the container: apptainer fails to chdir into it
-XPRA_HOME_REAL="$(realpath -m "${HOME}/.xpra")"
-DATA_DIR_REAL="$(realpath -m "${DATA_DIR}")"
-case "${HOME}/.xpra/ ${XPRA_HOME_REAL}/" in
-    "${DATA_DIR%/}/"* | *" ${DATA_DIR_REAL%/}/"*)
+# compared as written, as the container mounts them: a home reached through a link into it is not covered
+case "${HOME}/.xpra/" in
+    "${DATA_DIR%/}/"*)
         echo "ERROR: the data directory ${DATA_DIR} contains your home (${HOME}), which the job runs from." >&2
         echo "       Set the one your data is in: MUVIS_DATA_DIR=<directory> bash xpra-slurm.sh" >&2
         exit 1
