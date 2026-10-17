@@ -1556,9 +1556,10 @@ class Interface:
         if metrics:
             item_keys.append('summary')
             for transform_key, transform_value in metrics.items():
-                if transform_key not in transform_keys:
-                    transform_keys.append(transform_key)
                 for metric_key, metric_value in transform_value.items():
+                    # a column only for values: without image metrics the source has no quality to show
+                    if metric_value is not None and transform_key not in transform_keys:
+                        transform_keys.append(transform_key)
                     if metric_value is not None and metric_key not in metric_keys:
                         metric_keys.append(metric_key)
         pairs_metrics = metrics_dict.get('pairs')
@@ -1578,9 +1579,9 @@ class Interface:
         item_keys = list(dict.fromkeys(item_keys + list(row_metrics)))
         for pair_value in row_metrics.values():
             for transform_key, transform_value in pair_value.items():
-                if transform_key not in transform_keys:
-                    transform_keys.append(transform_key)
                 for metric_key, metric_value in transform_value.items():
+                    if metric_value is not None and transform_key not in transform_keys:
+                        transform_keys.append(transform_key)
                     if metric_value is not None and metric_key not in metric_keys:
                         metric_keys.append(metric_key)
 
@@ -1597,10 +1598,11 @@ class Interface:
         metrics = metrics_dict.get('summary')
         if metrics:
             item_offset = 1
-            for transform_index, transform_value in enumerate(metrics.values()):
-                for metric_index, metric_value in enumerate(transform_value.values()):
+            for transform_key, transform_value in metrics.items():
+                for metric_key, metric_value in transform_value.items():
                     if metric_value is not None:
-                        col_index = metric_index if is_metric_cols else transform_index
+                        col_index = (metric_keys.index(metric_key) if is_metric_cols
+                                     else transform_keys.index(transform_key.split('_')[0]))
                         metrics_table[0][col_index] = metric_value
         for pair_index, pair_value in enumerate(row_metrics.values()):
             for transform_key, transform_value in pair_value.items():

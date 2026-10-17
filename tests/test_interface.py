@@ -2062,6 +2062,28 @@ def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interfa
     assert values[2] == [0.3, None]
 
 
+@pytest.mark.parametrize(("source_metrics", "columns", "summary_row"), [
+    ({}, ['quality'], [0.5]),
+    ({'ncc': 0.2}, ['source', 'registered'], [0.2, 0.4]),
+], ids=["quality only", "image metrics"])
+def test_metrics_table_has_a_column_only_for_a_transform_with_values(bare_interface, source_metrics, columns,
+                                                                      summary_row):
+    """Without image metrics a global registration has only the registered pairs' quality: no empty source column."""
+    bare_interface.reg.file_labels = ['S000_000', 'S000_001']
+    bare_interface.reg.positions = [{'y': 0, 'x': 0}, {'y': 0, 'x': 1}]
+    table = MagicMock()
+    bare_interface.param_widgets = {'registration.metrics_table': table}
+    registered = {'quality': 0.5} if not source_metrics else {'ncc': 0.4}
+    metrics = {'summary': {'source': dict(source_metrics), 'registered': registered},
+               'pairs': {(0, 1): {'source': dict(source_metrics), 'registered': registered}}}
+
+    bare_interface.populate_metrics_table(metrics)
+
+    values, _, table_columns = table.set_value.call_args[0][0]
+    assert table_columns == columns
+    assert values[0] == summary_row
+
+
 @pytest.mark.parametrize(("row", "selected"), [(0, None), (1, ('S000_001', 'S000_000')), (2, None), (-1, None)],
                          ids=["summary", "tile-pair", "group-pair", "none"])
 def test_selecting_a_metrics_row_picks_its_pair_for_preview(bare_interface, row, selected):
