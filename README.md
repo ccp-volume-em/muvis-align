@@ -1,18 +1,15 @@
 # muvis-align
 
-[![License MIT](https://img.shields.io/pypi/l/muvis-align.svg?color=green)](https://github.com/folterj/muvis-align/raw/main/LICENSE.md)
+[![License MIT](https://img.shields.io/pypi/l/muvis-align.svg?color=green)](https://github.com/ccp-volume-em/muvis-align/raw/main/LICENSE.md)
 [![PyPI](https://img.shields.io/pypi/v/muvis-align.svg?color=green)](https://pypi.org/project/muvis-align)
 [![Python Version](https://img.shields.io/pypi/pyversions/muvis-align.svg?color=green)](https://python.org)
-[![tests](https://github.com/folterj/muvis-align/workflows/tests/badge.svg)](https://github.com/folterj/muvis-align/actions)
-[![codecov](https://codecov.io/gh/folterj/muvis-align/branch/main/graph/badge.svg)](https://codecov.io/gh/folterj/muvis-align)
-[![napari hub](https://img.shields.io/endpoint?url=https://api.napari-hub.org/shields/muvis-align)](https://napari-hub.org/plugins/muvis-align)
+[![tests](https://github.com/ccp-volume-em/muvis-align/actions/workflows/test_and_deploy.yml/badge.svg)](https://github.com/ccp-volume-em/muvis-align/actions/workflows/test_and_deploy.yml)
+[![codecov](https://codecov.io/gh/ccp-volume-em/muvis-align/branch/main/graph/badge.svg)](https://codecov.io/gh/ccp-volume-em/muvis-align)
 [![npe2](https://img.shields.io/badge/plugin-npe2-blue?link=https://napari.org/stable/plugins/index.html)](https://napari.org/stable/plugins/index.html)
 [![Copier](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/copier-org/copier/master/img/badge/badge-grayscale-inverted-border-purple.json)](https://github.com/copier-org/copier)
 
-Image registration pipeline using multiview-stitcher and napari plugin
-
-[github.com/multiview-stitcher/multiview-stitcher](https://github.com/multiview-stitcher/multiview-stitcher)
-
+Image registration pipeline for large volume EM and LM datasets, built on
+[multiview-stitcher], with a [napari] plugin, a command-line pipeline and Jupyter notebooks.
 
 ## Documentation
 
@@ -20,21 +17,9 @@ Main documentation: [ccp-volume-em.github.io/muvis-align](https://ccp-volume-em.
 
 Generated documentation: [deepwiki.com/ccp-volume-em/muvis-align](https://deepwiki.com/ccp-volume-em/muvis-align)
 
-----------------------------------
-
-This [napari] plugin was generated with [copier] using the [napari-plugin-template] (None).
-
-<!--
-Don't miss the full getting started guide to set up your new package:
-https://github.com/napari/napari-plugin-template#getting-started
-
-and review the napari docs for plugin developers:
-https://napari.org/stable/plugins/index.html
--->
-
 ## Installation
 
-You can install `muvis-align` via [pip]:
+muvis-align needs Python 3.12 or later. Install it via [pip]:
 
 ```
 pip install muvis-align
@@ -46,7 +31,8 @@ If napari is not already installed, you can install `muvis-align` with napari an
 pip install "muvis-align[all]"
 ```
 
-
+The command-line script, example parameter files and notebooks are in this repository,
+not the pip package: see the [documentation](https://ccp-volume-em.github.io/muvis-align/).
 
 ## Contributing
 
@@ -62,18 +48,15 @@ Distributed under the terms of the [MIT] license,
 
 If you encounter any problems, please [file an issue] along with a detailed description.
 
+----------------------------------
+
+This [napari] plugin was generated with [copier] using the [napari-plugin-template].
+
+[multiview-stitcher]: https://github.com/multiview-stitcher/multiview-stitcher
 [napari]: https://github.com/napari/napari
 [copier]: https://copier.readthedocs.io/en/stable/
-[@napari]: https://github.com/napari
-[MIT]: http://opensource.org/licenses/MIT
-[BSD-3]: http://opensource.org/licenses/BSD-3-Clause
-[GNU GPL v3.0]: http://www.gnu.org/licenses/gpl-3.0.txt
-[GNU LGPL v3.0]: http://www.gnu.org/licenses/lgpl-3.0.txt
-[Apache Software License 2.0]: http://www.apache.org/licenses/LICENSE-2.0
-[Mozilla Public License 2.0]: https://www.mozilla.org/media/MPL/2.0/index.txt
 [napari-plugin-template]: https://github.com/napari/napari-plugin-template
-
-[napari]: https://github.com/napari/napari
+[MIT]: http://opensource.org/licenses/MIT
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
-[PyPI]: https://pypi.org/
+[file an issue]: https://github.com/ccp-volume-em/muvis-align/issues

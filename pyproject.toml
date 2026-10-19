@@ -53,6 +53,12 @@ dependencies = [
     "probreg; python_version < '3.13' and sys_platform != 'win32'",
 ]
 
+[project.urls]
+"Bug Tracker" = "https://github.com/ccp-volume-em/muvis-align/issues"
+"Documentation" = "https://ccp-volume-em.github.io/muvis-align/"
+"Source Code" = "https://github.com/ccp-volume-em/muvis-align"
+"User Support" = "https://github.com/ccp-volume-em/muvis-align/issues"
+
 [project.optional-dependencies]
 # Allow easily installation with the full, default napari installation
 # (including Qt backend) using muvis-align[all].
