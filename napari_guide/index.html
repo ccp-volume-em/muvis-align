@@ -1,0 +1,1070 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Image registration pipeline using multiview-stitcher and napari plugin">
+      
+      
+      
+        <link rel="canonical" href="https://ccp-volume-em.github.io/muvis-align/napari_guide/">
+      
+      
+        <link rel="prev" href="../napari/">
+      
+      
+        <link rel="next" href="../notebooks/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Step by step in napari - muvis-align</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#step-by-step-in-napari" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="muvis-align" class="md-header__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            muvis-align
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Step by step in napari
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ccp-volume-em/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="muvis-align" class="md-nav__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    muvis-align
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ccp-volume-em/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running the muvis-align Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../napari/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The napari plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Step by step in napari
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Step by step in napari
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#opening-the-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opening the plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-project" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Project
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-input-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Input output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-pre-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Pre processing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Registration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Registration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modifying-a-pair-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modifying a pair registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-fusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Fusion
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notebooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jupyter Notebooks Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../poster/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align: building a registration pipeline for large data &amp; next gen file format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#opening-the-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Opening the plugin
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-project" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Project
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-input-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Input output
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-pre-processing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Pre processing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Registration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Registration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modifying-a-pair-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Modifying a pair registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-fusion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Fusion
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="step-by-step-in-napari">Step by step in napari</h1>
+<p>A walk through the plugin, one tab at a time: every parameter on it, and what each of its
+buttons does. The screenshots are of a 2×2 tile set (<code>data/S000/*.zarr</code> in this repository),
+taken after registering it. For how the plugin stores its settings, see
+<a href="../napari/">the napari plugin</a>.</p>
+<h2 id="opening-the-plugin">Opening the plugin</h2>
+<p>Start napari and open <strong>Plugins → muvis-align</strong>.</p>
+<p><img alt="The plugin in napari" src="../images/napari/window.png" /></p>
+<ul>
+<li><strong>On the right</strong>, the plugin itself: one tab per step, run from left to right.</li>
+<li><strong>At the bottom left</strong>, the <strong>muvis-align</strong> overview: a small map of where the sources are,
+  which stays put while you zoom into the main view.</li>
+<li><strong>In the main view</strong>, the sources at their positions, with each overlap between two
+  sources drawn as a green shape.</li>
+</ul>
+<p>A tab is enabled once the step before it has run: at the start only <strong>project</strong> is.
+Each tab ends in a <strong>Process</strong> button that runs its step. While a step runs, the plugin's
+other widgets are disabled, the button reads <strong>Cancel</strong> (it asks before cancelling, and the
+partial result is discarded), and its progress shows in napari's <strong>activity</strong> panel at the
+bottom right.</p>
+<p>Hover over any parameter to see its description.</p>
+<h2 id="1-project">1. Project</h2>
+<p><img alt="The project tab" src="../images/napari/project.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Project path</td>
+<td>The project file (<code>muvis_align_project.yml</code> by default)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Select file</strong> chooses an existing project file, or names a new one. An existing project
+opens with its settings in every tab; a new one is created with the defaults. Either way
+the next tabs are enabled. Every change on any tab is written straight back to this file,
+so the project reopens as you left it.</p>
+<h2 id="2-input-output">2. Input output</h2>
+<p><img alt="The input output tab" src="../images/napari/input_output.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Input data</td>
+<td>The sources: a file, a folder or a wildcard pattern such as <code>data/*/*.tiff</code> (TIFF, OME-TIFF, Zarr, OME-Zarr)</td>
+</tr>
+<tr>
+<td>Source position Z / Y / X</td>
+<td>Where each source's position comes from: <code>source</code> reads it from the file's metadata, or an expression over the file name, such as <code>fn[-2]*24</code> (the second-last number in the name, times 24)</td>
+</tr>
+<tr>
+<td>Source scale Z / Y / X</td>
+<td>The pixel size, in the same way: <code>source</code>, a number, or an expression</td>
+</tr>
+<tr>
+<td>Source rotation</td>
+<td>The rotation, in the same way</td>
+</tr>
+<tr>
+<td>Normalise rotated positions</td>
+<td>Turn a rotated layout straight: positions are turned back by the sources' rotation, or by the tile grid's own angle where the metadata gives none</td>
+</tr>
+<tr>
+<td>Preview downscale / pixel size</td>
+<td>Resolution of the view: a downscale factor (e.g. <code>16</code>) or a pixel size with unit (e.g. <code>10um</code>)</td>
+</tr>
+<tr>
+<td>Select coordinate system</td>
+<td>Which positions the metadata table shows: the sources' own (<strong>Source metadata</strong>), or the registered ones once there are any</td>
+</tr>
+<tr>
+<td>Metadata table</td>
+<td>Read-only: each source's position and pixel size, ordered by (z, y, x) position</td>
+</tr>
+<tr>
+<td>Registration dimension</td>
+<td>What the sources are spread over: <strong>Space</strong> (tiles side by side), <strong>Z</strong> (a stack of slices), <strong>C</strong> (channels of the same field) or <strong>T</strong> (time points)</td>
+</tr>
+<tr>
+<td>Channels table</td>
+<td>Each channel's label and colour; click a colour cell to pick a colour</td>
+</tr>
+<tr>
+<td>Output data</td>
+<td>The output folder, relative to the project file</td>
+</tr>
+<tr>
+<td>Overwrite output data</td>
+<td>Overwrite any existing output</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Process</strong> reads the sources' metadata and draws their layout in the view and the overview,
+without reading the image data in full. If the output folder holds a registration from an
+earlier run, it is loaded too, and the plugin carries on from where that run stopped. If
+that registration was made with different source position, scale or rotation settings, the
+plugin asks whether to <strong>Reload</strong> those settings or <strong>Discard</strong> the earlier output.</p>
+<h2 id="3-pre-processing">3. Pre processing</h2>
+<p><img alt="The pre processing tab" src="../images/napari/pre_processing.png" /></p>
+<p>These apply to the images used for registration only: the fused output is made from the
+original sources.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Downscale / pixel size</td>
+<td>Resolution to register at: a downscale factor (e.g. <code>2</code>) or a pixel size with unit (e.g. <code>10um</code>). Usually the largest single speed-up</td>
+</tr>
+<tr>
+<td>Flat-field quantiles</td>
+<td>One or two quantiles for flat-field correction, e.g. <code>0.5</code> or <code>0.01,0.99</code>; empty for none</td>
+</tr>
+<tr>
+<td>Normalisation</td>
+<td><strong>Single</strong> (each tile on its own), <strong>Global</strong> (over all tiles) or <strong>None</strong></td>
+</tr>
+<tr>
+<td>Gaussian sigma</td>
+<td>Gaussian blur before registration; 0 or empty for none</td>
+</tr>
+<tr>
+<td>Filter foreground</td>
+<td>Leave out tiles with little image signal, such as empty tiles</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Process</strong> pre-processes the sources and shows the result in the view, then moves on to the
+registration tab. Running it is optional: registration pre-processes the sources itself
+when they have not been yet. Running it again after a registration makes that registration
+out of date, as it was made from the previous images.</p>
+<h2 id="4-registration">4. Registration</h2>
+<p><img alt="The registration tab" src="../images/napari/registration.png" /></p>
+<p>Choose the <strong>Operation</strong> first, as it decides what the rest of the run does:</p>
+<ul>
+<li><strong>Register</strong>: register the sources, then fuse them on the fusion tab.</li>
+<li><strong>Merge</strong>: fuse the sources at their metadata positions, without registering. <strong>Process</strong>
+  only moves on to the fusion tab. The output is named <code>merged</code> rather than <code>registered</code>.</li>
+<li><strong>Convert</strong>: write each source out as its own OME-Zarr at its metadata position, with
+  no registration and no fusion. Each source keeps its own pyramid levels; nothing is
+  resampled. <strong>Process</strong> writes them to a <code>converted/</code> output folder. Worth doing first
+  for sources without a pyramid, which make every preview slow.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Operation</td>
+<td><strong>Register</strong>, <strong>Merge</strong> or <strong>Convert</strong>, as above</td>
+</tr>
+<tr>
+<td>Registration channel</td>
+<td>The channel to register on</td>
+</tr>
+<tr>
+<td>Pairing</td>
+<td>Which sources are registered against each other: <strong>Default</strong> (multiview-stitcher's own), <strong>Orthogonal</strong> (leaves out diagonal and very small overlaps), <strong>Stack</strong> (consecutive sources) or <strong>Split: 2D x/y first</strong> (each plane's or channel's tiles first, then the stitched planes or channels against each other)</td>
+</tr>
+<tr>
+<td>Transform type</td>
+<td><strong>Translation</strong>, <strong>Rigid</strong>, <strong>Affine</strong> or <strong>Similarity</strong></td>
+</tr>
+<tr>
+<td>Method</td>
+<td>Pairwise registration: <strong>Phase correlation</strong>, <strong>SIFT</strong>, <strong>ORB</strong>, <strong>CPD</strong>, <strong>Elastix</strong> or <strong>ANTs</strong></td>
+</tr>
+<tr>
+<td>Normalisation</td>
+<td>Normalise each overlap before registering it</td>
+</tr>
+<tr>
+<td>Gaussian sigma</td>
+<td>Gaussian blur of each overlap; 0 or empty for none</td>
+</tr>
+<tr>
+<td>Max keypoints</td>
+<td>Feature methods (SIFT, ORB): the most keypoints per image</td>
+</tr>
+<tr>
+<td>Inlier threshold factor</td>
+<td>Feature methods: RANSAC's inlier threshold, relative (0 to 1)</td>
+</tr>
+<tr>
+<td>Max RANSAC trials</td>
+<td>Feature methods: the most RANSAC trials</td>
+</tr>
+<tr>
+<td>RANSAC iterations</td>
+<td>Feature methods: the number of RANSAC runs</td>
+</tr>
+<tr>
+<td>Threads</td>
+<td>Pair registrations run in parallel; 0 or empty to choose automatically</td>
+</tr>
+<tr>
+<td>Registration preview image 1 / 2</td>
+<td>The pair that <strong>Preview</strong> and <strong>Modify pair registration</strong> work on</td>
+</tr>
+<tr>
+<td>Split binning</td>
+<td>Split pairing only: the binning of the stitched planes or channels when registering them against each other (1 is the pre-processed pixel size)</td>
+</tr>
+<tr>
+<td>Metrics table</td>
+<td>Read-only: each pair's registration quality, from source positions and once registered, ordered by position. The summary row is over all pairs</td>
+</tr>
+<tr>
+<td>Global method</td>
+<td>How the pair registrations are resolved into one position per source: <strong>Robust linear</strong> (fast, for large projects, translation or rigid only), <strong>Global optimisation</strong> (iterative, slow for many tiles), <strong>Linear two-pass</strong> (fastest, less robust to bad pairs) or <strong>Shortest paths</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The buttons:</p>
+<ul>
+<li><strong>Preview</strong> registers just the selected pair and shows the two overlaps with their matches,
+  with the pair's metrics in the table. Much faster than a full run while trying out
+  parameters. To choose the pair, use the two dropdowns, click an overlap shape in the view,
+  or click a pair's row in the metrics table.</li>
+<li><strong>Pair registration</strong> registers every pair.</li>
+<li><strong>Modify pair registration</strong> shows the selected pair in green and purple, to move one onto
+  the other by hand with napari's transform tools. The pair's metrics follow the change,
+  and the rest of the plugin is disabled meanwhile. Press it again to finish: it asks
+  whether to store the change, which then replaces that pair's registration. See
+  <a href="#modifying-a-pair-registration">Modifying a pair registration</a> below.</li>
+<li><strong>Process</strong> runs the global registration, which resolves the pair registrations into a
+  position for each source, and shows the registered layout. It runs pair registration
+  first if that has not been done. It saves the result in the output folder:
+  <code>pair_mappings.json</code>, <code>mappings.json</code> and <code>mappings.csv</code> (the transforms), <code>metrics.json</code>,
+  and an RO-Crate (<code>ro-crate-metadata.json</code>) describing the run.</li>
+</ul>
+<h3 id="modifying-a-pair-registration">Modifying a pair registration</h3>
+<p>Where two sources overlap, the green and purple images add up: matching detail shows grey,
+and a misalignment shows as green and purple edges side by side. The metrics table shows
+that one pair while you move it, coloured from red (poor) to green (good).</p>
+<p>A good overlap: the strip at the right edge, where the two tiles overlap, is grey, and the
+metrics are high (ncc 0.77, ssim 0.78).</p>
+<p><img alt="A well aligned pair" src="../images/napari/pair_good.png" /></p>
+<p>The same pair, moved slightly to the right: the overlap shows colour fringes, and the
+metrics drop (ncc 0.16, ssim 0.45).</p>
+<p><img alt="A poorly aligned pair" src="../images/napari/pair_poor.png" /></p>
+<p>Move the selected layer with the transform tool (press <code>2</code> in the view) until the overlap
+is grey and the metrics are as high as they go, then press <strong>Modify pair registration</strong>
+again to store it.</p>
+<h2 id="5-fusion">5. Fusion</h2>
+<p><img alt="The fusion tab" src="../images/napari/fusion.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Method</td>
+<td>How overlapping sources combine: <strong>Average</strong>, <strong>Exclusive</strong>, <strong>Additive</strong> or <strong>Compose</strong></td>
+</tr>
+<tr>
+<td>Spacing</td>
+<td>Output pixel size: <strong>Native</strong> (each level at the sources' own pixel sizes, never upsampled), <strong>Mean</strong>, <strong>Min</strong> (highest resolution) or <strong>Max</strong> (lowest resolution)</td>
+</tr>
+<tr>
+<td>Tile size(s)</td>
+<td>Tile size of the output, e.g. <code>1024</code> or <code>1024,1024,1024</code>; empty to size it by available memory. For OME-Zarr this is also how the fusion is split into blocks, so a small size costs time. See <a href="../pipeline/#tile-size">Tile size</a></td>
+</tr>
+<tr>
+<td>OME version</td>
+<td>OME-Zarr version to write: <strong>0.4</strong>, <strong>0.5</strong> or <strong>0.6</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The buttons:</p>
+<ul>
+<li><strong>Preview</strong> fuses at the view's resolution and shows the result, which stays quick for a
+  large dataset.</li>
+<li><strong>Process</strong> exports the full-resolution fusion to the output folder, as <code>registered</code>
+  (or <code>merged</code>). It first asks to confirm, with an estimate of the output size, and runs
+  any registration still missing. It also writes an RO-Crate inside the OME-Zarr describing
+  the acquisition, and updates the one in the output folder.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
