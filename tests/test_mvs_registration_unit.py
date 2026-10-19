@@ -922,7 +922,7 @@ def test_init_progress_loads_a_pair_registration_without_building_msims(monkeypa
 def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, spacing, registered):
     """From source geometry alone: native fusion's written blocks level by level, or the dense pyramid's shapes."""
     from multiview_stitcher import msi_utils, param_utils
-    from muvis_align import fusion_slabs
+    from muvis_align import fusion_blocks
     from muvis_align.image.util import get_msim_image0
 
     reg = prepared_registration(ALL_TILES, tmp_path, preprocess=False)
@@ -937,15 +937,15 @@ def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, s
                                            base_transform_key=reg.source_transform_key)
         transform_key = reg.reg_transform_key
     written = []
-    level_blocks = fusion_slabs.level_blocks
+    level_blocks = fusion_blocks.level_blocks
 
     # every level, fused or averaged from the one above, writes the blocks level_blocks gives it
     def recording(views, output_properties, chunksize, *args, **kwargs):
         chunk, groups = level_blocks(views, output_properties, chunksize, *args, **kwargs)
-        written.append(fusion_slabs.written_voxels(groups, output_properties, chunk))
+        written.append(fusion_blocks.written_voxels(groups, output_properties, chunk))
         return chunk, groups
 
-    monkeypatch.setattr(fusion_slabs, 'level_blocks', recording)
+    monkeypatch.setattr(fusion_blocks, 'level_blocks', recording)
 
     estimate = reg.estimate_fusion_size('average', spacing, transform_key=transform_key)
     fused, _ = reg.fuse(reg.msims, fusion_method='average', output_spacing=spacing, transform_key=transform_key,

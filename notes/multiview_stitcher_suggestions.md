@@ -155,11 +155,11 @@ cost. Four parts, each useful on its own.
   with the total source count, so at 34k sources a block would cost ~100x more.
 - **Suggestion:** build the plan (and the per-source transform checks, on plain numpy arrays) once per fusion and
   hand each block only the sources it meets.
-- **muvis-align:** `fusion_slabs.fuse_into_zarr_array` (each level of `fuse_levels_to_ome_zarr`) fuses each block
+- **muvis-align:** `fusion_blocks.fuse_into_zarr_array` (each level of `fuse_levels_to_ome_zarr`) fuses each block
   from only the sources that reach it, by multiview-stitcher's own rule, through
   `prepare_block_fusion(create_output=False)` once per group of sources (identical output). Slides export ~31 ->
   ~9 min, ~1.5 -> ~4.3 cores, together with direct TIFF reads (see the tifffile item below; ~15-20% of that).
-  The per-block plan still checks every source in the block's group: `fusion_slabs._numpy_fusion_plan` swaps in
+  The per-block plan still checks every source in the block's group: `fusion_blocks._numpy_fusion_plan` swaps in
   numpy versions of `_get_axis_aligned_translation_dims`, `_get_grid_aligned_translation_dims` and
   `_get_axis_aligned_translation_overlap` (each affine read once, not an xarray `.sel` per entry) while our fusion
   runs. Checks and fused output identical; meatballs fusion 102 -> 80s, a small level's few blocks ~2 -> ~1.2s

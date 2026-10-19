@@ -6,7 +6,7 @@ import pytest
 from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.fusion_slabs import (export_levels, fuse_levels_to_ome_zarr, native_level_spacings,
+from muvis_align.fusion_blocks import (export_levels, fuse_levels_to_ome_zarr, native_level_spacings,
                                       native_level_stack_properties, block_sources)
 from tests.data_builders import make_msim, make_sim
 
@@ -68,7 +68,7 @@ def test_each_block_is_fused_from_only_the_sources_reaching_it():
 # a section step other than 1 is not grid-aligned with a plane's placeholder z spacing of 1
 @pytest.mark.parametrize('z_step', [1.0, 0.05])
 def test_a_block_is_fused_from_only_the_planes_that_reach_it(z_step):
-    from muvis_align.fusion_slabs import source_bounds
+    from muvis_align.fusion_blocks import source_bounds
 
     sims = [make_sim(np.ones((1, 8, 8), dtype=np.uint16), 'zyx', translation={'z': plane * z_step, 'y': 0.0, 'x': 0.0},
                      transform_key='source') for plane in (0, 0, 1, 2)]
@@ -125,7 +125,7 @@ def test_a_native_level_with_the_sources_of_the_level_above_is_averaged_from_it(
     where its sources are the level above's, it is that level's 2x2 mean. A level a new source joins is fused. The
     tile is off the output grid, as real ones are: on it, sampling the middle of 2x2 pixels is their mean."""
     import zarr
-    import muvis_align.fusion_slabs as fusion_slabs
+    import muvis_align.fusion_blocks as fusion_blocks
 
     rng = np.random.default_rng(0)
     tile = make_msim(rng.integers(50, 250, (64, 64), dtype=np.uint8), scale={'y': 0.5, 'x': 0.5},
@@ -138,7 +138,7 @@ def test_a_native_level_with_the_sources_of_the_level_above_is_averaged_from_it(
     fuse_levels_to_ome_zarr([overview, tile], levels, url, 'source', level0, {'y': 64, 'x': 64}, ranks=[2.0, 0.5])
 
     finest, middle, coarsest = (np.asarray(zarr.open_array(os.path.join(url, path), mode='r')[:]).squeeze()
-                                for path in fusion_slabs.level_paths(len(levels)))
+                                for path in fusion_blocks.level_paths(len(levels)))
     assert [selected for _, _, selected in levels] == [[1], [1], [0, 1]]
     np.testing.assert_array_equal(middle, finest.reshape(128, 2, 128, 2).mean(axis=(1, 3)).astype(np.uint8))
     # the overview's level is fused: the overview where the tile is not
@@ -155,7 +155,7 @@ def test_the_fusion_plan_checks_on_numpy_fuse_what_multiview_stitcher_does(tmp_p
     """The per-block plan's affine checks read each transform once instead of an xarray sel per entry."""
     import zarr
     from contextlib import nullcontext
-    import muvis_align.fusion_slabs as fusion_slabs
+    import muvis_align.fusion_blocks as fusion_blocks
 
     rng = np.random.default_rng(0)
     tiles = [make_msim(rng.integers(0, 255, (64, 64), dtype=np.uint8), scale={'y': 0.5, 'x': 0.5},
@@ -170,10 +170,10 @@ def test_the_fusion_plan_checks_on_numpy_fuse_what_multiview_stitcher_does(tmp_p
         url = (tmp_path / name).as_posix()
         fuse_levels_to_ome_zarr(msims, levels, url, 'source', level0, {'y': 32, 'x': 32}, ranks=[2.0, 0.5, 0.5])
         return [np.asarray(zarr.open_array(os.path.join(url, path), mode='r')[:])
-                for path in fusion_slabs.level_paths(len(levels))]
+                for path in fusion_blocks.level_paths(len(levels))]
 
     with_numpy = fused('numpy.ome.zarr')
-    monkeypatch.setattr(fusion_slabs, '_numpy_fusion_plan', nullcontext)
+    monkeypatch.setattr(fusion_blocks, '_numpy_fusion_plan', nullcontext)
     with_xarray = fused('xarray.ome.zarr')
 
     assert len(with_numpy) == len(levels) > 1
@@ -191,7 +191,7 @@ def test_the_fusion_plan_checks_on_numpy_fuse_what_multiview_stitcher_does(tmp_p
 def test_the_numpy_plan_checks_match_multiview_stitchers(matrices):
     import multiview_stitcher.fusion._core as fusion_core
     from multiview_stitcher import param_utils
-    from muvis_align.fusion_slabs import (_axis_aligned_translation_dims, _axis_aligned_translation_overlap,
+    from muvis_align.fusion_blocks import (_axis_aligned_translation_dims, _axis_aligned_translation_overlap,
                                           _grid_aligned_translation_dims)
 
     sdims = ['y', 'x']
@@ -220,7 +220,7 @@ def test_the_numpy_plan_checks_match_multiview_stitchers(matrices):
     ([[[0.0, 6400.0], [0.0, 6400.0]]] * 12, 6400, 1600, 352 * 1000 ** 2, 1472),
 ])
 def test_a_block_meeting_many_sources_shrinks_just_enough(bounds, side, chunk_side, budget, expected):
-    from muvis_align.fusion_slabs import budget_chunksize
+    from muvis_align.fusion_blocks import budget_chunksize
 
     properties = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 1.0, 'x': 1.0}, 'shape': {'y': side, 'x': side}}
 
@@ -232,7 +232,7 @@ def test_a_block_meeting_many_sources_shrinks_just_enough(bounds, side, chunk_si
 def test_where_a_finer_view_covers_a_pixel_the_coarser_ones_are_left_out():
     from dask.utils import has_keyword
     from multiview_stitcher.fusion import simple_average_fusion, weighted_average_fusion
-    from muvis_align.fusion_slabs import prioritise_finer_views
+    from muvis_align.fusion_blocks import prioritise_finer_views
 
     nan = np.nan
     # views: two tiles (rank 1) meeting in the middle, an overview (rank 2) under all of it
@@ -256,13 +256,13 @@ def test_where_a_finer_view_covers_a_pixel_the_coarser_ones_are_left_out():
     ([np.diag([2.0, 2.0, 1.0])], [np.diag([1.0, 1.0, 1.0, 1.0]), np.diag([1.0, 2.0, 2.0, 1.0])], [1, 2], [2]),
 ])
 def test_views_are_ranked_by_the_group_source_they_come_from(params, group_params, group_ranks, expected):
-    from muvis_align.fusion_slabs import _view_ranks
+    from muvis_align.fusion_blocks import _view_ranks
 
     assert _view_ranks(params, group_params, group_ranks).tolist() == expected
 
 
 def test_level_names_sort_as_text_in_level_order():
-    from muvis_align.fusion_slabs import level_paths
+    from muvis_align.fusion_blocks import level_paths
 
     assert level_paths(10) == [str(index) for index in range(10)]
     eleven = level_paths(11)

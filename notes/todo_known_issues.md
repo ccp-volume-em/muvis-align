@@ -68,7 +68,7 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 Not a leak, nor dask filling what is free. Measured on the 2026-10-03 run's pyramid step
 (ngff_utils.write_sim_to_ome_zarr), one thread a CPU, each reading 2x2 (2x2x2 past 200 z) parent chunks and averaging
 as float64: ~6-12 level-0 chunks a worker (measured locally, synthetic zarr, 1-8 workers). Its replacement
-(fusion_slabs.average_into_zarr_array) does the same per block, 2x2 only. Level 0's chunk comes from the per-worker budget (a quarter
+(fusion_blocks.average_into_zarr_array) does the same per block, 2x2 only. Level 0's chunk comes from the per-worker budget (a quarter
 of RAM over the CPUs), so the peak scales with the machine: the HPC's 250GB on ~2TB. A risk only if
 _available_memory() reads more than the job may use (no Slurm memory variable or cgroup limit set).
 
@@ -223,7 +223,7 @@ REFACTORING
   overlap shapes reused after pair registration (~45s). A loaded global registration's summary is under the
   registered key, as the metrics table expects.
 - **Restructure for maintainability** (PRs #63, #65) - one overview (the quick view takes 3D and multichannel
-  sources), one OME-Zarr writer (fusion_slabs.fuse_levels_to_ome_zarr), _paste rewritten, the duplication scan
+  sources), one OME-Zarr writer (fusion_blocks.fuse_levels_to_ome_zarr), _paste rewritten, the duplication scan
   merged and ~40 unreferenced functions deleted. Weighed and left - a shared helper would remove a few lines for
   flags or a one-line wrapper: the pair worker pool (register_pairs vs map_pair_metrics), the per-source
   build_source_stack_props loops, output filename expressions, the multi-z check, section z spacing, the
@@ -270,7 +270,7 @@ REFACTORING
   one worker), one um unit table (util lacked nanometre/inch, tiff_metadata picometre), msims_stack_props for both
   pair graphs, sims_from_sims_or_msims and sim_views used where written inline, sim_with_data for the processed-sim
   re-wraps, save_pair_results for the three pair-saving paths, z_positions computed once in _create_napari_data.
-- **One zarr writer** (branch `restructure`) - every OME-Zarr export goes through fusion_slabs.fuse_levels_to_ome_zarr
+- **One zarr writer** (branch `restructure`) - every OME-Zarr export goes through fusion_blocks.fuse_levels_to_ome_zarr
   over export_levels: native as before; a set spacing fuses level 0 from the sources reaching each block and averages
   each level after from the one above (average_into_zarr_array), z never averaged across sections. Gone: the z-slab
   writer, multiview_stitcher's pyramid step and fuse()'s fusion.fuse zarr branch, the OME-Zarr 0.6 refusal (a set

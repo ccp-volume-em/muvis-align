@@ -37,7 +37,7 @@ from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
-from muvis_align.fusion_slabs import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
+from muvis_align.fusion_blocks import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
@@ -1788,7 +1788,7 @@ class MVSRegistration:
         Sims are wrapped first with util.wrap_sims_as_msims.
 
         output_chunksize, a chunk size per spatial dim, is used as-is; otherwise it is sized against memory.
-        Written to a file, every level is fused from the sources (fusion_slabs.export_levels): with output_spacing
+        Written to a file, every level is fused from the sources (fusion_blocks.export_levels): with output_spacing
         None or 'native' each at its own pixel size from the sources at least that fine, else doubling from the set
         spacing. In memory, 'native' stays 'mean'. `level_bytes` (estimate_fusion_size's, a level) shares the progress
         bar out over the levels.

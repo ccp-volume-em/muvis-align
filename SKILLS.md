@@ -30,7 +30,7 @@ Distilled from recurring feedback across sessions. Follow these when making chan
 ## Code style
 - Avoid `continue` statements - restructure the loop body (e.g. invert the condition) instead.
 - No single-letter variable names, comprehension variables included: `field for field in fields`, not `f for f in fields`.
-- Reuse and extend existing functionality instead of writing a new module that parallels it (as `lazy_overview.py` and `fusion_slabs.py` did).
+- Reuse and extend existing functionality instead of writing a new module that parallels it (as `lazy_overview.py` and `fusion_blocks.py` did).
 - No atomic one-line wrapper functions; keep code intuitive over clever.
 - Weigh an optimisation against the code it adds: a ~15% gain rarely justifies a new class or module. Threaded/pooled efficiency code should take an argument to run without threading.
 - For a restructure, write a detailed plan first and agree it before editing.
