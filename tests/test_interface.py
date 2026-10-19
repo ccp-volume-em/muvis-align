@@ -431,6 +431,47 @@ def _rotation(degrees, translation=(0, 0)):
                      [0, 0, 1]])
 
 
+@pytest.mark.parametrize("transform_key", ["source_metadata", "registered", "source_metadata"],
+                         ids=["source", "registered", "source-after-registered"])
+def test_metadata_table_shows_the_selected_coordinate_systems_pixel_size_and_rotation(
+    bare_interface, monkeypatch, transform_key
+):
+    """The source system shows the metadata; the registered one each source's affine: its position, the
+    metadata's pixel size times the affine's scale, and the affine's rotation."""
+    import xarray as xr
+
+    table = MagicMock()
+    bare_interface.param_widgets["input_output.metadata_table"] = table
+    bare_interface.reg.source_transform_key = "source_metadata"
+    bare_interface.reg.file_labels = ["image-0"]
+    bare_interface.reg.msims = ["msim-0"]
+    bare_interface.reg.positions = [{"z": 2.0, "y": 0.0, "x": 24.0}]
+    bare_interface.reg.scales = [{"z": 1.0, "y": 0.032, "x": 0.032}]
+    bare_interface.reg.rotations = [30.0]
+    registered = _rotation(32, (1.0, 25.0))
+    registered[:2, :2] *= 1.1
+    _stub_source_affines(monkeypatch, {"msim-0": xr.DataArray(
+        registered.reshape(1, 3, 3), dims=["t", "x_in", "x_out"],
+        coords={"t": [0], "x_in": ["y", "x", "1"], "x_out": ["y", "x", "1"]})})
+    monkeypatch.setattr(interface_module, "get_sim_position_final",
+                        lambda msim, transform_keys=None: {"y": 1.0, "x": 25.0})
+
+    bare_interface.coordinate_system(transform_key)
+
+    if transform_key == "registered":
+        # compared as the table prints them, rounded
+        position = {"z": 2.0, "y": 1.0, "x": 25.0, "r": 32.0}
+        scale = {"z": 1.0, "y": 0.032 * 1.1, "x": 0.032 * 1.1}
+    else:
+        position = {"z": 2.0, "y": 0.0, "x": 24.0, "r": 30.0}
+        scale = {"z": 1.0, "y": 0.032, "x": 0.032}
+    rows, row_labels, columns = table.set_value.call_args.args[0]
+    expected = [[interface_module.print_dict_simple(position), interface_module.print_dict_simple(scale)]]
+    assert (rows, row_labels, columns) == (expected, ["image-0"], ["position", "pixel size"])
+    # the metadata itself is left as it was
+    assert bare_interface.reg.positions == [{"z": 2.0, "y": 0.0, "x": 24.0}]
+
+
 def test_modify_pair_registration_shows_and_reads_back_through_source_transforms(
     bare_interface, monkeypatch
 ):

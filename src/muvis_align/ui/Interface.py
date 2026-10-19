@@ -21,7 +21,7 @@ from muvis_align.constants import zarr_extension, tiff_extension, default_transf
 from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
                                              update_params)
 from muvis_align.MVSRegistration import MVSRegistration, RegState
-from muvis_align.image.util import get_sim_physical_size, get_sim_position_final, \
+from muvis_align.image.util import get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
     draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, NoOverlapError, \
     promoted_geometry, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
@@ -44,7 +44,7 @@ from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
     resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase, \
-    background_luminance, contrasting_color
+    background_luminance, contrasting_color, get_scale_from_transform, get_rotation_from_transform
 
 
 patch_shapes_text_coords()
@@ -776,20 +776,30 @@ class Interface:
     def coordinate_system(self, transform_key):
         self.transform_key = transform_key
         if self.reg.is_initialised():
-            self.populate_metadata_table(self.reg.msims, [transform_key])
+            self.populate_metadata_table(transform_key)
 
-    def populate_metadata_table(self, sims, transform_keys=None):
-        # https://pyapp-kit.github.io/magicgui/api/widgets/Table/
-        # https://pyapp-kit.github.io/magicgui/generated_examples/demo_widgets/table/
+    def populate_metadata_table(self, transform_key=None):
+        """Each source's position, pixel size and rotation: from its metadata, or from its transform_key's affine."""
         table_widget = self.param_widgets.get('input_output.metadata_table')
         properties = ['position', 'pixel size']
-        if transform_keys is None:
-            positions = self.reg.positions
+        if transform_key in (None, self.reg.source_transform_key):
+            positions = [dict(position) for position in self.reg.positions]
             scales = self.reg.scales
+            rotations = self.reg.rotations
         else:
-            positions = [get_sim_position_final(sim, transform_keys=transform_keys) for sim in sims]
-            scales = [get_sim_physical_size(sim) for sim in sims]
-        for position, rotation in zip(positions, self.reg.rotations):
+            positions, scales, rotations = [], [], []
+            for msim, position0, scale0 in zip(self.reg.msims, self.reg.positions, self.reg.scales):
+                affine = msi_utils.get_transform_from_msim(msim, transform_key)
+                if 't' in affine.dims:
+                    affine = affine.isel(t=0)
+                affine_dims = affine['x_in'].data.tolist()
+                transform_scale = get_scale_from_transform(np.asarray(affine))
+                # a stack's sources are 2D: their z stays the metadata's
+                positions.append({**position0, **get_sim_position_final(msim, transform_keys=[transform_key])})
+                scales.append({dim: size * transform_scale if dim in affine_dims else size
+                               for dim, size in scale0.items()})
+                rotations.append(get_rotation_from_transform(affine))
+        for position, rotation in zip(positions, rotations):
             if rotation is not None:
                 position['r'] = rotation
         order = sorted(range(len(positions)), key=lambda i: position_sort_key(positions[i]))
@@ -1625,7 +1635,8 @@ class Interface:
             coord_systems = [self.reg.source_transform_key] + (
                 [self.reg.reg_transform_key] if self.reg.is_global_registered() else [])
             self.populate_coordinate_systems(coord_systems)
-            self.populate_metadata_table(None)
+            # the coordinate system still selected, so the table matches the dropdown
+            self.populate_metadata_table(self.transform_key if self.transform_key in coord_systems else None)
             self.populate_metrics_table(self.reg.metrics)
         self.update_views(transform_key=view_transform_key, progress_factory=progress_factory)
 
