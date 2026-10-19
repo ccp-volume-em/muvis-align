@@ -341,10 +341,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#two-ways-to-run-it" class="md-nav__link">
+  <a href="#three-ways-to-run-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Two ways to run it
+        Three ways to run it
       
     </span>
   </a>
@@ -619,10 +619,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#two-ways-to-run-it" class="md-nav__link">
+  <a href="#three-ways-to-run-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Two ways to run it
+        Three ways to run it
       
     </span>
   </a>
@@ -689,14 +689,17 @@ a napari plugin.</p>
 <p>muvis-align handles x-y stitching and z reconstruction across image modalities, is
 designed for datasets in the terabyte range, and reads and writes the
 <a href="https://ngff.openmicroscopy.org/">OME-Zarr</a> next-generation file format throughout.</p>
-<p><img alt="EMPIAR-12193 overlay" src="images/EMPAIR12193overlay.png" /></p>
 <h2 id="installation">Installation</h2>
+<p>muvis-align needs Python 3.12 or later.</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>muvis-align
 </code></pre></div>
 <p>Or, with napari and Qt included:</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"muvis-align[all]"</span>
 </code></pre></div>
-<h2 id="two-ways-to-run-it">Two ways to run it</h2>
+<p>The command-line script (<code>run.py</code>), the example parameter files (<code>resources/</code>) and the
+notebooks (<code>notebooks/</code>) are in the <a href="https://github.com/ccp-volume-em/muvis-align">source repository</a>,
+not the pip package, so clone it to use those.</p>
+<h2 id="three-ways-to-run-it">Three ways to run it</h2>
 <table>
 <thead>
 <tr>
@@ -706,29 +709,36 @@ designed for datasets in the terabyte range, and reads and writes the
 </thead>
 <tbody>
 <tr>
+<td><strong><a href="napari/">napari plugin</a></strong></td>
+<td>Load a dataset, inspect the source layout, preview a single pair or the fused result, and run each step interactively. This is what to use to work out the parameters.</td>
+</tr>
+<tr>
 <td><strong><a href="pipeline/">Command-line pipeline</a></strong></td>
 <td>A YAML parameter file describing one or more operations, run with <code>python run.py params.yml</code>. This is what to use for batch and cluster runs.</td>
 </tr>
 <tr>
-<td><strong><a href="napari/">napari plugin</a></strong></td>
-<td>Load a dataset, inspect the source layout, preview a single pair or the fused result, and run each step interactively. This is what to use to work out the parameters.</td>
+<td><strong><a href="notebooks/">Jupyter notebooks</a></strong></td>
+<td>The registration classes driven step by step from Python, from a complete pipeline to feature-matching and overlap visualisation. This is what to use to script a custom workflow or look inside a registration.</td>
 </tr>
 </tbody>
 </table>
-<p>The two keep separate configuration files, so a project set up in the plugin is not
-directly a pipeline parameter file.</p>
+<p>The plugin and the pipeline keep separate configuration files, so a project set up in
+the plugin is not directly a pipeline parameter file.</p>
+<p>The plugin can also run in a container, in the browser through Xpra: see the
+<a href="technical/#interactive-interface-with-xpra-container">Dockerfile</a>.</p>
 <h2 id="getting-started">Getting started</h2>
 <ol>
 <li>Install as above.</li>
-<li>Work out your parameters interactively in the <a href="napari/">napari plugin</a>, or copy one
-   of the example parameter files under <code>resources/</code> for the
-   <a href="pipeline/">command-line pipeline</a>.</li>
-<li>For a full worked example, see the <a href="notebooks/">Jupyter notebooks</a>.</li>
+<li>Open the <a href="napari/">napari plugin</a> and follow the <a href="napari_guide/">step-by-step guide</a>
+   to set up a project and work out your parameters.</li>
+<li>For batch runs, copy one of the example parameter files under <code>resources/</code> and run it
+   with the <a href="pipeline/">command-line pipeline</a>.</li>
+<li>To work from Python, start with <code>pipeline.ipynb</code> in the <a href="notebooks/">notebooks</a>.</li>
 </ol>
 <h2 id="reference">Reference</h2>
 <ul>
-<li><a href="pipeline/">Pipeline parameters</a> - every option the YAML file accepts</li>
 <li><a href="napari/">napari plugin</a> - the interactive interface</li>
+<li><a href="pipeline/">Pipeline parameters</a> - every option the YAML file accepts</li>
 <li><a href="notebooks/">Notebooks</a> - worked examples and debugging workflows</li>
 <li><a href="technical/">Technical overview</a> - how the source implements NGFF, lazy data, FAIR metadata and resumable runs</li>
 <li><a href="references/">API reference</a> - generated from the source</li>
