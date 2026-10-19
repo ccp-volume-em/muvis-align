@@ -1,3 +1,4 @@
+import json
 import os.path
 
 import numpy as np
@@ -111,17 +112,18 @@ def test_fuse_channel_overlay_real_pyramid_matches_trivial_wrap():
     np.testing.assert_array_equal(np.asarray(sim_trivial.data), np.asarray(sim_pyramid.data))
 
 
-def test_preprocess_scale_selects_real_subpyramid_not_a_resize(tmp_path):
+@pytest.mark.parametrize('scale', [2, '2', '0.064um'], ids=['factor', 'factor-text', 'pixel-size'])
+def test_preprocess_scale_selects_real_subpyramid_not_a_resize(scale, tmp_path):
     # `scale` selects every native level at or coarser than it as a genuine sub-pyramid,
     # not a resize to one exact resolution
     reg, _ = registration_from_resource('params_test_2d.yml', tmp_path)
     full_scale_keys = msi_utils.get_sorted_scale_keys(reg.msims[0])
 
-    reg.preprocess(reg.msims, scale=2)
+    reg.preprocess(reg.msims, scale=scale)
 
     assert reg.register_msims is not None
     sub_scale_keys = msi_utils.get_sorted_scale_keys(reg.register_msims[0])
-    assert 1 <= len(sub_scale_keys) < len(full_scale_keys)
+    assert len(sub_scale_keys) == len(full_scale_keys) - 1
 
     # the sub-pyramid's scale0 must be byte-identical to the matching native level (not a resize)
     sub_sim0 = msi_utils.get_sim_from_msim(reg.register_msims[0], scale='scale0')
@@ -167,3 +169,34 @@ def test_init_progress_resumes_a_registration_of_the_same_files_only(tmp_path, g
     other_fileset.init_progress(output_filename, 'ome.zarr')
 
     assert other_fileset.state is RegState.INIT
+
+
+@pytest.mark.parametrize('fusion_params, operation_params, expected', [
+    ({}, {}, ('', 'native')),
+    ({'method': 'average', 'spacing': 'mean'}, {}, ('average', 'mean')),
+    ({'method': 'additive', 'output_spacing': 'max'}, {}, ('additive', 'max')),
+    ('compose', {'output_spacing': 'min', 'spacing': [0.5, 0]}, ('compose', 'min')),
+    ('exclusive', {'spacing': [0.5, 0]}, ('exclusive', 'native')),
+], ids=['default', 'spacing', 'output_spacing', 'method-text', 'transition-spacing'])
+def test_fusion_settings_take_the_plugins_spacing_and_default_to_native(fusion_params, operation_params, expected):
+    reg = MVSRegistration()
+    reg.fusion_params = fusion_params
+    reg.params = operation_params
+
+    assert reg.fusion_settings() == expected
+
+
+def test_run_writes_an_operations_preview_at_a_pixel_size(tmp_path):
+    with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
+        params = yaml.safe_load(file)
+    params['general'].pop('output')
+    operation_params = dict(params['operations'][0], operation='fuse')
+    operation_params['output'] = {'path': tmp_path.as_posix() + '/', 'preview': 'ome.zarr', 'preview_scale': '0.128um'}
+    reg = MVSRegistration()
+    reg.init_params(params['general'], operation_params)
+
+    reg.run()
+
+    with open(tmp_path / 'preview_fused.ome.zarr' / 'zarr.json', encoding='utf8') as file:
+        datasets = json.load(file)['attributes']['ome']['multiscales'][0]['datasets']
+    assert datasets[0]['coordinateTransformations'][0]['scale'][-1] == pytest.approx(0.128)

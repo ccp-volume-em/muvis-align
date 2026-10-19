@@ -517,7 +517,7 @@ class MVSRegistration:
 
         image_paths = []
         if save_images:
-            if self.output_params.get('preview'):
+            if output_params.get('preview', general_output_params.get('preview')):
                 with Timer('create preview', verbose=self.logging_time):
                     self.create_preview('preview_' + output_filename,
                                         nom_msims=msims,
@@ -525,12 +525,7 @@ class MVSRegistration:
 
             if ('register' in operation or 'fuse' in operation or 'merge' in operation):
                 with Timer('fuse image', verbose=self.logging_time):
-                    if isinstance(self.fusion_params, dict):
-                        fusion_method = self.fusion_params.get('method', '')
-                        output_spacing = self.fusion_params.get('output_spacing', 'mean')
-                    else:
-                        fusion_method = self.fusion_params
-                        output_spacing = self.params.get('output_spacing', 'mean')
+                    fusion_method, output_spacing = self.fusion_settings()
                     zarr_output_filename = output_filename if 'zar' in output_format else None
                     # msims as stored (2D for a stack): fuse() promotes what it needs to
                     fused_msim, is_saved = self.fuse(msims, fusion_method=fusion_method, output_spacing=output_spacing,
@@ -1174,6 +1169,20 @@ class MVSRegistration:
             transform = result['affine_matrix']
 
         return transform, result.get('quality'), result
+
+    def fusion_settings(self):
+        """(method, output spacing) from the fusion params: a dict, or the method as text. The spacing is the
+        plugin's `spacing` or `output_spacing`, defaulting to native as in the plugin."""
+        if isinstance(self.fusion_params, dict):
+            fusion_method = self.fusion_params.get('method', '')
+            output_spacing = self.fusion_params.get('spacing', self.fusion_params.get('output_spacing'))
+        else:
+            fusion_method = self.fusion_params
+            output_spacing = None
+        if output_spacing is None:
+            # an operation's own `spacing` is the transition video's, not the fusion's
+            output_spacing = self.params.get('output_spacing', 'native')
+        return fusion_method, output_spacing
 
     def create_fusion_method(self, fusion_method, sim0):
         if fusion_method is None:
@@ -1970,7 +1979,8 @@ class MVSRegistration:
         export_json(metrics_filename, output_metrics)
 
     def create_preview(self, output_filename=None, nom_msims=None, transform_key=None):
-        output_params = self.params_general['output']
+        # the operation's own output settings win over general.output's
+        output_params = {**self.params_general.get('output', {}), **(self.output_params or {})}
         preview_scale = parse_scale(output_params.get('preview_scale'), default=16)
         is_stack = self.is_stack
         z_scale = get_metadata_z_scale(self.extra_metadata)
@@ -1988,7 +1998,7 @@ class MVSRegistration:
 
             if transform_key is not None and transform_key != self.source_transform_key:
                 copy_transforms_to_msims(nom_msims, msims, transform_key)
-        fusion_method = self.fusion_params.get('method', '')
+        fusion_method, _ = self.fusion_settings()
         fused_msim, is_saved = self.fuse(msims, fusion_method=fusion_method, transform_key=transform_key,
                                          output_spacing='max', output_filename=output_filename)
         fused_sim = extract_sims_from_fused(fused_msim)

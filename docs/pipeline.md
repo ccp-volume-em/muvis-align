@@ -243,7 +243,7 @@ preprocessing:
   gaussian_sigma: 1                  # Gaussian blur sigma (optional)
   normalisation: global              # Image normalization
   filter_foreground: True            # Filter out empty/background images
-  scale: 4                           # Downsampling factor for processing
+  scale: 4                           # Downsampling factor for processing, or a pixel size such as 1um
 ```
 
 #### Fusion Options
@@ -253,7 +253,7 @@ Combine registered images into a single output.
 ```yaml
 fusion:
   method: average          # average, exclusive, additive, compose
-  output_spacing: mean     # mean, min, max
+  spacing: native          # native, mean, min, max
 ```
 
 **Fusion Methods:**
@@ -267,7 +267,7 @@ fusion:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `method` | str | `average` | Fusion method, as above |
-| `output_spacing` | str | `mean` | Output pixel size across sources: `mean`, `min` (highest resolution) or `max` (lowest resolution) |
+| `spacing` | str | `native` | Output pixel size: `native` (each level at the sources' own pixel sizes, never upsampled; written to zarr only, else `mean`), `mean`, `min` (highest resolution) or `max` (lowest resolution). `output_spacing` is also accepted |
 
 ### Tile size
 
