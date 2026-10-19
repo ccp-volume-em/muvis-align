@@ -429,6 +429,10 @@ REFACTORING
   124s / 6GB -> 22s / 2GB). sift and orb use scikit-image (user decision).
 
 ### Crashes, hangs and stalls
+- **macOS hang in _run_off_thread** - work done before the nested loop started could lose its quit, leaving the
+  Qt thread waiting: hit by test_shape_layers_are_kept... in 4 of 7 CI runs. The worker now keeps its outcome and
+  sets an Event the loop checks (skipped when already done, else polled). macOS CI, test_interface.py x8 per job:
+  7/16 hung before, 0/16 after.
 - **Preview hang (HiGHS)** - and the ~10s gap before its layers: scipy's HiGHS (linprog, in multiview-stitcher's
   overlap tests) starts ~11 workers per calling thread and tears them down when it exits; from napari's changing
   pooled threads a teardown spun in its TLS callback holding the Windows loader lock, so no thread could start.

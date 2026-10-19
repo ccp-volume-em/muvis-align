@@ -11,6 +11,7 @@ import networkx as nx
 import numpy as np
 import os.path
 import shutil
+import threading
 from xarray import DataTree
 from qtpy.QtCore import QEventLoop, QObject, QTimer, Qt, Signal
 from qtpy.QtGui import QColor
@@ -481,27 +482,39 @@ class Interface:
         # starts where the bar has got to: a twin planning from empty would report positions the bar is past
         worker_factory = progress_factory.worker_twin(bridge.moved.emit, bridge.stepped.emit)
 
-        def run():
-            with worker_factory as factory:
-                return work(factory)
-
         outcome = {}
+        done = threading.Event()
+
+        # the outcome is kept here, not by signal: a worker done before the loop starts can lose its quit (macOS)
+        def run():
+            try:
+                with worker_factory as factory:
+                    outcome['value'] = work(factory)
+            except Exception as error:
+                outcome['error'] = error
+            finally:
+                done.set()
+
         loop = QEventLoop()
+        poll = QTimer()
+        poll.timeout.connect(lambda: loop.quit() if done.is_set() else None)
         # handlers set at creation: without an 'errored' one, create_worker() adds one re-raising uncatchably
         # in the Qt event loop
         worker = create_worker(
             run,
             _start_thread=False,
             _connect={
-                'returned': lambda value: outcome.__setitem__('value', value),
-                'errored': lambda error: outcome.__setitem__('error', error),
+                'errored': lambda error: outcome.setdefault('error', error),
                 # a worker diverts warnings to this signal: shown as on the Qt thread, once per message
                 'warned': lambda warning: notification_manager.receive_warning(*warning),
                 'finished': loop.quit,
             },
         )
         worker.start()
-        loop.exec_()
+        if not done.is_set():
+            poll.start(50)
+            loop.exec_()
+            poll.stop()
         # the twin's accounting becomes the bar's, so the next off-thread call continues from here
         progress_factory.continue_from(worker_factory)
         if 'error' in outcome:

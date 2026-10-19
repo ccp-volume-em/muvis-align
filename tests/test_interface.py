@@ -1959,6 +1959,19 @@ def test_run_off_thread_runs_the_work_elsewhere_and_keeps_qt_free(make_napari_vi
     assert ticks
 
 
+def test_run_off_thread_returns_work_done_before_the_loop_starts(make_napari_viewer):
+    """Instant work can finish before the nested loop runs, which hung the Qt thread on macOS: repeated to meet it."""
+    viewer = make_napari_viewer()
+    interface = Interface.__new__(Interface)
+    interface.viewer = viewer
+    interface.enable_plugin_widget = None
+
+    with interface._operation_progress('Work') as factory:
+        results = [interface._run_off_thread(lambda _, index=index: index, factory) for index in range(20)]
+
+    assert results == list(range(20))
+
+
 def test_run_off_thread_propagates_failures_to_the_caller(make_napari_viewer):
     """A failure on the worker must surface where the call was made (and so reach
     @catch_run_errors), not be re-raised inside the Qt event loop where nothing catches it."""
