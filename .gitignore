@@ -93,4 +93,4 @@ muvis-align-xpra_latest.old/
 muvis-align-*.log
 
 # the plugin's project file, written where it runs
-/muvis_align_project.yml
+/muvis_align_project*.yml
