@@ -1,0 +1,1154 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Image registration pipeline using multiview-stitcher and napari plugin">
+      
+      
+      
+        <link rel="canonical" href="https://ccp-volume-em.github.io/muvis-align/technical/">
+      
+      
+        <link rel="prev" href="../notebooks/">
+      
+      
+        <link rel="next" href="../poster/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Technical overview - muvis-align</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#technical-overview" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="muvis-align" class="md-header__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            muvis-align
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Technical overview
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ccp-volume-em/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="muvis-align" class="md-nav__button md-logo" aria-label="muvis-align" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    muvis-align
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ccp-volume-em/muvis-align" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    muvis-align
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pipeline/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running the muvis-align Pipeline
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../napari/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The napari plugin
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../napari_guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Step by step in napari
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../notebooks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Jupyter Notebooks Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Technical overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../poster/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align: building a registration pipeline for large data &amp; next gen file format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../references/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    References
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="technical-overview">Technical overview</h1>
+<p><a href="https://github.com/ccp-volume-em/muvis-align">muvis-align</a> is an image registration package for aligning 2D and 3D images.
+The package is implemented as a <a href="https://napari.org/stable/">napari</a> plugin, notebooks using the package classes, and a command line interface (CLI) for batch processing.
+The <a href="https://napari.org/stable/">napari</a> plugin can also be run as a container on a local machine or on a cloud platform via an interactive web interface.</p>
+<h1 id="muvis-align-practices-demonstrated-in-the-source-code">muvis-align practices demonstrated in the source code</h1>
+<p>Repository: <a href="https://github.com/ccp-volume-em/muvis-align">https://github.com/ccp-volume-em/muvis-align</a></p>
+<p><code>muvis-align</code> demonstrates practical patterns for scalable, reproducible image registration workflows across a <a href="https://napari.org/stable/">napari</a> plugin, notebooks, CLI execution, batch/HPC use, and containerized interactive access.</p>
+<hr />
+<h2 id="next-generation-file-formats-ngff">Next Generation File Formats (NGFF)</h2>
+<p><code>muvis-align</code> uses OME-Zarr / NGFF as a primary output format.</p>
+<p>OME-Zarr / NGFF writing is delegated to <code>to_multiscales</code> and <code>to_ngff_zarr</code> from <a href="https://pypi.org/project/ngff-zarr/">ngff-zarr</a>, including multiscale pyramid generation.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/image/ome_zarr_helper.py"><code>src/muvis_align/image/ome_zarr_helper.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">ngff_zarr</span><span class="w"> </span><span class="kn">import</span> <span class="n">to_ngff_image</span><span class="p">,</span> <span class="n">to_multiscales</span><span class="p">,</span> <span class="n">to_ngff_zarr</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">save_ome_image</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">dim_order</span><span class="p">,</span> <span class="n">pixel_size</span><span class="p">,</span> <span class="n">channels</span><span class="p">,</span> <span class="n">translation</span><span class="p">,</span> <span class="n">rotation</span><span class="p">,</span>
+                   <span class="n">pyramid_downsample</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">compression</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">ome_version</span><span class="o">=</span><span class="n">default_ome_zarr_version</span><span class="p">):</span>
+
+    <span class="n">storage_options</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">compressor</span><span class="p">,</span> <span class="n">compression_filters</span> <span class="o">=</span> <span class="n">create_compression_filter</span><span class="p">(</span><span class="n">compression</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">compressor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">storage_options</span><span class="p">[</span><span class="s1">'compressor'</span><span class="p">]</span> <span class="o">=</span> <span class="n">compressor</span>
+    <span class="k">if</span> <span class="n">compression_filters</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">storage_options</span><span class="p">[</span><span class="s1">'filters'</span><span class="p">]</span> <span class="o">=</span> <span class="n">compression_filters</span>
+
+    <span class="n">axes_units</span> <span class="o">=</span> <span class="p">{</span><span class="n">dim</span><span class="p">:</span> <span class="s1">'micrometer'</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">dim_order</span> <span class="k">if</span> <span class="n">dim</span> <span class="ow">in</span> <span class="s1">'xyz'</span><span class="p">}</span>
+    <span class="n">image</span> <span class="o">=</span> <span class="n">to_ngff_image</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="n">dim_order</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">pixel_size</span><span class="p">,</span> <span class="n">translation</span><span class="o">=</span><span class="n">translation</span><span class="p">,</span> <span class="n">axes_units</span><span class="o">=</span><span class="n">axes_units</span><span class="p">)</span>
+    <span class="n">multiscales</span> <span class="o">=</span> <span class="n">to_multiscales</span><span class="p">(</span><span class="n">image</span><span class="p">,</span> <span class="n">scale_factors</span><span class="o">=</span><span class="n">pyramid_downsample</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="n">create_chunk_dict</span><span class="p">(</span><span class="n">default_chunk_size</span><span class="p">,</span> <span class="n">dim_order</span><span class="p">))</span>
+    <span class="o">...</span>
+    <span class="n">to_ngff_zarr</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">multiscales</span><span class="p">,</span> <span class="n">chunks_per_shard</span><span class="o">=</span><span class="n">chunks_per_shard</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="n">ome_version</span><span class="p">,</span> <span class="o">**</span><span class="n">storage_options</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">multiscales</span><span class="o">.</span><span class="n">metadata</span>
+</code></pre></div>
+<hr />
+<h2 id="handling-larger-than-memory-data">Handling larger-than-memory data</h2>
+<p>The code uses <a href="https://www.dask.org/">Dask</a>-backed image sources for lazy loading and chunked processing.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/image/source_helper.py"><code>src/muvis_align/image/source_helper.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">create_image_source</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">source_metadata</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">file_label</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">transform_key</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'file_label'</span><span class="p">:</span> <span class="n">file_label</span><span class="p">,</span> <span class="s1">'index'</span><span class="p">:</span> <span class="n">index</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">transform_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">kwargs</span><span class="p">[</span><span class="s1">'transform_key'</span><span class="p">]</span> <span class="o">=</span> <span class="n">transform_key</span>
+    <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">filename</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">ext</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s1">'tif'</span><span class="p">):</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="n">TiffImageSource</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">source_metadata</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="s1">'.zar'</span> <span class="ow">in</span> <span class="n">filename</span><span class="o">.</span><span class="n">lower</span><span class="p">():</span>
+        <span class="n">source</span> <span class="o">=</span> <span class="n">ZarrImageSource</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">source_metadata</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">ext</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Unsupported file type: </span><span class="si">{</span><span class="n">ext</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Unsupported: </span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">source</span>
+</code></pre></div>
+<p>TIFF files are read lazily through tifffile's Zarr store (<code>aszarr</code>), each pyramid level wrapped as a <a href="https://www.dask.org/">Dask</a> array, avoiding immediate full-volume loading.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/image/ome_tiff_helper.py"><code>src/muvis_align/image/ome_tiff_helper.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">tifffile</span><span class="o">.</span><span class="n">TiffFile</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span> <span class="k">as</span> <span class="n">tif</span><span class="p">:</span>
+    <span class="n">series</span> <span class="o">=</span> <span class="n">tif</span><span class="o">.</span><span class="n">series</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">axes</span> <span class="o">=</span> <span class="n">series</span><span class="o">.</span><span class="n">axes</span>
+    <span class="c1"># multiscales=True: a group even for one level, levels ordered finest first</span>
+    <span class="n">group</span> <span class="o">=</span> <span class="n">zarr</span><span class="o">.</span><span class="n">open_group</span><span class="p">(</span><span class="n">store</span><span class="o">=</span><span class="n">tif</span><span class="o">.</span><span class="n">aszarr</span><span class="p">(</span><span class="n">series</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">multiscales</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">mode</span><span class="o">=</span><span class="s1">'r'</span><span class="p">)</span>
+    <span class="n">attributes</span> <span class="o">=</span> <span class="n">group</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'ome'</span><span class="p">,</span> <span class="n">group</span><span class="o">.</span><span class="n">attrs</span><span class="p">)</span>
+    <span class="n">datasets</span> <span class="o">=</span> <span class="n">attributes</span><span class="p">[</span><span class="s1">'multiscales'</span><span class="p">][</span><span class="mi">0</span><span class="p">][</span><span class="s1">'datasets'</span><span class="p">]</span>
+    <span class="n">arrays</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="n">datasets</span><span class="p">:</span>
+        <span class="n">array</span> <span class="o">=</span> <span class="n">group</span><span class="p">[</span><span class="n">dataset</span><span class="p">[</span><span class="s1">'path'</span><span class="p">]]</span>
+        <span class="o">...</span>
+<span class="k">for</span> <span class="n">level</span><span class="p">,</span> <span class="n">array</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">arrays</span><span class="p">):</span>
+    <span class="c1"># meta given, so dask does not probe the dtype with a read</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">from_array</span><span class="p">(</span><span class="n">array</span><span class="p">,</span> <span class="n">chunks</span><span class="o">=</span><span class="n">array</span><span class="o">.</span><span class="n">chunks</span><span class="p">,</span> <span class="n">meta</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">0</span><span class="p">,)</span> <span class="o">*</span> <span class="n">array</span><span class="o">.</span><span class="n">ndim</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">array</span><span class="o">.</span><span class="n">dtype</span><span class="p">),</span>
+                         <span class="n">name</span><span class="o">=</span><span class="s1">'tiff-'</span> <span class="o">+</span> <span class="n">tokenize</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">stat</span><span class="o">.</span><span class="n">st_size</span><span class="p">,</span> <span class="n">stat</span><span class="o">.</span><span class="n">st_mtime_ns</span><span class="p">,</span> <span class="n">level</span><span class="p">))</span>
+    <span class="n">datas</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</code></pre></div>
+<p>OME-Zarr metadata is read from the store's consolidated metadata (falling back to <a href="https://pypi.org/project/ngff-zarr/">ngff-zarr</a>'s parser), and each multiscale level is opened directly as a Dask array.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/image/ZarrImageSource.py"><code>src/muvis_align/image/ZarrImageSource.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">init_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="c1"># metadata only, off consolidated metadata: the arrays wait for first access to self.data</span>
+    <span class="n">metadata</span> <span class="o">=</span> <span class="n">read_ome_zarr_source_metadata</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">dimension_order</span> <span class="o">=</span> <span class="n">metadata</span><span class="p">[</span><span class="s1">'dimension_order'</span><span class="p">]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span> <span class="o">=</span> <span class="n">metadata</span><span class="p">[</span><span class="s1">'shapes'</span><span class="p">]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">shape</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">metadata</span><span class="p">[</span><span class="s1">'dtype'</span><span class="p">]</span>
+    <span class="o">...</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_data</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="o">...</span>
+    <span class="n">datas</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">sim_shape</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_level_paths</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">shapes</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">da</span><span class="o">.</span><span class="n">from_zarr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filename</span><span class="p">,</span> <span class="n">component</span><span class="o">=</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">sim_shape</span><span class="p">):</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">sim_shape</span><span class="p">)</span>
+        <span class="n">datas</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_data</span> <span class="o">=</span> <span class="n">datas</span>
+</code></pre></div>
+<p>Fusion writes directly to OME-Zarr, level by level and block by block, rather than creating a full fused array in memory first.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>src/muvis_align/MVSRegistration.py</code></a>, <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/fusion_blocks.py"><code>src/muvis_align/fusion_blocks.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">dask</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">scheduler</span><span class="o">=</span><span class="s1">'threads'</span><span class="p">),</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
+    <span class="k">if</span> <span class="n">saving_zarr</span><span class="p">:</span>
+        <span class="n">levels</span> <span class="o">=</span> <span class="n">export_levels</span><span class="p">(</span><span class="n">source_spacings</span><span class="p">,</span> <span class="n">output_stack_properties</span><span class="p">,</span> <span class="n">scaled_dims</span><span class="p">,</span> <span class="n">native</span><span class="o">=</span><span class="n">is_native</span><span class="p">)</span>
+        <span class="n">fused_image</span> <span class="o">=</span> <span class="n">fuse_levels_to_ome_zarr</span><span class="p">(</span>
+            <span class="n">msims</span><span class="p">,</span> <span class="n">levels</span><span class="p">,</span> <span class="n">output_filename</span><span class="p">,</span> <span class="n">transform_key</span><span class="p">,</span> <span class="n">output_stack_properties</span><span class="p">,</span> <span class="n">output_chunksize</span><span class="p">,</span>
+            <span class="n">fusion_func</span><span class="o">=</span><span class="n">fuse_func</span><span class="p">,</span> <span class="n">zarr_options</span><span class="o">=</span><span class="n">zarr_options</span><span class="p">,</span>
+            <span class="n">batch_options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_fusion_batch_options</span><span class="p">(</span><span class="n">saving_zarr</span><span class="p">,</span> <span class="n">max_workers</span><span class="o">=</span><span class="n">workers</span><span class="p">),</span>
+            <span class="n">ranks</span><span class="o">=</span><span class="n">source_spacings</span> <span class="k">if</span> <span class="n">is_native</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span> <span class="n">average_levels</span><span class="o">=</span><span class="ow">not</span> <span class="n">is_native</span><span class="p">,</span>
+            <span class="n">level_weights</span><span class="o">=</span><span class="n">level_bytes</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">fused_image</span> <span class="o">=</span> <span class="n">fusion</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span><span class="n">msims</span><span class="p">,</span> <span class="n">fusion_func</span><span class="o">=</span><span class="n">fuse_func</span><span class="p">,</span> <span class="n">transform_key</span><span class="o">=</span><span class="n">transform_key</span><span class="p">,</span>
+                                  <span class="n">output_stack_properties</span><span class="o">=</span><span class="n">output_stack_properties</span><span class="p">,</span>
+                                  <span class="n">output_chunksize</span><span class="o">=</span><span class="n">output_chunksize</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="fair-implementation">FAIR implementation</h2>
+<p>Rather than only documenting FAIR principles, <code>muvis-align</code> implements concrete FAIR-supporting mechanisms:</p>
+<ul>
+<li>project template defined as workflow schema in Bilayers format</li>
+<li>structured parameters in YAML</li>
+<li>OME-Zarr / OME-TIFF image outputs</li>
+<li>RO-Crate generation</li>
+<li>persistent mappings and metrics files</li>
+<li>napari and CLI interfaces</li>
+<li>container metadata for reproducible execution</li>
+</ul>
+<h2 id="declarative-ui-definition-based-on-workflow-schema">Declarative UI definition based on workflow schema</h2>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/ui/project_template.yaml"><code>src/muvis_align/ui/project_template.yaml</code></a></p>
+<p>The project_template.yaml file is written in the Bilayers format and serves as the declarative description of the muvis-align workflow.
+The file is used to dynamically generate the <a href="https://pyapp-kit.github.io/magicgui/">magicgui</a>-based <a href="https://napari.org/stable/">napari</a> user interface, allowing workflow parameters, input definitions, and processing options to be defined in a structured configuration file rather than being hard-coded in the application.
+This approach simplifies interface maintenance, improves reproducibility, and enables the same workflow definition to be reused across the <a href="https://napari.org/stable/">napari</a> plugin, command-line execution, and containerized deployments.
+Bilayers schemas are represented as a <a href="https://docs.pydantic.dev/">Pydantic</a> model, which adds typed validation and structured serialization for this workflow definition layer.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/ui/bilayers_util.py"><code>src/muvis_align/ui/bilayers_util.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">field_validator</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">BilayersField</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">extra</span><span class="o">=</span><span class="s1">'allow'</span><span class="p">)</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="nb">type</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">default</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">description</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">section_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">section_key</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">cli_order</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">options</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">BilayersOption</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">file_count</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">output_dir_set</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s1">'type'</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">'before'</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_normalize_type</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s1">'cli_order'</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">'before'</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_normalize_cli_order</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">value</span> <span class="o">==</span> <span class="s1">''</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_section_dict</span><span class="p">(</span><span class="n">template</span><span class="p">,</span> <span class="n">keys</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">sections</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">keys</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span>
+
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
+        <span class="n">items</span> <span class="o">=</span> <span class="n">template</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="p">[])</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">template</span>
+        <span class="k">for</span> <span class="n">raw_item</span> <span class="ow">in</span> <span class="n">items</span><span class="p">:</span>
+            <span class="n">item</span> <span class="o">=</span> <span class="n">BilayersField</span><span class="o">.</span><span class="n">model_validate</span><span class="p">({</span><span class="o">**</span><span class="n">raw_item</span><span class="p">,</span> <span class="s1">'section_key'</span><span class="p">:</span> <span class="n">key</span><span class="p">})</span>
+            <span class="n">section_id</span> <span class="o">=</span> <span class="n">item</span><span class="o">.</span><span class="n">section_id</span> <span class="ow">or</span> <span class="n">key</span>
+            <span class="n">sections</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">section_id</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="n">section_id</span><span class="p">:</span> <span class="p">[</span><span class="n">item</span><span class="o">.</span><span class="n">model_dump</span><span class="p">()</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">section_items</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">item</span><span class="o">.</span><span class="n">cli_order</span><span class="p">)]</span>
+        <span class="k">for</span> <span class="n">section_id</span><span class="p">,</span> <span class="n">section_items</span> <span class="ow">in</span> <span class="n">sections</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+</code></pre></div>
+<p>The package creates a Workflow Run RO-Crate for each run, recording the project parameters, source images and results.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/file/rocrate_utils.py"><code>src/muvis_align/file/rocrate_utils.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">create_workflow_run_crate</span><span class="p">(</span><span class="n">dest_path</span><span class="p">,</span> <span class="n">params_path</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">source_paths</span><span class="p">,</span> <span class="n">result_paths</span><span class="p">,</span>
+                              <span class="n">start_time</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">end_time</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">crate</span> <span class="o">=</span> <span class="n">ROCrate</span><span class="p">()</span>
+    <span class="n">root</span> <span class="o">=</span> <span class="n">crate</span><span class="o">.</span><span class="n">root_dataset</span>
+    <span class="n">root</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">'muvis-align run: </span><span class="si">{</span><span class="n">get_filetitle</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">dest_path</span><span class="p">))</span><span class="si">}</span><span class="s1">'</span>
+    <span class="k">for</span> <span class="n">profile_id</span><span class="p">,</span> <span class="n">profile_name</span> <span class="ow">in</span> <span class="n">WORKFLOW_RUN_PROFILES</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">profile</span> <span class="o">=</span> <span class="n">crate</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ContextEntity</span><span class="p">(</span><span class="n">crate</span><span class="p">,</span> <span class="n">profile_id</span><span class="p">,</span> <span class="p">{</span><span class="s1">'@type'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'CreativeWork'</span><span class="p">,</span> <span class="s1">'Profile'</span><span class="p">],</span>
+                                                              <span class="s1">'name'</span><span class="p">:</span> <span class="n">profile_name</span><span class="p">,</span> <span class="s1">'version'</span><span class="p">:</span> <span class="s1">'0.5'</span><span class="p">}))</span>
+        <span class="n">root</span><span class="o">.</span><span class="n">append_to</span><span class="p">(</span><span class="s1">'conformsTo'</span><span class="p">,</span> <span class="n">profile</span><span class="p">)</span>
+
+    <span class="n">workflow_entity</span> <span class="o">=</span> <span class="n">add_workflow</span><span class="p">(</span><span class="n">crate</span><span class="p">)</span>
+    <span class="n">parameters</span> <span class="o">=</span> <span class="n">add_formal_parameters</span><span class="p">(</span><span class="n">crate</span><span class="p">,</span> <span class="n">workflow_entity</span><span class="p">)</span>
+    <span class="o">...</span>
+    <span class="n">action_entity</span> <span class="o">=</span> <span class="n">crate</span><span class="o">.</span><span class="n">add_action</span><span class="p">(</span><span class="n">workflow_entity</span><span class="p">,</span> <span class="n">identifier</span><span class="o">=</span><span class="s1">'#run-001'</span><span class="p">,</span> <span class="nb">object</span><span class="o">=</span><span class="n">objects</span><span class="p">,</span> <span class="n">result</span><span class="o">=</span><span class="n">results</span><span class="p">,</span>
+                                     <span class="n">properties</span><span class="o">=</span><span class="n">action_properties</span><span class="p">)</span>
+    <span class="n">root</span><span class="o">.</span><span class="n">append_to</span><span class="p">(</span><span class="s1">'mentions'</span><span class="p">,</span> <span class="n">action_entity</span><span class="p">)</span>
+
+    <span class="n">crate</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dest_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">crate</span>
+</code></pre></div>
+<p>OME-Zarr outputs receive a Zarr-specific RO-Crate, recording the sources, acquisition, registration metrics and the fusion step.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/file/rocrate_utils.py"><code>src/muvis_align/file/rocrate_utils.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">create_zarr_ro_crate</span><span class="p">(</span><span class="n">dest_path</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">source_paths</span><span class="o">=</span><span class="p">(),</span> <span class="n">metrics</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">crate</span> <span class="o">=</span> <span class="n">ZarrCrate</span><span class="p">()</span>
+    <span class="c1"># the crate is written as the fusion ends</span>
+    <span class="n">fusion_time</span> <span class="o">=</span> <span class="n">to_iso_datetime</span><span class="p">(</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">())</span>
+    <span class="n">properties</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'name'</span><span class="p">:</span> <span class="n">get_filetitle</span><span class="p">(</span><span class="n">dest_path</span><span class="p">),</span>
+                  <span class="s1">'description'</span><span class="p">:</span> <span class="sa">f</span><span class="s1">'OME-Zarr image fused by muvis-align from </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">source_paths</span><span class="p">)</span><span class="si">}</span><span class="s1"> sources'</span><span class="p">,</span>
+                  <span class="s1">'datePublished'</span><span class="p">:</span> <span class="n">fusion_time</span><span class="p">,</span>
+                  <span class="s1">'encodingFormat'</span><span class="p">:</span> <span class="n">ZARR_ENCODING_FORMAT</span><span class="p">}</span>
+    <span class="n">dataset_entity</span> <span class="o">=</span> <span class="n">crate</span><span class="o">.</span><span class="n">add_dataset</span><span class="p">(</span><span class="n">dest_path</span><span class="o">=</span><span class="s1">'.'</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="n">properties</span><span class="p">)</span>
+    <span class="n">source_entities</span> <span class="o">=</span> <span class="p">[</span><span class="n">crate</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ContextEntity</span><span class="p">(</span><span class="n">crate</span><span class="p">,</span> <span class="n">to_crate_path</span><span class="p">(</span><span class="n">source_path</span><span class="p">,</span> <span class="n">dest_path</span><span class="p">),</span> <span class="p">{</span>
+        <span class="s1">'@type'</span><span class="p">:</span> <span class="s1">'Dataset'</span> <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="n">source_path</span><span class="p">)</span> <span class="k">else</span> <span class="s1">'File'</span><span class="p">}))</span> <span class="k">for</span> <span class="n">source_path</span> <span class="ow">in</span> <span class="n">source_paths</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">source_entities</span><span class="p">:</span>
+        <span class="n">dataset_entity</span><span class="p">[</span><span class="s1">'isBasedOn'</span><span class="p">]</span> <span class="o">=</span> <span class="n">source_entities</span>
+    <span class="k">if</span> <span class="n">sources</span><span class="p">:</span>
+        <span class="n">add_data_capture</span><span class="p">(</span><span class="n">crate</span><span class="p">,</span> <span class="n">dataset_entity</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="n">source_entities</span><span class="p">)</span>
+    <span class="o">...</span>
+    <span class="n">fusion_properties</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'@type'</span><span class="p">:</span> <span class="s1">'CreateAction'</span><span class="p">,</span> <span class="s1">'name'</span><span class="p">:</span> <span class="s1">'Fusion to OME-Zarr'</span><span class="p">,</span> <span class="s1">'endTime'</span><span class="p">:</span> <span class="n">fusion_time</span><span class="p">,</span>
+                         <span class="s1">'instrument'</span><span class="p">:</span> <span class="n">add_software</span><span class="p">(</span><span class="n">crate</span><span class="p">),</span> <span class="s1">'result'</span><span class="p">:</span> <span class="n">dataset_entity</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">source_entities</span><span class="p">:</span>
+        <span class="n">fusion_properties</span><span class="p">[</span><span class="s1">'object'</span><span class="p">]</span> <span class="o">=</span> <span class="n">source_entities</span>
+    <span class="n">fusion_entity</span> <span class="o">=</span> <span class="n">crate</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">ContextEntity</span><span class="p">(</span><span class="n">crate</span><span class="p">,</span> <span class="s1">'#fusion-001'</span><span class="p">,</span> <span class="n">fusion_properties</span><span class="p">))</span>
+    <span class="n">dataset_entity</span><span class="o">.</span><span class="n">append_to</span><span class="p">(</span><span class="s1">'mentions'</span><span class="p">,</span> <span class="n">fusion_entity</span><span class="p">)</span>
+    <span class="n">crate</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dest_path</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">crate</span>
+</code></pre></div>
+<hr />
+<h2 id="persistent-metadata">Persistent metadata</h2>
+<p>Input metadata is read from OME-TIFF or OME-Zarr and converted into physical units, positions, rotations, channels, scales, and transforms.</p>
+<h3 id="interoperable-ngff-rfc-6-transforms">Interoperable NGFF RFC 6 transforms</h3>
+<p>Registration transforms are written in the <a href="https://github.com/ome/ngff-spec/blob/main/index.md#coordinatetransformations-metadata">OME-NGFF RFC 6 coordinate-transform format</a> rather than as application-specific matrix arrays. Each affine identifies its image path and names its input (<code>source_metadata</code>) and output (<code>registered</code>) coordinate systems. Using the <code>ome-zarr-models</code> v0.6 model for both serialization and validation makes the saved transforms portable to other tools that implement the NGFF coordinate-system and transformation model.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/file/transforms.py"><code>src/muvis_align/file/transforms.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">metadata_models</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">transform</span><span class="p">,</span> <span class="n">source_key</span><span class="o">=</span><span class="s1">'source_metadata'</span><span class="p">,</span> <span class="n">transform_key</span><span class="o">=</span><span class="s1">'registered'</span><span class="p">):</span>
+    <span class="n">affine</span> <span class="o">=</span> <span class="n">Affine</span><span class="p">(</span>
+        <span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span>
+        <span class="n">affine</span><span class="o">=</span><span class="n">transform</span><span class="p">,</span>
+        <span class="nb">input</span><span class="o">=</span><span class="n">CoordinateSystemIdentifier</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">source_key</span><span class="p">),</span>
+        <span class="n">output</span><span class="o">=</span><span class="n">CoordinateSystemIdentifier</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">transform_key</span><span class="p">),</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">affine</span><span class="o">.</span><span class="n">model_dump</span><span class="p">(</span><span class="n">exclude_none</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exclude_defaults</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exclude_unset</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">read_transforms</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="n">transforms</span> <span class="o">=</span> <span class="n">import_json</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">{</span><span class="n">label</span><span class="p">:</span> <span class="n">Affine</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">transform</span><span class="p">)</span><span class="o">.</span><span class="n">affine</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">transform</span> <span class="ow">in</span> <span class="n">transforms</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+</code></pre></div>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/image/ome_zarr_util.py"><code>src/muvis_align/image/ome_zarr_util.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="n">multiscale</span> <span class="o">=</span> <span class="n">multiscales</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">file_dims</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">axis</span><span class="p">[</span><span class="s1">'name'</span><span class="p">]</span> <span class="k">for</span> <span class="n">axis</span> <span class="ow">in</span> <span class="n">multiscale</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'axes'</span><span class="p">,</span> <span class="p">[]))</span>
+
+<span class="n">file_shapes</span><span class="p">,</span> <span class="n">scales</span><span class="p">,</span> <span class="n">dtypes</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="nb">set</span><span class="p">()</span>
+<span class="n">translation</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">dataset</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">multiscale</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'datasets'</span><span class="p">,</span> <span class="p">[])):</span>
+    <span class="n">node</span> <span class="o">=</span> <span class="n">nodes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'path'</span><span class="p">))</span>
+    <span class="n">transforms</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'coordinateTransformations'</span><span class="p">,</span> <span class="p">[])</span>
+    <span class="n">scale_values</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">transform</span><span class="p">[</span><span class="s1">'scale'</span><span class="p">]</span> <span class="k">for</span> <span class="n">transform</span> <span class="ow">in</span> <span class="n">transforms</span>
+                         <span class="k">if</span> <span class="n">transform</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'type'</span><span class="p">)</span> <span class="o">==</span> <span class="s1">'scale'</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">shape</span> <span class="o">=</span> <span class="n">node</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'shape'</span><span class="p">)</span>
+    <span class="n">file_shapes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">shape</span><span class="p">))</span>
+    <span class="n">scales</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">file_dims</span><span class="p">,</span> <span class="n">scale_values</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="n">index</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">translation_values</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">transform</span><span class="p">[</span><span class="s1">'translation'</span><span class="p">]</span> <span class="k">for</span> <span class="n">transform</span> <span class="ow">in</span> <span class="n">transforms</span>
+                                   <span class="k">if</span> <span class="n">transform</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'type'</span><span class="p">)</span> <span class="o">==</span> <span class="s1">'translation'</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">translation_values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">translation</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">file_dims</span><span class="p">,</span> <span class="n">translation_values</span><span class="p">))</span>
+</code></pre></div>
+<p>The workflow builds an <code>MSIM</code> object for each source and performs pairwise/global registration on these multiscale spatial images.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>src/muvis_align/MVSRegistration.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">build_msim</span><span class="p">(</span><span class="n">index</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">build_source_msim</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msim_output_order</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">positions</span><span class="p">[</span><span class="n">index</span><span class="p">],</span>
+                             <span class="bp">self</span><span class="o">.</span><span class="n">_msim_transforms</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">source_transform_key</span><span class="p">,</span>
+                             <span class="n">z_scale</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_msim_z_scale</span><span class="p">,</span> <span class="n">from_level</span><span class="o">=</span><span class="n">from_levels</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="k">if</span> <span class="n">from_levels</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+                             <span class="n">ends_only</span><span class="o">=</span><span class="n">ends_only</span><span class="p">)</span>
+
+<span class="n">msims</span> <span class="o">=</span> <span class="n">pooled_map</span><span class="p">(</span><span class="n">build_msim</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sources</span><span class="p">),</span> <span class="n">default_msim_build_workers</span><span class="p">,</span> <span class="n">progress_factory</span><span class="p">,</span>
+                   <span class="n">desc</span><span class="o">=</span><span class="s1">'Building sources'</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">,</span>
+                   <span class="n">timing_label</span><span class="o">=</span><span class="s1">'Build msims'</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">logging_time</span> <span class="k">else</span> <span class="kc">None</span><span class="p">)</span>
+<span class="o">...</span>
+<span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">register_global</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pair_msims</span><span class="p">,</span> <span class="n">register_indices</span><span class="o">=</span><span class="n">register_indices</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+</code></pre></div>
+<p>The parsed OME metadata (axes, units, voxel scale, translations/positions, channels, and coordinate transforms) is preserved in this <a href="https://docs.xarray.dev/"><code>xarray</code></a>-based <code>MSIM</code> (multiscale-spatial-image) representation, where image data remains in labeled dimensions and spatial context is stored as coordinates/attributes. This metadata is propagated through image operations, updated during pairwise/global registration, and carried into fusion/export (for example, OME-Zarr) to preserve physical-space interpretation and multiscale provenance.</p>
+<p>The CLI runs the pipeline from a YAML parameter file.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/run.py"><code>run.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="sa">f</span><span class="s1">'muvis-align'</span><span class="p">)</span>
+<span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s1">'params'</span><span class="p">,</span>
+                    <span class="n">help</span><span class="o">=</span><span class="s1">'The parameters file'</span><span class="p">,</span>
+                    <span class="n">default</span><span class="o">=</span><span class="s1">'resources/params.yml'</span><span class="p">)</span>
+
+<span class="n">args</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">'Parameters file: </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">params</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+<span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="s1">'r'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+    <span class="n">params</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+
+<span class="n">pipeline</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">params_path</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="n">pipeline</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</code></pre></div>
+<hr />
+<h2 id="performance-metrics">Performance metrics</h2>
+<p>The project calculates registration metrics such as NCC, SSIM, normalized mutual information, MSE-derived score, match rate, and distance-based feature metrics.</p>
+<h3 id="registration-quality-metrics">Registration quality metrics</h3>
+<p><code>muvis-align</code> computes several complementary image similarity metrics to evaluate registration quality. Each metric captures a different aspect of alignment quality, making it useful to evaluate multiple metrics together rather than relying on a single score.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Full name</th>
+<th>Measures</th>
+<th>Typical range</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NCC</td>
+<td>Normalized Cross-Correlation</td>
+<td>Intensity correlation between images</td>
+<td>-1 to 1</td>
+</tr>
+<tr>
+<td>SSIM</td>
+<td>Structural Similarity Index Measure</td>
+<td>Similarity of local image structures</td>
+<td>0 to 1</td>
+</tr>
+<tr>
+<td>ONMI</td>
+<td>Overlapping Normalized Mutual Information</td>
+<td>Shared information between overlapping image regions</td>
+<td>0 to 1+</td>
+</tr>
+</tbody>
+</table>
+<p>The metrics are implemented in <code>metrics.py</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="n">all_metric_funcs</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">'ncc'</span><span class="p">:</span> <span class="n">multiview_stitcher</span><span class="o">.</span><span class="n">metrics</span><span class="o">.</span><span class="n">normalized_cross_correlation</span><span class="p">,</span>
+    <span class="s1">'ssim'</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">im1</span><span class="p">,</span> <span class="n">im2</span><span class="p">:</span> <span class="n">structural_similarity</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">im1</span><span class="p">),</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">im2</span><span class="p">),</span>
+        <span class="n">data_range</span><span class="o">=</span><span class="n">data_range</span><span class="p">),</span>
+    <span class="s1">'onmi'</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">im1</span><span class="p">,</span> <span class="n">im2</span><span class="p">:</span>
+        <span class="n">normalized_mutual_information</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">im1</span><span class="p">),</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">im2</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s1">'mse'</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">im1</span><span class="p">,</span> <span class="n">im2</span><span class="p">:</span>
+        <span class="mi">1</span> <span class="o">/</span> <span class="n">mean_squared_error</span><span class="p">(</span><span class="n">im1</span><span class="p">,</span> <span class="n">im2</span><span class="p">),</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/metrics.py"><code>src/muvis_align/metrics.py</code></a></p>
+<h4 id="ncc-normalized-cross-correlation">NCC — Normalized Cross-Correlation</h4>
+<p>NCC measures the correlation of image intensities between two images. It is particularly useful when corresponding structures have similar brightness values.</p>
+<ul>
+<li><code>NCC = 1</code> indicates perfect correlation.</li>
+<li><code>NCC = 0</code> indicates no correlation.</li>
+<li>Negative values indicate inverse correlation.</li>
+</ul>
+<p>NCC is computationally efficient and widely used for rigid image registration, although it can be sensitive to intensity variations between acquisitions.</p>
+<h4 id="ssim-structural-similarity-index-measure">SSIM — Structural Similarity Index Measure</h4>
+<p>SSIM evaluates the similarity of local image structure by comparing:</p>
+<ul>
+<li>intensity</li>
+<li>contrast</li>
+<li>local texture</li>
+</ul>
+<p>Unlike pixel-wise metrics, SSIM is sensitive to structural preservation and is therefore useful for assessing whether biological features remain aligned after registration.</p>
+<ul>
+<li><code>SSIM = 1</code> indicates identical structure.</li>
+<li>Values close to zero indicate poor structural agreement.</li>
+</ul>
+<p>SSIM is often more representative of perceived image quality than correlation-based metrics.</p>
+<h4 id="onmi-overlapping-normalized-mutual-information">ONMI — Overlapping Normalized Mutual Information</h4>
+<p>ONMI measures the amount of shared information between overlapping image regions.</p>
+<p>Mutual information is particularly valuable when images originate from different modalities, channels, or acquisition conditions because it does not assume similar intensity values.</p>
+<p>Higher ONMI values indicate that:</p>
+<ul>
+<li>corresponding image regions contain similar information,</li>
+<li>overlapping structures are well aligned,</li>
+<li>registration improves the statistical dependence between views.</li>
+</ul>
+<p>Because ONMI is based on image information content rather than intensity similarity, it is often more robust for multimodal registration problems.</p>
+<p>Using NCC, SSIM, and ONMI together provides complementary measures of registration quality:</p>
+<ul>
+<li><strong>NCC</strong> evaluates intensity agreement.</li>
+<li><strong>SSIM</strong> evaluates structural similarity.</li>
+<li><strong>ONMI</strong> evaluates shared image information.</li>
+</ul>
+<p>This combination gives a more robust assessment of registration performance than any single metric alone.</p>
+<hr />
+<h2 id="storing-data-for-resumable-workflows">Storing data for resumable workflows</h2>
+<p><code>muvis-align</code> stores intermediate registration state in mapping and metrics files, allowing workflows to continue from pairwise registration, global registration, or fused output.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/constants.py"><code>src/muvis_align/constants.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="n">default_pair_mappings_name</span> <span class="o">=</span> <span class="s1">'pair_mappings.json'</span>
+<span class="n">default_mappings_name</span> <span class="o">=</span> <span class="s1">'mappings.json'</span>
+<span class="n">metrics_name</span> <span class="o">=</span> <span class="s1">'metrics.json'</span>
+<span class="n">default_mappings_tabular_name</span> <span class="o">=</span> <span class="s1">'mappings.csv'</span>
+</code></pre></div>
+<p>The registration state machine tracks progress through the workflow.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>src/muvis_align/MVSRegistration.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">RegState</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+    <span class="n">UNINIT</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
+    <span class="n">INIT</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
+    <span class="n">SIMS_INIT</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
+    <span class="n">PAIRS_REG</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
+    <span class="n">GLOBAL_REG</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
+    <span class="n">FUSED</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>
+</code></pre></div>
+<p>Existing output files are detected before re-running expensive steps.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>src/muvis_align/MVSRegistration.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">check_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_filename</span><span class="p">,</span> <span class="n">output_format</span><span class="p">):</span>
+    <span class="n">pair_mappings_filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'pair_mappings'</span><span class="p">,</span> <span class="n">default_pair_mappings_name</span><span class="p">)</span>
+    <span class="n">mappings_filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'mappings'</span><span class="p">,</span> <span class="n">default_mappings_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_exists</span><span class="p">(</span><span class="n">output_filename</span><span class="p">,</span> <span class="n">output_format</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">RegState</span><span class="o">.</span><span class="n">FUSED</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">mappings_filename</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">RegState</span><span class="o">.</span><span class="n">GLOBAL_REG</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">pair_mappings_filename</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">RegState</span><span class="o">.</span><span class="n">PAIRS_REG</span>
+</code></pre></div>
+<p>Pair mappings, final mappings, and metrics are saved separately.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>src/muvis_align/MVSRegistration.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">register_msims</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">register_indices</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">pair_results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">register_pairs</span><span class="p">(</span><span class="n">register_msims</span><span class="o">=</span><span class="n">register_msims</span><span class="p">,</span> <span class="n">register_indices</span><span class="o">=</span><span class="n">register_indices</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">save_pair_results</span><span class="p">(</span><span class="n">pair_results</span><span class="p">[</span><span class="s1">'pair_mappings'</span><span class="p">],</span> <span class="n">metrics</span><span class="o">=</span><span class="n">pair_results</span><span class="p">[</span><span class="s1">'metrics'</span><span class="p">])</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">register_global</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pair_msims</span><span class="p">,</span> <span class="n">register_indices</span><span class="o">=</span><span class="n">register_indices</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">save_group_pair_mappings</span><span class="p">()</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">save_mappings</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">'mappings'</span><span class="p">])</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">save_metrics</span><span class="p">(</span><span class="n">results</span><span class="p">[</span><span class="s1">'metrics'</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">results</span>
+</code></pre></div>
+<h3 id="restoring-registered-transforms-from-intermediate-output">Restoring registered transforms from intermediate output</h3>
+<p>Registered alignment transforms are persisted as JSON intermediate outputs (<code>pair_mappings.json</code> and <code>mappings.json</code>) and reloaded on later runs when these files already exist.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>src/muvis_align/MVSRegistration.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">check_progress</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_filename</span><span class="p">,</span> <span class="n">output_format</span><span class="p">):</span>
+    <span class="n">pair_mappings_filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'pair_mappings'</span><span class="p">,</span> <span class="n">default_pair_mappings_name</span><span class="p">)</span>
+    <span class="n">mappings_filename</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'mappings'</span><span class="p">,</span> <span class="n">default_mappings_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_exists</span><span class="p">(</span><span class="n">output_filename</span><span class="p">,</span> <span class="n">output_format</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">RegState</span><span class="o">.</span><span class="n">FUSED</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">mappings_filename</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">RegState</span><span class="o">.</span><span class="n">GLOBAL_REG</span>
+    <span class="k">elif</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">pair_mappings_filename</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">RegState</span><span class="o">.</span><span class="n">PAIRS_REG</span>
+</code></pre></div>
+<p>When progress indicates pairwise/global registration already exists, <code>init_progress</code> loads saved mappings and reapplies transforms to the MSIMs instead of recomputing registration.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>src/muvis_align/MVSRegistration.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_global_registered</span><span class="p">():</span>
+    <span class="n">mappings</span> <span class="o">=</span> <span class="n">read_transforms</span><span class="p">(</span><span class="n">mappings_filename</span><span class="p">)</span>
+    <span class="o">...</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">mappings</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="n">filename</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filenames</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mappings</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="n">xaffine_from_matrix</span><span class="p">(</span><span class="n">find_file_dict_item</span><span class="p">(</span><span class="n">mappings</span><span class="p">,</span> <span class="n">filename</span><span class="p">))</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msims</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_apply_mappings</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_msims</span><span class="p">)</span>
+</code></pre></div>
+<p>JSON persistence/reload is handled by shared utilities:</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/util.py"><code>src/muvis_align/util.py</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_json</span><span class="p">(</span><span class="n">filename</span><span class="p">):</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">file</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">export_json</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s1">'w'</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">'utf8'</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
+        <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">file</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="interactive-interface-with-xpra-container">Interactive interface with Xpra container</h2>
+<p>The Dockerfile defines a standard napari container and a second Xpra-enabled image for browser-based interactive use.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/Dockerfile"><code>Dockerfile</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="s">python:3.12-slim-bookworm</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">muvis-align</span>
+...
+<span class="k">COPY</span><span class="w"> </span>requirements.txt<span class="w"> </span>.
+
+<span class="k">RUN</span><span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>napari<span class="o">[</span>all<span class="o">]</span>
+<span class="k">RUN</span><span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>napari-ome-zarr
+
+<span class="k">COPY</span><span class="w"> </span>run.py<span class="w"> </span>.
+<span class="k">COPY</span><span class="w"> </span>pyproject.toml<span class="w"> </span>.
+<span class="k">COPY</span><span class="w"> </span>src/<span class="w"> </span>src/
+
+<span class="k">RUN</span><span class="w"> </span>--mount<span class="o">=</span><span class="nv">type</span><span class="o">=</span>bind,source<span class="o">=</span>.git,target<span class="o">=</span>/app/.git<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>pip<span class="w"> </span>install<span class="w"> </span>.
+
+<span class="k">ENTRYPOINT</span><span class="w"> </span><span class="p">[</span><span class="s2">"python3"</span><span class="p">,</span><span class="w"> </span><span class="s2">"-m"</span><span class="p">,</span><span class="w"> </span><span class="s2">"napari"</span><span class="p">,</span><span class="w"> </span><span class="s2">"--plugin"</span><span class="p">,</span><span class="w"> </span><span class="s2">"muvis-align"</span><span class="p">]</span>
+</code></pre></div>
+<p>The Xpra stage installs Xpra and launches napari through a browser-accessible session.</p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/Dockerfile"><code>Dockerfile</code></a></p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="s">muvis-align</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">muvis-align-xpra</span>
+...
+<span class="k">RUN</span><span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>apt-get<span class="w"> </span>install<span class="w"> </span>-yqq<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>xpra<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>xvfb<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>menu-xdg<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>xdg-utils<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>xterm<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>sshfs<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>x11-xkb-utils<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>xkb-data<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>apt-get<span class="w"> </span>clean<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/apt/lists/*
+
+<span class="k">ENV</span><span class="w"> </span><span class="nv">DISPLAY</span><span class="o">=</span>:100
+<span class="k">ENV</span><span class="w"> </span><span class="nv">XPRA_PORT</span><span class="o">=</span><span class="m">9876</span>
+<span class="k">ENV</span><span class="w"> </span><span class="nv">XPRA_START</span><span class="o">=</span><span class="s2">"python3 -c \"import napari; viewer = napari.Viewer(); viewer.window.add_plugin_dock_widget('muvis-align'); viewer.window._qt_window.showMaximized(); napari.run()\""</span>
+<span class="k">ENV</span><span class="w"> </span><span class="nv">XPRA_EXIT_WITH_CHILDREN</span><span class="o">=</span><span class="s2">"yes"</span>
+<span class="k">ENV</span><span class="w"> </span><span class="nv">XPRA_EXIT_WITH_CLIENT</span><span class="o">=</span><span class="s2">"no"</span>
+<span class="k">ENV</span><span class="w"> </span><span class="nv">XPRA_XVFB_SCREEN</span><span class="o">=</span><span class="s2">"8192x4096x24+32"</span>
+<span class="k">EXPOSE</span><span class="w"> </span><span class="s">9876</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="k">CMD</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"Launching napari on Xpra. Connect via http://localhost:</span><span class="nv">$XPRA_PORT</span><span class="s2"> or </span><span class="k">$(</span>hostname<span class="w"> </span>-i<span class="k">)</span><span class="s2">:</span><span class="nv">$XPRA_PORT</span><span class="s2">"</span><span class="p">;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="nv">PATH</span><span class="o">=</span>/usr/bin:/usr/local/bin:<span class="nv">$PATH</span><span class="w"> </span>xpra<span class="w"> </span>start<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--bind-tcp<span class="o">=</span><span class="m">0</span>.0.0.0:<span class="nv">$XPRA_PORT</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--html<span class="o">=</span>on<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>...
+<span class="w">    </span>--resize-display<span class="o">=</span>yes<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--start-child<span class="o">=</span><span class="s2">"</span><span class="nv">$XPRA_START</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--exit-with-children<span class="o">=</span><span class="s2">"</span><span class="nv">$XPRA_EXIT_WITH_CHILDREN</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--exit-with-client<span class="o">=</span><span class="s2">"</span><span class="nv">$XPRA_EXIT_WITH_CLIENT</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--daemon<span class="o">=</span>no<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--xvfb<span class="o">=</span><span class="s2">"/usr/bin/Xvfb +extension Composite +extension RANDR -screen 0 </span><span class="nv">$XPRA_XVFB_SCREEN</span><span class="s2"> -dpi 96 -nolisten tcp -noreset"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--pulseaudio<span class="o">=</span>no<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--notifications<span class="o">=</span>no<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--bell<span class="o">=</span>no<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="nv">$DISPLAY</span>
+</code></pre></div>
+<hr />
+<h2 id="summary-table">Summary table</h2>
+<table>
+<thead>
+<tr>
+<th>Practice</th>
+<th>Source-code implementation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NGFF</td>
+<td>OME-Zarr default extension, NGFF v0.5, <code>to_ngff_zarr</code></td>
+</tr>
+<tr>
+<td>Larger-than-memory data</td>
+<td>Dask-backed TIFF and Zarr sources, chunked fusion, direct Zarr output</td>
+</tr>
+<tr>
+<td>FAIR implementation</td>
+<td>package metadata, YAML configuration, RO-Crate generation, OME-Zarr outputs</td>
+</tr>
+<tr>
+<td>Persistent metadata</td>
+<td>OME metadata parsing, <code>xarray</code>/<code>MSIM</code> spatial transforms, positions, scales, channels; interoperable NGFF RFC 6 affine transforms</td>
+</tr>
+<tr>
+<td>Performance metrics</td>
+<td>NCC, SSIM, ONMI, MSE-derived score, match metrics, timing logs</td>
+</tr>
+<tr>
+<td>Resumable workflow</td>
+<td>state machine, pair mappings, global mappings, metrics JSON</td>
+</tr>
+<tr>
+<td>Xpra interface</td>
+<td>Docker stage exposing browser-based napari over Xpra</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
