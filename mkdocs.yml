@@ -37,6 +37,7 @@ nav:
   - napari.md
   - napari_guide.md
   - notebooks.md
+  - Technical overview: technical.md
   - poster.md
   - references.md
 

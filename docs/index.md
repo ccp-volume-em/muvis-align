@@ -45,6 +45,7 @@ directly a pipeline parameter file.
 - [Pipeline parameters](pipeline.md) - every option the YAML file accepts
 - [napari plugin](napari.md) - the interactive interface
 - [Notebooks](notebooks.md) - worked examples and debugging workflows
+- [Technical overview](technical.md) - how the source implements NGFF, lazy data, FAIR metadata and resumable runs
 - [API reference](references.md) - generated from the source
 - [Poster](poster.md) - project background and results
 
