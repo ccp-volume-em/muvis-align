@@ -8,6 +8,7 @@
 #
 # Refreshes the container used by xpra-slurm.sh: pulls "latest" from quay.io
 # and builds it into a fixed, version-less sandbox directory.
+# It deletes the current sandbox first: don't pull while a session is running.
 #
 # Usage, on the login node:   bash xpra-pull.sh
 #   Submits this job and shows its output here until it ends.
@@ -93,25 +94,15 @@ fi
 
 mkdir -p "${DEST_DIR}"
 
-# built beside the sandbox and swapped in once complete: a session started meanwhile gets the old one, never a part
-BUILD_PATH="${SANDBOX_PATH}.building"
-OLD_PATH="${SANDBOX_PATH}.old"
-# a fresh build: --force does not clear what an interrupted or older build left behind
-for LEFTOVER in "${BUILD_PATH}" "${OLD_PATH}"; do
+# apptainer fails on files of an existing sandbox, even with --force; .building/.old are from earlier versions of this
+for LEFTOVER in "${SANDBOX_PATH}" "${SANDBOX_PATH}.building" "${SANDBOX_PATH}.old"; do
     if [ -e "${LEFTOVER}" ]; then
-        echo "Removing ${LEFTOVER}, left by an earlier pull ..."
+        echo "Removing ${LEFTOVER} ..."
         rm -rf "${LEFTOVER}"
     fi
 done
 
-echo "Pulling ${IMAGE_REF} and building sandbox at ${BUILD_PATH} ..."
-apptainer build --sandbox --force "${BUILD_PATH}" "${IMAGE_REF}"
-
-if [ -e "${SANDBOX_PATH}" ]; then
-    mv "${SANDBOX_PATH}" "${OLD_PATH}"
-fi
-mv "${BUILD_PATH}" "${SANDBOX_PATH}"
-echo "Removing the previous sandbox ..."
-rm -rf "${OLD_PATH}"
+echo "Pulling ${IMAGE_REF} and building sandbox at ${SANDBOX_PATH} ..."
+apptainer build --sandbox --force "${SANDBOX_PATH}" "${IMAGE_REF}"
 
 echo "Done: ${SANDBOX_PATH}"
