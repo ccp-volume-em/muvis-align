@@ -74,22 +74,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-**One-command HPC session from the user's machine** (`xpra-connect.sh`, bash, Git Bash on Windows). Local use will
-be napari + napari hub install, no script.
-- [ ] Try on the Crick HPC (only dry-run locally with a stub ssh): from Git Bash, with and without an ssh key.
-- [x] xpra-slurm.sh job: pick a free xpra port on the node (shared nodes collide on a fixed 9876); log a
-      `MUVIS_SESSION job= node= port=` line before the instructions block.
-- [x] xpra-slurm.sh launcher: `MUVIS_FOLLOW=1` prints `MUVIS_SESSION ... password=` (stdout only) and keeps
-      waiting until the job ends.
-- [x] xpra-connect.sh: `bash xpra-connect.sh <ssh destination> [remote folder]`; forwards MUVIS_* settings; pulls
-      first when the sandbox is missing or `--pull`; reads the session line from one streamed ssh; opens a second
-      ssh as tunnel to a free local port; waits for xpra, opens the browser with username/password in the URL
-      (xpra-html5 index.html reads them, localhost counts as safe); on job end closes the tunnel; on Ctrl-C closes
-      it and offers scancel. ControlMaster only off Windows (Git Bash's ssh lacks it).
-- [x] docs/technical.md: short section; recommend an ssh key (else up to three password prompts).
-- Assumes HPC users have an ssh key set up; options without one are in notes/user_access.md.
-- [x] Copies xpra-slurm.sh/xpra-pull.sh to the cluster folder each run (a stale cluster copy printed the manual
-      steps); in WSL falls back to Windows' ssh.exe; skips local ports that are in use or not xpra.
+Nothing.
 
 ## TODO
 
@@ -99,6 +84,9 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
+      browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
+      Maximising by hand works fine. Maybe maximise once the first client connects.
 - [ ] **Faster per-source xarray construction** - not worth a second build path on its own: building the msims is
       CPU 1.9ms opening a source + 3.1ms xarray a source locally, 1.3ms for xarray in one pass (final dims, coords and
       transform to the constructor): ~25-30% of each build. The HPC run of 2026-10-13 built them three times - 15.1
