@@ -97,7 +97,12 @@ mkdir -p "${DEST_DIR}"
 BUILD_PATH="${SANDBOX_PATH}.building"
 OLD_PATH="${SANDBOX_PATH}.old"
 # a fresh build: --force does not clear what an interrupted or older build left behind
-rm -rf "${BUILD_PATH}" "${OLD_PATH}"
+for LEFTOVER in "${BUILD_PATH}" "${OLD_PATH}"; do
+    if [ -e "${LEFTOVER}" ]; then
+        echo "Removing ${LEFTOVER}, left by an earlier pull ..."
+        rm -rf "${LEFTOVER}"
+    fi
+done
 
 echo "Pulling ${IMAGE_REF} and building sandbox at ${BUILD_PATH} ..."
 apptainer build --sandbox --force "${BUILD_PATH}" "${IMAGE_REF}"
