@@ -39,7 +39,7 @@ if [ -z "${DATA_DIR}" ]; then
 fi
 DATA_DIR="${DATA_DIR:-/$(echo "${SCRIPT_DIR}" | cut -d/ -f2)}"
 LOGIN_NODE="${MUVIS_LOGIN_NODE:-${SLURM_SUBMIT_HOST:-$(hostname -f)}}"         # what you ssh into
-XPRA_PORT=9876                            # port on the compute node
+XPRA_PORT=9876                            # first port tried on the compute node
 
 # ---------------------------------------------------------------------------
 #  DISPLAY / RESPONSIVENESS TUNING  (optional)
@@ -98,6 +98,8 @@ set -euo pipefail
 #  Submits this job, waits for it to start and prints how to connect.
 #  "sbatch xpra-slurm.sh" also works: the instructions are then in
 #  muvis-align-<job id>.log, and the password in ~/.xpra/job-<job id>/passwd.
+#  With MUVIS_FOLLOW=1 (as xpra-connect.sh runs it) it prints one MUVIS_SESSION
+#  line instead, with the password, and then waits until the job ends.
 # ===========================================================================
 # bound over the job folder (in ~/.xpra) it hides it in the container: apptainer fails to chdir into it
 # compared as written, as the container mounts them: a home reached through a link into it is not covered
@@ -146,8 +148,17 @@ if [ -z "${SLURM_JOB_ID:-}" ]; then
         fi
         sleep 5
     done
-    awk '/^=+$/ { lines++ } lines { print } lines == 2 && /^=+$/ { exit }' "${LOG_FILE}" \
-        | sed "s|^\(      password:  \).*|\1$(cat "${PASSWORD_FILE}")|"
+    if [ -z "${MUVIS_FOLLOW:-}" ]; then
+        awk '/^=+$/ { lines++ } lines { print } lines == 2 && /^=+$/ { exit }' "${LOG_FILE}" \
+            | sed "s|^\(      password:  \).*|\1$(cat "${PASSWORD_FILE}")|"
+        exit 0
+    fi
+    echo "$(grep -m1 '^MUVIS_SESSION ' "${LOG_FILE}") user=${USER} password=$(cat "${PASSWORD_FILE}")"
+    # a caller over ssh learns of the job's end from this output ending
+    while [ -n "$(squeue -h -j "${JOB_ID}" -o %T 2>/dev/null || true)" ]; do
+        sleep 10
+    done
+    echo "Job ${JOB_ID} ended: $(sacct -n -X -j "${JOB_ID}" -o State 2>/dev/null | xargs || true)"
     exit 0
 fi
 
@@ -187,6 +198,10 @@ trap cleanup EXIT
 COMPUTE_NODE="$(hostname -s)"
 COMPUTE_NODE_TCP="$(hostname -i)"
 LOCAL_PORT=9876
+# another job on a shared node may hold the port already
+while (exec 3<>"/dev/tcp/127.0.0.1/${XPRA_PORT}") 2>/dev/null; do
+    XPRA_PORT=$((XPRA_PORT + 1))
+done
 
 # the node's hardware and load, so a slow run can be put down to the node it ran on
 lscpu_value() { lscpu 2>/dev/null | awk -F: -v key="$1" '$1 == key { gsub(/^ +/, "", $2); print $2; exit }'; }
@@ -216,6 +231,7 @@ if [ -n "${PINNED_CPUS}" ] && [ "${PHYSICAL_CORES}" -lt "$(nproc)" ] && command 
 fi
 NODE_LOAD="$(cut -d' ' -f1-3 /proc/loadavg) (1/5/15 min), $(free -g 2>/dev/null | awk '/^Mem:/ { print $7 "GB of " $2 "GB free" }')"
 
+echo "MUVIS_SESSION job=${SLURM_JOB_ID} node=${COMPUTE_NODE} port=${XPRA_PORT}"
 cat <<EOF
 
 ======================================================================
