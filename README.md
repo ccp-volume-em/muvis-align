@@ -1,6 +1,6 @@
 # muvis-align
 
-[![License MIT](https://img.shields.io/pypi/l/muvis-align.svg?color=green)](https://github.com/ccp-volume-em/muvis-align/raw/main/LICENSE.md)
+[![License MIT](https://img.shields.io/github/license/ccp-volume-em/muvis-align?color=green)](https://github.com/ccp-volume-em/muvis-align/raw/main/LICENSE.md)
 [![PyPI](https://img.shields.io/pypi/v/muvis-align.svg?color=green)](https://pypi.org/project/muvis-align)
 [![Python Version](https://img.shields.io/pypi/pyversions/muvis-align.svg?color=green)](https://python.org)
 [![tests](https://github.com/ccp-volume-em/muvis-align/actions/workflows/test_and_deploy.yml/badge.svg)](https://github.com/ccp-volume-em/muvis-align/actions/workflows/test_and_deploy.yml)
@@ -19,6 +19,13 @@ Generated documentation: [deepwiki.com/ccp-volume-em/muvis-align](https://deepwi
 
 ## Installation
 
+### From napari
+
+The simplest way: in [napari], open *Plugins > Install/Uninstall Plugins...*, search for `muvis-align` and
+install it. It is listed on the [napari hub](https://napari-hub.org/plugins/muvis-align).
+
+### With pip
+
 muvis-align needs Python 3.12 or later. Install it via [pip]:
 
 ```
@@ -33,6 +40,28 @@ pip install "muvis-align[all]"
 
 The command-line script, example parameter files and notebooks are in this repository,
 not the pip package: see the [documentation](https://ccp-volume-em.github.io/muvis-align/).
+
+## Running on a Slurm cluster (HPC)
+
+The napari plugin can run in a container on a Slurm cluster, shown in your browser through [Xpra].
+This needs Apptainer on the cluster, ssh access to its login node (preferably with an ssh key), and a clone of this
+repository on your own machine.
+
+From your own machine, one command builds the container on the cluster if needed, starts the job, and opens napari
+in your browser (on Windows in Git Bash, or as `.\xpra-connect.sh ...` from PowerShell):
+
+```
+bash xpra-connect.sh <user>@<login node> [folder on the cluster, default: muvis-align] [--pull]
+```
+
+Or step by step, on the cluster's login node in a folder with [xpra-pull.sh] and [xpra-slurm.sh]:
+
+```
+bash xpra-pull.sh     # once, and to update the container
+bash xpra-slurm.sh    # starts the job and prints how to connect from your own machine
+```
+
+See the [documentation](https://ccp-volume-em.github.io/muvis-align/technical/#on-a-slurm-cluster) for details.
 
 ## Contributing
 
@@ -59,4 +88,7 @@ This [napari] plugin was generated with [copier] using the [napari-plugin-templa
 [MIT]: http://opensource.org/licenses/MIT
 [tox]: https://tox.readthedocs.io/en/latest/
 [pip]: https://pypi.org/project/pip/
+[Xpra]: https://xpra.org/
+[xpra-pull.sh]: https://github.com/ccp-volume-em/muvis-align/blob/main/xpra-pull.sh
+[xpra-slurm.sh]: https://github.com/ccp-volume-em/muvis-align/blob/main/xpra-slurm.sh
 [file an issue]: https://github.com/ccp-volume-em/muvis-align/issues
