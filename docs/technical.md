@@ -628,6 +628,26 @@ CMD echo "Launching napari on Xpra. Connect via http://localhost:$XPRA_PORT or $
     $DISPLAY
 ```
 
+### On a Slurm cluster, from your own machine
+
+On the cluster, Apptainer runs the Xpra image from a sandbox that `xpra-pull.sh` builds, and `xpra-slurm.sh`
+starts it in a Slurm job. `xpra-connect.sh` does all of this from your own machine with one command:
+
+```bash
+bash xpra-connect.sh <user>@<login node> [folder on the cluster, default: muvis-align] [--pull]
+```
+
+On Windows, run it in Git Bash, or from PowerShell as `.\xpra-connect.sh <user>@<login node>`, which opens it in a
+Git Bash window that waits for Enter before closing. `bash` in PowerShell is WSL's; there it uses Windows' own ssh
+when WSL's cannot sign in.
+
+It copies `xpra-slurm.sh` and `xpra-pull.sh` into the folder on the cluster (replacing what is there), submits the job, builds the container first if there is none yet (or with `--pull`), tunnels to the compute
+node the job starts on, and opens napari in your browser, already logged in. Closing napari ends the job; Ctrl-C
+closes the connection and offers to cancel the job. `MUVIS_PARTITION`, `MUVIS_DATA_DIR` and `MUVIS_CONTAINER_DIR`
+set locally are passed on to the cluster. With an
+[SSH key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent)
+on the login node you are not asked for a password.
+
 ---
 
 ## Summary table
