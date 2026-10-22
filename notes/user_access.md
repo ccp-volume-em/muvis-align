@@ -24,4 +24,4 @@ Options to ask for the password once or never, if keys turn out to be a hurdle:
    node once the job reports it (needs python3 or socat on the login node). Cancel goes over the same connection,
    e.g. a `cancel` line on its input. Works with 2FA, one prompt a session; the most code.
 
-Open: whether the Crick login nodes accept keys without 2FA.
+Open: whether the cluster login nodes accept keys without 2FA.
