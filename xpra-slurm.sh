@@ -101,15 +101,6 @@ set -euo pipefail
 #  With MUVIS_FOLLOW=1 (as xpra-connect.sh runs it) it prints one MUVIS_SESSION
 #  line instead, with the password, and then waits until the job ends.
 # ===========================================================================
-# bound over the job folder (in ~/.xpra) it hides it in the container: apptainer fails to chdir into it
-# compared as written, as the container mounts them: a home reached through a link into it is not covered
-case "${HOME}/.xpra/" in
-    "${DATA_DIR%/}/"*)
-        echo "ERROR: the data directory ${DATA_DIR} contains your home (${HOME}), which the job runs from." >&2
-        echo "       Set the one your data is in: MUVIS_DATA_DIR=<directory> bash xpra-slurm.sh" >&2
-        exit 1
-        ;;
-esac
 if [ -z "${SLURM_JOB_ID:-}" ]; then
     AVAILABLE_PARTITIONS="$(sinfo -h -o %R 2>/dev/null || true)"
     if [ -n "${MUVIS_PARTITION+set}" ]; then
@@ -179,6 +170,8 @@ fi
 XPRA_HOME="${HOME}/.xpra"
 RUN_DIR="${XPRA_HOME}/job-${SLURM_JOB_ID}"
 PASSWORD_FILE="${RUN_DIR}/passwd"
+# the job folder's path in the container: outside any data folder, whose bind would otherwise hide it
+JOB_DIR="/muvis-job"
 
 mkdir -p "${RUN_DIR}/xkb"
 chmod 700 "${XPRA_HOME}" "${RUN_DIR}"
@@ -288,23 +281,23 @@ XPRA_START="python3 -c \"import napari; viewer = napari.Viewer(); viewer.window.
 ${PIN_TO_CORES[@]+"${PIN_TO_CORES[@]}"} apptainer exec \
     --cleanenv \
     --containall \
-    --home "${RUN_DIR}" \
-    --pwd "${RUN_DIR}" \
+    --home "${RUN_DIR}:${JOB_DIR}" \
+    --pwd "${JOB_DIR}" \
     --bind "${DATA_DIR}:${DATA_DIR}" \
     --bind "${RUN_DIR}/xkb:/var/lib/xkb" \
     --env "USER=${USER}" \
-    --env "XDG_RUNTIME_DIR=${RUN_DIR}" \
+    --env "XDG_RUNTIME_DIR=${JOB_DIR}" \
     --env "MUVIS_SOURCE_INIT_WORKERS=${SOURCE_INIT_WORKERS}" \
     --env "MALLOC_MMAP_THRESHOLD_=1048576" \
     "${CONTAINER_PATH}" \
     xpra start \
-        --bind-tcp="0.0.0.0:${XPRA_PORT},auth=file:filename=${PASSWORD_FILE}" \
+        --bind-tcp="0.0.0.0:${XPRA_PORT},auth=file:filename=${JOB_DIR}/passwd" \
         --html=on \
         --daemon=no \
         --exit-with-children=yes \
         --start-child="$XPRA_START" \
-        --socket-dir="${RUN_DIR}" \
-        --log-dir="${RUN_DIR}" \
+        --socket-dir="${JOB_DIR}" \
+        --log-dir="${JOB_DIR}" \
         --xvfb="Xvfb +extension GLX +extension Composite +extension RANDR -screen 0 ${RESOLUTION}x24 -nolisten tcp -noreset" \
         --resize-display=yes \
         --encoding="${ENCODING}" \
