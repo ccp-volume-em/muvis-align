@@ -10,35 +10,36 @@ HPC: 34k sources in 1081 sections, xpra container (software GL).
 34k sources, 229725 pairs, 64 CPUs. Job 60804208 (2026-10-14) hit its 6h limit at 9% of pair registration (~10s a
 pair); the 2026-10-12/13 logs are not kept (numbers in the TODO items below).
 The 2026-10-17 run times as 2026-10-15; its refresh after fusion redrew the shapes twice on the Qt thread (fixed in
-2d7c1cb).
+2d7c1cb). The 2026-10-22 run had a 160GB job (640GB before) and times as 2026-10-15/17: only fusion level 0.247 needs
+the memory, and its peak came within 1.1GB of the job's limit (see TODO).
 
-| Task | 2026-10-09 (9eb38ac) | 2026-10-14/15 (b70c752) | 2026-10-15 (c1baed5) | 2026-10-17 (e57e425) |
+| Task | 2026-10-09 (9eb38ac) | 2026-10-14/15 (b70c752) | 2026-10-15 (c1baed5) | 2026-10-17 (e57e425) | 2026-10-22 (b505577, 160GB) |
+|---|---|---|---|---|---|
+| Open: init sources + view | 2.4 + 1.2 min | 3.1 + 1.2 min | 2.6 + 1.3 min | 3.0 + 1.3 min | 3.4 + 1.3 min |
+| Pre-processing (msims build) | 16.4 min (15.4) | 17.2 min (16.2) | 16.8 min (15.8) | 17.3 min (16.4) | 17.7 min (16.8) |
+| Pair registration | 5.1h | 3.5h | 3.5h | 3.5h | 3.2h |
+| - setup (geometry, pairs, channel, graph) | 6.5 min | 6.7 min | 6.9 min | 6.8 min | 6.7 min |
+| - register pairs (workers busy of 64) | 4.1h (47.1) | 2.7h (37.4) | 2.8h (38.6) | 2.6h (37.1) | 2.5h (37.6) |
+| - pair metrics | 56 min | 45 min | 37 min | 41 min | 36 min |
+| Global registration (+ msims build) | 2.4h (+19 min) | 2.7h (+19 min) | 31 min (+18 min) | 33 min (+22 min) | 32 min (+18 min) |
+| - robust linear (8 rounds) | 1h23 | 2h26 | 17 min | 19 min | 18 min |
+| - apply + store transforms | 8.7 min | 9.5 min | 9.9 min | 10.0 min | 9.9 min |
+| - global metrics | 48 min | 0.5 min | 0.5 min | 0.5 min | 0.5 min |
+| Registration in all | 8.2h | 6.9h | 4.7h | 4.7h | 4.4h |
+| Fusion | 9.8h | 9.4h | 3.4h | 3.5h | 3.4h |
+| - before level 0 (make_msims_3d ~13 min) | ~16 min | 18.6 min | 19.0 min | 19.2 min | 19.2 min |
+| - memory peak | 248GB | 368GB | 152GB | 152GB | 159GB |
+| View refresh after fusion | 1.1 min | 1.2 min | 1.0 min | 6.9 min (shapes redrawn, twice) | 5.0 min (overlap shapes 1.4) |
+| Pre-processing + registration + fusion | 18.3h | 16.6h | 8.4h | 8.5h | 8.1h |
+
+| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 | 2026-10-22 |
 |---|---|---|---|---|
-| Open: init sources + view | 2.4 + 1.2 min | 3.1 + 1.2 min | 2.6 + 1.3 min | 3.0 + 1.3 min |
-| Pre-processing (msims build) | 16.4 min (15.4) | 17.2 min (16.2) | 16.8 min (15.8) | 17.3 min (16.4) |
-| Pair registration | 5.1h | 3.5h | 3.5h | 3.5h |
-| - setup (geometry, pairs, channel, graph) | 6.5 min | 6.7 min | 6.9 min | 6.8 min |
-| - register pairs (workers busy of 64) | 4.1h (47.1) | 2.7h (37.4) | 2.8h (38.6) | 2.6h (37.1) |
-| - pair metrics | 56 min | 45 min | 37 min | 41 min |
-| Global registration (+ msims build) | 2.4h (+19 min) | 2.7h (+19 min) | 31 min (+18 min) | 33 min (+22 min) |
-| - robust linear (8 rounds) | 1h23 | 2h26 | 17 min | 19 min |
-| - apply + store transforms | 8.7 min | 9.5 min | 9.9 min | 10.0 min |
-| - global metrics | 48 min | 0.5 min | 0.5 min | 0.5 min |
-| Registration in all | 8.2h | 6.9h | 4.7h | 4.7h |
-| Fusion | 9.8h | 9.4h | 3.4h | 3.5h |
-| - before level 0 (make_msims_3d ~13 min) | ~16 min | 18.6 min | 19.0 min | 19.2 min |
-| - memory peak | 248GB | 368GB | 152GB | 152GB |
-| View refresh after fusion | 1.1 min | 1.2 min | 1.0 min | 6.9 min (shapes redrawn, twice) |
-| Pre-processing + registration + fusion | 18.3h | 16.6h | 8.4h | 8.5h |
-
-| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 |
-|---|---|---|---|
-| 0.01 um | 2h37 | 1h46 | 1h53 |
-| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min |
-| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min |
-| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min |
-| 0.494 um | 26.8 min | 2.5 min | 2.5 min |
-| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each |
+| 0.01 um | 2h37 | 1h46 | 1h53 | 1h46 |
+| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min | 15.1 / 8.6 min |
+| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min | 4.5 / 5.0 min |
+| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min | 34.9 min |
+| 0.494 um | 26.8 min | 2.5 min | 2.5 min | 3.0 min |
+| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each | 0.9 - 2.1 min each |
 
 ## Known issues
 
@@ -122,6 +123,9 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       not averaged, as the overviews join there; tiles read at their coarsest (0.16) for each block. Peak 152.5GB
       (233GB at this level on 2026-10-13, 368GB at 0.494 before). Levels 0-5 took 1h46, 14, 9, 5, 4.5 min (2h38,
       1h33, 1h08, 54, 53, 54 on 2026-10-13), levels 7-12 1-2.5 min each (13+ before); level 0 rss stayed 26-36GB.
+      2026-10-22 (160GB job): the same 34.9 min, peak 26 -> 158.9GB over this level alone (rss swinging 26-91GB
+      every 30s), 1.1GB short of the job's limit; every other level stayed under 42GB. It is the only level that
+      is not 2x the one before (0.16 -> 0.2469, x1.54), so it cannot be averaged from 0.16.
 - [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
       3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
       registration 18.4, fusion 12.8 min): see The msims build in global registration.
@@ -130,6 +134,8 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       busy (process cpu 1.6 cores): ~20ms a pair in the main process. 38.6 of 64 busy overall (39.7 before).
 - [ ] **Channel name warnings** - 'Registration channel 'channel 0' not found - using the only channel, '#0'' and
       'Fusion: 137 source(s) with another channel name given '#0'': check the 137 (overviews?) and the setting.
+      2026-10-22 the other way round: channel '#0' (the setting now) not found, the only one is 'channel 0'; the
+      same 137 sources at fusion.
 - Robust linear 17 min (8 rounds, ~110s each; 78 min before), pair metrics 37 min, global 31 min (+18 min msims).
   Refresh after registration not exercised (fusion ran straight after); after fusion 1 min.
 - [ ] **Faster refresh after registration** - 48 min on the HPC (2026-10-03). Per source on registered meatballs:
