@@ -242,7 +242,7 @@ cat <<EOF
 
       ssh -N -L ${LOCAL_PORT}:${COMPUTE_NODE}:${XPRA_PORT} ${USER}@${LOGIN_NODE}
 
-    In case locally configured ssh Crick aliases with credential:
+    If your local ssh config has an alias for the compute node, with credentials:
 
       ssh -N -L ${LOCAL_PORT}:${COMPUTE_NODE_TCP}:${XPRA_PORT} ${COMPUTE_NODE}
 
