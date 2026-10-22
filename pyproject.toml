@@ -71,7 +71,8 @@ dev = [
     "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
     "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
     "napari[qt]",  # test with napari's default Qt bindings
-    "nbmake"
+    "nbmake",
+    "ipykernel<7",  # 7.x hangs the napari notebook's kernel on Windows (Python 3.13+)
 ]
 
 [project.entry-points."napari.manifest"]
