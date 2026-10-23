@@ -170,11 +170,10 @@ def prioritise_finer_views(fusion_func, group_params, group_ranks):
 
 def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize, fusion_func=None,
                          creation_kwargs=None, batch_options=None, interpolation_order=1, progress=None, share=0,
-                         ranks=None, groups=None, log_batches=False):
+                         ranks=None, groups=None):
     """Fuse `sims` into a new zarr array at store_url: only the blocks some source reaches, each from only the sources
     reaching it. With `ranks` (lower first, e.g. pixel sizes), only the lowest-ranked source at each pixel is fused.
-    The blocks move `progress` by `share` in all; `log_batches` logs each batch's memory. Returns dims and
-    properties."""
+    The blocks move `progress` by `share` in all. Returns dims and properties."""
     batch_options = batch_options or {}
     dims = list(sims[0].dims)
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
@@ -224,7 +223,7 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     # what the memory budget counts for a source in a block (budget_chunksize)
     source_block_bytes = int(np.prod([int(output_chunksize[dim]) for dim in sdims])) * 4 * fusion_stack_arrays
     _run_blocks(fuse_block, sorted(funcs), batch_options, progress, share,
-                block_stats=block_stats if log_batches else None, source_block_bytes=source_block_bytes)
+                block_stats=block_stats, source_block_bytes=source_block_bytes)
     return dims, info['output_stack_properties']
 
 
@@ -232,10 +231,11 @@ def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0, bl
                 source_block_bytes=0):
     """block_func on each block id, batched through batch_options' batch_func, moving `progress` by `share` over
     them: only these blocks count, as the ones no source reaches cost nothing. With `block_stats` ({block id:
-    (sources, their level's bytes)}), each batch is logged with the memory it was budgeted and what it reached."""
+    (sources, their level's bytes)}), a batch reaching a new high of rss is logged with the memory it was budgeted."""
     batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
     nbatches = -(-len(block_ids) // n_batch)
     batch_rss = [0]
+    highest_rss = 0
 
     def logged_block(block_id):
         block_func(block_id)
@@ -251,7 +251,8 @@ def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0, bl
                 run_block(block_id)
         else:
             batch_func(run_block, batch, **(batch_options.get('batch_func_kwargs') or {}))
-        if block_stats is not None:
+        if block_stats is not None and batch_rss[0] > highest_rss:
+            highest_rss = batch_rss[0]
             sources = [block_stats[block_id][0] for block_id in batch]
             source_bytes = [block_stats[block_id][1] for block_id in batch]
             logging.info(f'Fusion batch {start // n_batch + 1}/{nbatches}: {len(batch)} blocks, {sum(sources)} sources'
@@ -566,7 +567,7 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
                                      interpolation_order=interpolation_order, progress=progress,
                                      share=level_weights[index],
                                      ranks=[ranks[source] for source in selected] if ranks is not None else None,
-                                     groups=groups, log_batches=index > 0)
+                                     groups=groups)
         progress.close()
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(
