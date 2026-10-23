@@ -33,14 +33,14 @@ timed as the 160GB run through level 0.16 (peak 38.8GB), then was OOM-killed 2.5
 | View refresh after fusion | 1.1 min | 1.2 min | 1.0 min | 6.9 min (shapes redrawn, twice) | 5.0 min (overlap shapes 1.4) |
 | Pre-processing + registration + fusion | 18.3h | 16.6h | 8.4h | 8.5h | 8.1h |
 
-| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 | 2026-10-22 |
-|---|---|---|---|---|
-| 0.01 um | 2h37 | 1h46 | 1h53 | 1h46 |
-| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min | 15.1 / 8.6 min |
-| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min | 4.5 / 5.0 min |
-| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min | 34.9 min |
-| 0.494 um | 26.8 min | 2.5 min | 2.5 min | 3.0 min |
-| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each | 0.9 - 2.1 min each |
+| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 | 2026-10-22 | 2026-10-23 (800MB blocks) |
+|---|---|---|---|---|---|
+| 0.01 um | 2h37 | 1h46 | 1h53 | 1h46 | 2h16 |
+| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min | 15.1 / 8.6 min | 20.6 / 9.9 min |
+| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min | 4.5 / 5.0 min | 5.1 / 3.0 min |
+| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min | 34.9 min | 37.6 min |
+| 0.494 um | 26.8 min | 2.5 min | 2.5 min | 3.0 min | 4.3 min |
+| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each | 0.9 - 2.1 min each | 0.9 - 2.0 min each |
 
 ## Known issues
 
@@ -141,6 +141,8 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       the same morning at 7.9GB), fusion 4.6h (4.3h). Level 0 chunk 2752 (58273 blocks, 2h16 vs 1h46 at 4096),
       0.247 chunk 1088 (21614 blocks, 37.6 min), other levels as before. One chunk per level is sized for its
       busiest block (8 sources at level 0), so batches held ~4GB of the 51GB the budget allows.
+      All levels 3h44, against 3h23 for the same project's fusion-only run that morning at 7.9GB blocks and
+      ~3h05 on 2026-10-22: +10% on the same day, nearly all in level 0 (~2h01 that morning, from its batch rate).
 - [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
       3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
       registration 18.4, fusion 12.8 min): see The msims build in global registration.
