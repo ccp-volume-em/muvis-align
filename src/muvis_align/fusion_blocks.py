@@ -7,6 +7,7 @@ import inspect
 import logging
 import os
 import shutil
+import time
 
 import numpy as np
 import ngff_zarr
@@ -17,7 +18,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
 from muvis_align.image.util import coarsest_level_within, msim_level_spacings, sim_views
-from muvis_align.util import print_significants
+from muvis_align.util import get_process_memory, print_hbytes, print_memory_usage, print_significants
 
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):
@@ -169,10 +170,11 @@ def prioritise_finer_views(fusion_func, group_params, group_ranks):
 
 def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties, output_chunksize, fusion_func=None,
                          creation_kwargs=None, batch_options=None, interpolation_order=1, progress=None, share=0,
-                         ranks=None, groups=None):
+                         ranks=None, groups=None, log_batches=False):
     """Fuse `sims` into a new zarr array at store_url: only the blocks some source reaches, each from only the sources
     reaching it. With `ranks` (lower first, e.g. pixel sizes), only the lowest-ranked source at each pixel is fused.
-    The blocks move `progress` by `share` in all. Returns dims and properties."""
+    The blocks move `progress` by `share` in all; `log_batches` logs each batch's memory. Returns dims and
+    properties."""
     batch_options = batch_options or {}
     dims = list(sims[0].dims)
     sdims = list(si_utils.get_spatial_dims_from_sim(sims[0]))
@@ -204,33 +206,59 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     nblocks = info['nblocks']
     nonspatial_axes = [axis for axis in range(len(dims)) if axis not in block_axes]
     funcs = {}
+    block_stats = {}
     for sources, spatial_blocks in groups.items():
         func = prepare(sources, create_output=False)['func']
+        stats = (len(sources), sum(sims[index].data.nbytes for index in sources))
         for nonspatial_block in np.ndindex(*[nblocks[axis] for axis in nonspatial_axes]):
             for spatial_block in spatial_blocks:
                 block_id = [0] * len(dims)
                 for axis, block in zip(nonspatial_axes + block_axes, nonspatial_block + spatial_block):
                     block_id[axis] = block
                 funcs[tuple(block_id)] = func
+                block_stats[tuple(block_id)] = stats
 
     def fuse_block(block_id):
         return funcs[block_id](block_id)
 
-    _run_blocks(fuse_block, sorted(funcs), batch_options, progress, share)
+    # what the memory budget counts for a source in a block (budget_chunksize)
+    source_block_bytes = int(np.prod([int(output_chunksize[dim]) for dim in sdims])) * 4 * fusion_stack_arrays
+    _run_blocks(fuse_block, sorted(funcs), batch_options, progress, share,
+                block_stats=block_stats if log_batches else None, source_block_bytes=source_block_bytes)
     return dims, info['output_stack_properties']
 
 
-def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0):
+def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0, block_stats=None,
+                source_block_bytes=0):
     """block_func on each block id, batched through batch_options' batch_func, moving `progress` by `share` over
-    them: only these blocks count, as the ones no source reaches cost nothing."""
+    them: only these blocks count, as the ones no source reaches cost nothing. With `block_stats` ({block id:
+    (sources, their level's bytes)}), each batch is logged with the memory it was budgeted and what it reached."""
     batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
+    nbatches = -(-len(block_ids) // n_batch)
+    batch_rss = [0]
+
+    def logged_block(block_id):
+        block_func(block_id)
+        # read as each block ends, while the rest of its batch still runs
+        batch_rss[0] = max(batch_rss[0], get_process_memory()[0] or 0)
+
+    run_block = block_func if block_stats is None else logged_block
     for start in range(0, len(block_ids), n_batch):
         batch = block_ids[start:start + n_batch]
+        batch_start, batch_rss[0] = time.perf_counter(), 0
         if batch_func is None:
             for block_id in batch:
-                block_func(block_id)
+                run_block(block_id)
         else:
-            batch_func(block_func, batch, **(batch_options.get('batch_func_kwargs') or {}))
+            batch_func(run_block, batch, **(batch_options.get('batch_func_kwargs') or {}))
+        if block_stats is not None:
+            sources = [block_stats[block_id][0] for block_id in batch]
+            source_bytes = [block_stats[block_id][1] for block_id in batch]
+            logging.info(f'Fusion batch {start // n_batch + 1}/{nbatches}: {len(batch)} blocks, {sum(sources)} sources'
+                         f' (max {max(sources)} a block), budgeted {print_hbytes(sum(sources) * source_block_bytes)},'
+                         f' source levels {print_hbytes(sum(source_bytes))}'
+                         f' (max {print_hbytes(max(source_bytes))} a block), {time.perf_counter() - batch_start:.1f}s,'
+                         f' max rss at a block end {print_hbytes(batch_rss[0])}{print_memory_usage()}')
         if progress is not None:
             progress.update(share * len(batch) / len(block_ids))
     if progress is not None and not block_ids:
@@ -526,13 +554,19 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
                                         creation_kwargs=creation_kwargs, batch_options=batch_options,
                                         progress=progress, share=level_weights[index])
             else:
+                busiest = max(groups, key=len, default=())
+                logging.info(f'Fusion level {index + 1} fused from {len(sims)} sources: chunk {level_chunksize},'
+                             f' {sum(len(blocks) for blocks in groups.values())} blocks, budget'
+                             f' {print_hbytes(default_export_fusion_chunk_bytes)} a block, busiest block'
+                             f' {len(busiest)} sources'
+                             f' ({print_hbytes(sum(sims[source].data.nbytes for source in busiest))} of source levels)')
                 fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key,
                                      output_properties, level_chunksize, fusion_func=fusion_func,
                                      creation_kwargs=creation_kwargs, batch_options=batch_options,
                                      interpolation_order=interpolation_order, progress=progress,
                                      share=level_weights[index],
                                      ranks=[ranks[source] for source in selected] if ranks is not None else None,
-                                     groups=groups)
+                                     groups=groups, log_batches=index > 0)
         progress.close()
     sim0 = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
     coordtfs, axes = ngff_utils.calc_ngff_coordinate_transformations_and_axes(

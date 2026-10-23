@@ -89,19 +89,28 @@ def flat_msim(value, size, spacing, origin):
 
 
 @pytest.mark.parametrize('ngff_version', ['0.5', '0.6'])
-def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff_version):
+def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff_version, caplog):
     """A tile (200, at 0.5) inside an overview (10, at 2.0): the finer levels hold the tile alone, written only
-    where it is; the overview's level holds both. 0.6 stores its arrays as 0.5 does, its metadata naming a
-    coordinate system each level's transforms lead into."""
+    where it is; the overview's level holds both, its one block logged with what was budgeted for it. 0.6 stores its
+    arrays as 0.5 does, its metadata naming a coordinate system each level's transforms lead into."""
     import json
+    import logging
     from multiview_stitcher import ngff_utils
 
     overview, tile = flat_msim(10, 64, 2.0, 0.0), flat_msim(200, 64, 0.5, 40.0)
     level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
     url = (tmp_path / 'fused.ome.zarr').as_posix()
 
-    fuse_levels_to_ome_zarr([overview, tile], export_levels([2.0, 0.5], level0, ['y', 'x']), url, 'source', level0,
-                            {'y': 64, 'x': 64}, zarr_options={'ngff_version': ngff_version}, ranks=[2.0, 0.5])
+    with caplog.at_level(logging.INFO):
+        fuse_levels_to_ome_zarr([overview, tile], export_levels([2.0, 0.5], level0, ['y', 'x']), url, 'source',
+                                level0, {'y': 64, 'x': 64}, zarr_options={'ngff_version': ngff_version},
+                                ranks=[2.0, 0.5])
+
+    batches = [record.getMessage() for record in caplog.records if record.getMessage().startswith('Fusion batch')]
+    # level 0 is never logged; the overview's level is one 64x64 block of both sources, 3 float32 arrays each
+    assert len(batches) == 1
+    assert batches[0].startswith('Fusion batch 1/1: 1 blocks, 2 sources (max 2 a block), budgeted 96.0 KB,'
+                                 ' source levels 8.0 KB (max 8.0 KB a block)')
 
     group = json.load(open(os.path.join(url, 'zarr.json')))
     assert group['zarr_format'] == 3
