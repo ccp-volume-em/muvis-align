@@ -11,7 +11,8 @@ HPC: 34k sources in 1081 sections, xpra container (software GL).
 pair); the 2026-10-12/13 logs are not kept (numbers in the TODO items below).
 The 2026-10-17 run times as 2026-10-15; its refresh after fusion redrew the shapes twice on the Qt thread (fixed in
 2d7c1cb). The 2026-10-22 run had a 160GB job (640GB before) and times as 2026-10-15/17: only fusion level 0.247 needs
-the memory, and its peak came within 1.1GB of the job's limit (see TODO).
+the memory, and its peak came within 1.1GB of the job's limit (see TODO). Job 61222229 (2026-10-21, b505577, 64GB)
+timed as the 160GB run through level 0.16 (peak 38.8GB), then was OOM-killed 2.5 min into level 0.247 at 63.4GB.
 
 | Task | 2026-10-09 (9eb38ac) | 2026-10-14/15 (b70c752) | 2026-10-15 (c1baed5) | 2026-10-17 (e57e425) | 2026-10-22 (b505577, 160GB) |
 |---|---|---|---|---|---|
@@ -126,6 +127,11 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       2026-10-22 (160GB job): the same 34.9 min, peak 26 -> 158.9GB over this level alone (rss swinging 26-91GB
       every 30s), 1.1GB short of the job's limit; every other level stayed under 42GB. It is the only level that
       is not 2x the one before (0.16 -> 0.2469, x1.54), so it cannot be averaged from 0.16.
+      64GB job (2026-10-21): OOM-killed 2.5 min into this level. The per-worker budget (a quarter of memory over
+      the CPUs) does not bound it on the HPC: ~2GB a worker over the 26GB base at a 2.5GB (640GB job) and a
+      0.625GB (160GB job) budget alike. Locally (meatballs, this level only, 1-8 workers, 2560/640/256MB) the
+      peak does follow the budget (1.3 -> 0.07-0.27GB a worker), so what is uncounted at 34k is still unknown.
+      Fix to plan: cap this level's concurrent blocks by free memory (and an env override).
 - [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
       3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
       registration 18.4, fusion 12.8 min): see The msims build in global registration.
