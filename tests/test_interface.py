@@ -150,6 +150,23 @@ def test_interface_reset(make_napari_viewer):
     assert interface.reg.state is RegState.UNINIT
 
 
+def test_napari_dask_cache_is_sized_to_this_jobs_memory(make_napari_viewer, monkeypatch):
+    from napari.utils import resize_dask_cache
+    import muvis_align.ui.Interface as interface_module
+
+    cache = resize_dask_cache().cache
+    original = cache.available_bytes
+    monkeypatch.setattr(interface_module, '_available_memory_bytes', 8 * 1024 ** 3)
+    try:
+        with patch('muvis_align._widget.ViewerWidget'):
+            Interface(make_napari_viewer(), MagicMock(), MagicMock(), MagicMock())
+        # a quarter, as napari's default, and kept when napari next asks for its cache without a size
+        resize_dask_cache()
+        assert cache.available_bytes == 2 * 1024 ** 3
+    finally:
+        cache.resize(original)
+
+
 def test_update_registered_refreshes_the_tables_and_the_view(make_napari_viewer):
     with patch('muvis_align._widget.ViewerWidget'):
         interface = Interface(make_napari_viewer(), MagicMock(), MagicMock(), MagicMock())

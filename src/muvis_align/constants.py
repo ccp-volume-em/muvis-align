@@ -89,6 +89,8 @@ _available_memory_bytes = _available_memory()
 default_fusion_chunk_bytes = min(4 * 1024 ** 3, max(
     64 * 1024 ** 2,
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus))))
+# napari's own default share, applied to this job's memory rather than the machine's
+napari_dask_cache_share = 0.25
 # an export's blocks don't parallelise (GIL-bound), so it gets a higher ceiling, sparing a
 # source-dense block from shrinking below default_export_chunk_size
 default_export_fusion_chunk_bytes = max(default_fusion_chunk_bytes, min(16 * 1024 ** 3, max(

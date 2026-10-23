@@ -4,7 +4,7 @@ from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import msi_utils, ngff_utils, spatial_image_utils as si_utils, param_utils
 from napari.qt.threading import create_worker
-from napari.utils import progress
+from napari.utils import progress, resize_dask_cache
 from napari.utils.notifications import notification_manager, show_info, show_warning
 from napari.utils.colormaps.standardize_color import transform_color
 import networkx as nx
@@ -18,7 +18,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, tiff_extension, default_transform_key, default_quality_key, \
-    default_interactive_preview_scale, default_chunk_size
+    default_interactive_preview_scale, default_chunk_size, _available_memory_bytes, napari_dask_cache_share
 from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
                                              update_params)
 from muvis_align.MVSRegistration import MVSRegistration, RegState
@@ -104,6 +104,9 @@ class Interface:
         self.enable_tab = enable_tab
         self.enable_plugin_widget = enable_plugin_widget
         self.verbose = verbose
+        if _available_memory_bytes:
+            # napari sizes its dask cache from the machine's memory: on a cluster node, not the job's
+            resize_dask_cache(nbytes=int(_available_memory_bytes * napari_dask_cache_share))
         self.raw_template = get_project_template()
         if not self.raw_template:
             raise FileNotFoundError('Project template not found')
