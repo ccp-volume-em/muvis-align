@@ -89,7 +89,9 @@ def flat_msim(value, size, spacing, origin):
 
 
 @pytest.mark.parametrize('ngff_version', ['0.5', '0.6'])
-def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff_version, caplog):
+@pytest.mark.parametrize('peak_only', [False, True])
+def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff_version, peak_only, caplog,
+                                                                  monkeypatch):
     """A tile (200, at 0.5) inside an overview (10, at 2.0): the finer levels hold the tile alone, written only
     where it is; the overview's level holds both, its one block logged with what was budgeted for it. 0.6 stores its
     arrays as 0.5 does, its metadata naming a coordinate system each level's transforms lead into."""
@@ -101,6 +103,10 @@ def test_native_fusion_keeps_the_overview_out_of_the_tiles_levels(tmp_path, ngff
     level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
     url = (tmp_path / 'fused.ome.zarr').as_posix()
 
+    if peak_only:
+        # as on macOS, where only the peak is known
+        import muvis_align.fusion_blocks as fusion_blocks
+        monkeypatch.setattr(fusion_blocks, 'get_process_memory', lambda: (None, 1024 ** 3))
     with caplog.at_level(logging.INFO):
         fuse_levels_to_ome_zarr([overview, tile], export_levels([2.0, 0.5], level0, ['y', 'x']), url, 'source',
                                 level0, {'y': 64, 'x': 64}, zarr_options={'ngff_version': ngff_version},

@@ -239,8 +239,9 @@ def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0, bl
 
     def logged_block(block_id):
         block_func(block_id)
-        # read as each block ends, while the rest of its batch still runs
-        batch_rss[0] = max(batch_rss[0], get_process_memory()[0] or 0)
+        # read as each block ends, while the rest of its batch still runs; macOS gives only the peak
+        resident, peak = get_process_memory()
+        batch_rss[0] = max(batch_rss[0], resident if resident is not None else peak or 0)
 
     run_block = block_func if block_stats is None else logged_block
     for start in range(0, len(block_ids), n_batch):
