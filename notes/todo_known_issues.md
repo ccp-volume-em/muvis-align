@@ -76,7 +76,11 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Nothing.
+Fusion level 0.247 memory at 34k sources (see TODO, Fusion level 6). Batch logging added (04a66f4: 'Fusion level
+N fused from' and 'Fusion batch' lines); waiting on a fusion-only HPC run with it, to find what the budget misses.
+Then: cap the blocks of a level fused from the sources that run at once to what free memory holds (job memory
+less rss, over the busiest block's need), all CPUs where it fits - a large job keeps its speed - with an env
+override for the fusion workers; log the count chosen.
 
 ## TODO
 
