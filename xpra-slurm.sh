@@ -288,8 +288,8 @@ ${PIN_TO_CORES[@]+"${PIN_TO_CORES[@]}"} apptainer exec \
     --env "USER=${USER}" \
     --env "XDG_RUNTIME_DIR=${JOB_DIR}" \
     --env "MUVIS_SOURCE_INIT_WORKERS=${SOURCE_INIT_WORKERS}" \
-    --env "SLURM_MEM_PER_NODE=${SLURM_MEM_PER_NODE:-}" \
-    --env "SLURM_MEM_PER_CPU=${SLURM_MEM_PER_CPU:-}" \
+    ${SLURM_MEM_PER_NODE:+--env "SLURM_MEM_PER_NODE=${SLURM_MEM_PER_NODE}"} \
+    ${SLURM_MEM_PER_CPU:+--env "SLURM_MEM_PER_CPU=${SLURM_MEM_PER_CPU}"} \
     --env "MALLOC_MMAP_THRESHOLD_=1048576" \
     "${CONTAINER_PATH}" \
     xpra start \
