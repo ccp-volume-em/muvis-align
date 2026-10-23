@@ -3,7 +3,7 @@
 #SBATCH --cpus-per-task=64
 #SBATCH --hint=nomultithread  # 64 whole cores: given both threads of 32, each worker ran at half speed
 #SBATCH --time=2-00:00          # Runtime in D-HH:MM, minimum of 10 minutes
-#SBATCH --mem=200G  # a large project's fusion runs out at 64G (see also --mem-per-cpu)
+#SBATCH --mem=64G   # fusion and napari size themselves to it; more gives larger fusion blocks (see also --mem-per-cpu)
 #SBATCH --output=muvis-align-%j.log
 #SBATCH --error=muvis-align-%j.log
 

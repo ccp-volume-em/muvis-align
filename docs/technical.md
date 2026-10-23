@@ -669,7 +669,8 @@ Then follow the printed steps on your own machine: open the `ssh -N -L ...` tunn
 works too; the steps are then in `muvis-align-<job id>.log` and the password in `~/.xpra/job-<job id>/passwd`.
 The partition and data directory can be set with the same `MUVIS_*` variables; the job's resources are the
 `#SBATCH` lines at the top of `xpra-run.sh`. Its memory (`--mem`) is passed into the container, where fusion sizes
-its blocks against it.
+its blocks and napari its image cache against it: the script's 64G is enough for a 34,000-tile project, and more
+memory makes its fusion only about 10% faster.
 
 `sbatch apptainer-check.sh` checks whether the compute nodes can run the image's SIF file directly, or unpack it on
 every start, in which case the sandbox `xpra-pull.sh` builds is the faster choice; its verdict is at the end of

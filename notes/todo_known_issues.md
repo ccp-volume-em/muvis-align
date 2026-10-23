@@ -76,8 +76,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Fusion budget from the job's memory confirmed on a 200GB job (see TODO, Fusion level 6); a 64GB fusion-only
-run still to confirm it fits. Open: whether a larger share of memory (blocks nearer 4096) is worth it.
+Nothing.
 
 ## TODO
 
@@ -405,6 +404,10 @@ REFACTORING
 - **Project file in the output folder** - copied there as each action starts.
 
 ### HPC memory and speed
+- **Job memory read inside the container** - fusion's block budget and napari's dask cache from the job's
+  allocation (Slurm variables passed in, else the process's own cgroup), not the node's ~2TB: fusion peak
+  148.5 -> 23.9GB on a 200GB job for ~10% more fusion time. Job scripts back to 64G, the approach agreed:
+  request modest memory, as everything sizes itself to it; more only buys larger fusion blocks.
 - **Refresh after pre-processing: 47 min / 232GB -> ~18 min / 14GB** - no 3D promotion for the overview (2D sources
   placed at their section z); stored pyramid levels read instead of whole tiles; one source per synchronous compute.
 - **Pre-processing 29.7 -> 16 min** - only each source's finest and coarsest level built (registration reads the
