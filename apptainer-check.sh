@@ -18,7 +18,8 @@
 set -uo pipefail
 
 IMAGE_REF="docker://quay.io/ccp-volume-em/muvis-align-xpra:latest"
-DEST_DIR="/nemo/stp/ddt/working/defoltj/muvis-align"
+# beside the sandbox, as xpra-pull.sh places it: the folder it was submitted from, or MUVIS_CONTAINER_DIR
+DEST_DIR="${MUVIS_CONTAINER_DIR:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")" && pwd)}}"
 SIF_PATH="${DEST_DIR}/muvis-align-xpra_latest.sif"
 SANDBOX_PATH="${DEST_DIR}/muvis-align-xpra_latest"
 DEBUG_LOG="${DEST_DIR}/apptainer-check-debug-${SLURM_JOB_ID:-local}.log"

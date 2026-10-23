@@ -559,7 +559,9 @@ def export_json(filename, data):
 
 The Dockerfile defines a standard napari container and a second Xpra-enabled image for browser-based interactive use.
 
-Source: [`Dockerfile`](https://github.com/ccp-volume-em/muvis-align/blob/main/Dockerfile)
+Source: [`Dockerfile`](https://github.com/ccp-volume-em/muvis-align/blob/main/Dockerfile). `docker-build-push.sh [version]`
+builds the Xpra image and pushes it to `quay.io/ccp-volume-em/muvis-align-xpra`, tagged with the version (by default
+the latest GitHub release) and `latest`; it needs `docker login quay.io`.
 
 ```dockerfile
 FROM python:3.12-slim-bookworm AS muvis-align
@@ -666,7 +668,12 @@ Then follow the printed steps on your own machine: open the `ssh -N -L ...` tunn
 `http://localhost:9876/` in your browser and log in with the user name and password it shows. `sbatch xpra-run.sh`
 works too; the steps are then in `muvis-align-<job id>.log` and the password in `~/.xpra/job-<job id>/passwd`.
 The partition and data directory can be set with the same `MUVIS_*` variables; the job's resources are the
-`#SBATCH` lines at the top of `xpra-run.sh`.
+`#SBATCH` lines at the top of `xpra-run.sh`. Its memory (`--mem`) is passed into the container, where fusion sizes
+its blocks against it.
+
+`sbatch apptainer-check.sh` checks whether the compute nodes can run the image's SIF file directly, or unpack it on
+every start, in which case the sandbox `xpra-pull.sh` builds is the faster choice; its verdict is at the end of
+`muvis-align-apptainer-check-<job id>.log`.
 
 ---
 

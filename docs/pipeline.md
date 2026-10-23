@@ -382,6 +382,18 @@ Combines multiple channels using registration from a specific channel.
    tail -f log/muvis-align.log
    ```
 
+On a Slurm cluster, [`run_pipeline.sh`](https://github.com/ccp-volume-em/muvis-align/blob/main/run_pipeline.sh)
+runs the same command as a batch job:
+
+```bash
+sbatch run_pipeline.sh params.yml
+```
+
+The job's CPUs, memory and time limit are the `#SBATCH` lines at the top of the script; its `ml` and `conda` lines
+load one cluster's Python environment, so adapt them to yours. Fusion sizes its blocks against the job's memory
+(`--mem`), so a larger allocation fuses with larger blocks, and a smaller one with smaller blocks rather than running
+out.
+
 ## Output Structure
 
 After successful registration:
