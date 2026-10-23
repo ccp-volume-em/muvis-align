@@ -76,8 +76,8 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Verify on the HPC the fusion budget from the job's memory (see TODO, Fusion level 6): a 64GB job should
-now fit level 0.247 with smaller blocks. No worker cap needed: the budget already scales with memory.
+Fusion budget from the job's memory confirmed on a 200GB job (see TODO, Fusion level 6); a 64GB fusion-only
+run still to confirm it fits. Open: whether a larger share of memory (blocks nearer 4096) is worth it.
 
 ## TODO
 
@@ -137,7 +137,10 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       SLURM_MEM_PER_NODE and the container's root cgroup files are unlimited. rss follows the budget (the
       batch at the peak: budgeted 135.2GB, rss 133.4GB over a 19GB base; 55 sources a block, 3520 chunk).
       Fixed: SLURM memory passed into the container, and the cgroup limit read along the process's own
-      cgroup path. Check on the next HPC run that the 'Fusion level N fused from' line shows the job's budget.
+      cgroup path. Fusion-only run 2026-10-23 (f0e35ab, 200GB job): budget 800MB a block, peak 23.9GB (148.5GB
+      the same morning at 7.9GB), fusion 4.6h (4.3h). Level 0 chunk 2752 (58273 blocks, 2h16 vs 1h46 at 4096),
+      0.247 chunk 1088 (21614 blocks, 37.6 min), other levels as before. One chunk per level is sized for its
+      busiest block (8 sources at level 0), so batches held ~4GB of the 51GB the budget allows.
 - [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
       3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
       registration 18.4, fusion 12.8 min): see The msims build in global registration.
