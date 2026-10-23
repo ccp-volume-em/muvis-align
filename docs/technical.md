@@ -630,7 +630,7 @@ CMD echo "Launching napari on Xpra. Connect via http://localhost:$XPRA_PORT or $
 
 ### On a Slurm cluster
 
-On the cluster, Apptainer runs the Xpra image from a sandbox that `xpra-pull.sh` builds, and `xpra-slurm.sh`
+On the cluster, Apptainer runs the Xpra image from a sandbox that `xpra-pull.sh` builds, and `xpra-run.sh`
 starts it in a Slurm job. Both run from a folder holding the scripts, which also holds the container.
 
 #### From your own machine
@@ -645,7 +645,7 @@ On Windows, run it in Git Bash, or from PowerShell as `.\xpra-connect.sh <user>@
 Git Bash window that waits for Enter before closing. `bash` in PowerShell is WSL's; there it uses Windows' own ssh
 when WSL's cannot sign in.
 
-It copies `xpra-slurm.sh` and `xpra-pull.sh` into the folder on the cluster (replacing what is there), builds the
+It copies `xpra-run.sh` and `xpra-pull.sh` into the folder on the cluster (replacing what is there), builds the
 container first if there is none yet (or with `--pull`), submits the job, tunnels to the compute node the job
 starts on, and opens napari in your browser, already logged in. Closing napari ends the job; Ctrl-C closes the
 connection and offers to cancel the job. `MUVIS_PARTITION`, `MUVIS_DATA_DIR` and `MUVIS_CONTAINER_DIR` set locally
@@ -659,14 +659,14 @@ With the two scripts in a folder on the cluster (e.g. a clone of this repository
 
 ```bash
 bash xpra-pull.sh     # once, and to update: builds the container sandbox beside the scripts
-bash xpra-slurm.sh    # submits the job, waits for it to start and prints how to connect
+bash xpra-run.sh      # submits the job, waits for it to start and prints how to connect
 ```
 
 Then follow the printed steps on your own machine: open the `ssh -N -L ...` tunnel it shows, open
-`http://localhost:9876/` in your browser and log in with the user name and password it shows. `sbatch xpra-slurm.sh`
+`http://localhost:9876/` in your browser and log in with the user name and password it shows. `sbatch xpra-run.sh`
 works too; the steps are then in `muvis-align-<job id>.log` and the password in `~/.xpra/job-<job id>/passwd`.
 The partition and data directory can be set with the same `MUVIS_*` variables; the job's resources are the
-`#SBATCH` lines at the top of `xpra-slurm.sh`.
+`#SBATCH` lines at the top of `xpra-run.sh`.
 
 ---
 

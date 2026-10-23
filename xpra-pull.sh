@@ -6,7 +6,7 @@
 #SBATCH --output=muvis-align-pull-%j.log
 #SBATCH --error=muvis-align-pull-%j.log
 #
-# Refreshes the container used by xpra-slurm.sh: pulls "latest" from quay.io
+# Refreshes the container used by xpra-run.sh: pulls "latest" from quay.io
 # and builds it into a fixed, version-less sandbox directory.
 # It deletes the current sandbox first: don't pull while a session is running.
 #
@@ -31,7 +31,7 @@ elif [ -n "${SLURM_JOB_ID:-}" ]; then
 else
     SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 fi
-# where xpra-slurm.sh looks for it
+# where xpra-run.sh looks for it
 DEST_DIR="${MUVIS_CONTAINER_DIR:-${SCRIPT_DIR}}"
 SANDBOX_PATH="${DEST_DIR}/muvis-align-xpra_latest"
 

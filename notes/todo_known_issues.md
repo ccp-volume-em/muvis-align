@@ -133,7 +133,7 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       0.625GB (160GB job) budget alike. Locally (meatballs, this level only, 1-8 workers, 2560/640/256MB) the
       peak does follow the budget (1.3 -> 0.07-0.27GB a worker), so what is uncounted at 34k is still unknown.
       Cause (fusion-only run 2026-10-23, 1715c51, 200GB job, batch logging): the budget was 7.9GB a block - the
-      node's ~2TB, not the job's memory - in every one of these runs: xpra-slurm.sh's --cleanenv drops
+      node's ~2TB, not the job's memory - in every one of these runs: xpra-run.sh's --cleanenv drops
       SLURM_MEM_PER_NODE and the container's root cgroup files are unlimited. rss follows the budget (the
       batch at the peak: budgeted 135.2GB, rss 133.4GB over a 19GB base; 55 sources a block, 3520 chunk).
       Fixed: SLURM memory passed into the container, and the cgroup limit read along the process's own
@@ -477,7 +477,7 @@ REFACTORING
   (2m38s vs 10.5s from a sandbox): xpra-pull.sh's sandbox stays.
 - **Occasional Xvfb fatal error on startup** - "Cannot open /var/lib/xkb/server-0.xkm", "Failed to activate virtual
   core keyboard". Xvfb uses /var/lib/xkb over /tmp when access() says it is writable, which the user-owned sandbox
-  passes, but the container's root is read-only. xpra-slurm.sh binds a per-job directory there. Why only some runs
+  passes, but the container's root is read-only. xpra-run.sh binds a per-job directory there. Why only some runs
   fail (node-dependent mount/NFS behaviour?) is unknown; confirm no further failures on the HPC.
 
 ### Sources and metadata

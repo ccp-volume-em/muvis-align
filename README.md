@@ -54,11 +54,11 @@ in your browser (on Windows in Git Bash, or as `.\xpra-connect.sh ...` from Powe
 bash xpra-connect.sh <user>@<login node> [folder on the cluster, default: muvis-align] [--pull]
 ```
 
-Or step by step, on the cluster's login node in a folder with [xpra-pull.sh] and [xpra-slurm.sh]:
+Or step by step, on the cluster's login node in a folder with [xpra-pull.sh] and [xpra-run.sh]:
 
 ```
 bash xpra-pull.sh     # once, and to update the container
-bash xpra-slurm.sh    # starts the job and prints how to connect from your own machine
+bash xpra-run.sh      # starts the job and prints how to connect from your own machine
 ```
 
 See the [documentation](https://ccp-volume-em.github.io/muvis-align/technical/#on-a-slurm-cluster) for details.
@@ -90,5 +90,5 @@ This [napari] plugin was generated with [copier] using the [napari-plugin-templa
 [pip]: https://pypi.org/project/pip/
 [Xpra]: https://xpra.org/
 [xpra-pull.sh]: https://github.com/ccp-volume-em/muvis-align/blob/main/xpra-pull.sh
-[xpra-slurm.sh]: https://github.com/ccp-volume-em/muvis-align/blob/main/xpra-slurm.sh
+[xpra-run.sh]: https://github.com/ccp-volume-em/muvis-align/blob/main/xpra-run.sh
 [file an issue]: https://github.com/ccp-volume-em/muvis-align/issues

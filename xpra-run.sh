@@ -14,7 +14,7 @@ export PYTHONUNBUFFERED=TRUE
 # ===========================================================================
 # Refresh with: bash xpra-pull.sh
 # Slurm partition: this one where the cluster has it, else the cluster's default (partitions differ per cluster).
-# Override with  MUVIS_PARTITION=<name> bash xpra-slurm.sh  (empty: the cluster's default)
+# Override with  MUVIS_PARTITION=<name> bash xpra-run.sh  (empty: the cluster's default)
 PREFERRED_PARTITION="ncpu"
 # the muvis-align folder these scripts are in: a job runs a spool copy, so the launcher below passes it on
 if [ -n "${MUVIS_SCRIPT_DIR:-}" ]; then
@@ -27,7 +27,7 @@ else
 fi
 CONTAINER_PATH="${MUVIS_CONTAINER_DIR:-${SCRIPT_DIR}}/muvis-align-xpra_latest"   # built there by xpra-pull.sh
 # directory napari can open data from: the first of these the cluster has, else the top-level one the folder is in
-# Override with  MUVIS_DATA_DIR=<directory> bash xpra-slurm.sh
+# Override with  MUVIS_DATA_DIR=<directory> bash xpra-run.sh
 PREFERRED_DATA_DIRS="/nemo"
 DATA_DIR="${MUVIS_DATA_DIR:-}"
 if [ -z "${DATA_DIR}" ]; then
@@ -94,9 +94,9 @@ SOURCE_INIT_WORKERS=256
 set -euo pipefail
 
 # ===========================================================================
-#  USAGE, on the login node:   bash xpra-slurm.sh
+#  USAGE, on the login node:   bash xpra-run.sh
 #  Submits this job, waits for it to start and prints how to connect.
-#  "sbatch xpra-slurm.sh" also works: the instructions are then in
+#  "sbatch xpra-run.sh" also works: the instructions are then in
 #  muvis-align-<job id>.log, and the password in ~/.xpra/job-<job id>/passwd.
 #  With MUVIS_FOLLOW=1 (as xpra-connect.sh runs it) it prints one MUVIS_SESSION
 #  line instead, with the password, and then waits until the job ends.

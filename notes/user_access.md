@@ -6,7 +6,7 @@ No script: once published, install muvis-align in napari from the napari hub (or
 
 ## HPC from the user's machine
 
-`xpra-connect.sh` (bash, Git Bash on Windows) runs `xpra-slurm.sh` on the login node, tunnels to the compute node
+`xpra-connect.sh` (bash, Git Bash on Windows) runs `xpra-run.sh` on the login node, tunnels to the compute node
 and opens the browser logged in (see docs/technical.md). It assumes an ssh key on the login node: it opens up to
 three ssh connections (session, tunnel, cancel), and Git Bash's ssh - like Windows' own OpenSSH - cannot share one
 connection between them (ControlMaster), so without a key each one asks for the password.

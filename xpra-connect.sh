@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Starts a muvis-align session on the cluster from your own machine and opens it in your browser:
-# copies xpra-slurm.sh and xpra-pull.sh from beside it to the cluster, runs xpra-slurm.sh on the login node,
+# copies xpra-run.sh and xpra-pull.sh from beside it to the cluster, runs xpra-run.sh on the login node,
 # tunnels to the compute node it starts on, and logs in.
 #
 # Usage, on your own machine (on Windows in Git Bash, or .\xpra-connect.sh from PowerShell, in a new window):
@@ -83,7 +83,7 @@ mkdir -p $(printf %q "${REMOTE_DIR}")
 cd $(printf %q "${REMOTE_DIR}")
 "
 # the cluster runs the scripts beside this one, so the two sides always match
-for SCRIPT in xpra-slurm.sh xpra-pull.sh; do
+for SCRIPT in xpra-run.sh xpra-pull.sh; do
     REMOTE_SCRIPT+="cat > ${SCRIPT}.new <<'MUVIS_SCRIPT_END'
 $(tr -d '\r' < "${LOCAL_DIR}/${SCRIPT}")
 MUVIS_SCRIPT_END
@@ -104,7 +104,7 @@ else
 [ -e "${MUVIS_CONTAINER_DIR:-.}/muvis-align-xpra_latest" ] || bash xpra-pull.sh < /dev/null'
 fi
 REMOTE_SCRIPT+="
-bash xpra-slurm.sh < /dev/null"
+bash xpra-run.sh < /dev/null"
 
 JOB_ID=""
 on_interrupt() {
