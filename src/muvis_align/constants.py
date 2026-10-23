@@ -15,6 +15,37 @@ try:
     _available_cpus = len(os.sched_getaffinity(0))
 except AttributeError:
     _available_cpus = os.cpu_count() or 8
+def _cgroup_memory_limit(proc_cgroup='/proc/self/cgroup', cgroup_root='/sys/fs/cgroup'):
+    """The tightest memory limit on this process's cgroup or any parent (v2, then v1), in bytes, or None."""
+    paths = []
+    try:
+        with open(proc_cgroup) as file:
+            lines = file.read().splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        _, controllers, path = line.split(':', 2)
+        # a job's limit sits on a parent of its task's cgroup (Slurm: job_N above step and task)
+        parts = [part for part in path.split('/') if part]
+        if controllers == '':
+            paths += [os.path.join(cgroup_root, *parts[:depth], 'memory.max') for depth in range(len(parts) + 1)]
+        elif 'memory' in controllers.split(','):
+            paths += [os.path.join(cgroup_root, 'memory', *parts[:depth], 'memory.limit_in_bytes')
+                      for depth in range(len(parts) + 1)]
+    # the root's own files, where /proc/self/cgroup is missing or names a path not mounted here
+    paths += [os.path.join(cgroup_root, 'memory.max'), os.path.join(cgroup_root, 'memory', 'memory.limit_in_bytes')]
+    limits = []
+    for path in paths:
+        try:
+            with open(path) as file:
+                limits.append(int(file.read().strip()))
+        except (OSError, ValueError):
+            pass
+    # 'max', or an implausibly huge sentinel, means unset
+    limits = [limit for limit in limits if 0 < limit < 1 << 60]
+    return min(limits) if limits else None
+
+
 def _available_memory():
     """Memory allocated to this process in bytes (SLURM, then cgroup, then hardware), or None if unknown."""
     # SLURM values are in MB; SLURM_MEM_PER_CPU is per allocated core
@@ -25,15 +56,9 @@ def _available_memory():
                 return int(float(value)) * multiplier * 1024 ** 2
             except ValueError:
                 pass
-    # container/cgroup limit (v2 then v1) - 'max', or an implausibly huge sentinel, means unset
-    for path in ('/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes'):
-        try:
-            with open(path) as file:
-                limit = int(file.read().strip())
-            if 0 < limit < 1 << 60:
-                return limit
-        except (OSError, ValueError):
-            pass
+    limit = _cgroup_memory_limit()
+    if limit is not None:
+        return limit
     try:
         return os.sysconf('SC_PHYS_PAGES') * os.sysconf('SC_PAGE_SIZE')
     except (AttributeError, ValueError, OSError):

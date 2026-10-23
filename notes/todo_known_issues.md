@@ -76,13 +76,8 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Fusion level 0.247 memory at 34k sources (see TODO, Fusion level 6). Logging on every level fused from the
-sources: a 'Fusion level N fused from' summary, and a 'Fusion batch' line each time a batch reaches a new rss
-high; waiting on a fusion-only HPC run with it, to find what the budget misses.
-Then, for any dataset and any level fused from the sources (level 0 too): run as many blocks at once as free
-memory (job memory less rss) holds at the busiest block's need, counted from what every project has (sources
-x chunk, source level bytes, plus whatever the run shows missing) - all CPUs where it fits, so a large job keeps
-its speed - with an env override for the fusion workers; log the count chosen. No dataset-specific cases.
+Verify on the HPC the fusion budget from the job's memory (see TODO, Fusion level 6): a 64GB job should
+now fit level 0.247 with smaller blocks. No worker cap needed: the budget already scales with memory.
 
 ## TODO
 
@@ -137,7 +132,12 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       the CPUs) does not bound it on the HPC: ~2GB a worker over the 26GB base at a 2.5GB (640GB job) and a
       0.625GB (160GB job) budget alike. Locally (meatballs, this level only, 1-8 workers, 2560/640/256MB) the
       peak does follow the budget (1.3 -> 0.07-0.27GB a worker), so what is uncounted at 34k is still unknown.
-      Fix to plan: cap this level's concurrent blocks by free memory (and an env override).
+      Cause (fusion-only run 2026-10-23, 1715c51, 200GB job, batch logging): the budget was 7.9GB a block - the
+      node's ~2TB, not the job's memory - in every one of these runs: xpra-slurm.sh's --cleanenv drops
+      SLURM_MEM_PER_NODE and the container's root cgroup files are unlimited. rss follows the budget (the
+      batch at the peak: budgeted 135.2GB, rss 133.4GB over a 19GB base; 55 sources a block, 3520 chunk).
+      Fixed: SLURM memory passed into the container, and the cgroup limit read along the process's own
+      cgroup path. Check on the next HPC run that the 'Fusion level N fused from' line shows the job's budget.
 - [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
       3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
       registration 18.4, fusion 12.8 min): see The msims build in global registration.
