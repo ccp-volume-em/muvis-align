@@ -76,7 +76,13 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Nothing.
+Fusion memory pool and block-size dropdown (agreed 2026-10-24). All CPUs stay fusion threads; a pool of a quarter
+of the job's memory replaces the per-worker budget: each block reserves its sources x chunk x 12 bytes (averaged
+levels: their float64 parents) before it runs, through util.rolling_map, and an oversize block runs alone. The
+busiest single block, not every worker's, must fit the pool, so chunks stay at 4096. Fusion tab: 'Tile size(s)'
+becomes a 'Block size' dropdown (Automatic, 1024, 2048, 4096, 8192), the same tile_size key; a loaded value no
+dropdown offers falls back to the default with a warning. Then: the physical-units TODO. Steps: [ ] pool
+[ ] chunk budget from the pool [ ] dropdown + old values [ ] tests [ ] docs [ ] local check on meatballs.
 
 ## TODO
 
@@ -86,6 +92,10 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **Test the Elastix registration method** - offered in the registration tab (MVSRegistration: method 'elastix'
+      -> multiview_stitcher's registration_ITKElastix), but never run here: ITK-Elastix (itk-elastix) is in no
+      requirements file, the Docker image or the local env, so choosing it raises ImportError. Install it, run it on a
+      tiny dataset (data/S000 or data_subset), and decide whether it becomes an optional dependency.
 - [ ] **Physical units in napari** - the viewer shows sizes and positions in pixels: give every layer the
       sources' pixel size (scale) and unit, images and shapes alike, so the cursor position and sizes read in um.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
