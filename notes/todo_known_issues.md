@@ -86,6 +86,8 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **Physical units in napari** - the viewer shows sizes and positions in pixels: give every layer the
+      sources' pixel size (scale) and unit, images and shapes alike, so the cursor position and sizes read in um.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
       browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
       Maximising by hand works fine. Maybe maximise once the first client connects.
