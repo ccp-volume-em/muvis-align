@@ -19,7 +19,8 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, tiff_extension, default_transform_key, default_quality_key, \
-    default_interactive_preview_scale, default_chunk_size, _available_memory_bytes, napari_dask_cache_share
+    default_interactive_preview_scale, default_chunk_size, _available_memory_bytes, napari_dask_cache_share, \
+    spatial_unit
 from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
                                              update_params)
 from muvis_align.MVSRegistration import MVSRegistration, RegState
@@ -194,12 +195,15 @@ class Interface:
         return os.path.dirname(os.path.abspath(params_path)) if params_path else None
 
     def update_widgets(self):
+        # a dropdown filled later (channels, preview images) is empty until then: only fixed ones map old values
+        fixed_choices = {f'{section_id}.{item["name"]}' for section_id, items in self.template.items()
+                         for item in items if item.get('options')}
         for param_name, param_widget in self.param_widgets.items():
             # path widgets are set by update_input_output_path(), relative to the project directory
             if param_name not in ('input_output.input_path', 'input_output.output_path'):
                 keys = param_name.split('.')
                 value = self.params.get(keys[0], {}).get(keys[1])
-                if value is not None and isinstance(param_widget.widget, ComboBox) \
+                if value is not None and param_name in fixed_choices and isinstance(param_widget.widget, ComboBox) \
                         and value not in param_widget.widget.choices:
                     value = self._listed_choice(param_name, value, param_widget.widget)
                 if value is not None:
@@ -1344,7 +1348,7 @@ class Interface:
             layer = viewer.add_shapes(shape_data, name=layer_name, shape_type=shape_type, text=text,
                                       features=features, face_color=face_color, opacity=0.5,
                                       edge_width=edge_width, edge_color=edge_color, blending=blending,
-                                      metadata={'line_color': line_color})
+                                      units=spatial_unit, metadata={'line_color': line_color})
 
             @layer.mouse_drag_callbacks.append
             def on_shape_click(clicked_layer, event, refs=refs):
@@ -1372,7 +1376,7 @@ class Interface:
                 return dict(data=get_msim_level_data(msim), name=channel.get('label', layer_name),
                            multiscale=True, colormap=channel.get('color', (1, 1, 1, 1)),
                            contrast_limits=contrast_limits,
-                           scale=scale, translate=translate, blending='additive')
+                           scale=scale, translate=translate, units=spatial_unit, blending='additive')
 
             channel_list = channels or [{}] * len(fused)
             with Timer(f'_napari_view_add_fused_data: prep {len(fused)} layers',
@@ -1418,7 +1422,7 @@ class Interface:
         with Timer('_napari_view_add_fused_data: add_image', verbose=self._timing_verbose()):
             viewer.add_image(data, name=name or layer_name, multiscale=True, channel_axis=channel_axis,
                              colormap=colormap, contrast_limits=contrast_limits,
-                             scale=scale, translate=translate)
+                             scale=scale, translate=translate, units=spatial_unit)
 
     def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
@@ -1440,13 +1444,13 @@ class Interface:
             scale = si_utils.get_spacing_from_sim(image0, asarray=True)
             position = si_utils.get_origin_from_sim(image0, asarray=True)
             layer = viewer.add_image(get_msim_level_data(data), name=label, multiscale=True,
-                                     scale=scale, translate=position, affine=transform,
+                                     scale=scale, translate=position, affine=transform, units=spatial_unit,
                                      blending='additive')
         else:
             scale = si_utils.get_spacing_from_sim(data, asarray=True)
             position = si_utils.get_origin_from_sim(data, asarray=True)
             layer = viewer.add_image(data, name=label, scale=scale, translate=position, affine=transform,
-                                     blending='additive')
+                                     units=spatial_unit, blending='additive')
         if color:
             layer.colormap = color
 

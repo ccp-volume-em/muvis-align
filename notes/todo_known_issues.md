@@ -90,8 +90,6 @@ MINOR
       -> multiview_stitcher's registration_ITKElastix), but never run here: ITK-Elastix (itk-elastix) is in no
       requirements file, the Docker image or the local env, so choosing it raises ImportError. Install it, run it on a
       tiny dataset (data/S000 or data_subset), and decide whether it becomes an optional dependency.
-- [ ] **Physical units in napari** - the viewer shows sizes and positions in pixels: give every layer the
-      sources' pixel size (scale) and unit, images and shapes alike, so the cursor position and sizes read in um.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
       browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
       Maximising by hand works fine. Maybe maximise once the first client connects.
@@ -178,6 +176,9 @@ REFACTORING
 
 ## Done
 
+- **Physical units in napari** - images and shapes already had the sources' scale and positions in um, but no
+  unit, so napari read them as pixels: every placed layer now has units='micrometer' (constants.spatial_unit),
+  as empanada-napari's layers got (836aff0). The feature-match view stays in pixels, which it is drawn in.
 - **Shape layers kept across steps** - each viewer's shape layer is keyed by the geometry, pairs graph and metrics
   it was drawn from: pre-processing and fusion (export, preview, the output shown) swap only the image under it,
   its line colour reset; pair and global registration draw it again. Preview and modify pair registration set the

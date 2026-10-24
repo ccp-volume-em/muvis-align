@@ -5,6 +5,8 @@ import zarr
 from muvis_align.zarr_compat import apply_windows_atomic_write_retry
 
 zarr_extension = '.ome.zarr'
+# every position and pixel size is converted to this on reading; napari's layers are given it to show
+spatial_unit = 'micrometer'
 tiff_extension = '.ome.tiff'
 
 default_ome_zarr_version = '0.5'

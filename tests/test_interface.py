@@ -1045,6 +1045,8 @@ def test_update_napari_shapes_adds_3d_box_with_overlap_metadata(
     )
     assert kwargs["features"]["refs"] == ["0"] * 6 + ["0 0"] * 6 + ["0", "0 0"]
     assert kwargs["features"]["labels"] == [""] * 12 + ["image-0", ""]
+    # in the sources' physical unit, as the images under them are
+    assert kwargs["units"] == "micrometer"
 
 
 def test_update_napari_shapes_3d_faces_are_axis_aligned_and_wind_outward(
@@ -2399,8 +2401,14 @@ def test_a_loaded_value_no_dropdown_lists_maps_to_a_listed_one(bare_interface, q
 
     widget = ComboBox(choices=["", "1024", "2048", "4096", "8192"], value="")
     param_widget = ParamWidget("fusion.tile_size", widget, bare_interface)
-    bare_interface.param_widgets = {"fusion.tile_size": param_widget}
-    bare_interface.params = {"fusion": {"tile_size": saved}}
+    # a dropdown filled only later keeps its saved value, as it is empty at load
+    channel_widget = ComboBox(choices=[])
+    bare_interface.param_widgets = {"fusion.tile_size": param_widget,
+                                    "registration.channel": ParamWidget("registration.channel", channel_widget,
+                                                                        bare_interface)}
+    bare_interface.template = {"fusion": [{"name": "tile_size", "options": [{"value": ""}]}],
+                               "registration": [{"name": "channel"}]}
+    bare_interface.params = {"fusion": {"tile_size": saved}, "registration": {"channel": "channel 0"}}
 
     with caplog.at_level(logging.WARNING):
         bare_interface.update_widgets()
@@ -2408,3 +2416,19 @@ def test_a_loaded_value_no_dropdown_lists_maps_to_a_listed_one(bare_interface, q
     assert widget.value == expected
     assert bare_interface.params["fusion"]["tile_size"] == expected
     assert any("fusion.tile_size" in record.getMessage() for record in caplog.records) == warns
+    assert bare_interface.params["registration"]["channel"] == "channel 0"
+
+
+@pytest.mark.parametrize("multiscale", [False, True])
+def test_an_image_layer_reads_in_micrometres(bare_interface, make_napari_viewer, multiscale):
+    """napari shows sizes and the cursor position in pixels unless a layer has units."""
+    from tests.data_builders import make_msim, make_sim
+
+    data = np.zeros((32, 32), dtype=np.uint8)
+    kwargs = dict(scale={"y": 0.5, "x": 0.5}, translation={"y": 0.0, "x": 0.0})
+    image = make_msim(data, scale_factors=[2], **kwargs) if multiscale else make_sim(data, **kwargs)
+
+    layer = bare_interface._napari_view_add_image(make_napari_viewer(), image, "image-0")
+
+    assert {str(unit) for unit in layer.units} == {"micrometer"}
+    np.testing.assert_allclose(layer.scale[-2:], [0.5, 0.5])
