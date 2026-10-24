@@ -111,6 +111,42 @@ if [ -z "${SLURM_JOB_ID:-}" ]; then
         PARTITION=""
     fi
     echo "Partition: ${PARTITION:-default of the cluster}"
+    # what this script asks for against the partition's nodes and limits: printed only, never stops the launch
+    LIMITS_PARTITION="${PARTITION:-$(sinfo -h -o %P 2>/dev/null | sed -n 's/\*$//p' | head -1 || true)}"
+    awk -v cpus="$(sed -n 's/^#SBATCH --cpus-per-task=\([0-9]*\).*/\1/p' "$0" | head -1)" \
+        -v mem="$(sed -n 's/^#SBATCH --mem=\([0-9]*[KMGT]\{0,1\}\).*/\1/p' "$0" | head -1)" \
+        -v node="$(sinfo -h ${LIMITS_PARTITION:+-p "${LIMITS_PARTITION}"} -o '%c %m' 2>/dev/null | sort -n -k2 | tail -1 || true)" \
+        -v limits="$(scontrol show partition ${LIMITS_PARTITION} 2>/dev/null | grep -oE '(DefMemPerCPU|MaxMemPerCPU)=[0-9]+' | tr '\n' ' ' || true)" '
+        BEGIN {
+            split(node, node_fields, " "); node_cpus = node_fields[1]; node_mb = node_fields[2] + 0
+            count = split(limits, limit_fields, " ")
+            for (field = 1; field <= count; field++) {
+                split(limit_fields[field], pair, "=")
+                if (pair[1] == "DefMemPerCPU") default_mb = pair[2] + 0
+                if (pair[1] == "MaxMemPerCPU") max_mb = pair[2] + 0
+            }
+            if (mem != "") {
+                unit = substr(mem, length(mem))
+                # sbatch reads a bare --mem value as MB
+                mem_mb = (mem + 0) * (unit == "T" ? 1048576 : unit == "G" ? 1024 : unit == "K" ? 1 / 1024 : 1)
+            }
+            printf "Resources: %s CPUs, %s", (cpus == "" ? "?" : cpus),
+                   (mem == "" ? "no --mem (the partition default)" : sprintf("%.0f GB", mem_mb / 1024))
+            if (cpus != "" && mem != "") printf " (%.1f GB a CPU)", mem_mb / 1024 / cpus
+            printf "\n           nodes up to %s CPUs, %s", (node_cpus == "" ? "?" : node_cpus + 0),
+                   (node_mb ? sprintf("%.0f GB", node_mb / 1024) : "? GB")
+            if (default_mb) printf "; default %.1f GB a CPU", default_mb / 1024
+            if (max_mb) printf ", at most %.1f GB a CPU", max_mb / 1024
+            printf "\n"
+            if (cpus != "" && node_cpus != "" && cpus + 0 > node_cpus + 0)
+                print "WARNING: more CPUs than any node of the partition has: the job cannot start"
+            if (mem != "" && node_mb && mem_mb > node_mb)
+                print "WARNING: more memory than any node of the partition has: the job cannot start"
+            if (mem != "" && cpus != "" && max_mb && mem_mb / cpus > max_mb)
+                print "WARNING: more memory a CPU than the partition allows: Slurm adds CPUs to match"
+            if (mem == "" && cpus != "" && default_mb)
+                printf "Note: without --mem the job gets the default, %.0f GB\n", cpus * default_mb / 1024
+        }' || true
     export MUVIS_SCRIPT_DIR="${SCRIPT_DIR}"
     JOB_ID="$(sbatch --parsable ${PARTITION:+--partition="${PARTITION}"} "$0")"
     # --parsable adds ";cluster" on a multi-cluster setup
@@ -223,6 +259,27 @@ if [ -n "${PINNED_CPUS}" ] && [ "${PHYSICAL_CORES}" -lt "$(nproc)" ] && command 
             napari pinned to one thread of each core"
 fi
 NODE_LOAD="$(cut -d' ' -f1-3 /proc/loadavg) (1/5/15 min), $(free -g 2>/dev/null | awk '/^Mem:/ { print $7 "GB of " $2 "GB free" }')"
+# the job's memory as the plugin reads it: Slurm's variables, else the tightest limit on its cgroup or a parent
+JOB_MEMORY="$({ cat /proc/self/cgroup 2>/dev/null || true; } | awk -F: -v node_mb="${SLURM_MEM_PER_NODE:-}" -v cpu_mb="${SLURM_MEM_PER_CPU:-}" -v cpus="$(nproc)" '
+    {
+        root = ($2 == "") ? "/sys/fs/cgroup" : ($2 ~ /(^|,)memory(,|$)/ ? "/sys/fs/cgroup/memory" : "")
+        name = ($2 == "") ? "memory.max" : "memory.limit_in_bytes"
+        count = split($3, parts, "/")
+        path = root
+        for (depth = 1; root != "" && depth <= count + 1; depth++) {
+            file = path "/" name
+            if ((getline value < file) > 0 && value ~ /^[0-9]+$/ && value + 0 < 2 ^ 60 && (lowest == "" || value + 0 < lowest))
+                lowest = value + 0
+            close(file)
+            if (depth <= count && parts[depth] != "") path = path "/" parts[depth]
+        }
+    }
+    END {
+        if (node_mb != "") printf "%.0fGB (Slurm)", node_mb / 1024
+        else if (cpu_mb != "") printf "%.0fGB (Slurm)", cpu_mb * cpus / 1024
+        else if (lowest != "") printf "%.0fGB (cgroup)", lowest / 1073741824
+        else printf "? (no limit found)"
+    }' || echo '?')"
 
 echo "MUVIS_SESSION job=${SLURM_JOB_ID} node=${COMPUTE_NODE} port=${XPRA_PORT}"
 cat <<EOF
@@ -234,6 +291,7 @@ cat <<EOF
   CPU     : ${CPU_MODEL}
             ${CPU_LAYOUT}, ${CPU_ALLOCATED}
             on ${PHYSICAL_CORES} physical cores (CPUs ${CPU_LIST})${PIN_NOTE}
+  Memory  : ${JOB_MEMORY} allocated, of $(free -g 2>/dev/null | awk '/^Mem:/ { print $2 "GB" }' || echo '?') on the node
   Load    : ${NODE_LOAD}
   Started : $(date)
 ----------------------------------------------------------------------
