@@ -33,14 +33,14 @@ timed as the 160GB run through level 0.16 (peak 38.8GB), then was OOM-killed 2.5
 | View refresh after fusion | 1.1 min | 1.2 min | 1.0 min | 6.9 min (shapes redrawn, twice) | 5.0 min (overlap shapes 1.4) |
 | Pre-processing + registration + fusion | 18.3h | 16.6h | 8.4h | 8.5h | 8.1h |
 
-| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 | 2026-10-22 | 2026-10-23 (800MB blocks) |
-|---|---|---|---|---|---|
-| 0.01 um | 2h37 | 1h46 | 1h53 | 1h46 | 2h16 |
-| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min | 15.1 / 8.6 min | 20.6 / 9.9 min |
-| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min | 4.5 / 5.0 min | 5.1 / 3.0 min |
-| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min | 34.9 min | 37.6 min |
-| 0.494 um | 26.8 min | 2.5 min | 2.5 min | 3.0 min | 4.3 min |
-| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each | 0.9 - 2.1 min each | 0.9 - 2.0 min each |
+| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 | 2026-10-22 | 2026-10-23 (800MB blocks) | 2026-10-24 (256MB blocks) |
+|---|---|---|---|---|---|---|
+| 0.01 um | 2h37 | 1h46 | 1h53 | 1h46 | 2h16 | 3h41 |
+| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min | 15.1 / 8.6 min | 20.6 / 9.9 min | 32.8 / 13.8 min |
+| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min | 4.5 / 5.0 min | 5.1 / 3.0 min | 6.6 / 3.0 min |
+| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min | 34.9 min | 37.6 min | 72.3 min |
+| 0.494 um | 26.8 min | 2.5 min | 2.5 min | 3.0 min | 4.3 min | 5.8 min |
+| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each | 0.9 - 2.1 min each | 0.9 - 2.0 min each | 0.5 - 3.0 min each |
 
 ## Known issues
 
@@ -142,6 +142,11 @@ From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pa
       busiest block (8 sources at level 0), so batches held ~4GB of the 51GB the budget allows.
       All levels 3h44, against 3h23 for the same project's fusion-only run that morning at 7.9GB blocks and
       ~3h05 on 2026-10-22: +10% on the same day, nearly all in level 0 (~2h01 that morning, from its batch rate).
+      64GB job 2026-10-24 (2166a6f, full fusion from loaded mappings): 256MB blocks, peak 20.2GB, estimate 478GB,
+      but all levels 6h04 (fusion 7.1h): level 0 chunk 1536 (146968 blocks, 3h41), 0.247 chunk 576 (60474
+      blocks, 72 min). Level 0 batch time is linear in chunk area: ~4.4s fixed a 64-block batch (~70ms a
+      block, serial) + ~0.62s/Mpx - 1536/2752/4096 chunks 5.8/9.0/14.8s a batch. Fusion used 4.9 cores of
+      64 (35.0h cpu / 7.1h), 5.9 at 800MB, 8.6 at 7.9GB: more threads than that only shrink the blocks.
 - [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
       3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
       registration 18.4, fusion 12.8 min): see The msims build in global registration.
@@ -406,8 +411,8 @@ REFACTORING
 ### HPC memory and speed
 - **Job memory read inside the container** - fusion's block budget and napari's dask cache from the job's
   allocation (Slurm variables passed in, else the process's own cgroup), not the node's ~2TB: fusion peak
-  148.5 -> 23.9GB on a 200GB job for ~10% more fusion time. Job scripts back to 64G, the approach agreed:
-  request modest memory, as everything sizes itself to it; more only buys larger fusion blocks.
+  148.5 -> 23.9GB on a 200GB job for ~10% more fusion time. Job scripts back to 64G: fits (peak 20.2GB),
+  but fusion 7.1h against 4.6h at 200GB - smaller blocks cost more than the 200GB run suggested (see TODO).
 - **Refresh after pre-processing: 47 min / 232GB -> ~18 min / 14GB** - no 3D promotion for the overview (2D sources
   placed at their section z); stored pyramid levels read instead of whole tiles; one source per synchronous compute.
 - **Pre-processing 29.7 -> 16 min** - only each source's finest and coarsest level built (registration reads the
