@@ -10,7 +10,7 @@ from dask.array.core import PerformanceWarning
 from dask.diagnostics import ProgressBar
 from enum import Enum, auto
 import logging
-from multiview_stitcher import registration, vis_utils
+from multiview_stitcher import param_utils, registration, vis_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 from multiview_stitcher.mv_graph import NotEnoughOverlapError
 from multiview_stitcher.param_resolution import groupwise_resolution
@@ -97,6 +97,20 @@ def resolve_deferred_quality(pairwise_reg_func):
             result['quality'] = result['quality'].value()
         return result
     return resolved
+
+
+def elastix_registration_or_identity(fixed_data, moving_data, *, fixed_origin, moving_origin, fixed_spacing,
+                                     moving_spacing, initial_affine, transform_types=None, **kwargs):
+    """multiview_stitcher's Elastix registration, or where Elastix fails on a pair (e.g. an overlap too thin to
+    sample) the identity with quality 0, as the feature methods give for a pair with too few points."""
+    try:
+        return registration.registration_ITKElastix(
+            fixed_data, moving_data, fixed_origin=fixed_origin, moving_origin=moving_origin,
+            fixed_spacing=fixed_spacing, moving_spacing=moving_spacing, initial_affine=initial_affine,
+            transform_types=transform_types, **kwargs)
+    except RuntimeError as error:
+        logging.warning(f'Elastix: unable to register a pair: {str(error).strip().splitlines()[-1]}')
+        return {'affine_matrix': param_utils.identity_transform(len(fixed_spacing)), 'quality': 0}
 
 
 def register_pair_in_worker(msims, graph, pairwise_reg_func, kwargs):
@@ -1102,7 +1116,7 @@ class MVSRegistration:
                 from itk import ElastixRegistrationMethod
             except ImportError:
                 raise ImportError('ITK-Elastix is required for ITK-Elastix registration.')
-            pairwise_reg_func = registration.registration_ITKElastix
+            pairwise_reg_func = elastix_registration_or_identity
             # a translation to get close, then the project's transform type (multiview_stitcher's default ends rigid)
             transform_type = params.get('transform_type', 'rigid')
             pairwise_reg_func_kwargs = {'transform_types': ['translation'] if transform_type == 'translation'

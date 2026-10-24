@@ -93,7 +93,11 @@ MINOR
       or affine; translation alone for translation). The rest is the data, not muvis-align: multiview_stitcher's
       own register() fails identically on data/3d's 13-voxel overlap ('Too many samples map outside moving image
       buffer') and scores data/S000's pairs as low (-0.07 to 0.5) - as SIFT finds too few points on some data.
-      Left open: run.py exits 0 after 'Error processing', so a failed pipeline run looks successful to a job.
+      A pair Elastix cannot register now gets the identity with quality 0 and a warning, as the feature methods
+      give for too few points: data/3d completes (27s), its 13-voxel pair skipped.
+      Left open: run.py exits 0 after 'Error processing', so a failed pipeline run looks successful to a job;
+      robust_linear weights edges by their quality as given, and multiview_stitcher's (spearman) can be
+      negative (-0.20 on data/3d's X01Y00-X01Y01 under Elastix): a negative least-squares weight is meaningless.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
       browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
       Maximising by hand works fine. Maybe maximise once the first client connects.

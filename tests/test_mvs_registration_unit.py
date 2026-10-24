@@ -1080,7 +1080,7 @@ def test_only_phase_correlation_defers_its_link_quality():
 def test_elastix_runs_the_projects_transform_type_after_a_translation(monkeypatch, transform_type, stages):
     import sys
     from types import ModuleType
-    from multiview_stitcher import registration
+    from muvis_align.MVSRegistration import elastix_registration_or_identity
 
     # ITK-Elastix is optional: only its import is checked here
     fake_itk = ModuleType('itk')
@@ -1090,5 +1090,34 @@ def test_elastix_runs_the_projects_transform_type_after_a_translation(monkeypatc
     _, pairwise_reg_func, kwargs = MVSRegistration().create_registration_method(
         None, params={'method': 'elastix', 'transform_type': transform_type})
 
-    assert pairwise_reg_func is registration.registration_ITKElastix
+    assert pairwise_reg_func is elastix_registration_or_identity
     assert kwargs == {'transform_types': stages}
+
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_a_pair_elastix_cannot_register_gets_the_identity_with_quality_0(monkeypatch, caplog, fails):
+    """As the feature methods give for too few points, rather than the whole registration stopping."""
+    from multiview_stitcher import registration
+    from muvis_align.MVSRegistration import elastix_registration_or_identity
+
+    registered = {'affine_matrix': np.eye(4), 'quality': 0.8}
+
+    def elastix(fixed_data, moving_data, **kwargs):
+        if fails:
+            raise RuntimeError('ITK ERROR: Too many samples map outside moving image buffer: 1581 / 6400')
+        return registered
+
+    monkeypatch.setattr(registration, 'registration_ITKElastix', elastix)
+    spacing = {dim: 1.0 for dim in 'zyx'}
+    with caplog.at_level(logging.WARNING):
+        result = elastix_registration_or_identity(
+            None, None, fixed_origin=spacing, moving_origin=spacing, fixed_spacing=spacing, moving_spacing=spacing,
+            initial_affine=np.eye(4))
+
+    if fails:
+        assert result['quality'] == 0
+        np.testing.assert_array_equal(np.asarray(result['affine_matrix']).squeeze(), np.eye(4))
+        assert 'Too many samples' in caplog.text
+    else:
+        assert result is registered
