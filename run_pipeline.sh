@@ -3,7 +3,7 @@
 #SBATCH --part=ncpu
 #SBATCH --cpus-per-task=64
 #SBATCH --time=7-00:00          # Runtime in D-HH:MM, minimum of 10 minutes
-#SBATCH --mem=64G   # fusion and napari size themselves to it; more gives larger fusion blocks (see also --mem-per-cpu)
+#SBATCH --mem=64G   # fusion and napari size themselves to it (see also --mem-per-cpu)
 
 export PYTHONUNBUFFERED=TRUE
 # the job's memory as the plugin reads it: Slurm's variables, else the tightest limit on its cgroup or a parent

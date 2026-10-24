@@ -3,6 +3,7 @@ import logging
 from enum import Enum, auto
 from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import msi_utils, ngff_utils, spatial_image_utils as si_utils, param_utils
+from magicgui.widgets import ComboBox
 from napari.qt.threading import create_worker
 from napari.utils import progress, resize_dask_cache
 from napari.utils.notifications import notification_manager, show_info, show_warning
@@ -198,6 +199,9 @@ class Interface:
             if param_name not in ('input_output.input_path', 'input_output.output_path'):
                 keys = param_name.split('.')
                 value = self.params.get(keys[0], {}).get(keys[1])
+                if value is not None and isinstance(param_widget.widget, ComboBox) \
+                        and value not in param_widget.widget.choices:
+                    value = self._listed_choice(param_name, value, param_widget.widget)
                 if value is not None:
                     param_widget.set_value(value)
                     if param_name == 'input_output.channels_table':
@@ -206,6 +210,20 @@ class Interface:
                             self.set_channels(value)
                         # a loaded project skips update_output_channels(), so attach the color pickers here
                         self.populate_channels_table_color_pickers()
+
+    def _listed_choice(self, param_name, value, widget):
+        """The dropdown's choice for a value saved before its setting became a list (e.g. a tile size of 4096, or
+        4096,4096 with every dim alike), else its current one; kept in the project's params."""
+        parts = value if isinstance(value, (list, tuple)) else str(value).split(',')
+        parts = {str(part).strip() for part in parts}
+        # an empty list is no value, as an empty text is
+        choice = parts.pop() if len(parts) == 1 else '' if not parts else None
+        if choice not in widget.choices:
+            logging.warning(f'{param_name}: {value!r} is not one of {list(widget.choices)}; using {widget.value!r}')
+            choice = widget.value
+        section, name = param_name.split('.')
+        self.params[section][name] = choice
+        return choice
 
     def write_params(self):
         write_params(self.params_path, self.params)

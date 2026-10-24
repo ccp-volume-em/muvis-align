@@ -76,13 +76,7 @@ _available_memory() reads more than the job may use (no Slurm memory variable or
 
 ## In progress
 
-Fusion memory pool and block-size dropdown (agreed 2026-10-24). All CPUs stay fusion threads; a pool of a quarter
-of the job's memory replaces the per-worker budget: each block reserves its sources x chunk x 12 bytes (averaged
-levels: their float64 parents) before it runs, through util.rolling_map, and an oversize block runs alone. The
-busiest single block, not every worker's, must fit the pool, so chunks stay at 4096. Fusion tab: 'Tile size(s)'
-becomes a 'Block size' dropdown (Automatic, 1024, 2048, 4096, 8192), the same tile_size key; a loaded value no
-dropdown offers falls back to the default with a warning. Then: the physical-units TODO. Steps: [ ] pool
-[ ] chunk budget from the pool [ ] dropdown + old values [ ] tests [ ] docs [ ] local check on meatballs.
+Nothing.
 
 ## TODO
 
@@ -421,6 +415,13 @@ REFACTORING
 - **Project file in the output folder** - copied there as each action starts.
 
 ### HPC memory and speed
+- **Fusion memory pool and block-size dropdown** - every CPU fuses; blocks share a quarter of the job's memory,
+  each reserving its sources x chunk x 12 bytes (averaged levels: their float64 parents) before it runs, and
+  are sized so 16 fit at once (pool / min(workers, 16): 1GB a block on a 64GB/64-CPU job), so a coarse level
+  still splits among the workers. 'Tile size(s)' is now the 'Block size' dropdown (Automatic, 1024-8192);
+  an old value maps to its listed size. Locally: meatballs 67.9 -> 48.4s; repo 2D/3D registration and fusion
+  identical. The same block size with any pool gives identical pixels; a different size moves ~1 pixel in
+  5e7 by one grey level (float rounding at block edges), as memory-dependent sizes always did.
 - **Job memory read inside the container** - fusion's block budget and napari's dask cache from the job's
   allocation (Slurm variables passed in, else the process's own cgroup), not the node's ~2TB: fusion peak
   148.5 -> 23.9GB on a 200GB job for ~10% more fusion time. Job scripts back to 64G: fits (peak 20.2GB),

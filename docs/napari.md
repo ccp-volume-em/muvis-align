@@ -56,9 +56,10 @@ result.
 
 - A project opens without fusing anything: the layout view is drawn from the source
   geometry, read from metadata alone.
-- Leave **Tile size(s)** empty unless the on-disk layout matters. Blocks are then sized
-  against the memory actually available to the process, which on a cluster means the
-  job's allocation rather than the size of the node.
+- Leave **Block size** at Automatic unless the on-disk layout matters. Fusion's blocks
+  share a quarter of the memory actually available to the process - on a cluster the
+  job's allocation, not the node's - each waiting for room rather than all being sized
+  for the busiest one.
 - Sources without a usable pyramid make every preview expensive. Convert them first.
 - The **Target downscale factor** on the pre-processing tab is usually the largest
   single win when tuning registration: it applies to registration only, so the exported

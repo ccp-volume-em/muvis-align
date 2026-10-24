@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from multiview_stitcher import msi_utils
 
-from muvis_align.constants import default_export_chunk_size, default_export_fusion_chunk_bytes, fusion_stack_arrays
+from muvis_align.constants import default_export_chunk_size, default_fusion_block_bytes, fusion_stack_arrays
 from muvis_align.image.util import get_chunk_sizes, get_export_chunk_sizes
 
 
@@ -175,7 +175,7 @@ def test_a_block_fits_the_budget_and_the_cap(count, extent, side, expected):
     density = count / side ** 2
     reaching = min(count, max(1.0, density * (sizes['y'] + extent) * (sizes['x'] + extent)))
     block_bytes = reaching * sizes['y'] * sizes['x'] * 4 * fusion_stack_arrays
-    assert block_bytes <= default_export_fusion_chunk_bytes * 1.01, f'{sizes} exceeds the budget'
+    assert block_bytes <= default_fusion_block_bytes * 1.01, f'{sizes} exceeds the budget'
 
 
 def test_overlapping_sources_shrink_the_block():

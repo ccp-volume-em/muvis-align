@@ -510,12 +510,23 @@ parameters:
     section_id: "fusion"
     mode: "beginner"
   - name: tile_size
-    type: textbox
-    label: "Tile size(s)"
-    description: "Tile size(s), or empty to size them automatically (e.g. 1024 or 1024,1024,1024).
-      For a zarr export this is also how the fusion is blocked, so a small value costs real time:
-      the fixed per-block cost is paid once per tile. Left empty, it is sized against the memory
-      one block actually needs."
+    type: dropdown
+    label: "Block size"
+    description: "Block size of the output, in pixels: its zarr chunks, which are also the blocks fusion works in,
+      or its TIFF tiles. Automatic is 4096. A smaller size makes smaller files to view, but costs fusion time:
+      each block has a fixed cost. Blocks share a quarter of the job's memory, a busy one waiting for room,
+      and a level shrinks its blocks only where one alone would not fit."
+    options:
+      - label: "Automatic"
+        value: ""
+      - label: "1024"
+        value: "1024"
+      - label: "2048"
+        value: "2048"
+      - label: "4096"
+        value: "4096"
+      - label: "8192"
+        value: "8192"
     default: ""
     cli_tag: "--tile_size"
     cli_order: 2

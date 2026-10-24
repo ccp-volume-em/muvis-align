@@ -91,11 +91,9 @@ default_fusion_chunk_bytes = min(4 * 1024 ** 3, max(
     int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus))))
 # napari's own default share, applied to this job's memory rather than the machine's
 napari_dask_cache_share = 0.25
-# an export's blocks don't parallelise (GIL-bound), so it gets a higher ceiling, sparing a
-# source-dense block from shrinking below default_export_chunk_size
-default_export_fusion_chunk_bytes = max(default_fusion_chunk_bytes, min(16 * 1024 ** 3, max(
-    64 * 1024 ** 2,
-    int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25 / max(1, _available_cpus)))))
+# memory an export's blocks share, each reserving its own need before it runs: a busy block waits for room
+# rather than every block being sized for the busiest one on every worker at once
+default_fusion_memory_pool = max(64 * 1024 ** 2, int((_available_memory_bytes or 16 * 1024 ** 3) * 0.25))
 # chunk-shaped float32 arrays multiview_stitcher holds per overlapping source: transformed sources,
 # blending weights and their product (fusion._core's field_ims_t / field_ws_t)
 fusion_stack_arrays = 3
@@ -126,6 +124,11 @@ zarr.config.set({'threading.max_workers': default_source_init_workers})
 apply_windows_atomic_write_retry()
 # multiview_stitcher fuses an export's blocks sequentially unless given our own batch_func
 default_fusion_workers = _available_cpus
+# an export's blocks are sized so this many fit the pool together: fusion keeps only a handful of cores busy, so
+# sizing for every worker would only shrink the blocks, and a coarse level must still split among the workers
+fusion_blocks_at_once = 16
+default_fusion_block_bytes = (default_fusion_memory_pool
+                              // min(max(1, default_fusion_workers), fusion_blocks_at_once))
 # pairs registered at once when n_parallel_pairwise_regs is blank, one per process: threads are GIL-bound
 default_pair_workers = _available_cpus
 # pairs a registration worker process handles before it is replaced, handing back what it kept

@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from muvis_align.constants import default_fusion_workers
+from muvis_align.constants import default_fusion_memory_pool, default_fusion_workers
 from muvis_align.MVSRegistration import MVSRegistration, RegState
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration
 
@@ -852,20 +852,24 @@ def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):
     assert all('z' not in msim['scale0'].ds['image'].dims for msim in reg.msims)
 
 
-# a zarr export runs its fusion blocks in batches; dask already parallelises the in-memory graph
+# a zarr export runs its fusion blocks on the workers; dask already parallelises the in-memory graph
 @pytest.mark.parametrize('saving_zarr, workers, expected', [
     (False, None, None),    # the in-memory path builds a lazy graph dask already parallelises
-    (True, 1, None),
+    (True, 1, 1),
     (True, 4, 4),
-    (True, None, default_fusion_workers if default_fusion_workers > 1 else None),
+    (True, None, default_fusion_workers),
 ])
-def test_only_a_zarr_export_batches_its_blocks(saving_zarr, workers, expected):
+def test_only_a_zarr_export_runs_its_blocks_on_the_workers(saving_zarr, workers, expected):
     options = MVSRegistration._fusion_batch_options(saving_zarr, max_workers=workers)
-    assert (options['n_batch'] if options else None) == expected
+    assert (options['workers'] if options else None) == expected
+    if options:
+        assert options['memory_pool'] == default_fusion_memory_pool
 
 
-def test_a_batch_fuses_every_block_once_and_concurrently():
+def test_the_workers_fuse_every_block_once_and_concurrently():
     """Sequentially these would deadlock on the barrier, so reaching the assert is the test."""
+    from muvis_align.fusion_blocks import _run_blocks
+
     workers = 4
     barrier = threading.Barrier(workers, timeout=10)
     fused, lock = [], threading.Lock()
@@ -875,22 +879,22 @@ def test_a_batch_fuses_every_block_once_and_concurrently():
         with lock:
             fused.append(block_id)
 
-    blocks = [(0, index) for index in range(workers)]
-    MVSRegistration._fusion_batch_options(True, max_workers=workers)['batch_func'](
-        fuse_chunk, blocks)
+    blocks = [(0, index) for index in range(2 * workers)]
+    _run_blocks(fuse_chunk, blocks, MVSRegistration._fusion_batch_options(True, max_workers=workers))
 
     assert sorted(fused) == sorted(blocks)
 
 
 def test_a_failing_block_is_not_swallowed():
     """A block that raises must fail the export, not leave a hole in the output."""
+    from muvis_align.fusion_blocks import _run_blocks
+
     def fuse_chunk(block_id):
         if block_id == 3:
             raise ValueError('block 3')
 
-    options = MVSRegistration._fusion_batch_options(True, max_workers=4)
     with pytest.raises(ValueError, match='block 3'):
-        options['batch_func'](fuse_chunk, list(range(8)))
+        _run_blocks(fuse_chunk, list(range(8)), MVSRegistration._fusion_batch_options(True, max_workers=4))
 
 
 def test_init_progress_loads_a_pair_registration_without_building_msims(monkeypatch, tmp_path):

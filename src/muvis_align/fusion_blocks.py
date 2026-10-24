@@ -7,6 +7,7 @@ import inspect
 import logging
 import os
 import shutil
+import threading
 import time
 
 import numpy as np
@@ -16,9 +17,9 @@ import multiview_stitcher.fusion._core as fusion_core
 from multiview_stitcher import msi_utils, ngff_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.constants import default_export_fusion_chunk_bytes, fusion_stack_arrays
+from muvis_align.constants import default_fusion_block_bytes, default_fusion_memory_pool, fusion_stack_arrays
 from muvis_align.image.util import coarsest_level_within, msim_level_spacings, sim_views
-from muvis_align.util import get_process_memory, print_hbytes, print_memory_usage, print_significants
+from muvis_align.util import get_process_memory, print_hbytes, print_memory_usage, print_significants, rolling_map
 
 
 def source_bounds(sims, transform_key, output_stack_properties, interpolation_order=1):
@@ -227,42 +228,69 @@ def fuse_into_zarr_array(sims, store_url, transform_key, output_stack_properties
     return dims, info['output_stack_properties']
 
 
-def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0, block_stats=None,
+class _MemoryPool:
+    """The bytes the running blocks hold: a block waits until its need fits beside theirs, and one larger than the
+    whole pool runs alone. A capacity of None does not limit."""
+
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.used = 0
+        self.most_used = 0
+        self.condition = threading.Condition()
+
+    @contextmanager
+    def reserve(self, nbytes):
+        with self.condition:
+            self.condition.wait_for(lambda: self.capacity is None or self.used == 0
+                                    or self.used + nbytes <= self.capacity)
+            self.used += nbytes
+            self.most_used = max(self.most_used, self.used)
+        try:
+            yield
+        finally:
+            with self.condition:
+                self.used -= nbytes
+                self.condition.notify_all()
+
+
+def _run_blocks(block_func, block_ids, batch_options, progress=None, share=0, block_bytes=0, block_stats=None,
                 source_block_bytes=0):
-    """block_func on each block id, batched through batch_options' batch_func, moving `progress` by `share` over
-    them: only these blocks count, as the ones no source reaches cost nothing. With `block_stats` ({block id:
-    (sources, their level's bytes)}), a batch reaching a new high of rss is logged with the memory it was budgeted."""
-    batch_func, n_batch = batch_options.get('batch_func'), batch_options.get('n_batch', 1)
-    nbatches = -(-len(block_ids) // n_batch)
-    batch_rss = [0]
-    highest_rss = 0
+    """block_func on each block id on batch_options' `workers` threads (one: in this thread), each block first
+    reserving its memory from batch_options' `memory_pool`: `block_bytes` a block, or with `block_stats` ({block id:
+    (sources, their level's bytes)}) source_block_bytes a source. Moves `progress` by `share` over them, as the
+    blocks no source reaches cost nothing. Each `workers` blocks reaching a new high of rss are logged."""
+    workers = max(1, batch_options.get('workers', 1))
+    pool = _MemoryPool(batch_options.get('memory_pool'))
+    needs = {block_id: (block_stats[block_id][0] * source_block_bytes if block_stats is not None else block_bytes)
+             for block_id in block_ids}
 
-    def logged_block(block_id):
-        block_func(block_id)
-        # read as each block ends, while the rest of its batch still runs; macOS gives only the peak
+    def run_block(block_id):
+        with pool.reserve(needs[block_id]):
+            block_func(block_id)
+        # read as each block ends, while the others still run; macOS gives only the peak
         resident, peak = get_process_memory()
-        batch_rss[0] = max(batch_rss[0], resident if resident is not None else peak or 0)
+        return resident if resident is not None else peak or 0
 
-    run_block = block_func if block_stats is None else logged_block
-    for start in range(0, len(block_ids), n_batch):
-        batch = block_ids[start:start + n_batch]
-        batch_start, batch_rss[0] = time.perf_counter(), 0
-        if batch_func is None:
-            for block_id in batch:
-                run_block(block_id)
-        else:
-            batch_func(run_block, batch, **(batch_options.get('batch_func_kwargs') or {}))
-        if block_stats is not None and batch_rss[0] > highest_rss:
-            highest_rss = batch_rss[0]
-            sources = [block_stats[block_id][0] for block_id in batch]
-            source_bytes = [block_stats[block_id][1] for block_id in batch]
-            logging.info(f'Fusion batch {start // n_batch + 1}/{nbatches}: {len(batch)} blocks, {sum(sources)} sources'
-                         f' (max {max(sources)} a block), budgeted {print_hbytes(sum(sources) * source_block_bytes)},'
-                         f' source levels {print_hbytes(sum(source_bytes))}'
-                         f' (max {print_hbytes(max(source_bytes))} a block), {time.perf_counter() - batch_start:.1f}s,'
-                         f' max rss at a block end {print_hbytes(batch_rss[0])}{print_memory_usage()}')
-        if progress is not None:
-            progress.update(share * len(batch) / len(block_ids))
+    ngroups = -(-len(block_ids) // workers)
+    group, group_rss, group_start, highest_rss = [], 0, time.perf_counter(), 0
+    for done, (block_id, rss) in enumerate(rolling_map(run_block, block_ids, workers), start=1):
+        group.append(block_id)
+        group_rss = max(group_rss, rss)
+        if len(group) == workers or done == len(block_ids):
+            if block_stats is not None and group_rss > highest_rss:
+                highest_rss = group_rss
+                sources = [block_stats[block][0] for block in group]
+                source_bytes = [block_stats[block][1] for block in group]
+                logging.info(f'Fusion batch {-(-done // workers)}/{ngroups}: {len(group)} blocks, {sum(sources)}'
+                             f' sources (max {max(sources)} a block), budgeted'
+                             f' {print_hbytes(sum(sources) * source_block_bytes)}, source levels'
+                             f' {print_hbytes(sum(source_bytes))} (max {print_hbytes(max(source_bytes))} a block),'
+                             f' {time.perf_counter() - group_start:.1f}s, at most {print_hbytes(pool.most_used)}'
+                             f' reserved at once, max rss at a block end {print_hbytes(group_rss)}'
+                             f'{print_memory_usage()}')
+            if progress is not None:
+                progress.update(share * len(group) / len(block_ids))
+            group, group_rss, group_start, pool.most_used = [], 0, time.perf_counter(), pool.used
     if progress is not None and not block_ids:
         progress.update(share)
 
@@ -292,7 +320,9 @@ def average_into_zarr_array(parent_url, store_url, factors, chunk, spatial_block
 
     block_ids = sorted(tuple(nonspatial_block) + tuple(spatial_block)
                        for nonspatial_block in np.ndindex(*shape[:nonspatial]) for spatial_block in spatial_blocks)
-    _run_blocks(average_block, block_ids, batch_options, progress, share)
+    # the parent region as read, and its mean taken in float64
+    block_bytes = int(np.prod(axis_factors) * np.prod(chunks)) * (parent.dtype.itemsize + 8)
+    _run_blocks(average_block, block_ids, batch_options, progress, share, block_bytes=block_bytes)
 
 
 def storage_ngff_version(ngff_version):
@@ -415,7 +445,7 @@ def level_blocks(views, output_properties, output_chunksize, interpolation_order
     sdims = list(views[0][0]['shape'])
     bounds = view_bounds(views, output_properties, interpolation_order)
     chunk = {dim: min(int(output_chunksize[dim]), output_properties['shape'][dim]) for dim in output_chunksize}
-    chunk = budget_chunksize(bounds, output_properties, chunk, sdims, default_export_fusion_chunk_bytes,
+    chunk = budget_chunksize(bounds, output_properties, chunk, sdims, default_fusion_block_bytes,
                              4 * fusion_stack_arrays)
     return chunk, block_sources(bounds, output_properties, chunk, sdims)
 
@@ -559,7 +589,8 @@ def fuse_levels_to_ome_zarr(msims, levels, output_zarr_url, transform_key, level
                 busiest = max(groups, key=len, default=())
                 logging.info(f'Fusion level {index + 1} fused from {len(sims)} sources: chunk {level_chunksize},'
                              f' {sum(len(blocks) for blocks in groups.values())} blocks, budget'
-                             f' {print_hbytes(default_export_fusion_chunk_bytes)} a block, busiest block'
+                             f' {print_hbytes(default_fusion_block_bytes)} a block of a'
+                             f' {print_hbytes(default_fusion_memory_pool)} pool, busiest block'
                              f' {len(busiest)} sources'
                              f' ({print_hbytes(sum(sims[source].data.nbytes for source in busiest))} of source levels)')
                 fuse_into_zarr_array(sims, os.path.join(output_zarr_url, paths[index]), transform_key,

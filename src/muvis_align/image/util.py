@@ -30,7 +30,7 @@ except Exception as e:
     print(f'matplotlib import error:\n{e}')
 
 from muvis_align.constants import (default_chunk_size, default_contrast_limits_max_tasks,
-                                   default_export_chunk_size, default_export_fusion_chunk_bytes,
+                                   default_export_chunk_size, default_fusion_block_bytes,
                                    default_fusion_chunk_bytes, default_preview_max_bytes, fusion_stack_arrays)
 from muvis_align.util import *
 
@@ -550,7 +550,7 @@ def get_export_chunk_sizes(dtype, output_stack_properties, msims, num_z_position
     source extent E. The largest block within the fusion budget wins.
     """
     if fusion_target_bytes is None:
-        fusion_target_bytes = default_export_fusion_chunk_bytes
+        fusion_target_bytes = default_fusion_block_bytes
     voxel_budget = max(1.0, fusion_target_bytes / (4 * fusion_stack_arrays))
 
     spacing = output_stack_properties['spacing']

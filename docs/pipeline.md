@@ -276,11 +276,13 @@ for a zarr export: it is the on-disk tile shape *and* the block size the fusion 
 computed in. A small value therefore costs real time, because the fixed per-block
 overhead is paid once per tile.
 
-Left unset, the tile size is chosen automatically from the memory one fused block
-actually needs, budgeted against the memory available to the process - the SLURM
-allocation or cgroup limit where there is one, not the size of the machine. This is
-the recommended setting; give an explicit value only when the on-disk layout matters
-more than the export time.
+Left unset, it is 4096. Every CPU fuses blocks, and the blocks share a quarter of the
+memory available to the process - the Slurm allocation or cgroup limit where there is
+one, not the size of the machine: each block reserves what it needs before it runs, so
+a block meeting many sources waits for room instead of every block being made smaller.
+A level shrinks its blocks only where one alone would not fit. This is the recommended
+setting; give an explicit value only when the on-disk layout matters more than the
+export time. The napari plugin offers 1024, 2048, 4096 and 8192.
 
 The size actually used is written to the log, so a run can be checked after the fact.
 
@@ -390,9 +392,9 @@ sbatch run_pipeline.sh params.yml
 ```
 
 The job's CPUs, memory and time limit are the `#SBATCH` lines at the top of the script; its `ml` and `conda` lines
-load one cluster's Python environment, so adapt them to yours. Fusion sizes its blocks against the job's memory
-(`--mem`), so a larger allocation fuses with larger blocks, and a smaller one with smaller blocks rather than running
-out. The script's 64G is enough for a 34,000-tile project; asking for more makes its fusion only about 10% faster.
+load one cluster's Python environment, so adapt them to yours. Fusion runs on every CPU of the job, its blocks
+sharing a quarter of the job's memory (`--mem`), so a smaller allocation makes busy blocks wait rather than run out.
+The script's 64G is enough for a 34,000-tile project.
 
 ## Output Structure
 

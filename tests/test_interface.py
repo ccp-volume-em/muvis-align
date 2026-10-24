@@ -2381,3 +2381,30 @@ def test_a_kept_shape_layer_takes_the_line_colour_of_the_image_now_under_it(make
     expected = interface_module.transform_color(interface_module.contrasting_color(0.9))[0]
     np.testing.assert_allclose(np.array(layer.edge_color)[0], expected)
     assert layer.metadata["line_color"] == interface_module.contrasting_color(0.9)
+
+
+# a tile size saved as text or a list before it became a dropdown: its listed size where every dim agrees
+@pytest.mark.parametrize("saved, expected, warns", [
+    ("", "", False),
+    (4096, "4096", False),
+    ("4096,4096", "4096", False),
+    ([2048, 2048], "2048", False),
+    ([], "", False),
+    ("1024,2048", "", True),
+    (3000, "", True),
+])
+def test_a_loaded_value_no_dropdown_lists_maps_to_a_listed_one(bare_interface, qapp, caplog, saved, expected, warns):
+    from magicgui.widgets import ComboBox
+    from muvis_align.ui.ParamWidget import ParamWidget
+
+    widget = ComboBox(choices=["", "1024", "2048", "4096", "8192"], value="")
+    param_widget = ParamWidget("fusion.tile_size", widget, bare_interface)
+    bare_interface.param_widgets = {"fusion.tile_size": param_widget}
+    bare_interface.params = {"fusion": {"tile_size": saved}}
+
+    with caplog.at_level(logging.WARNING):
+        bare_interface.update_widgets()
+
+    assert widget.value == expected
+    assert bare_interface.params["fusion"]["tile_size"] == expected
+    assert any("fusion.tile_size" in record.getMessage() for record in caplog.records) == warns

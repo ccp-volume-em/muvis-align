@@ -1,7 +1,6 @@
 # https://stackoverflow.com/questions/62806175/xarray-combine-by-coords-return-the-monotonic-global-index-error
 # https://github.com/pydata/xarray/issues/8828
 
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 import copy
 import dask
@@ -1670,20 +1669,11 @@ class MVSRegistration:
 
     @staticmethod
     def _fusion_batch_options(saving_zarr, max_workers=None):
-        """Batch options to fuse a zarr export's blocks concurrently, as multiview_stitcher otherwise fuses them
-        sequentially. Each block writes its own chunk, and the per-block memory budget is already per worker."""
+        """Options to fuse a zarr export's blocks on every worker, as multiview_stitcher otherwise fuses them
+        sequentially: each block writes its own chunk, and reserves its memory from the shared pool first."""
         if not saving_zarr:
             return None
-        max_workers = max(1, max_workers or default_fusion_workers)
-        if max_workers == 1:
-            return None
-
-        def fuse_batch(fuse_chunk, block_ids, **_):
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # list() so an exception in any block surfaces rather than being dropped
-                list(executor.map(fuse_chunk, block_ids))
-
-        return {'batch_func': fuse_batch, 'n_batch': max_workers}
+        return {'workers': max(1, max_workers or default_fusion_workers), 'memory_pool': default_fusion_memory_pool}
 
     def is_channel_overlay(self, dimension=None, extra_metadata=None):
         if extra_metadata is None:

@@ -283,3 +283,43 @@ def test_level_names_sort_as_text_in_level_order():
     eleven = level_paths(11)
     assert eleven[0] == '00' and eleven[-1] == '10'
     assert sorted(eleven) == eleven
+
+
+# the most that may run at once: as many as fit side by side, and one larger than the whole pool alone, not never
+@pytest.mark.parametrize('need, capacity, most_allowed', [(2, 10, 4), (6, 10, 1), (20, 10, 1)])
+def test_blocks_run_together_only_as_far_as_the_memory_pool_holds(need, capacity, most_allowed):
+    import threading
+    import time
+    from muvis_align.fusion_blocks import _run_blocks
+
+    running, most, fused, lock = [0], [0], [], threading.Lock()
+
+    def fuse_chunk(block_id):
+        with lock:
+            running[0] += 1
+            most[0] = max(most[0], running[0])
+        time.sleep(0.02)
+        with lock:
+            running[0] -= 1
+            fused.append(block_id)
+
+    _run_blocks(fuse_chunk, list(range(8)), {'workers': 4, 'memory_pool': capacity}, block_bytes=need)
+
+    assert sorted(fused) == list(range(8))
+    assert most[0] <= most_allowed
+
+
+def test_the_memory_pool_leaves_the_fused_output_unchanged(tmp_path):
+    """One block at a time (a pool smaller than any block) against the plain sequential run."""
+    overview, tile = flat_msim(10, 64, 2.0, 0.0), flat_msim(200, 64, 0.5, 40.0)
+    level0 = {'origin': {'y': 0.0, 'x': 0.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 256, 'x': 256}}
+    levels = export_levels([2.0, 0.5], level0, ['y', 'x'])
+    fused = {}
+    for name, options in (('sequential', None), ('pooled', {'workers': 4, 'memory_pool': 1})):
+        url = (tmp_path / f'{name}.ome.zarr').as_posix()
+        read = fuse_levels_to_ome_zarr([overview, tile], levels, url, 'source', level0, {'y': 32, 'x': 32},
+                                       batch_options=options, ranks=[2.0, 0.5])
+        fused[name] = [np.asarray(msi_utils.get_sim_from_msim(read, scale=key).data)
+                       for key in msi_utils.get_sorted_scale_keys(read)]
+    for sequential, pooled in zip(fused['sequential'], fused['pooled']):
+        np.testing.assert_array_equal(sequential, pooled)

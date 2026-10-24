@@ -162,7 +162,7 @@ again to store it.
 |-----------|-------------|
 | Method | How overlapping sources combine: **Average**, **Exclusive**, **Additive** or **Compose** |
 | Spacing | Output pixel size: **Native** (each level at the sources' own pixel sizes, never upsampled), **Mean**, **Min** (highest resolution) or **Max** (lowest resolution) |
-| Tile size(s) | Tile size of the output, e.g. `1024` or `1024,1024,1024`; empty to size it by available memory. For OME-Zarr this is also how the fusion is split into blocks, so a small size costs time. See [Tile size](pipeline.md#tile-size) |
+| Block size | Block size of the output: its OME-Zarr chunks, which are also the blocks fusion works in, or its TIFF tiles. Automatic (4096) is fastest; a smaller size makes smaller files to view but costs fusion time. See [Tile size](pipeline.md#tile-size) |
 | OME version | OME-Zarr version to write: **0.4**, **0.5** or **0.6** |
 
 The buttons:
