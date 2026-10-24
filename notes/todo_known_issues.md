@@ -95,9 +95,11 @@ MINOR
       buffer') and scores data/S000's pairs as low (-0.07 to 0.5) - as SIFT finds too few points on some data.
       A pair Elastix cannot register now gets the identity with quality 0 and a warning, as the feature methods
       give for too few points: data/3d completes (27s), its 13-voxel pair skipped.
-      Left open: run.py exits 0 after 'Error processing', so a failed pipeline run looks successful to a job;
-      robust_linear weights edges by their quality as given, and multiview_stitcher's (spearman) can be
-      negative (-0.20 on data/3d's X01Y00-X01Y01 under Elastix): a negative least-squares weight is meaningless.
+      Pairs scored 0 or below (failed: identity with 0; or a negative spearman, -0.20 on data/3d) are now left
+      out of the global solve for every method, kept in the pairs graph: a tile with no other pair keeps its
+      metadata position, named in a warning (data/3d's X01_Y01 under Elastix), where it took a neighbour's
+      correction. Phase correlation on data/S000 and data/3d unchanged.
+      Left open: run.py exits 0 after 'Error processing', so a failed pipeline run looks successful to a job.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
       browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
       Maximising by hand works fine. Maybe maximise once the first client connects.

@@ -1558,10 +1558,26 @@ class MVSRegistration:
                 weight_key="quality",
             )
 
+        # a pair scored 0 or below (a failed method gives the identity with 0) holds no information: left out of the
+        # solve only, so a tile without other pairs keeps its metadata position rather than an unconstrained one's
+        failed_pairs = [edge for edge, quality in nx.get_edge_attributes(g_reg_computed, 'quality').items()
+                        if not np.nan_to_num(np.asarray(quality, dtype=float), nan=0.0).max() > 0]
+        resolve_graph = g_reg_computed
+        if failed_pairs:
+            resolve_graph = g_reg_computed.copy()
+            resolve_graph.remove_edges_from(failed_pairs)
+            logging.warning(f'Global registration: {len(failed_pairs)} of {g_reg_computed.number_of_edges()} pairs'
+                            f' left out, scored 0 or below')
+            unregistered = sorted(node for node in resolve_graph.nodes
+                                  if resolve_graph.degree(node) == 0 and g_reg_computed.degree(node) > 0)
+            if unregistered:
+                logging.warning('Global registration: no registered pair, so kept at their metadata position: '
+                                + ', '.join(str(self.file_labels[register_indices[node]]) for node in unregistered))
+
         # multiview_stitcher's own search is O(nodes x edges); a reference outside a component would send that
         # component back to it, so only a connected graph gets one
-        if g_reg_computed.number_of_nodes() > 2 and nx.is_connected(g_reg_computed):
-            groupwise_resolution_kwargs['reference_view'] = find_reference_view(g_reg_computed)
+        if resolve_graph.number_of_nodes() > 2 and nx.is_connected(resolve_graph):
+            groupwise_resolution_kwargs['reference_view'] = find_reference_view(resolve_graph)
 
         if groupwise_resolution_method == ROBUST_LINEAR:
             resolution_progress = progress_phase(progress_factory, total=default_robust_rounds,
@@ -1574,7 +1590,7 @@ class MVSRegistration:
             if groupwise_resolution_method == ROBUST_LINEAR and pbar is not None:
                 groupwise_resolution_kwargs['progress'] = lambda: pbar.update(1)
             transforms_dict, groupwise_resolution_info_dict = groupwise_resolution(
-                g_reg_computed,
+                resolve_graph,
                 method=groupwise_resolution_method,
                 **groupwise_resolution_kwargs,
             )
@@ -1607,7 +1623,7 @@ class MVSRegistration:
                     pair_msims,
                     self.source_transform_key,
                     self.reg_transform_key,
-                    g_reg_computed,
+                    resolve_graph,
                     groupwise_resolution_info_dict,
                     show_plot=plot_summary,
                 )

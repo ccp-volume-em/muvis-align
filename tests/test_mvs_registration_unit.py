@@ -1121,3 +1121,34 @@ def test_a_pair_elastix_cannot_register_gets_the_identity_with_quality_0(monkeyp
         assert 'Too many samples' in caplog.text
     else:
         assert result is registered
+
+
+def test_pairs_scored_0_or_below_are_left_out_of_the_solve_and_their_tile_kept_in_place(monkeypatch, tmp_path,
+                                                                                         caplog):
+    """A failed pair (identity, quality 0) is no constraint: a tile whose pairs all failed keeps its metadata
+    position, while its pairs stay in the pairs graph (saved and shown) all the same."""
+    import muvis_align.MVSRegistration as mvs_module
+    reg = prepared_registration(S000_TILES, tmp_path)
+    params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'translation',
+              'groupwise_resolution_method': 'robust_linear'}
+    reg.register_pairs(reg.register_msims, params=params)
+    tile = max(reg.pairs_graph.nodes)
+    tile_pairs = list(reg.pairs_graph.edges(tile))
+    for index, edge in enumerate(tile_pairs):
+        # 0 as a failed method gives, and below 0 as a poor match can score
+        reg.pairs_graph.edges[edge]['quality'] = 0.0 if index == 0 else -0.2
+    solved = []
+    original = mvs_module.groupwise_resolution
+
+    def recorded(graph, method=None, **kwargs):
+        solved.append(graph)
+        return original(graph, method=method, **kwargs)
+    monkeypatch.setattr(mvs_module, 'groupwise_resolution', recorded)
+
+    with caplog.at_level(logging.WARNING):
+        results = reg.register_global(reg.pair_msims, params=params)
+
+    assert not any(solved[0].has_edge(*edge) for edge in tile_pairs)
+    assert all(reg.pairs_graph.has_edge(*edge) for edge in tile_pairs)
+    np.testing.assert_array_equal(np.asarray(results['mappings'][tile]).squeeze(), np.eye(3))
+    assert str(reg.file_labels[tile]) in caplog.text
