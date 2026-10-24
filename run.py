@@ -1,4 +1,5 @@
 import argparse
+import sys
 import yaml
 
 from muvis_align.Pipeline import Pipeline
@@ -16,4 +17,5 @@ if __name__ == '__main__':
         params = yaml.safe_load(file)
 
     pipeline = Pipeline(params, params_path=args.params)
-    pipeline.run()
+    # a job or script sees a failed run as one
+    sys.exit(0 if pipeline.run() else 1)

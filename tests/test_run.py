@@ -27,7 +27,27 @@ def test(resource_file, tmp_path):
     params['operations'][0]['output']['path'] = tmp_path.as_posix() + '/'
 
     pipeline = Pipeline(params)
-    pipeline.run()
+    assert pipeline.run()
+
+
+@pytest.mark.parametrize('outcomes, expected', [
+    ([True, False], True),          # an operation skipped on purpose (e.g. its output exists) is no error
+    ([True, ValueError('bad')], False),
+])
+def test_a_run_succeeds_only_if_no_operation_raised(tmp_path, monkeypatch, outcomes, expected):
+    params = {'general': {'logging': {'filename': (tmp_path / 'log.log').as_posix()}},
+              'operations': [{'operation': 'register', 'input': 'unused'} for _ in outcomes]}
+    pipeline = Pipeline(params)
+    results = iter(outcomes)
+
+    def run_operation(operation_params):
+        outcome = next(results)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    monkeypatch.setattr(pipeline, 'run_operation', run_operation)
+
+    assert pipeline.run() == expected
 
 
 def registered_from_resource(output_path):

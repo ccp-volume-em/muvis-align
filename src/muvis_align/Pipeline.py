@@ -26,7 +26,9 @@ class Pipeline(Thread):
         init_logging(log_filename, log_format, verbose=self.verbose, debug=self.debug)
 
     def run(self):
+        """Run every operation; True if none raised an error (an operation skipped on purpose is no error)."""
         break_on_error = self.params_general.get('break_on_error', False)
+        errors = 0
         for operation_params in tqdm(self.params['operations']):
             error = False
             input_path = operation_params['input']
@@ -39,11 +41,16 @@ class Pipeline(Thread):
                 logging.exception(f'Error processing: {input_path}')
                 print(f'Error processing: {input_path}: {e}')
                 error = True
+                errors += 1
 
             if error and break_on_error:
                 break
 
-        logging.info('Done!')
+        if errors:
+            logging.error(f'Done: {errors} of {len(self.params["operations"])} operations failed')
+        else:
+            logging.info('Done!')
+        return errors == 0
 
     def run_operation(self, params):
         operation = params['operation']

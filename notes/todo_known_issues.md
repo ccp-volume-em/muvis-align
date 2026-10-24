@@ -99,7 +99,8 @@ MINOR
       out of the global solve for every method, kept in the pairs graph: a tile with no other pair keeps its
       metadata position, named in a warning (data/3d's X01_Y01 under Elastix), where it took a neighbour's
       correction. Phase correlation on data/S000 and data/3d unchanged.
-      Left open: run.py exits 0 after 'Error processing', so a failed pipeline run looks successful to a job.
+      run.py now exits 1 when an operation raised ('Done: N of M operations failed'), so Slurm marks the job
+      FAILED; an operation skipped on purpose (existing output, no images) is no error.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
       browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
       Maximising by hand works fine. Maybe maximise once the first client connects.
