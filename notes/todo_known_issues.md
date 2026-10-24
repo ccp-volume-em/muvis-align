@@ -86,10 +86,19 @@ ESSENTIAL
 
 MINOR
 
-- [ ] **Test the Elastix registration method** - offered in the registration tab (MVSRegistration: method 'elastix'
-      -> multiview_stitcher's registration_ITKElastix), but never run here: ITK-Elastix (itk-elastix) is in no
-      requirements file, the Docker image or the local env, so choosing it raises ImportError. Install it, run it on a
-      tiny dataset (data/S000 or data_subset), and decide whether it becomes an optional dependency.
+- [ ] **Elastix registration** - tested 2026-10-24 on data/S000 (2D) and data/3d with itk-elastix 0.25.4 in a
+      side folder (not a dependency: pip also pulls a numpy of its own, which would shadow the env's). Found:
+      - 3D crashed (access violation): the deferred link quality read Elastix's resampled image after its ITK
+        buffer was freed (multiview_stitcher returns itk.array_view_from_image). Fixed: only phase correlation
+        defers its quality.
+      - 3D then fails on pair 2: 'Too many samples map outside moving image buffer: 1581 / 6400' - the overlap is
+        13 voxels across (200x128x13); one failed pair aborts the whole registration.
+      - 2D runs (18s, rigid rotation terms up to 0.01) but scores poorly: pair quality ~-0.06 against phase
+        correlation's ~0.74, shifts ~1 apart.
+      - Elastix ignores the project's transform type: multiview_stitcher's default stages (translation, rigid).
+      - run.py exits 0 after 'Error processing': a failed pipeline run looks successful to a script or job.
+      Next: pass transform_types from transform_type; widen thin overlaps (overlap_tolerance) or skip a failed
+      pair rather than abort; a non-zero exit code from run.py on error.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
       browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
       Maximising by hand works fine. Maybe maximise once the first client connects.

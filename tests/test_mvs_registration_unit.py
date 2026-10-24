@@ -1056,3 +1056,16 @@ def test_a_loaded_global_registration_summarises_each_metric_under_the_registere
     assert reg.metrics['summary'] == {reg.reg_transform_key: {'quality': pytest.approx(0.6), 'ncc': pytest.approx(0.7)}}
     assert reg.metrics['pairs'][(0, 1)] == {reg.reg_transform_key: {'quality': 0.4, 'ncc': 0.6}}
 
+
+
+def test_only_phase_correlation_defers_its_link_quality():
+    """Other methods score at once: Elastix's resampled image is a view of a buffer freed once it returns."""
+    from multiview_stitcher import registration
+    from muvis_align.MVSRegistration import deferred_link_quality
+
+    original = registration.link_quality_metric_func
+    with deferred_link_quality(registration.registration_ITKElastix):
+        assert registration.link_quality_metric_func is original
+    with deferred_link_quality(registration.phase_correlation_registration):
+        assert registration.link_quality_metric_func is not original
+    assert registration.link_quality_metric_func is original

@@ -73,9 +73,13 @@ class _DeferredQuality:
 
 
 @contextmanager
-def deferred_link_quality():
-    """Defer link qualities: phase correlation scores every candidate shift but keeps only the chosen
-    one's, which resolve_deferred_quality() then computes."""
+def deferred_link_quality(pairwise_reg_func):
+    """Defer link qualities for phase correlation, which scores every candidate shift but keeps only the chosen
+    one's, which resolve_deferred_quality() then computes. Other methods score at once: their images may be views of
+    buffers freed once they return (Elastix's resampled image)."""
+    if pairwise_reg_func is not registration.phase_correlation_registration:
+        yield
+        return
     original = registration.link_quality_metric_func
     registration.link_quality_metric_func = lambda *args: _DeferredQuality(original, *args)
     try:
@@ -98,7 +102,8 @@ def resolve_deferred_quality(pairwise_reg_func):
 def register_pair_in_worker(msims, graph, pairwise_reg_func, kwargs):
     """compute_pairwise_registrations for one pair in a worker process, with its wall and CPU time."""
     start, cpu_start = time.perf_counter(), time.thread_time()
-    with deferred_link_quality(), dask.config.set({'scheduler': 'synchronous', 'optimization.fuse.active': False}):
+    with deferred_link_quality(pairwise_reg_func), \
+            dask.config.set({'scheduler': 'synchronous', 'optimization.fuse.active': False}):
         registered = compute_pairwise_registrations(
             msims, graph, pairwise_reg_func=resolve_deferred_quality(pairwise_reg_func), **kwargs)
     return registered, time.perf_counter() - start, time.thread_time() - cpu_start
@@ -1374,7 +1379,7 @@ class MVSRegistration:
                         Timer(f'register {g_reg.number_of_edges()} pairs on {workers}'
                               f' {"processes" if pool is not None else "threads"}', verbose=self.logging_time), \
                         (pool if pool is not None else nullcontext()), \
-                        deferred_link_quality(), \
+                        deferred_link_quality(pairwise_reg_func), \
                         dask.config.set(scheduler='synchronous' if workers > 1 else 'threads'):
                     log_start = time.time()
                     for count, (edge, pair_computed) in enumerate(
