@@ -1069,3 +1069,26 @@ def test_only_phase_correlation_defers_its_link_quality():
     with deferred_link_quality(registration.phase_correlation_registration):
         assert registration.link_quality_metric_func is not original
     assert registration.link_quality_metric_func is original
+
+
+@pytest.mark.parametrize('transform_type, stages', [
+    ('translation', ['translation']),
+    ('rigid', ['translation', 'rigid']),
+    ('similarity', ['translation', 'similarity']),
+    ('affine', ['translation', 'affine']),
+])
+def test_elastix_runs_the_projects_transform_type_after_a_translation(monkeypatch, transform_type, stages):
+    import sys
+    from types import ModuleType
+    from multiview_stitcher import registration
+
+    # ITK-Elastix is optional: only its import is checked here
+    fake_itk = ModuleType('itk')
+    fake_itk.ElastixRegistrationMethod = object
+    monkeypatch.setitem(sys.modules, 'itk', fake_itk)
+
+    _, pairwise_reg_func, kwargs = MVSRegistration().create_registration_method(
+        None, params={'method': 'elastix', 'transform_type': transform_type})
+
+    assert pairwise_reg_func is registration.registration_ITKElastix
+    assert kwargs == {'transform_types': stages}

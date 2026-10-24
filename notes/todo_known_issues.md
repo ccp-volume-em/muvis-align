@@ -86,19 +86,14 @@ ESSENTIAL
 
 MINOR
 
-- [ ] **Elastix registration** - tested 2026-10-24 on data/S000 (2D) and data/3d with itk-elastix 0.25.4 in a
-      side folder (not a dependency: pip also pulls a numpy of its own, which would shadow the env's). Found:
-      - 3D crashed (access violation): the deferred link quality read Elastix's resampled image after its ITK
-        buffer was freed (multiview_stitcher returns itk.array_view_from_image). Fixed: only phase correlation
-        defers its quality.
-      - 3D then fails on pair 2: 'Too many samples map outside moving image buffer: 1581 / 6400' - the overlap is
-        13 voxels across (200x128x13); one failed pair aborts the whole registration.
-      - 2D runs (18s, rigid rotation terms up to 0.01) but scores poorly: pair quality ~-0.06 against phase
-        correlation's ~0.74, shifts ~1 apart.
-      - Elastix ignores the project's transform type: multiview_stitcher's default stages (translation, rigid).
-      - run.py exits 0 after 'Error processing': a failed pipeline run looks successful to a script or job.
-      Next: pass transform_types from transform_type; widen thin overlaps (overlap_tolerance) or skip a failed
-      pair rather than abort; a non-zero exit code from run.py on error.
+- [ ] **Elastix registration (a reference method)** - tested 2026-10-24 on data/S000 (2D) and data/3d with
+      itk-elastix 0.25.4 from a side folder (not a dependency: pip also pulls a numpy of its own). Fixed: the
+      3D access violation (the deferred link quality read Elastix's freed resampled image; only phase correlation
+      defers now), and the stages now follow the project's transform type (translation, then rigid, similarity
+      or affine; translation alone for translation). The rest is the data, not muvis-align: multiview_stitcher's
+      own register() fails identically on data/3d's 13-voxel overlap ('Too many samples map outside moving image
+      buffer') and scores data/S000's pairs as low (-0.07 to 0.5) - as SIFT finds too few points on some data.
+      Left open: run.py exits 0 after 'Error processing', so a failed pipeline run looks successful to a job.
 - [ ] **napari not maximised through xpra-connect.sh** - it starts maximised to the virtual screen before the
       browser connects; the screen then follows the tab's size (--resize-display) but the window keeps its size.
       Maximising by hand works fine. Maybe maximise once the first client connects.

@@ -1103,6 +1103,10 @@ class MVSRegistration:
             except ImportError:
                 raise ImportError('ITK-Elastix is required for ITK-Elastix registration.')
             pairwise_reg_func = registration.registration_ITKElastix
+            # a translation to get close, then the project's transform type (multiview_stitcher's default ends rigid)
+            transform_type = params.get('transform_type', 'rigid')
+            pairwise_reg_func_kwargs = {'transform_types': ['translation'] if transform_type == 'translation'
+                                        else ['translation', transform_type]}
         elif 'ant' in method:
             try:
                 import ants
