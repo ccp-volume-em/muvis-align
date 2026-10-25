@@ -1296,6 +1296,10 @@ class MVSRegistration:
             if SPLIT in pairing:
                 # stage 1: each z-plane's (or channel's) tiles only; the groups are registered in register_global
                 pairs = within_group_pairs(pairs, self.split_groups())
+            # found over every source, but registered on the retained ones, numbered from 0
+            retained_index = {int(index): position for position, index in enumerate(register_indices)}
+            pairs = [(retained_index[index1], retained_index[index2]) for index1, index2 in pairs
+                     if index1 in retained_index and index2 in retained_index]
             logging.info(f'#pairs: {len(pairs)}')
             #for pair in pairs:
             #    print(f'{self.file_labels[pair[0]]} - {self.file_labels[pair[1]]}')
