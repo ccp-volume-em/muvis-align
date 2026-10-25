@@ -11,36 +11,38 @@ HPC: 34k sources in 1081 sections, xpra container (software GL).
 pair); the 2026-10-12/13 logs are not kept (numbers in the TODO items below).
 The 2026-10-17 run times as 2026-10-15; its refresh after fusion redrew the shapes twice on the Qt thread (fixed in
 2d7c1cb). The 2026-10-22 run had a 160GB job (640GB before) and times as 2026-10-15/17: only fusion level 0.247 needs
-the memory, and its peak came within 1.1GB of the job's limit (see TODO). Job 61222229 (2026-10-21, b505577, 64GB)
+the memory, and its peak came within 1.1GB of the job's limit (see Done). Job 61222229 (2026-10-21, b505577, 64GB)
 timed as the 160GB run through level 0.16 (peak 38.8GB), then was OOM-killed 2.5 min into level 0.247 at 63.4GB.
+The 2026-10-24 run (64GB, 64 CPUs, 1GB blocks of a 16GB pool) ran end to end at a 33.3GB peak, 0.3h longer
+than the 160GB run: levels 0.01-0.02 are 22 min slower (smaller blocks, more of them), level 0.247 4 min faster.
 
-| Task | 2026-10-09 (9eb38ac) | 2026-10-14/15 (b70c752) | 2026-10-15 (c1baed5) | 2026-10-17 (e57e425) | 2026-10-22 (b505577, 160GB) |
-|---|---|---|---|---|---|
-| Open: init sources + view | 2.4 + 1.2 min | 3.1 + 1.2 min | 2.6 + 1.3 min | 3.0 + 1.3 min | 3.4 + 1.3 min |
-| Pre-processing (msims build) | 16.4 min (15.4) | 17.2 min (16.2) | 16.8 min (15.8) | 17.3 min (16.4) | 17.7 min (16.8) |
-| Pair registration | 5.1h | 3.5h | 3.5h | 3.5h | 3.2h |
-| - setup (geometry, pairs, channel, graph) | 6.5 min | 6.7 min | 6.9 min | 6.8 min | 6.7 min |
-| - register pairs (workers busy of 64) | 4.1h (47.1) | 2.7h (37.4) | 2.8h (38.6) | 2.6h (37.1) | 2.5h (37.6) |
-| - pair metrics | 56 min | 45 min | 37 min | 41 min | 36 min |
-| Global registration (+ msims build) | 2.4h (+19 min) | 2.7h (+19 min) | 31 min (+18 min) | 33 min (+22 min) | 32 min (+18 min) |
-| - robust linear (8 rounds) | 1h23 | 2h26 | 17 min | 19 min | 18 min |
-| - apply + store transforms | 8.7 min | 9.5 min | 9.9 min | 10.0 min | 9.9 min |
-| - global metrics | 48 min | 0.5 min | 0.5 min | 0.5 min | 0.5 min |
-| Registration in all | 8.2h | 6.9h | 4.7h | 4.7h | 4.4h |
-| Fusion | 9.8h | 9.4h | 3.4h | 3.5h | 3.4h |
-| - before level 0 (make_msims_3d ~13 min) | ~16 min | 18.6 min | 19.0 min | 19.2 min | 19.2 min |
-| - memory peak | 248GB | 368GB | 152GB | 152GB | 159GB |
-| View refresh after fusion | 1.1 min | 1.2 min | 1.0 min | 6.9 min (shapes redrawn, twice) | 5.0 min (overlap shapes 1.4) |
-| Pre-processing + registration + fusion | 18.3h | 16.6h | 8.4h | 8.5h | 8.1h |
-
-| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 | 2026-10-22 | 2026-10-23 (800MB blocks) | 2026-10-24 (256MB blocks) |
+| Task | 2026-10-09 (9eb38ac) | 2026-10-14/15 (b70c752) | 2026-10-15 (c1baed5) | 2026-10-17 (e57e425) | 2026-10-22 (b505577, 160GB) | 2026-10-24 (1b5b48b, 64GB, 1GB blocks) |
 |---|---|---|---|---|---|---|
-| 0.01 um | 2h37 | 1h46 | 1h53 | 1h46 | 2h16 | 3h41 |
-| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min | 15.1 / 8.6 min | 20.6 / 9.9 min | 32.8 / 13.8 min |
-| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min | 4.5 / 5.0 min | 5.1 / 3.0 min | 6.6 / 3.0 min |
-| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min | 34.9 min | 37.6 min | 72.3 min |
-| 0.494 um | 26.8 min | 2.5 min | 2.5 min | 3.0 min | 4.3 min | 5.8 min |
-| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each | 0.9 - 2.1 min each | 0.9 - 2.0 min each | 0.5 - 3.0 min each |
+| Open: init sources + view | 2.4 + 1.2 min | 3.1 + 1.2 min | 2.6 + 1.3 min | 3.0 + 1.3 min | 3.4 + 1.3 min | 3.8 + 1.3 min |
+| Pre-processing (msims build) | 16.4 min (15.4) | 17.2 min (16.2) | 16.8 min (15.8) | 17.3 min (16.4) | 17.7 min (16.8) | 17.4 min (16.4) |
+| Pair registration | 5.1h | 3.5h | 3.5h | 3.5h | 3.2h | 3.4h |
+| - setup (geometry, pairs, channel, graph) | 6.5 min | 6.7 min | 6.9 min | 6.8 min | 6.7 min | 6.9 min |
+| - register pairs (workers busy of 64) | 4.1h (47.1) | 2.7h (37.4) | 2.8h (38.6) | 2.6h (37.1) | 2.5h (37.6) | 2.6h (38.0) |
+| - pair metrics | 56 min | 45 min | 37 min | 41 min | 36 min | 41 min |
+| Global registration (+ msims build) | 2.4h (+19 min) | 2.7h (+19 min) | 31 min (+18 min) | 33 min (+22 min) | 32 min (+18 min) | 34 min (+18 min) |
+| - robust linear (8 rounds) | 1h23 | 2h26 | 17 min | 19 min | 18 min | 19 min |
+| - apply + store transforms | 8.7 min | 9.5 min | 9.9 min | 10.0 min | 9.9 min | 10.7 min |
+| - global metrics | 48 min | 0.5 min | 0.5 min | 0.5 min | 0.5 min | 0.5 min |
+| Registration in all | 8.2h | 6.9h | 4.7h | 4.7h | 4.4h | 4.7h |
+| Fusion | 9.8h | 9.4h | 3.4h | 3.5h | 3.4h | 3.7h |
+| - before level 0 (make_msims_3d ~13 min) | ~16 min | 18.6 min | 19.0 min | 19.2 min | 19.2 min | 17.6 min |
+| - memory peak | 248GB | 368GB | 152GB | 152GB | 159GB | 33.3GB |
+| View refresh after fusion | 1.1 min | 1.2 min | 1.0 min | 6.9 min (shapes redrawn, twice) | 5.0 min (overlap shapes 1.4) | 4.7 min (overlap shapes 1.3) |
+| Pre-processing + registration + fusion | 18.3h | 16.6h | 8.4h | 8.5h | 8.1h | 8.4h |
+
+| Fusion level | 2026-10-14/15 | 2026-10-15 | 2026-10-17 | 2026-10-22 | 2026-10-23 (800MB blocks) | 2026-10-24 (256MB blocks) | 2026-10-24/25 (1GB blocks, 64GB) |
+|---|---|---|---|---|---|---|---|
+| 0.01 um | 2h37 | 1h46 | 1h53 | 1h46 | 2h16 | 3h41 | 2h02 |
+| 0.02 / 0.04 um | 1h34 / 1h10 | 14.0 / 9.4 min | 14.5 / 10.0 min | 15.1 / 8.6 min | 20.6 / 9.9 min | 32.8 / 13.8 min | 20.7 / 9.2 min |
+| 0.08 / 0.16 um | 43.5 / 40.4 min | 5.0 / 4.5 min | 5.0 / 4.5 min | 4.5 / 5.0 min | 5.1 / 3.0 min | 6.6 / 3.0 min | 5.4 / 2.8 min |
+| 0.247 um (fused from sources) | 46.2 min | 34.9 min | 34.4 min | 34.9 min | 37.6 min | 72.3 min | 30.8 min |
+| 0.494 um | 26.8 min | 2.5 min | 2.5 min | 3.0 min | 4.3 min | 5.8 min | 3.0 min |
+| 0.988 - 15.8 um (5 levels) | 9.9 - 17.8 min each | 0.9 - 2.0 min each | 0.7 - 2.5 min each | 0.9 - 2.1 min each | 0.9 - 2.0 min each | 0.5 - 3.0 min each | 0.6 - 3.2 min each |
 
 ## Known issues
 
@@ -70,9 +72,8 @@ reverse. The preview grid follows the real data; the synthetic result is unexpla
 Not a leak, nor dask filling what is free. Measured on the 2026-10-03 run's pyramid step
 (ngff_utils.write_sim_to_ome_zarr), one thread a CPU, each reading 2x2 (2x2x2 past 200 z) parent chunks and averaging
 as float64: ~6-12 level-0 chunks a worker (measured locally, synthetic zarr, 1-8 workers). Its replacement
-(fusion_blocks.average_into_zarr_array) does the same per block, 2x2 only. Level 0's chunk comes from the per-worker budget (a quarter
-of RAM over the CPUs), so the peak scales with the machine: the HPC's 250GB on ~2TB. A risk only if
-_available_memory() reads more than the job may use (no Slurm memory variable or cgroup limit set).
+(fusion_blocks.average_into_zarr_array) does the same per block, 2x2 only, within the fusion memory pool (a
+quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB job.
 
 ## In progress
 
@@ -135,33 +136,6 @@ From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in 
 
 From the HPC run of 2026-10-15 (c1baed5, averaged levels; 34k sources, 229725 pairs; registration 4.7h, fusion
 3.4h, no errors; fusion 10.4h on 2026-10-12):
-- [ ] **Fusion level 6 (0.2469um) fused from its sources: 35 min, rss 27 -> 131GB a block** - the only coarse level
-      not averaged, as the overviews join there; tiles read at their coarsest (0.16) for each block. Peak 152.5GB
-      (233GB at this level on 2026-10-13, 368GB at 0.494 before). Levels 0-5 took 1h46, 14, 9, 5, 4.5 min (2h38,
-      1h33, 1h08, 54, 53, 54 on 2026-10-13), levels 7-12 1-2.5 min each (13+ before); level 0 rss stayed 26-36GB.
-      2026-10-22 (160GB job): the same 34.9 min, peak 26 -> 158.9GB over this level alone (rss swinging 26-91GB
-      every 30s), 1.1GB short of the job's limit; every other level stayed under 42GB. It is the only level that
-      is not 2x the one before (0.16 -> 0.2469, x1.54), so it cannot be averaged from 0.16.
-      64GB job (2026-10-21): OOM-killed 2.5 min into this level. The per-worker budget (a quarter of memory over
-      the CPUs) does not bound it on the HPC: ~2GB a worker over the 26GB base at a 2.5GB (640GB job) and a
-      0.625GB (160GB job) budget alike. Locally (meatballs, this level only, 1-8 workers, 2560/640/256MB) the
-      peak does follow the budget (1.3 -> 0.07-0.27GB a worker), so what is uncounted at 34k is still unknown.
-      Cause (fusion-only run 2026-10-23, 1715c51, 200GB job, batch logging): the budget was 7.9GB a block - the
-      node's ~2TB, not the job's memory - in every one of these runs: xpra-run.sh's --cleanenv drops
-      SLURM_MEM_PER_NODE and the container's root cgroup files are unlimited. rss follows the budget (the
-      batch at the peak: budgeted 135.2GB, rss 133.4GB over a 19GB base; 55 sources a block, 3520 chunk).
-      Fixed: SLURM memory passed into the container, and the cgroup limit read along the process's own
-      cgroup path. Fusion-only run 2026-10-23 (f0e35ab, 200GB job): budget 800MB a block, peak 23.9GB (148.5GB
-      the same morning at 7.9GB), fusion 4.6h (4.3h). Level 0 chunk 2752 (58273 blocks, 2h16 vs 1h46 at 4096),
-      0.247 chunk 1088 (21614 blocks, 37.6 min), other levels as before. One chunk per level is sized for its
-      busiest block (8 sources at level 0), so batches held ~4GB of the 51GB the budget allows.
-      All levels 3h44, against 3h23 for the same project's fusion-only run that morning at 7.9GB blocks and
-      ~3h05 on 2026-10-22: +10% on the same day, nearly all in level 0 (~2h01 that morning, from its batch rate).
-      64GB job 2026-10-24 (2166a6f, full fusion from loaded mappings): 256MB blocks, peak 20.2GB, estimate 478GB,
-      but all levels 6h04 (fusion 7.1h): level 0 chunk 1536 (146968 blocks, 3h41), 0.247 chunk 576 (60474
-      blocks, 72 min). Level 0 batch time is linear in chunk area: ~4.4s fixed a 64-block batch (~70ms a
-      block, serial) + ~0.62s/Mpx - 1536/2752/4096 chunks 5.8/9.0/14.8s a batch. Fusion used 4.9 cores of
-      64 (35.0h cpu / 7.1h), 5.9 at 800MB, 8.6 at 7.9GB: more threads than that only shrink the blocks.
 - [ ] **Fusion's 18 min before level 0** - make_msims_3d 12.8, output properties 1.1, export chunk sizes 1.0, then
       3 min from 'Fusion levels' to the first block. The msims are built three times (pre-processing 15.8, global
       registration 18.4, fusion 12.8 min): see The msims build in global registration.
@@ -436,8 +410,12 @@ REFACTORING
   5e7 by one grey level (float rounding at block edges), as memory-dependent sizes always did.
 - **Job memory read inside the container** - fusion's block budget and napari's dask cache from the job's
   allocation (Slurm variables passed in, else the process's own cgroup), not the node's ~2TB: fusion peak
-  148.5 -> 23.9GB on a 200GB job for ~10% more fusion time. Job scripts back to 64G: fits (peak 20.2GB),
-  but fusion 7.1h against 4.6h at 200GB - smaller blocks cost more than the 200GB run suggested (see TODO).
+  148.5 -> 23.9GB on a 200GB job for ~10% more fusion time. Job scripts back to 64G.
+- **Fusion level 0.247 out of memory on a 64GB job** - the only coarse level fused from its sources (the overviews
+  join there; 0.16 -> 0.247 is not 2x), it took rss 26 -> 159GB on a 160GB job and was OOM-killed on a 64GB one:
+  its blocks were budgeted from the node's ~2TB (fixed above). With the pool and 1GB blocks (2026-10-24, 64GB,
+  full run): 30.8 min, peak 33.3GB; fusion 3.7h against 3.4h at 160GB, the difference in levels 0.01-0.02 (more,
+  smaller blocks: a block costs ~70ms fixed). Larger blocks would win that back only with more memory: not pursued.
 - **Refresh after pre-processing: 47 min / 232GB -> ~18 min / 14GB** - no 3D promotion for the overview (2D sources
   placed at their section z); stored pyramid levels read instead of whole tiles; one source per synchronous compute.
 - **Pre-processing 29.7 -> 16 min** - only each source's finest and coarsest level built (registration reads the
