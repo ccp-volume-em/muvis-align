@@ -147,6 +147,13 @@ def unmeasured_pair_results(edges, candidate_keys):
             'bboxes': {}, 'summary': {key: {} for key in candidate_keys}}
 
 
+def remap_pair_metrics(metrics, indices):
+    """Remap metrics['pairs']' local (0, 1, ...) keys to the real, global source indices."""
+    pairs = metrics.get('pairs')
+    if pairs:
+        metrics['pairs'] = {tuple(int(indices[index]) for index in key): value for key, value in pairs.items()}
+
+
 def calc_pair_metrics(msims, pairs_graph, metric_methods, base_transform_key, reg_channel=None,
                       n_parallel_pairs=None, progress_factory=None):
     workers = n_parallel_pairs or default_pair_workers

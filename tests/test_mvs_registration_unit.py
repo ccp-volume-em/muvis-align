@@ -723,6 +723,27 @@ def test_register_global_resolves_with_the_named_groupwise_method_and_reports_me
     assert sorted(results['mappings']) == list(range(len(reg.pair_msims)))
 
 
+def test_register_with_a_source_filtered_out_saves_pairs_under_their_own_filenames(tmp_path):
+    """Pairs are registered on the retained sources, numbered from 0: the saved pair results and metrics must name
+    the sources by their own index, as foreground filtering drops sources before them."""
+    import json
+    from muvis_align.util import import_json
+
+    reg = prepared_registration(S000_TILES, tmp_path)
+    retained = [1, 2, 3]
+    params = {'method': 'phase_correlation', 'transform_type': 'translation', 'metrics': ['ncc']}
+    reg.register([reg.register_msims[index] for index in retained], np.array(retained), params)
+
+    expected = {json.dumps([reg.filenames[retained[edge[0]]], reg.filenames[retained[edge[1]]]])
+                for edge in reg.pairs_graph.edges()}
+    assert expected
+    pair_mappings = import_json(reg.output + 'pair_mappings.json')
+    assert set(pair_mappings) == expected
+    assert all('quality' in entry for entry in pair_mappings.values())
+    assert set(import_json(reg.output + 'metrics.json')) <= expected
+    assert set(reg.metrics['pairs']) <= {tuple(retained[node] for node in edge) for edge in reg.pairs_graph.edges()}
+
+
 def test_a_cancel_stops_building_sources_without_building_the_rest():
     """The build used to submit every source at once, so a cancel waited for all of them."""
     import threading

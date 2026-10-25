@@ -37,7 +37,7 @@ from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
 from muvis_align.fusion_blocks import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
-from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar
+from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar, remap_pair_metrics
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
 from muvis_align.Timer import Timer
@@ -1442,6 +1442,7 @@ class MVSRegistration:
                                         self.source_transform_key, reg_channel=reg_channel_index,
                                         n_parallel_pairs=n_parallel_pairwise_regs,
                                         progress_factory=progress_factory)
+            remap_pair_metrics(metrics, register_indices)
         release_memory('Pair metrics')
 
         self.pairs_graph = g_reg_computed
@@ -1694,6 +1695,7 @@ class MVSRegistration:
                                           reg_results=reg_result,
                                           n_parallel_pairs=n_parallel_pairwise_regs,
                                           progress_factory=progress_factory)
+            remap_pair_metrics(metrics, register_indices)
 
         self.mappings = mappings_dict
         if self.group_pairs:

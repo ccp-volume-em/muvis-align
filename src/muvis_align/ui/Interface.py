@@ -33,7 +33,7 @@ from muvis_align.image.util import get_sim_position_final, \
     select_msim_subpyramid_at_scale, reduce_msims_to_fused_size
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
-from muvis_align.metrics import calc_msims_metrics
+from muvis_align.metrics import calc_msims_metrics, remap_pair_metrics
 from muvis_align.Timer import Timer
 from muvis_align.ui.NapariDaskProgress import NapariDaskProgress
 from muvis_align.ui.MagicColorPicker import MagicColorPicker
@@ -1477,7 +1477,7 @@ class Interface:
 
         def measure():
             metrics = calc_msims_metrics(reg_msims, transforms, metric_methods=self.metrics_methods)
-            self._remap_local_pair_metrics(metrics, pair_indices)
+            remap_pair_metrics(metrics, pair_indices)
             return metrics
 
         def show(metrics):
@@ -1505,13 +1505,6 @@ class Interface:
             },
         )
         self._pair_metrics_worker.start()
-
-    @staticmethod
-    def _remap_local_pair_metrics(metrics, indices):
-        """Remap metrics['pairs']' local (0, 1, ...) keys to the real, global source indices."""
-        pairs = metrics.get('pairs')
-        if pairs:
-            metrics['pairs'] = {tuple(indices[i] for i in key): value for key, value in pairs.items()}
 
     @catch_run_errors
     def run_preview_registration(self, progress_factory=None):
@@ -1559,7 +1552,7 @@ class Interface:
                     with Timer('preview_registration: pair metrics', verbose=self._timing_verbose()):
                         metrics = calc_msims_metrics((msim1, msim2), transforms, qualities,
                                                      metric_methods=self.metrics_methods)
-                    self._remap_local_pair_metrics(metrics, (index1, index2))
+                    remap_pair_metrics(metrics, (index1, index2))
                     return metrics, results, overlap1, overlap2
 
             try:
