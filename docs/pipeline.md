@@ -36,7 +36,7 @@ general:
     format: '%(asctime)s %(levelname)s: %(message)s'
   output:
     format: ome.zarr
-    tile_size: [4096, 4096]
+    block_size: [4096, 4096]
     compression: null
     npyramid_add: 4
     pyramid_downsample: 2
@@ -70,7 +70,7 @@ general:
 | Parameter            | Type | Description                                                             |
 |----------------------|------|-------------------------------------------------------------------------|
 | `format`             | str | Output format: `ome.zarr` or `ome.tiff` (or both: `ome.zarr, ome.tiff`) |
-| `tile_size`          | list | Tile size for zarr output `[x, y]` or `[x, y, z]`. Leave unset to size it automatically - see [Tile size](#tile-size) |
+| `block_size`         | list | Block size for the output `[x, y]` or `[x, y, z]`. Leave unset to size it automatically - see [Block size](#block-size) |
 | `compression`        | str/list | Compression method(s)                                                   |
 | `npyramid_add`       | int | Number of pyramid levels to add (default `0`)                           |
 | `pyramid_downsample` | int | Downsampling factor for pyramid (default `2`)                           |
@@ -269,12 +269,13 @@ fusion:
 | `method` | str | `average` | Fusion method, as above |
 | `spacing` | str | `native` | Output pixel size: `native` (each level at the sources' own pixel sizes, never upsampled; written to zarr only, else `mean`), `mean`, `min` (highest resolution) or `max` (lowest resolution). `output_spacing` is also accepted |
 
-### Tile size
+### Block size
 
-`general.output.tile_size` (or an operation's own `output.tile_size`) does double duty
-for a zarr export: it is the on-disk tile shape *and* the block size the fusion is
+`general.output.block_size` (or an operation's own `output.block_size`) does double duty
+for a zarr export: it is the on-disk chunk shape *and* the block size the fusion is
 computed in. A small value therefore costs real time, because the fixed per-block
-overhead is paid once per tile.
+overhead is paid once per block. For a TIFF export it is the TIFF tile size. The key
+was called `tile_size` before, which is still read.
 
 Left unset, it is 4096. Every CPU fuses blocks, and the blocks share a quarter of the
 memory available to the process - the Slurm allocation or cgroup limit where there is
@@ -410,7 +411,7 @@ After successful registration:
 
 - **No files matched**: Check your `input.path` pattern and file extensions
 - **No overlap found**: Verify source metadata (position/scale) or adjust pairing strategy
-- **Out of memory**: Leave `tile_size` unset so blocks are sized against available memory, or use `scale` to downsample
+- **Out of memory**: Leave `block_size` unset so blocks are sized against available memory, or use `scale` to downsample
 - **Poor registration**: Try different `method`, increase `max_keypoints`, or adjust `normalisation`
 
 ## Parameter Resolution

@@ -120,7 +120,7 @@ def test_project_configs_match_the_template(config_data):
     fusion = config_data['fusion']
     assert fusion['method'] in ['average', 'max', 'min']
     assert fusion['spacing'] in ['mean', 'min']
-    assert isinstance(fusion['tile_size'], str)
+    assert isinstance(fusion['block_size'], str)
     assert fusion['ome_version'] in ['0.4', '0.5']
 
     input_output = config_data['input_output']
@@ -715,6 +715,24 @@ def test_project_path_handles_existing_and_new_projects(
     else:
         bare_interface.write_params.assert_called_once_with()
         bare_interface.update_widgets.assert_not_called()
+
+
+@pytest.mark.parametrize(("saved", "expected"), [
+    ({"tile_size": "2048"}, {"block_size": "2048"}),
+    ({"tile_size": "2048", "block_size": "1024"}, {"block_size": "1024"}),
+], ids=["old-key", "both-keys"])
+def test_project_path_reads_an_old_tile_size_as_the_block_size(bare_interface, tmp_path, caplog, saved, expected):
+    path = tmp_path / "project.yml"
+    path.write_text(yaml.safe_dump({"fusion": saved}))
+    bare_interface.template = {"fusion": [{"name": "block_size", "label": "Block size", "default": ""}]}
+    for method in ("reset", "update_widgets", "update_input_output_path", "resolve_output_settings"):
+        setattr(bare_interface, method, MagicMock())
+
+    with caplog.at_level(logging.WARNING):
+        bare_interface.project_path(str(path))
+
+    assert bare_interface.params["fusion"] == expected
+    assert "not used by the plugin" not in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -1495,7 +1513,7 @@ def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch, tmp
     bare_interface.params = {
         "registration": {"operation": "merge"},
         "fusion": {"method": "average", "spacing": "mean",
-                   "tile_size": "", "ome_version": "0.5"},
+                   "block_size": "", "ome_version": "0.5"},
         "input_output": {"registration_dimension": "space"},
     }
     bare_interface.reg.reg_transform_key = "registered"
@@ -1571,14 +1589,14 @@ def test_registration_process_confirmation_and_prerequisites(
 
 
 @pytest.mark.parametrize(
-    ("tile_size", "expected", "reply"),
+    ("block_size", "expected", "reply"),
     [("1024", 1024, "Yes"), ("512, 1024", [512, 1024], "Yes"), ("1024", None, "No")],
 )
-def test_fusion_process_parses_tile_size_and_updates_state(
+def test_fusion_process_parses_block_size_and_updates_state(
     bare_interface,
     monkeypatch,
     mocked_activity_contexts,
-    tile_size,
+    block_size,
     expected,
     reply,
 ):
@@ -1589,7 +1607,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         "fusion": {
             "method": "average",
             "spacing": "mean",
-            "tile_size": tile_size,
+            "block_size": block_size,
             "ome_version": "0.5",
         },
     }
@@ -1607,7 +1625,7 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         return getattr(interface_module.QMessageBox, reply)
 
     monkeypatch.setattr(interface_module.QMessageBox, "question", question)
-    # fuse() always returns real msims in production - this test only cares about tile_size
+    # fuse() always returns real msims in production - this test only cares about block_size
     # parsing and state transitions, so stand in a passthrough for the msim->sim extraction step
     monkeypatch.setattr(interface_module, "extract_sims_from_fused", lambda result: result)
 
@@ -1619,8 +1637,8 @@ def test_fusion_process_parses_tile_size_and_updates_state(
         assert not bare_interface.reg.fuse.called
         assert not bare_interface._show_view_image.called
         return
-    assert bare_interface.reg.estimate_fusion_size.call_args.kwargs["tile_size"] == expected
-    assert bare_interface.reg.fuse.call_args.kwargs["tile_size"] == expected
+    assert bare_interface.reg.estimate_fusion_size.call_args.kwargs["block_size"] == expected
+    assert bare_interface.reg.fuse.call_args.kwargs["block_size"] == expected
     assert (
         bare_interface.reg.fuse.call_args.kwargs["output_filename"]
         == "registered"
@@ -2105,7 +2123,7 @@ def test_a_cancelled_fusion_removes_its_partial_output(bare_interface, monkeypat
 
     bare_interface.viewer = MagicMock()
     bare_interface.params = {'registration': {'operation': 'register'},
-                             'fusion': {'tile_size': '', 'method': 'average', 'spacing': 'mean', 'ome_version': '0.5'},
+                             'fusion': {'block_size': '', 'method': 'average', 'spacing': 'mean', 'ome_version': '0.5'},
                              'input_output': {'registration_dimension': 'space'}}
     bare_interface.reg.output = str(tmp_path) + '/'
     partial = tmp_path / ('registered' + interface_module.zarr_extension)
@@ -2400,22 +2418,22 @@ def test_a_loaded_value_no_dropdown_lists_maps_to_a_listed_one(bare_interface, q
     from muvis_align.ui.ParamWidget import ParamWidget
 
     widget = ComboBox(choices=["", "1024", "2048", "4096", "8192"], value="")
-    param_widget = ParamWidget("fusion.tile_size", widget, bare_interface)
+    param_widget = ParamWidget("fusion.block_size", widget, bare_interface)
     # a dropdown filled only later keeps its saved value, as it is empty at load
     channel_widget = ComboBox(choices=[])
-    bare_interface.param_widgets = {"fusion.tile_size": param_widget,
+    bare_interface.param_widgets = {"fusion.block_size": param_widget,
                                     "registration.channel": ParamWidget("registration.channel", channel_widget,
                                                                         bare_interface)}
-    bare_interface.template = {"fusion": [{"name": "tile_size", "options": [{"value": ""}]}],
+    bare_interface.template = {"fusion": [{"name": "block_size", "options": [{"value": ""}]}],
                                "registration": [{"name": "channel"}]}
-    bare_interface.params = {"fusion": {"tile_size": saved}, "registration": {"channel": "channel 0"}}
+    bare_interface.params = {"fusion": {"block_size": saved}, "registration": {"channel": "channel 0"}}
 
     with caplog.at_level(logging.WARNING):
         bare_interface.update_widgets()
 
     assert widget.value == expected
-    assert bare_interface.params["fusion"]["tile_size"] == expected
-    assert any("fusion.tile_size" in record.getMessage() for record in caplog.records) == warns
+    assert bare_interface.params["fusion"]["block_size"] == expected
+    assert any("fusion.block_size" in record.getMessage() for record in caplog.records) == warns
     assert bare_interface.params["registration"]["channel"] == "channel 0"
 
 

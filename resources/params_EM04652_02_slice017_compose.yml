@@ -14,7 +14,7 @@ general:
     overwrite: False
     format: ome.zarr
     ome_version: 0.6
-    tile_size: [10240, 10240]
+    block_size: [10240, 10240]
     compression:
     npyramid_add: 4
     pyramid_downsample: 2

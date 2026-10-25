@@ -8,7 +8,7 @@ general:
     verbose: True
   output:
     format: ome.zarr, ome.tiff
-    tile_size: [4096, 4096]
+    block_size: [4096, 4096]
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2

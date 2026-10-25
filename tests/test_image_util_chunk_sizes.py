@@ -194,4 +194,4 @@ def test_sources_at_distinct_z_keep_one_plane_per_block():
                                    make_sources(54, extent=6400), num_z_positions=6)
 
     assert sizes['z'] == 1
-    assert sizes['y'] > 1024, 'the real subset export should block far larger than its tile_size'
+    assert sizes['y'] > 1024, 'the real subset export should block far larger than its block_size'

@@ -6,7 +6,7 @@ from muvis_align.image.util import *
 
 def save_image(filename, data, output_format=zarr_extension,
                transform_key=None, channels=None, translations0=None,
-               tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=0,
+               block_size=None, compression=None, pyramid_downsample=2, npyramid_add=0,
                ome_version=default_ome_zarr_version,
                verbose=False):
     if isinstance(data, list):
@@ -30,13 +30,13 @@ def save_image(filename, data, output_format=zarr_extension,
     if channels is None:
         channels = data.attrs.get('channels', [])
 
-    if tile_size:
-        if not isinstance(tile_size, (list, tuple)):
-            tile_size = [tile_size] * 2
-        if 'z' in data0.dims and len(tile_size) < 3:
-            tile_size = list(tile_size) + [1]
-        tile_size = tuple(reversed(tile_size))
-        chunking = retuple(tile_size, data0.shape)
+    if block_size:
+        if not isinstance(block_size, (list, tuple)):
+            block_size = [block_size] * 2
+        if 'z' in data0.dims and len(block_size) < 3:
+            block_size = list(block_size) + [1]
+        block_size = tuple(reversed(block_size))
+        chunking = retuple(block_size, data0.shape)
         if isinstance(data, list):
             data = [data1.chunk(chunks=chunking) for data1 in data]
         else:
@@ -52,5 +52,5 @@ def save_image(filename, data, output_format=zarr_extension,
                           pyramid_downsample=pyramid_downsample)
         if 'tif' in output_format:
             save_ome_tiff(str(filename) + tiff_extension, data.data, dimension_order, pixel_size,
-                          channels, positions, rotation, tile_size=tile_size, compression=compression,
+                          channels, positions, rotation, tile_size=block_size, compression=compression,
                           pyramid_downsample=pyramid_downsample, npyramid_add=npyramid_add)

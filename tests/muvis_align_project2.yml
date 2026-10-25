@@ -2,7 +2,7 @@ fusion:
   method: average
   ome_version: '0.5'
   spacing: mean
-  tile_size: 1024,1024
+  block_size: 1024,1024
 input_output:
   coordinate_system: source_metadata
   input_path: data/S*/*.zarr

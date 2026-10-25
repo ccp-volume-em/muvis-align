@@ -509,7 +509,7 @@ parameters:
     optional: True
     section_id: "fusion"
     mode: "beginner"
-  - name: tile_size
+  - name: block_size
     type: dropdown
     label: "Block size"
     description: "Block size of the output, in pixels: its zarr chunks, which are also the blocks fusion works in,
@@ -528,7 +528,7 @@ parameters:
       - label: "8192"
         value: "8192"
     default: ""
-    cli_tag: "--tile_size"
+    cli_tag: "--block_size"
     cli_order: 2
     optional: True
     section_id: "fusion"

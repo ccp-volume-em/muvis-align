@@ -434,7 +434,9 @@ class MVSRegistration:
         pairing = self.register_params.get('pairing', '').lower()
 
         output_format = output_params.get('format', general_output_params.get('format', zarr_extension))
-        output_tile_size = output_params.get('tile_size', general_output_params.get('tile_size'))
+        # tile_size: the block size's name in params files written before
+        output_block_size = next((params[key] for params in (output_params, general_output_params)
+                                  for key in ('block_size', 'tile_size') if params.get(key) is not None), None)
         output_compression = output_params.get('compression', general_output_params.get('compression'))
         output_pyramid_downsample = output_params.get('pyramid_downsample', general_output_params.get('pyramid_downsample', 2))
         output_npyramid_add = output_params.get('npyramid_add', general_output_params.get('npyramid_add', 0))
@@ -483,7 +485,7 @@ class MVSRegistration:
             sim = msi_utils.get_sim_from_msim(msims[0], scale='scale0')
             self.save(output_filename, sim, translations0=self.positions,
                       format=output_format,
-                      tile_size=output_tile_size,
+                      block_size=output_block_size,
                       pyramid_downsample=output_pyramid_downsample,
                       npyramid_add=output_npyramid_add,
                       ome_version=output_ome_version)
@@ -548,7 +550,7 @@ class MVSRegistration:
                     # msims as stored (2D for a stack): fuse() promotes what it needs to
                     fused_msim, is_saved = self.fuse(msims, fusion_method=fusion_method, output_spacing=output_spacing,
                                                      transform_key=transform_key, output_filename=zarr_output_filename,
-                                                     tile_size=output_tile_size, ome_version=output_ome_version)
+                                                     block_size=output_block_size, ome_version=output_ome_version)
                     self.state = RegState.FUSED
             else:
                 fused_msim = msims
@@ -566,7 +568,7 @@ class MVSRegistration:
                     self.save(output_filename, fused_sims,
                               transform_key=transform_key, translations0=self.positions,
                               format = extra_output_format,
-                              tile_size = output_tile_size,
+                              block_size = output_block_size,
                               compression = output_compression,
                               pyramid_downsample = output_pyramid_downsample,
                               npyramid_add = output_npyramid_add,
@@ -1747,22 +1749,22 @@ class MVSRegistration:
         return False, output_spacing
 
     @staticmethod
-    def _export_chunksize(dtype, output_stack_properties, sources, num_z_positions, tile_size=None):
-        """The block an export fuses and writes: a configured tile_size, else the memory budget's, for `sources`'
+    def _export_chunksize(dtype, output_stack_properties, sources, num_z_positions, block_size=None):
+        """The block an export fuses and writes: a configured block_size, else the memory budget's, for `sources`'
         (msims' or stack properties') extents."""
-        if not tile_size:
+        if not block_size:
             return get_export_chunk_sizes(dtype, output_stack_properties, sources, num_z_positions=num_z_positions)
-        if not isinstance(tile_size, (list, tuple)):
-            tile_size = [tile_size] * 2
-        chunksize = xyz_to_dict(tile_size)
+        if not isinstance(block_size, (list, tuple)):
+            block_size = [block_size] * 2
+        chunksize = xyz_to_dict(block_size)
         if 'z' in output_stack_properties['shape'] and 'z' not in chunksize:
-            # tile_size says nothing about z, so the budget decides it
+            # block_size says nothing about z, so the budget decides it
             chunksize['z'] = get_chunk_sizes(dtype, list(output_stack_properties['shape']), num_sources=len(sources),
                                              num_z_positions=num_z_positions).get('z', 1)
         return chunksize
 
     def estimate_fusion_size(self, fusion_method=None, output_spacing=None, transform_key=None, dimension=None,
-                             tile_size=None, extra_metadata=None):
+                             block_size=None, extra_metadata=None):
         """Uncompressed bytes per level of the OME-Zarr fuse() would write, from source geometry alone (no msims):
         {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}, or None for an export fuse() does not write.
         Only the blocks some source reaches are written - exactly these."""
@@ -1795,7 +1797,7 @@ class MVSRegistration:
         levels = []
         source_spacings = [min(view[0]['spacing'][dim] for dim in 'yx') for view in views0]
         scaled_dims = ['y', 'x'] + (['z'] if views0[0][0]['shape'].get('z', 1) > 1 else [])
-        chunksize = self._export_chunksize(dtype, level0, [view[0] for view in views0], num_z_positions, tile_size)
+        chunksize = self._export_chunksize(dtype, level0, [view[0] for view in views0], num_z_positions, block_size)
         for level_spacing, properties, selected in export_levels(source_spacings, level0, scaled_dims,
                                                                  native=is_native):
             output_properties = {key: properties[key] for key in ('spacing', 'origin', 'shape')}
@@ -1813,7 +1815,7 @@ class MVSRegistration:
 
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
              dimension=None, output_filename=None,
-             tile_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
+             block_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
              output_chunksize=None, workers=None, level_bytes=None):
         """Fuse the sources' msims into one multiscale output msim; returns (fused, whether it was written).
         Sims are wrapped first with util.wrap_sims_as_msims.
@@ -1893,7 +1895,7 @@ class MVSRegistration:
                 if output_chunksize is None and saving_zarr:
                     with Timer('fusion: export chunk sizes', verbose=self.logging_time):
                         output_chunksize = self._export_chunksize(sim0.dtype, output_stack_properties, msims,
-                                                                  num_z_positions, tile_size)
+                                                                  num_z_positions, block_size)
                 if output_chunksize is None:
                     output_chunksize = dict(default_output_chunksize)
                 # a chunk past the output's extent also fails dask's zarr write-alignment check, with a warning
@@ -2039,14 +2041,14 @@ class MVSRegistration:
         return fused_sim
 
     def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None, channels=[],
-             tile_size=None, compression=None, pyramid_downsample=2, npyramid_add=4, ome_version=default_ome_zarr_version):
+             block_size=None, compression=None, pyramid_downsample=2, npyramid_add=4, ome_version=default_ome_zarr_version):
         if output_filename is not None:
             output_filename = self.output + output_filename
         if isinstance(self.extra_metadata, dict) and self.extra_metadata:
             channels = self.extra_metadata.get('channels', [])
         save_image(output_filename, data, format,
                    transform_key=transform_key, channels=channels, translations0=translations0,
-                   tile_size=tile_size, compression=compression,
+                   block_size=block_size, compression=compression,
                    pyramid_downsample=pyramid_downsample, npyramid_add=npyramid_add,
                    ome_version=ome_version,
                    verbose=self.verbose)

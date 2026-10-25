@@ -12,7 +12,7 @@ general:
   output:
     clear: True
     format: ome.tiff
-    tile_size: []
+    block_size: []
     compression:
     npyramid_add: 4
     pyramid_downsample: 2

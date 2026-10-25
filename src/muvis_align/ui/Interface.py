@@ -178,6 +178,10 @@ class Interface:
         self.params = get_template_params(self.template)
         if os.path.exists(path):
             project_params = read_params(path)
+            fusion_params = project_params.get('fusion') or {}
+            if 'tile_size' in fusion_params:
+                # the block size's name in projects saved before; written back as block_size
+                fusion_params.setdefault('block_size', fusion_params.pop('tile_size'))
             unknown_params = get_unknown_params(self.template, project_params)
             if unknown_params:
                 # still written back unchanged, as scripted runs may read them (e.g. extra_metadata)
@@ -216,7 +220,7 @@ class Interface:
                         self.populate_channels_table_color_pickers()
 
     def _listed_choice(self, param_name, value, widget):
-        """The dropdown's choice for a value saved before its setting became a list (e.g. a tile size of 4096, or
+        """The dropdown's choice for a value saved before its setting became a list (e.g. a block size of 4096, or
         4096,4096 with every dim alike), else its current one; kept in the project's params."""
         parts = value if isinstance(value, (list, tuple)) else str(value).split(',')
         parts = {str(part).strip() for part in parts}
@@ -1978,18 +1982,18 @@ class Interface:
                     pbar.update(1)
         return True
 
-    def _fusion_tile_size(self):
-        """The configured tile size, or None: fuse() then sizes the export's blocks by what one costs in memory."""
-        tile_size = self.params['fusion'].get('tile_size')
-        if isinstance(tile_size, str):
-            tile_size = tile_size.strip()
-            if not tile_size:
-                tile_size = None
-            elif ',' in tile_size:
-                tile_size = [int(size.strip()) for size in tile_size.split(',')]
+    def _fusion_block_size(self):
+        """The configured block size, or None: fuse() then sizes the export's blocks by what one costs in memory."""
+        block_size = self.params['fusion'].get('block_size')
+        if isinstance(block_size, str):
+            block_size = block_size.strip()
+            if not block_size:
+                block_size = None
+            elif ',' in block_size:
+                block_size = [int(size.strip()) for size in block_size.split(',')]
             else:
-                tile_size = int(tile_size)
-        return tile_size
+                block_size = int(block_size)
+        return block_size
 
     def _estimate_fusion_size(self):
         """reg.estimate_fusion_size() for the fusion settings, logged per level; None if it cannot be estimated."""
@@ -1999,7 +2003,7 @@ class Interface:
                     self.params['fusion']['method'], output_spacing=self.params['fusion']['spacing'],
                     transform_key=self.get_best_transform_key(),
                     dimension=self.params['input_output']['registration_dimension'],
-                    tile_size=self._fusion_tile_size(), extra_metadata=self.extra_metadata)
+                    block_size=self._fusion_block_size(), extra_metadata=self.extra_metadata)
         except Exception as error:
             # the question still stands without a size, and the bar without its level shares
             logging.warning(f'Could not estimate the fusion size: {error}')
@@ -2022,9 +2026,9 @@ class Interface:
     def run_fusion(self, progress_factory=None):
         operation = self.params['registration']['operation']
         output_filename = operation_to_past_participle(operation)
-        tile_size = self._fusion_tile_size()
-        # the saves below are on-disk layout only, with no per-block cost, so they keep tiling
-        save_tile_size = tile_size or default_chunk_size
+        block_size = self._fusion_block_size()
+        # the saves below are on-disk layout only, with no per-block cost, so they always get blocks
+        save_block_size = block_size or default_chunk_size
 
         # written straight to zarr, the fusion is the whole export: a second phase would hold its bar at half
         fuses_to_zarr = self.reg.fuses_to_zarr(self.params['fusion']['method'],
@@ -2049,7 +2053,7 @@ class Interface:
                         output_spacing=self.params['fusion']['spacing'],
                         dimension=self.params['input_output']['registration_dimension'],
                         output_filename=output_filename,
-                        tile_size=tile_size,
+                        block_size=block_size,
                         ome_version=self.params['fusion']['ome_version'],
                         extra_metadata=self.extra_metadata,
                         level_bytes=[level['bytes'] for level in level_estimate['levels']] if level_estimate else None)
@@ -2060,7 +2064,7 @@ class Interface:
                                       transform_key=self.get_best_transform_key(),
                                       translations0=self.reg.positions,
                                       channels=self.extra_metadata.get('channels', []),
-                                      tile_size=save_tile_size,
+                                      block_size=save_block_size,
                                       ome_version=self.params['fusion']['ome_version'])
                     image_filenames = [path[len(self.reg.output):] for path in self._output_paths(output_filename)
                                        if os.path.exists(path)]

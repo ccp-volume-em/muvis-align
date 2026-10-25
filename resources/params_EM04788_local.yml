@@ -6,7 +6,7 @@ general:
   verbose: False
   output:
     format: ome.zarr, ome.tiff
-    tile_size: []
+    block_size: []
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
