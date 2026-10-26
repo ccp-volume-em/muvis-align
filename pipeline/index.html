@@ -1458,11 +1458,13 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 <span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span><span class="w">              </span><span class="c1"># phase_correlation, sift, orb, feature, cpd, elastix, ants</span>
 <span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span><span class="w">                 </span><span class="c1"># Alternative to 'method'</span>
 
-<span class="w">  </span><span class="c1"># Feature detection (for sift, orb, feature methods)</span>
-<span class="w">  </span><span class="nt">max_keypoints</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5000</span><span class="w">       </span><span class="c1"># Maximum number of keypoints to detect</span>
+<span class="w">  </span><span class="c1"># Overlap filtering (sift, orb and cpd only; pre-processing's apply to every method)</span>
 <span class="w">  </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">         </span><span class="c1"># Gaussian filter sigma before detection</span>
+<span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 
-<span class="w">  </span><span class="c1"># Feature matching parameters</span>
+<span class="w">  </span><span class="nt">max_keypoints</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5000</span><span class="w">       </span><span class="c1"># Maximum number of keypoints to detect (sift, orb and cpd only)</span>
+
+<span class="w">  </span><span class="c1"># Feature matching (sift and orb only; other methods ignore these)</span>
 <span class="w">  </span><span class="nt">inlier_threshold_factor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.05</span>
 <span class="w">  </span><span class="nt">max_trials</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1000</span>
 <span class="w">  </span><span class="nt">ransac_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
@@ -1472,9 +1474,6 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 
 <span class="w">  </span><span class="c1"># Pairing strategy</span>
 <span class="w">  </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span><span class="w">       </span><span class="c1"># orthogonal, stack; unset = multiview-stitcher's own pairing</span>
-
-<span class="w">  </span><span class="c1"># Normalization</span>
-<span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w">       </span><span class="c1"># True, False, 'global', 'individual'</span>
 
 <span class="w">  </span><span class="c1"># Global resolution method</span>
 <span class="w">  </span><span class="nt">groupwise_resolution_method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global_optimization</span><span class="w">  </span><span class="c1"># or other methods</span>

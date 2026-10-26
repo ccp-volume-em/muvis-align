@@ -330,6 +330,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#quick-start-in-your-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick start in your browser
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -608,6 +619,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#quick-start-in-your-browser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick start in your browser
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#installation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -689,6 +711,28 @@ a napari plugin.</p>
 <p>muvis-align handles x-y stitching and z reconstruction across image modalities, is
 designed for datasets in the terabyte range, and reads and writes the
 <a href="https://ngff.openmicroscopy.org/">OME-Zarr</a> next-generation file format throughout.</p>
+<h2 id="quick-start-in-your-browser">Quick start in your browser</h2>
+<p>With an account on a Slurm cluster (HPC) that has Apptainer, you can use the napari plugin in your web browser
+without installing Python or muvis-align yourself: it runs on the cluster, in a container.</p>
+<p>You need:</p>
+<ul>
+<li>ssh access to the cluster's login node, ideally with an
+  <a href="https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent">SSH key</a>
+  so you are not asked for your password</li>
+<li>a terminal: on Windows Git Bash (part of <a href="https://gitforwindows.org/">Git for Windows</a>), on macOS and Linux the
+  built-in one</li>
+<li>the scripts <code>xpra-connect.sh</code>, <code>xpra-run.sh</code> and <code>xpra-pull.sh</code> together in one folder: download the
+  <a href="https://github.com/ccp-volume-em/muvis-align/archive/refs/heads/main.zip">repository as a ZIP</a> and unzip it
+  (or clone it)</li>
+</ul>
+<p>Then, in that folder, run (on Windows in Git Bash, or as <code>.\xpra-connect.sh ...</code> from PowerShell):</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>xpra-connect.sh<span class="w"> </span>&lt;user&gt;@&lt;login<span class="w"> </span>node&gt;
+</code></pre></div>
+<p>The first time, this builds the container on the cluster, which takes longer. It then starts a job and opens napari
+with the plugin in your browser, where you open your data from the cluster's storage. Closing napari ends the job;
+Ctrl-C in the terminal disconnects and offers to cancel it. Add <code>--pull</code> to update to the latest version.
+Your cluster's support team can tell you the login node's name and whether Apptainer is available; see
+<a href="technical/#on-a-slurm-cluster">On a Slurm cluster</a> for the options.</p>
 <h2 id="installation">Installation</h2>
 <p>muvis-align needs Python 3.12 or later.</p>
 <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>muvis-align
@@ -710,7 +754,7 @@ not the pip package, so clone it to use those.</p>
 <tbody>
 <tr>
 <td><strong><a href="napari/">napari plugin</a></strong></td>
-<td>Load a dataset, inspect the source layout, preview a single pair or the fused result, and run each step interactively. This is what to use to work out the parameters.</td>
+<td>Load a dataset, inspect the source layout, preview a single pair or the fused result, and run each step interactively. This is what to use to work out the parameters; on a cluster it needs no install (see the <a href="#quick-start-in-your-browser">quick start</a>).</td>
 </tr>
 <tr>
 <td><strong><a href="pipeline/">Command-line pipeline</a></strong></td>
@@ -724,11 +768,12 @@ not the pip package, so clone it to use those.</p>
 </table>
 <p>The plugin and the pipeline keep separate configuration files, so a project set up in
 the plugin is not directly a pipeline parameter file.</p>
-<p>The plugin can also run in a container, in the browser through Xpra: see the
+<p>The plugin can also run in a container, in the browser through Xpra: on a cluster with the
+<a href="#quick-start-in-your-browser">quick start</a>, elsewhere with the
 <a href="technical/#interactive-interface-with-xpra-container">Dockerfile</a>.</p>
 <h2 id="getting-started">Getting started</h2>
 <ol>
-<li>Install as above.</li>
+<li>Install as above, or without Python use the <a href="#quick-start-in-your-browser">quick start</a> on a cluster.</li>
 <li>Open the <a href="napari/">napari plugin</a> and follow the <a href="napari_guide/">step-by-step guide</a>
    to set up a project and work out your parameters.</li>
 <li>For batch runs, copy one of the example parameter files under <code>resources/</code> and run it

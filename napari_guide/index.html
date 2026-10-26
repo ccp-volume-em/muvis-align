@@ -896,6 +896,7 @@ out of date, as it was made from the previous images.</p>
   resampled. <strong>Process</strong> writes them to a <code>converted/</code> output folder. Worth doing first
   for sources without a pyramid, which make every preview slow.</li>
 </ul>
+<p>Settings only some methods read are greyed out for the others.</p>
 <table>
 <thead>
 <tr>
@@ -926,27 +927,27 @@ out of date, as it was made from the previous images.</p>
 </tr>
 <tr>
 <td>Normalisation</td>
-<td>Normalise each overlap before registering it</td>
+<td>SIFT, ORB and CPD: normalise each overlap before registering it (pre-processing's applies to every method)</td>
 </tr>
 <tr>
 <td>Gaussian sigma</td>
-<td>Gaussian blur of each overlap; 0 or empty for none</td>
+<td>SIFT, ORB and CPD: Gaussian blur of each overlap; 0 or empty for none (pre-processing's applies to every method)</td>
 </tr>
 <tr>
 <td>Max keypoints</td>
-<td>Feature methods (SIFT, ORB): the most keypoints per image</td>
+<td>SIFT, ORB and CPD: the most keypoints per image (CPD keeps the largest)</td>
 </tr>
 <tr>
 <td>Inlier threshold factor</td>
-<td>Feature methods: RANSAC's inlier threshold, relative (0 to 1)</td>
+<td>SIFT and ORB: RANSAC's inlier threshold, relative (0 to 1)</td>
 </tr>
 <tr>
 <td>Max RANSAC trials</td>
-<td>Feature methods: the most RANSAC trials</td>
+<td>SIFT and ORB: the most RANSAC trials</td>
 </tr>
 <tr>
 <td>RANSAC iterations</td>
-<td>Feature methods: the number of RANSAC runs</td>
+<td>SIFT and ORB: the number of RANSAC runs</td>
 </tr>
 <tr>
 <td>Threads</td>
