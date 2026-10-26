@@ -17,6 +17,30 @@ Main documentation: [ccp-volume-em.github.io/muvis-align](https://ccp-volume-em.
 
 Generated documentation: [deepwiki.com/ccp-volume-em/muvis-align](https://deepwiki.com/ccp-volume-em/muvis-align)
 
+## Quick start in your browser (Slurm cluster, no install)
+
+The napari plugin can run in a container on a Slurm cluster (HPC), shown in your browser through [Xpra], without
+installing Python or muvis-align yourself. This needs Apptainer on the cluster, ssh access to its login node
+(preferably with an ssh key), and the `xpra-*.sh` scripts together in one folder on your own machine: download this
+[repository as a ZIP](https://github.com/ccp-volume-em/muvis-align/archive/refs/heads/main.zip) and unzip it, or
+clone it.
+
+From your own machine, one command builds the container on the cluster if needed, starts the job, and opens napari
+in your browser (on Windows in Git Bash, or as `.\xpra-connect.sh ...` from PowerShell):
+
+```
+bash xpra-connect.sh <user>@<login node> [folder on the cluster, default: muvis-align] [--pull]
+```
+
+Or step by step, on the cluster's login node in a folder with [xpra-pull.sh] and [xpra-run.sh]:
+
+```
+bash xpra-pull.sh     # once, and to update the container
+bash xpra-run.sh      # starts the job and prints how to connect from your own machine
+```
+
+See the [documentation](https://ccp-volume-em.github.io/muvis-align/technical/#on-a-slurm-cluster) for details.
+
 ## Installation
 
 ### From napari
@@ -40,28 +64,6 @@ pip install "muvis-align[all]"
 
 The command-line script, example parameter files and notebooks are in this repository,
 not the pip package: see the [documentation](https://ccp-volume-em.github.io/muvis-align/).
-
-## Running on a Slurm cluster (HPC)
-
-The napari plugin can run in a container on a Slurm cluster, shown in your browser through [Xpra].
-This needs Apptainer on the cluster, ssh access to its login node (preferably with an ssh key), and a clone of this
-repository on your own machine.
-
-From your own machine, one command builds the container on the cluster if needed, starts the job, and opens napari
-in your browser (on Windows in Git Bash, or as `.\xpra-connect.sh ...` from PowerShell):
-
-```
-bash xpra-connect.sh <user>@<login node> [folder on the cluster, default: muvis-align] [--pull]
-```
-
-Or step by step, on the cluster's login node in a folder with [xpra-pull.sh] and [xpra-run.sh]:
-
-```
-bash xpra-pull.sh     # once, and to update the container
-bash xpra-run.sh      # starts the job and prints how to connect from your own machine
-```
-
-See the [documentation](https://ccp-volume-em.github.io/muvis-align/technical/#on-a-slurm-cluster) for details.
 
 ## Contributing
 
