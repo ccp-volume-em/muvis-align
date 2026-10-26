@@ -1428,12 +1428,15 @@ class Interface:
                              colormap=colormap, contrast_limits=contrast_limits,
                              scale=scale, translate=translate, units=spatial_unit)
 
-    def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers):
+    def _napari_view_show_features(self, viewer, fixed_data2, fixed_points, moving_data2, moving_points, matches, inliers,
+                                   scale=None):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
                                                matches, inliers, points_color='blue')
         self._clear_napari_view(viewer)
         for data, kwargs, layer_type in layers:
+            if scale is not None:
+                kwargs = kwargs | {'scale': scale, 'units': spatial_unit}
             if layer_type == "image":
                 viewer.add_image(data, **kwargs)
             elif layer_type == "points":
@@ -1557,7 +1560,7 @@ class Interface:
                         metrics = calc_msims_metrics((msim1, msim2), transforms, qualities,
                                                      metric_methods=self.metrics_methods)
                     remap_pair_metrics(metrics, (index1, index2))
-                    return metrics, results, overlap1, overlap2
+                    return metrics, results, overlap1, overlap2, sims_pixel_space
 
             try:
                 return self._run_off_thread(register_preview, factory)
@@ -1572,7 +1575,7 @@ class Interface:
             result = self.run_preview_registration()
         if result is None:
             return
-        metrics, results, overlap1, overlap2 = result
+        metrics, results, overlap1, overlap2, sims_pixel_space = result
 
         with Timer('preview_registration: show metrics', verbose=self._timing_verbose()):
             self.populate_metrics_table(metrics)
@@ -1589,8 +1592,10 @@ class Interface:
                 np.shape(overlap1), np.shape(overlap2), results['affine_matrix'])
         with Timer('preview_registration: show feature layers', verbose=self._timing_verbose()):
             self._detach_view(self.view_mode)
+            # both crops are resampled to the fixed one's pixel size: shown at it, as the overview shows the sources
+            scale = si_utils.get_spacing_from_sim(sims_pixel_space[0], asarray=True)
             self._napari_view_show_features(self.viewer, overlap1, fixed_points, overlap2, moving_points, matches,
-                                            inliers)
+                                            inliers, scale=scale)
         self.view_mode = ViewMode.FEATURES
 
     def populate_metrics_table(self, metrics_dict):

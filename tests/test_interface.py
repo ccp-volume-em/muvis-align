@@ -1179,13 +1179,14 @@ def test_update_napari_features_dispatches_all_layer_types(
     )
 
     bare_interface._napari_view_show_features(
-        viewer, None, None, None, None, None, None
+        viewer, None, None, None, None, None, None, scale=[2, 3]
     )
 
     viewer.layers.clear.assert_called_once_with()
-    viewer.add_image.assert_called_once_with("image", name="image")
-    viewer.add_points.assert_called_once_with("points", name="points")
-    viewer.add_shapes.assert_called_once_with("shapes", name="shapes")
+    scaled = {"scale": [2, 3], "units": interface_module.spatial_unit}
+    viewer.add_image.assert_called_once_with("image", name="image", **scaled)
+    viewer.add_points.assert_called_once_with("points", name="points", **scaled)
+    viewer.add_shapes.assert_called_once_with("shapes", name="shapes", **scaled)
 
 
 def test_add_napari_image_applies_color_and_affine_callback(

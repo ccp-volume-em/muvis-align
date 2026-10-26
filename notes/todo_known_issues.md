@@ -111,7 +111,6 @@ MINOR
       min pre-processing, 18.4 global registration, 13.4 fusion's make_msims_3d (47 min of ~20h, saving ~12) - so
       building fewer times (see The msims build in global registration) gains more. The preview cap half has gone:
       it only runs where the lazy overview declines.
-- [ ] **Scaling in the registration preview** - possible to add scaling to the registration preview?
 - [ ] **Instrument persistent identifier** - an optional project setting (e.g. `instrument_id`) for a facility's
       registered instrument PID (PIDINST/DataCite handle, RRID), used as the zarr crate's instrument `@id`.
 - [ ] **Keep the refresh bar moving** - per-source or per-batch progress for the preview size cap and the Qt-thread
@@ -458,6 +457,8 @@ REFACTORING
 - **Exclusive fusion** - each pixel from the earliest imaged (source order) view, one pass, works on 3D chunks.
 
 ### Registration preview
+- **Physical scale** - the preview's layers take the crop's pixel size and unit as napari layer scale, as the
+  overview does: coordinates and the scale bar read in physical units.
 - **Grid for transform-only methods** - phase correlation and elastix show point pairs mapped through the transform:
   30 along the crop's longest side at one spacing (at least 3 a side, 2.5 ring sizes apart), every point kept;
   points and lines sized to the image shown.
