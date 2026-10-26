@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -995,7 +995,9 @@ Bilayers schemas are represented as a <a href="https://docs.pydantic.dev/">Pydan
 <hr />
 <h2 id="interactive-interface-with-xpra-container">Interactive interface with Xpra container</h2>
 <p>The Dockerfile defines a standard napari container and a second Xpra-enabled image for browser-based interactive use.</p>
-<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/Dockerfile"><code>Dockerfile</code></a></p>
+<p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/Dockerfile"><code>Dockerfile</code></a>. <code>docker-build-push.sh [version]</code>
+builds the Xpra image and pushes it to <code>quay.io/ccp-volume-em/muvis-align-xpra</code>, tagged with the version (by default
+the latest GitHub release) and <code>latest</code>; it needs <code>docker login quay.io</code>.</p>
 <div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="s">python:3.12-slim-bookworm</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">muvis-align</span>
 ...
 <span class="k">COPY</span><span class="w"> </span>requirements.txt<span class="w"> </span>.
@@ -1055,6 +1057,38 @@ Bilayers schemas are represented as a <a href="https://docs.pydantic.dev/">Pydan
 <span class="w">    </span>--bell<span class="o">=</span>no<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span><span class="nv">$DISPLAY</span>
 </code></pre></div>
+<h3 id="on-a-slurm-cluster">On a Slurm cluster</h3>
+<p>On the cluster, Apptainer runs the Xpra image from a sandbox that <code>xpra-pull.sh</code> builds, and <code>xpra-run.sh</code>
+starts it in a Slurm job. Both run from a folder holding the scripts, which also holds the container.</p>
+<h4 id="from-your-own-machine">From your own machine</h4>
+<p><code>xpra-connect.sh</code> does all of this from your own machine with one command:</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>xpra-connect.sh<span class="w"> </span>&lt;user&gt;@&lt;login<span class="w"> </span>node&gt;<span class="w"> </span><span class="o">[</span>folder<span class="w"> </span>on<span class="w"> </span>the<span class="w"> </span>cluster,<span class="w"> </span>default:<span class="w"> </span>muvis-align<span class="o">]</span><span class="w"> </span><span class="o">[</span>--pull<span class="o">]</span>
+</code></pre></div>
+<p>On Windows, run it in Git Bash, or from PowerShell as <code>.\xpra-connect.sh &lt;user&gt;@&lt;login node&gt;</code>, which opens it in a
+Git Bash window that waits for Enter before closing. <code>bash</code> in PowerShell is WSL's; there it uses Windows' own ssh
+when WSL's cannot sign in.</p>
+<p>It copies <code>xpra-run.sh</code> and <code>xpra-pull.sh</code> into the folder on the cluster (replacing what is there), builds the
+container first if there is none yet (or with <code>--pull</code>), submits the job, tunnels to the compute node the job
+starts on, and opens napari in your browser, already logged in. Closing napari ends the job; Ctrl-C closes the
+connection and offers to cancel the job. <code>MUVIS_PARTITION</code>, <code>MUVIS_DATA_DIR</code> and <code>MUVIS_CONTAINER_DIR</code> set locally
+are passed on to the cluster. With an
+<a href="https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent">SSH key</a>
+on the login node you are not asked for a password.</p>
+<h4 id="step-by-step-on-the-cluster">Step by step, on the cluster</h4>
+<p>With the two scripts in a folder on the cluster (e.g. a clone of this repository), on the login node:</p>
+<div class="highlight"><pre><span></span><code>bash<span class="w"> </span>xpra-pull.sh<span class="w">     </span><span class="c1"># once, and to update: builds the container sandbox beside the scripts</span>
+bash<span class="w"> </span>xpra-run.sh<span class="w">      </span><span class="c1"># submits the job, waits for it to start and prints how to connect</span>
+</code></pre></div>
+<p>Then follow the printed steps on your own machine: open the <code>ssh -N -L ...</code> tunnel it shows, open
+<code>http://localhost:9876/</code> in your browser and log in with the user name and password it shows. <code>sbatch xpra-run.sh</code>
+works too; the steps are then in <code>muvis-align-&lt;job id&gt;.log</code> and the password in <code>~/.xpra/job-&lt;job id&gt;/passwd</code>.
+The partition and data directory can be set with the same <code>MUVIS_*</code> variables; the job's resources are the
+<code>#SBATCH</code> lines at the top of <code>xpra-run.sh</code>. Its memory (<code>--mem</code>) is passed into the container, where fusion's
+blocks share a quarter of it and napari sizes its image cache against it: the script's 64G is enough for a
+34,000-tile project.</p>
+<p><code>sbatch apptainer-check.sh</code> checks whether the compute nodes can run the image's SIF file directly, or unpack it on
+every start, in which case the sandbox <code>xpra-pull.sh</code> builds is the faster choice; its verdict is at the end of
+<code>muvis-align-apptainer-check-&lt;job id&gt;.log</code>.</p>
 <hr />
 <h2 id="summary-table">Summary table</h2>
 <table>
@@ -1144,10 +1178,10 @@ Bilayers schemas are represented as a <a href="https://docs.pydantic.dev/">Pydan
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

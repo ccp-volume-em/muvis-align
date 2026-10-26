@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -543,15 +543,15 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tile-size" class="md-nav__link">
+  <a href="#block-size" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tile size
+        Block size
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Tile size">
+    <nav class="md-nav" aria-label="Block size">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1061,15 +1061,15 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#tile-size" class="md-nav__link">
+  <a href="#block-size" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Tile size
+        Block size
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Tile size">
+    <nav class="md-nav" aria-label="Block size">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1243,7 +1243,7 @@ described here, while the plugin reads and writes its own project file.</p>
 <span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">'%(asctime)s</span><span class="nv"> </span><span class="s">%(levelname)s:</span><span class="nv"> </span><span class="s">%(message)s'</span>
 <span class="w">  </span><span class="nt">output</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
-<span class="w">    </span><span class="nt">tile_size</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">4096</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">4096</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">block_size</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">4096</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">4096</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">compression</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span>
 <span class="w">    </span><span class="nt">npyramid_add</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
 <span class="w">    </span><span class="nt">pyramid_downsample</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
@@ -1338,9 +1338,9 @@ described here, while the plugin reads and writes its own project file.</p>
 <td>Output format: <code>ome.zarr</code> or <code>ome.tiff</code> (or both: <code>ome.zarr, ome.tiff</code>)</td>
 </tr>
 <tr>
-<td><code>tile_size</code></td>
+<td><code>block_size</code></td>
 <td>list</td>
-<td>Tile size for zarr output <code>[x, y]</code> or <code>[x, y, z]</code>. Leave unset to size it automatically - see <a href="#tile-size">Tile size</a></td>
+<td>Block size for the output <code>[x, y]</code> or <code>[x, y, z]</code>. Leave unset to size it automatically - see <a href="#block-size">Block size</a></td>
 </tr>
 <tr>
 <td><code>compression</code></td>
@@ -1561,16 +1561,19 @@ orthogonally. It max-projects z to register the pairs in 2D.</p>
 </tr>
 </tbody>
 </table>
-<h3 id="tile-size">Tile size</h3>
-<p><code>general.output.tile_size</code> (or an operation's own <code>output.tile_size</code>) does double duty
-for a zarr export: it is the on-disk tile shape <em>and</em> the block size the fusion is
+<h3 id="block-size">Block size</h3>
+<p><code>general.output.block_size</code> (or an operation's own <code>output.block_size</code>) does double duty
+for a zarr export: it is the on-disk chunk shape <em>and</em> the block size the fusion is
 computed in. A small value therefore costs real time, because the fixed per-block
-overhead is paid once per tile.</p>
-<p>Left unset, the tile size is chosen automatically from the memory one fused block
-actually needs, budgeted against the memory available to the process - the SLURM
-allocation or cgroup limit where there is one, not the size of the machine. This is
-the recommended setting; give an explicit value only when the on-disk layout matters
-more than the export time.</p>
+overhead is paid once per block. For a TIFF export it is the TIFF tile size. The key
+was called <code>tile_size</code> before, which is still read.</p>
+<p>Left unset, it is 4096. Every CPU fuses blocks, and the blocks share a quarter of the
+memory available to the process - the Slurm allocation or cgroup limit where there is
+one, not the size of the machine: each block reserves what it needs before it runs, so
+a block meeting many sources waits for room instead of every block being made smaller.
+A level shrinks its blocks only where one alone would not fit. This is the recommended
+setting; give an explicit value only when the on-disk layout matters more than the
+export time. The napari plugin offers 1024, 2048, 4096 and 8192.</p>
 <p>The size actually used is written to the log, so a run can be checked after the fact.</p>
 <h4 id="output-configuration">Output Configuration</h4>
 <div class="highlight"><pre><span></span><code><span class="nt">output</span><span class="p">:</span>
@@ -1652,6 +1655,14 @@ more than the export time.</p>
 </code></pre></div></p>
 </li>
 </ol>
+<p>On a Slurm cluster, <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/run_pipeline.sh"><code>run_pipeline.sh</code></a>
+runs the same command as a batch job:</p>
+<div class="highlight"><pre><span></span><code>sbatch<span class="w"> </span>run_pipeline.sh<span class="w"> </span>params.yml
+</code></pre></div>
+<p>The job's CPUs, memory and time limit are the <code>#SBATCH</code> lines at the top of the script; its <code>ml</code> and <code>conda</code> lines
+load one cluster's Python environment, so adapt them to yours. Fusion runs on every CPU of the job, its blocks
+sharing a quarter of the job's memory (<code>--mem</code>), so a smaller allocation makes busy blocks wait rather than run out.
+The script's 64G is enough for a 34,000-tile project.</p>
 <h2 id="output-structure">Output Structure</h2>
 <p>After successful registration:
 - <code>registered.ome.zarr</code> - Registered &amp; fused output image (named after the operation)
@@ -1664,7 +1675,7 @@ more than the export time.</p>
 <ul>
 <li><strong>No files matched</strong>: Check your <code>input.path</code> pattern and file extensions</li>
 <li><strong>No overlap found</strong>: Verify source metadata (position/scale) or adjust pairing strategy</li>
-<li><strong>Out of memory</strong>: Leave <code>tile_size</code> unset so blocks are sized against available memory, or use <code>scale</code> to downsample</li>
+<li><strong>Out of memory</strong>: Leave <code>block_size</code> unset so blocks are sized against available memory, or use <code>scale</code> to downsample</li>
 <li><strong>Poor registration</strong>: Try different <code>method</code>, increase <code>max_keypoints</code>, or adjust <code>normalisation</code></li>
 </ul>
 <h2 id="parameter-resolution">Parameter Resolution</h2>
@@ -1721,10 +1732,10 @@ more than the export time.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>
