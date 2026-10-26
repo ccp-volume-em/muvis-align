@@ -15,6 +15,8 @@ class RegistrationMethodCPD(RegistrationMethod):
         self.full_size_gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 0))
         self.normalisation = params.get('normalisation')
         self.max_iter = params.get('max_iter', 1000)
+        # CPD's cost grows with fixed x moving points: the largest areas/blobs are kept
+        self.max_points = params.get('max_keypoints', 5000)
 
     def detect_points(self, data0, gaussian_sigma=None):
         data = data0.astype(self.source_type)
@@ -29,6 +31,8 @@ class RegistrationMethodCPD(RegistrationMethod):
             # OpenCV contour centers are returned in x,y order, while the
             # registration pipeline uses image-axis order y,x.
             points = [np.flip(point) for point, stat in area_points]
+        if self.max_points:
+            points = points[:self.max_points]
         return points
 
     def registration(self, fixed_data: SpatialImage, moving_data: SpatialImage, **kwargs) -> dict:

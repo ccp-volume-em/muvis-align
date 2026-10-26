@@ -362,7 +362,7 @@ parameters:
   - name: max_keypoints
     type: integer
     label: "Max keypoints"
-    description: "SIFT and ORB only: maximum keypoints per image"
+    description: "SIFT, ORB and CPD only: maximum keypoints (CPD: the largest points) per image"
     default: 5000
     cli_tag: "--max_keypoints"
     cli_order: 7

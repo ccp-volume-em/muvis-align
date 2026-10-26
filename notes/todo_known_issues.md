@@ -460,6 +460,7 @@ REFACTORING
 - **Method-specific settings greyed out** - max keypoints, inlier threshold factor, max RANSAC trials and RANSAC
   iterations are enabled only for SIFT/ORB; normalisation and gaussian sigma for SIFT/ORB/CPD (phase correlation,
   elastix and ANTs read none). Tooltips and docs name the methods; inlier_threshold_factor's cli_tag was --max_keypoints.
+  CPD now takes max keypoints too, keeping the largest areas/blobs (its cost grows with fixed x moving points).
 - **Physical scale** - the preview's layers take the crop's pixel size and unit as napari layer scale, as the
   overview does: coordinates and the scale bar read in physical units.
 - **Grid for transform-only methods** - phase correlation and elastix show point pairs mapped through the transform:

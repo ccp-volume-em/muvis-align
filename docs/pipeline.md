@@ -173,8 +173,9 @@ registration:
   gaussian_sigma: 1         # Gaussian filter sigma before detection
   normalisation: True
 
-  # Feature detection and matching (sift and orb only; other methods ignore these)
-  max_keypoints: 5000       # Maximum number of keypoints to detect
+  max_keypoints: 5000       # Maximum number of keypoints to detect (sift, orb and cpd only)
+
+  # Feature matching (sift and orb only; other methods ignore these)
   inlier_threshold_factor: 0.05
   max_trials: 1000
   ransac_iterations: 3

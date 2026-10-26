@@ -108,7 +108,7 @@ Settings only some methods read are greyed out for the others.
 | Method | Pairwise registration: **Phase correlation**, **SIFT**, **ORB**, **CPD**, **Elastix** or **ANTs** |
 | Normalisation | SIFT, ORB and CPD: normalise each overlap before registering it (pre-processing's applies to every method) |
 | Gaussian sigma | SIFT, ORB and CPD: Gaussian blur of each overlap; 0 or empty for none (pre-processing's applies to every method) |
-| Max keypoints | SIFT and ORB: the most keypoints per image |
+| Max keypoints | SIFT, ORB and CPD: the most keypoints per image (CPD keeps the largest) |
 | Inlier threshold factor | SIFT and ORB: RANSAC's inlier threshold, relative (0 to 1) |
 | Max RANSAC trials | SIFT and ORB: the most RANSAC trials |
 | RANSAC iterations | SIFT and ORB: the number of RANSAC runs |

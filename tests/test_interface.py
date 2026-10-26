@@ -1736,7 +1736,7 @@ def test_fusion_preview_enabled_only_with_something_to_fuse(
     [
         ("phase_correlation", set()),
         ("elastix", set()),
-        ("cpd", {"normalisation", "gaussian_sigma"}),
+        ("cpd", {"normalisation", "gaussian_sigma", "max_keypoints"}),
         ("sift", set(interface_module.registration_method_params)),
         ("orb", set(interface_module.registration_method_params)),
     ],

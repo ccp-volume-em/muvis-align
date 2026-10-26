@@ -175,7 +175,7 @@ NAPARI_PROJECT_TEMPLATE = 'ui/project_template.yaml'
 registration_method_params = {
     'normalisation': ('feature', 'cpd'),
     'gaussian_sigma': ('feature', 'cpd'),
-    'max_keypoints': ('feature',),
+    'max_keypoints': ('feature', 'cpd'),
     'inlier_threshold_factor': ('feature',),
     'max_trials': ('feature',),
     'ransac_iterations': ('feature',),

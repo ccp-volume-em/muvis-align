@@ -7,6 +7,7 @@ import numpy as np
 from muvis_align.registration_methods.RegistrationMethodCPD import (
     RegistrationMethodCPD,
 )
+from muvis_align.image.util import detect_volume_points
 from tests.data_builders import make_dummy_blob_spatial_image
 
 @pytest.mark.parametrize('areas, expected', [
@@ -26,6 +27,29 @@ def test_detect_points_flips_2d_contour_centers_to_yx_order(monkeypatch, areas, 
     assert len(points) == len(expected)
     assert np.allclose(points, expected) if expected else points == []
 
+
+
+@pytest.mark.parametrize('dims, shape', [('yx', (32, 48)), ('zyx', (8, 32, 48))])
+def test_detect_points_keeps_the_first_max_keypoints(monkeypatch, dims, shape):
+    """Detection lists the largest first, so the cap keeps those."""
+    data = make_dummy_blob_spatial_image(shape, [], dims)
+    method = RegistrationMethodCPD(data, params={'max_keypoints': 2})
+    detected = np.arange(3 * len(dims), dtype=np.float32).reshape(3, len(dims))
+    monkeypatch.setattr('muvis_align.registration_methods.RegistrationMethodCPD.detect_area_points',
+                        lambda data: [(np.flip(point), 1.0) for point in detected])
+    monkeypatch.setattr('muvis_align.registration_methods.RegistrationMethodCPD.detect_volume_points',
+                        lambda data: detected)
+
+    points = method.detect_points(data)
+
+    assert np.allclose(points, detected[:2])
+
+
+def test_detect_volume_points_lists_the_largest_blobs_first(monkeypatch):
+    blobs = np.array([[1, 2, 3, 1.0], [4, 5, 6, 3.0], [7, 8, 9, 2.0]])
+    monkeypatch.setattr('muvis_align.image.util.blob_log', lambda *args, **kwargs: blobs)
+
+    assert np.array_equal(detect_volume_points(np.zeros((4, 4, 4))), [[4, 5, 6], [7, 8, 9], [1, 2, 3]])
 
 def test_detect_points_keeps_3d_blob_coordinates_unchanged(monkeypatch):
     data = make_dummy_blob_spatial_image((8, 32, 48), [(1, 6, 11), (3, 8, 5)], 'zyx')

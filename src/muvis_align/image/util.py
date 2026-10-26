@@ -1206,7 +1206,8 @@ def detect_area_points(data):
 def detect_volume_points(data):
     blobs = blob_log(data, min_sigma=1, max_sigma=30, num_sigma=10, threshold=0.1)
     if blobs.shape[1] > 3:
-        blobs = blobs[:, :3]
+        # largest first, as detect_area_points(); the sigma column(s) follow the coordinates
+        blobs = blobs[np.argsort(-blobs[:, 3:].mean(axis=1), kind='stable'), :3]
     return blobs
 
 
