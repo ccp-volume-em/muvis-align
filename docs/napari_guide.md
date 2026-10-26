@@ -97,6 +97,8 @@ Choose the **Operation** first, as it decides what the rest of the run does:
   resampled. **Process** writes them to a `converted/` output folder. Worth doing first
   for sources without a pyramid, which make every preview slow.
 
+Settings only some methods read are greyed out for the others.
+
 | Parameter | Description |
 |-----------|-------------|
 | Operation | **Register**, **Merge** or **Convert**, as above |
@@ -104,12 +106,12 @@ Choose the **Operation** first, as it decides what the rest of the run does:
 | Pairing | Which sources are registered against each other: **Default** (multiview-stitcher's own), **Orthogonal** (leaves out diagonal and very small overlaps), **Stack** (consecutive sources) or **Split: 2D x/y first** (each plane's or channel's tiles first, then the stitched planes or channels against each other) |
 | Transform type | **Translation**, **Rigid**, **Affine** or **Similarity** |
 | Method | Pairwise registration: **Phase correlation**, **SIFT**, **ORB**, **CPD**, **Elastix** or **ANTs** |
-| Normalisation | Normalise each overlap before registering it |
-| Gaussian sigma | Gaussian blur of each overlap; 0 or empty for none |
-| Max keypoints | Feature methods (SIFT, ORB): the most keypoints per image |
-| Inlier threshold factor | Feature methods: RANSAC's inlier threshold, relative (0 to 1) |
-| Max RANSAC trials | Feature methods: the most RANSAC trials |
-| RANSAC iterations | Feature methods: the number of RANSAC runs |
+| Normalisation | SIFT, ORB and CPD: normalise each overlap before registering it (pre-processing's applies to every method) |
+| Gaussian sigma | SIFT, ORB and CPD: Gaussian blur of each overlap; 0 or empty for none (pre-processing's applies to every method) |
+| Max keypoints | SIFT and ORB: the most keypoints per image |
+| Inlier threshold factor | SIFT and ORB: RANSAC's inlier threshold, relative (0 to 1) |
+| Max RANSAC trials | SIFT and ORB: the most RANSAC trials |
+| RANSAC iterations | SIFT and ORB: the number of RANSAC runs |
 | Threads | Pair registrations run in parallel; 0 or empty to choose automatically |
 | Registration preview image 1 / 2 | The pair that **Preview** and **Modify pair registration** work on |
 | Split binning | Split pairing only: the binning of the stitched planes or channels when registering them against each other (1 is the pre-processed pixel size) |

@@ -170,3 +170,13 @@ default_transform_key = 'transform'
 default_quality_key = 'quality'
 
 NAPARI_PROJECT_TEMPLATE = 'ui/project_template.yaml'
+
+# registration params read only by some methods (registration_method_kind()), greyed out in the plugin for the rest
+registration_method_params = {
+    'normalisation': ('feature', 'cpd'),
+    'gaussian_sigma': ('feature', 'cpd'),
+    'max_keypoints': ('feature',),
+    'inlier_threshold_factor': ('feature',),
+    'max_trials': ('feature',),
+    'ransac_iterations': ('feature',),
+}

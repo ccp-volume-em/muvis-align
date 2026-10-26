@@ -1732,6 +1732,31 @@ def test_fusion_preview_enabled_only_with_something_to_fuse(
 
 
 @pytest.mark.parametrize(
+    ("method", "enabled_params"),
+    [
+        ("phase_correlation", set()),
+        ("elastix", set()),
+        ("cpd", {"normalisation", "gaussian_sigma"}),
+        ("sift", set(interface_module.registration_method_params)),
+        ("orb", set(interface_module.registration_method_params)),
+    ],
+)
+def test_method_params_enabled_only_for_the_methods_reading_them(bare_interface, method, enabled_params):
+    bare_interface.params = {"registration": {}}
+    bare_interface.write_params = MagicMock()
+    bare_interface.param_widgets = {
+        f"registration.{param_name}": SimpleNamespace(widget=SimpleNamespace(enabled=None))
+        for param_name in interface_module.registration_method_params
+    }
+    bare_interface.param_widgets["registration.method"] = SimpleNamespace(get_value=lambda: method)
+
+    bare_interface.change_param("registration.method", method)
+
+    assert {param_name for param_name in interface_module.registration_method_params
+            if bare_interface.param_widgets[f"registration.{param_name}"].widget.enabled} == enabled_params
+
+
+@pytest.mark.parametrize(
     ("pairs_registered", "selected"), [(False, None), (True, 3)],
 )
 def test_show_loaded_project_opens_every_tab(bare_interface, pairs_registered, selected):

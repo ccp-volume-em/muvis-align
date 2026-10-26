@@ -341,7 +341,7 @@ parameters:
   - name: normalisation
     type: checkbox
     label: "Normalisation"
-    description: "If enabled, normalise overlaps in registration function"
+    description: "SIFT, ORB and CPD only: if enabled, normalise overlaps in registration function (pre-processing has its own for every method)"
     default: True
     cli_tag: "--normalisation"
     cli_order: 5
@@ -352,7 +352,7 @@ parameters:
   - name: gaussian_sigma
     type: float
     label: "Gaussian sigma"
-    description: "Sigma for Gaussian filtering of overlaps (value of 0 or empty for no filtering)"
+    description: "SIFT, ORB and CPD only: sigma for Gaussian filtering of overlaps (value of 0 or empty for no filtering; pre-processing has its own for every method)"
     default:
     cli_tag: "--gaussian_sigma"
     cli_order: 6
@@ -362,7 +362,7 @@ parameters:
   - name: max_keypoints
     type: integer
     label: "Max keypoints"
-    description: "Maximum keypoints for feature-based registration methods like SIFT and ORB"
+    description: "SIFT and ORB only: maximum keypoints per image"
     default: 5000
     cli_tag: "--max_keypoints"
     cli_order: 7
@@ -372,9 +372,9 @@ parameters:
   - name: inlier_threshold_factor
     type: float
     label: "Inlier threshold factor"
-    description: "Inlier threshold factor for RANSAC in feature-based registration methods, relative value (0...1)"
+    description: "SIFT and ORB only: inlier threshold factor for RANSAC, relative value (0...1)"
     default: 0.05
-    cli_tag: "--max_keypoints"
+    cli_tag: "--inlier_threshold_factor"
     cli_order: 8
     optional: True
     section_id: "registration"
@@ -382,7 +382,7 @@ parameters:
   - name: max_trials
     type: integer
     label: "Max RANSAC trials"
-    description: "Maximum RANSAC trials for feature-based registration methods"
+    description: "SIFT and ORB only: maximum RANSAC trials"
     default: 1000
     cli_tag: "--max_trials"
     cli_order: 9
@@ -392,7 +392,7 @@ parameters:
   - name: ransac_iterations
     type: integer
     label: "RANSAC iterations"
-    description: "Number of RANSAC iterations for feature-based registration methods"
+    description: "SIFT and ORB only: number of RANSAC iterations"
     default: 3
     cli_tag: "--ransac_iterations"
     cli_order: 10

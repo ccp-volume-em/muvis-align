@@ -169,11 +169,12 @@ registration:
   method: sift              # phase_correlation, sift, orb, feature, cpd, elastix, ants
   name: orb                 # Alternative to 'method'
   
-  # Feature detection (for sift, orb, feature methods)
-  max_keypoints: 5000       # Maximum number of keypoints to detect
+  # Overlap filtering (sift, orb and cpd only; pre-processing's apply to every method)
   gaussian_sigma: 1         # Gaussian filter sigma before detection
-  
-  # Feature matching parameters
+  normalisation: True
+
+  # Feature detection and matching (sift and orb only; other methods ignore these)
+  max_keypoints: 5000       # Maximum number of keypoints to detect
   inlier_threshold_factor: 0.05
   max_trials: 1000
   ransac_iterations: 3
@@ -183,9 +184,6 @@ registration:
   
   # Pairing strategy
   pairing: orthogonal       # orthogonal, stack; unset = multiview-stitcher's own pairing
-  
-  # Normalization
-  normalisation: True       # True, False, 'global', 'individual'
   
   # Global resolution method
   groupwise_resolution_method: global_optimization  # or other methods

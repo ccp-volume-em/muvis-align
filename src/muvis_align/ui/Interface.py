@@ -20,10 +20,10 @@ from qtpy.QtWidgets import QApplication, QMessageBox
 
 from muvis_align.constants import zarr_extension, tiff_extension, default_transform_key, default_quality_key, \
     default_interactive_preview_scale, default_chunk_size, _available_memory_bytes, napari_dask_cache_share, \
-    spatial_unit
+    spatial_unit, registration_method_params
 from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
                                              update_params)
-from muvis_align.MVSRegistration import MVSRegistration, RegState
+from muvis_align.MVSRegistration import MVSRegistration, RegState, registration_method_kind
 from muvis_align.image.util import get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
     draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, NoOverlapError, \
@@ -218,6 +218,8 @@ class Interface:
                             self.set_channels(value)
                         # a loaded project skips update_output_channels(), so attach the color pickers here
                         self.populate_channels_table_color_pickers()
+        # a loaded method equal to the widget's default changes nothing, so change_param() does not see it
+        self.update_method_params_enabled()
 
     def _listed_choice(self, param_name, value, widget):
         """The dropdown's choice for a value saved before its setting became a list (e.g. a block size of 4096, or
@@ -317,6 +319,8 @@ class Interface:
         self.write_params()
         if param_name == 'registration.operation':
             self.update_fusion_preview_enabled()
+        if param_name == 'registration.method':
+            self.update_method_params_enabled()
 
     def update_input_output_path(self):
         # shows paths as stored: FileEdit.set_value() would force them absolute, so the line edit is set directly
@@ -1684,6 +1688,15 @@ class Interface:
         widget = self.param_widgets.get('registration.modify_pair_registration')
         if widget:
             widget.widget.enabled = enabled
+
+    def update_method_params_enabled(self):
+        method_widget = self.param_widgets.get('registration.method')
+        if method_widget is not None:
+            method_kind = registration_method_kind(method_widget.get_value())
+            for param_name, method_kinds in registration_method_params.items():
+                widget = self.param_widgets.get(f'registration.{param_name}')
+                if widget is not None:
+                    widget.widget.enabled = method_kind in method_kinds
 
     def update_fusion_preview_enabled(self):
         widget = self.param_widgets.get('fusion.preview_fusion')

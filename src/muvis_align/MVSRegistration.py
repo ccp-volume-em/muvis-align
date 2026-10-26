@@ -60,6 +60,20 @@ def normalisation_enabled(value):
     return bool(value)
 
 
+def registration_method_kind(method):
+    """The pairwise registration a method name selects: 'cpd', 'feature', 'elastix', 'ants' or 'phase_correlation'."""
+    method = (method or '').lower()
+    if 'cpd' in method:
+        return 'cpd'
+    if 'feature' in method or 'orb' in method or 'sift' in method:
+        return 'feature'
+    if 'elastix' in method:
+        return 'elastix'
+    if 'ant' in method:
+        return 'ants'
+    return 'phase_correlation'
+
+
 class _DeferredQuality:
     """A link quality whose computation waits until it is known to be kept."""
     __slots__ = ('func', 'args')
@@ -1100,12 +1114,13 @@ class MVSRegistration:
             method = params.get('method',
                                 params.get('name', ''))
         method = method.lower()
+        method_kind = registration_method_kind(method)
 
-        if 'cpd' in method:
+        if method_kind == 'cpd':
             from muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
             registration_method = RegistrationMethodCPD(sim0, params, self.debug)
             pairwise_reg_func = registration_method.registration
-        elif 'feature' in method or 'orb' in method or 'sift' in method:
+        elif method_kind == 'feature':
             if 'cv' in method:
                 from muvis_align.registration_methods.RegistrationMethodCvFeatures import RegistrationMethodCvFeatures
                 registration_method = RegistrationMethodCvFeatures(sim0, params, self.debug)
@@ -1113,7 +1128,7 @@ class MVSRegistration:
                 from muvis_align.registration_methods.RegistrationMethodSkFeatures import RegistrationMethodSkFeatures
                 registration_method = RegistrationMethodSkFeatures(sim0, params, self.debug)
             pairwise_reg_func = registration_method.registration
-        elif 'elastix' in method:
+        elif method_kind == 'elastix':
             try:
                 from itk import ElastixRegistrationMethod
             except ImportError:
@@ -1123,7 +1138,7 @@ class MVSRegistration:
             transform_type = params.get('transform_type', 'rigid')
             pairwise_reg_func_kwargs = {'transform_types': ['translation'] if transform_type == 'translation'
                                         else ['translation', transform_type]}
-        elif 'ant' in method:
+        elif method_kind == 'ants':
             try:
                 import ants
             except ImportError:
