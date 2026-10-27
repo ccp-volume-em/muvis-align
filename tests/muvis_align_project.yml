@@ -1,41 +1,48 @@
-fusion:
-  method: average
-  ome_version: '0.5'
-  preview_fusion: false
-  spacing: mean
-  block_size: 1024,1024
 input_output:
+  source_position_z: source
+  source_position_y: source
+  source_position_x: source
+  source_scale_z: source
+  source_scale_y: source
+  source_scale_x: source
+  source_rotation: source
+  normalise_rotated_positions: false
+  preview_scale: '1'
   coordinate_system: source_metadata
-  input_path: ../data/S000/*.zarr
   metadata_table: []
+  registration_dimension: space
+  channels_table: []
   output_path: output
   overwrite: true
-  source_position_x: source
-  source_position_y: source
-  source_position_z: source
-  source_rotation: source
-  source_scale_x: source
-  source_scale_y: source
-  source_scale_z: source
+  input_path: ../data/S000/*.zarr
 pre_processing:
-  filter_foreground: false
+  scale: '1'
   flatfield_quantiles: ''
-  normalisation: 'False'
-  scale: 1
+  normalisation: none
+  filter_foreground: false
 registration:
-  gaussian_sigma: 2.0
-  inlier_threshold_factor: 0.05
-  max_keypoints: 5000
-  max_trials: 1000
-  method: sift
-  metrics_table: []
-  modify_pair_registration: false
-  normalisation: true
   operation: register
-  pair_registration: false
   pairing: orthogonal
-  preview_registration: false
+  transform_type: rigid
+  method: sift
+  normalisation: true
+  max_keypoints: 5000
+  inlier_threshold_factor: 0.05
+  max_trials: 1000
   ransac_iterations: 3
+  split_binning: 8
+  metrics_table: []
+  groupwise_resolution_method: robust_linear
+  gaussian_sigma: 2.0
+  modify_pair_registration: false
+  pair_registration: false
+  preview_registration: false
   reg_preview_image1: '000_000'
   reg_preview_image2: '000_001'
-  transform_type: rigid
+  channel: '0'
+fusion:
+  method: average
+  spacing: mean
+  block_size: '1024'
+  ome_version: '0.5'
+  preview_fusion: false
