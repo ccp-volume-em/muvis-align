@@ -36,6 +36,9 @@ Every widget writes straight back to this file as you change it, so a project ca
 reopened exactly as it was left. Paths are stored relative to the directory the project
 file sits in.
 
+A project file can also be opened with napari's **File → Open**, or dropped onto napari: it then opens in the
+plugin. To start from a ready-made project, see the [samples](napari_guide.md#trying-it-on-sample-data).
+
 ## Using the plugin
 
 [Step by step in napari](napari_guide.md) goes through the tabs in order, with every

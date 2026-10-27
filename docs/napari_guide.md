@@ -25,6 +25,25 @@ bottom right.
 
 Hover over any parameter to see its description.
 
+## Trying it on sample data
+
+To try the plugin without data of your own, open one of its samples from
+**File → Open Sample → muvis-align**:
+
+| Sample | Data |
+|--------|------|
+| 2D section | 2×2 tiles of 800×800 pixels (`data/S000`, the tile set in the screenshots below) |
+| 2D, two sections | two sections of 2×2 tiles each (`data/S000` and `data/S001`) |
+| 3D | 2×2 tiles of 200×128×128 voxels (`data/3d`) |
+
+A sample is one of the test projects in this repository, with its data. It opens in the plugin as if chosen on the
+**project** tab, so its settings fill every tab and the next step is **Process** on
+[input output](#2-input-output). The first time, it is downloaded from GitHub (11-22 MB) into your user cache
+folder (`%LOCALAPPDATA%\muvis-align\Cache` on Windows, `~/Library/Caches/muvis-align` on macOS,
+`~/.cache/muvis-align` on Linux), where its output is written too. Its project file is fetched again on every open,
+so a sample always starts from the repository's settings; without a connection, a sample opened before still opens
+from the cache.
+
 ## 1. Project
 
 ![The project tab](images/napari/project.png)

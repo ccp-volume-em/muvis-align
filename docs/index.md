@@ -73,7 +73,8 @@ The plugin can also run in a container, in the browser through Xpra: on a cluste
 
 1. Install as above, or without Python use the [quick start](#quick-start-in-your-browser) on a cluster.
 2. Open the [napari plugin](napari.md) and follow the [step-by-step guide](napari_guide.md)
-   to set up a project and work out your parameters.
+   to set up a project and work out your parameters. To try it first, open a
+   [sample](napari_guide.md#trying-it-on-sample-data) from **File → Open Sample → muvis-align**.
 3. For batch runs, copy one of the example parameter files under `resources/` and run it
    with the [command-line pipeline](pipeline.md).
 4. To work from Python, start with `pipeline.ipynb` in the [notebooks](notebooks.md).
