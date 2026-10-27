@@ -43,8 +43,19 @@ def read_project(path):
 def get_sample(project_file):
     cache_dir = platformdirs.user_cache_dir('muvis-align', appauthor=False)
     project_path = os.path.join(cache_dir, project_file)
+    try:
+        project_text = download(REPO_FILE_URL + project_file)
+    except (urllib.error.URLError, ConnectionError):
+        if not os.path.exists(project_path):
+            raise
+        logging.warning(f'GitHub could not be reached: opening the cached {project_file}')
+        return project_path
     if not os.path.exists(project_path):
-        download_sample(project_file, cache_dir)
+        download_data(project_file, project_text, cache_dir)
+    # GitHub's project file on every open: settings changed in a sample do not carry over
+    os.makedirs(os.path.dirname(project_path), exist_ok=True)
+    with open(project_path, 'wb') as file:
+        file.write(project_text)
     return project_path
 
 
@@ -60,9 +71,9 @@ def download(url, attempts=20):
                 raise
 
 
-def download_sample(project_file, cache_dir):
+def download_data(project_file, project_text, cache_dir):
+    # the project file is written after this: a cached project file means its data downloaded completely
     repo_paths = [item['path'] for item in json.loads(download(REPO_TREE_URL))['tree'] if item['type'] == 'blob']
-    project_text = download(REPO_FILE_URL + project_file)
     input_path = path_param_to_text(yaml.safe_load(project_text)['input_output']['input_path'])
     project_dir = posixpath.dirname(project_file)
     patterns = [posixpath.normpath(posixpath.join(project_dir, part.strip())).split('/')
@@ -77,11 +88,6 @@ def download_sample(project_file, cache_dir):
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
         with open(local_path, 'wb') as file:
             file.write(download(REPO_FILE_URL + repo_path))
-    # written last: a cached project file means its data downloaded completely
-    project_path = os.path.join(cache_dir, project_file)
-    os.makedirs(os.path.dirname(project_path), exist_ok=True)
-    with open(project_path, 'wb') as file:
-        file.write(project_text)
 
 
 def is_in_input(repo_path, patterns):

@@ -1,5 +1,6 @@
 import json
 import os
+import urllib.error
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,6 +36,12 @@ def cached_files(cache_dir):
                   for root, _, names in os.walk(cache_dir) for name in names)
 
 
+def get_sample(cache_dir, download):
+    platformdirs = MagicMock(user_cache_dir=MagicMock(return_value=str(cache_dir)))
+    with patch.object(_sample_data, 'platformdirs', platformdirs),             patch.object(_sample_data, 'download', side_effect=download):
+        return _sample_data.get_sample('tests/muvis_align_project.yml')
+
+
 @pytest.mark.parametrize('input_path, expected', [
     ('../data/S000/*.zarr', ['data/S000/S000_000.zarr/0/c/0/0', 'data/S000/S000_000.zarr/zarr.json']),
     ('../data/S*/*.zarr', ['data/S000/S000_000.zarr/0/c/0/0', 'data/S000/S000_000.zarr/zarr.json',
@@ -43,31 +50,37 @@ def cached_files(cache_dir):
                                                    'data/S000/S000_000.zarr/0/c/0/0',
                                                    'data/S000/S000_000.zarr/zarr.json']),
 ])
-def test_download_sample_takes_the_project_and_its_input_files(tmp_path, input_path, expected):
-    with patch.object(_sample_data, 'download', side_effect=fake_download(input_path)):
-        _sample_data.download_sample('tests/muvis_align_project.yml', str(tmp_path))
+def test_get_sample_downloads_the_project_and_its_input_files(tmp_path, input_path, expected):
+    project_path = get_sample(tmp_path, fake_download(input_path))
+    assert project_path == os.path.join(str(tmp_path), 'tests/muvis_align_project.yml')
     assert cached_files(tmp_path) == expected + ['tests/muvis_align_project.yml']
     assert (tmp_path / expected[0]).read_bytes() == expected[0].encode()
+    assert (tmp_path / 'tests/muvis_align_project.yml').read_text() == f'input_output:\n  input_path: {input_path}\n'
 
 
-def test_download_sample_without_matching_data_caches_nothing(tmp_path):
-    with patch.object(_sample_data, 'download', side_effect=fake_download('data/S000/*.zarr')):
-        with pytest.raises(FileNotFoundError, match='data/S000/\\*.zarr'):
-            _sample_data.download_sample('tests/muvis_align_project.yml', str(tmp_path))
+def test_get_sample_without_matching_data_caches_nothing(tmp_path):
+    with pytest.raises(FileNotFoundError, match='data/S000/\\*.zarr'):
+        get_sample(tmp_path, fake_download('data/S000/*.zarr'))
     assert cached_files(tmp_path) == []
 
 
-def test_get_sample_downloads_only_when_not_cached(tmp_path):
-    cache_dir = MagicMock(user_cache_dir=MagicMock(return_value=str(tmp_path)))
-    with patch.object(_sample_data, 'platformdirs', cache_dir), \
-            patch.object(_sample_data, 'download_sample') as download_sample:
-        project_path = _sample_data.get_sample('tests/muvis_align_project.yml')
-        download_sample.assert_called_once_with('tests/muvis_align_project.yml', str(tmp_path))
-        (tmp_path / 'tests').mkdir()
-        (tmp_path / 'tests' / 'muvis_align_project.yml').write_text('input_output: {}\n')
-        assert _sample_data.get_sample('tests/muvis_align_project.yml') == project_path
-        download_sample.assert_called_once()
-    assert project_path == os.path.join(str(tmp_path), 'tests/muvis_align_project.yml')
+def test_get_sample_cached_replaces_only_the_project_file(tmp_path):
+    (tmp_path / 'tests').mkdir()
+    (tmp_path / 'tests/muvis_align_project.yml').write_text('input_output:\n  preview_scale: 16\n')
+    with patch.object(_sample_data, 'download_data') as download_data:
+        get_sample(tmp_path, fake_download('../data/S000/*.zarr'))
+    download_data.assert_not_called()
+    assert (tmp_path / 'tests/muvis_align_project.yml').read_text() == 'input_output:\n  input_path: ../data/S000/*.zarr\n'
+
+
+def test_get_sample_offline_opens_the_cached_project_only(tmp_path):
+    offline = urllib.error.URLError('offline')
+    with pytest.raises(urllib.error.URLError):
+        get_sample(tmp_path, offline)
+    (tmp_path / 'tests').mkdir()
+    (tmp_path / 'tests/muvis_align_project.yml').write_text('input_output: {}\n')
+    assert get_sample(tmp_path, offline) == os.path.join(str(tmp_path), 'tests/muvis_align_project.yml')
+    assert (tmp_path / 'tests/muvis_align_project.yml').read_text() == 'input_output: {}\n'
 
 
 def test_download_retries_a_reset_connection():
