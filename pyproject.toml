@@ -50,6 +50,7 @@ dependencies = [
     "spatial-image",
     "multiscale-spatial-image>=2.0.0,<2.2.0",
     "magic-class",
+    "platformdirs",
     "probreg; python_version < '3.13' and sys_platform != 'win32'",
 ]
 

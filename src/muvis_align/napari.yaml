@@ -9,6 +9,29 @@ contributions:
     - id: muvis-align.create_widget
       python_name: muvis_align._widget:MainWidget
       title: muvis-align
+    - id: muvis-align.get_reader
+      python_name: muvis_align._sample_data:get_reader
+      title: Open a muvis-align project
+
+  readers:
+    - command: muvis-align.get_reader
+      filename_patterns: ['*.yml', '*.yaml']
+      accepts_directories: false
+
+  # the reader downloads a sample's project file and data from GitHub into the user cache, once
+  sample_data:
+    - uri: https://raw.githubusercontent.com/ccp-volume-em/muvis-align/main/tests/muvis_align_project.yml
+      reader_plugin: muvis-align
+      key: sample_2d
+      display_name: 2D section
+    - uri: https://raw.githubusercontent.com/ccp-volume-em/muvis-align/main/tests/muvis_align_project2.yml
+      reader_plugin: muvis-align
+      key: sample_2d_sections
+      display_name: 2D, two sections
+    - uri: https://raw.githubusercontent.com/ccp-volume-em/muvis-align/main/tests/muvis_align_project3d.yml
+      reader_plugin: muvis-align
+      key: sample_3d
+      display_name: 3D
 
   widgets:
     - command: muvis-align.create_widget
