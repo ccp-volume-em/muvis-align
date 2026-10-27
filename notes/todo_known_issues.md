@@ -77,7 +77,17 @@ quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB 
 
 ## In progress
 
-Nothing.
+### napari samples that load the test projects into the plugin (branch `sample-data`)
+
+Implemented in `src/muvis_align/_sample_data.py` + `napari.yaml`, tests in `tests/test_sample_data.py`.
+- File > Open Sample > muvis-align: 2D section, 2D two sections, 3D = the three `tests/muvis_align_project*.yml`.
+- Samples are `uri` entries (raw GitHub `main` URLs of the ymls) opened by a muvis-align reader: a callable sample
+  must return layers. The reader downloads the yml + files matching its `input_path` once into the user cache
+  (repo layout, yml written last), then sets the project tab's path; sources are not read. Nothing duplicated in repo.
+- Downloads retry: this network resets most new HTTPS connections from Python to raw.githubusercontent.com.
+- Checked: 3D sample opened through napari (30 files, 16 MB, 15 s; cached reopen instant).
+- A sample whose input_path matches no files on GitHub raises and caches nothing.
+- Left: check the 2D samples once the input_path fix (960c474) is on GitHub `main`; merge the branch.
 
 ## TODO
 
