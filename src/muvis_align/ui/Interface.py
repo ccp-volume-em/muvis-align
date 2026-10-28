@@ -972,11 +972,14 @@ class Interface:
                             weight=self.shapes_weight),
                         factory)
 
-            # each section built only when viewed: image data as soon as the shapes
-            with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
-                data = self._run_off_thread(
-                    lambda worker_factory: self._create_lazy_overview(transform_key,
-                                                                      show_preprocessed=show_preprocessed), factory)
+            # each section built only when viewed; never without show_images, so whether data is read cannot hinge on
+            # the sources happening to be unrotated
+            data = None
+            if show_images:
+                with Timer('update_views: lazy overview', verbose=self._timing_verbose()):
+                    data = self._run_off_thread(
+                        lambda worker_factory: self._create_lazy_overview(transform_key,
+                                                                          show_preprocessed=show_preprocessed), factory)
             # otherwise (a rotation, or sources it cannot overlay) the fused preview
             if data is None and show_images:
                 with Timer('update_views: create fused data', verbose=self._timing_verbose()):

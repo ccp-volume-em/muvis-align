@@ -950,6 +950,8 @@ def test_update_views_detects_multi_z_from_view_msims(
     bare_interface._create_napari_shapes.assert_called_once_with(
         "source_metadata", force_2d=True, progress_factory=ANY, weight=3
     )
+    # shapes only: no overview reads the sources, rotated or not
+    bare_interface._create_lazy_overview.assert_not_called()
 
 
 @pytest.mark.parametrize(("size", "expected_force_2d"), [({"y": 10, "x": 10}, [True]),
