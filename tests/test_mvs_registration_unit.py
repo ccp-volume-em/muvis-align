@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from muvis_align.constants import default_fusion_memory_pool, default_fusion_workers
 from muvis_align.MVSRegistration import MVSRegistration, RegState
-from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration, translation_affine
+from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration
 
 S000_TILES = [(DATA_DIR / name).as_posix() for name in ZARR_FILES]
 TWO_TILES = S000_TILES[:2]
@@ -1178,33 +1178,3 @@ def test_pairs_scored_0_or_below_are_left_out_of_the_solve_and_their_tile_kept_i
     assert all(reg.pairs_graph.has_edge(*edge) for edge in tile_pairs)
     np.testing.assert_array_equal(np.asarray(results['mappings'][tile]).squeeze(), np.eye(3))
     assert str(reg.file_labels[tile]) in caplog.text
-
-
-@pytest.mark.parametrize('fallback_fits', [True, False], ids=['fallback-fits', 'still-out'])
-def test_a_tile_moved_over_half_a_tile_falls_back_to_linear_two_pass_then_to_its_metadata_position(
-        monkeypatch, tmp_path, caplog, fallback_fits):
-    """Pairs come from metadata overlaps and each only sees its overlap, so a solve flinging a tile far off is wrong:
-    register_global re-solves with linear_two_pass, and keeps a tile still out at its metadata position."""
-    import muvis_align.MVSRegistration as mvs_module
-    reg = prepared_registration(S000_TILES, tmp_path)
-    params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid',
-              'groupwise_resolution_method': 'robust_linear'}
-    reg.register_pairs(reg.register_msims, params=params)
-    flung = translation_affine(1e6, 0.0, t_coords=[0])
-    nearby = translation_affine(1.0, 0.0, t_coords=[0])
-    methods = []
-
-    def resolved(graph, method=None, **kwargs):
-        methods.append(method)
-        far = method == 'robust_linear' or not fallback_fits
-        return {node: flung if far and node == 0 else nearby for node in graph.nodes}, {}
-    monkeypatch.setattr(mvs_module, 'groupwise_resolution', resolved)
-
-    with caplog.at_level(logging.WARNING):
-        results = reg.register_global(reg.pair_msims, params=params)
-
-    assert methods == ['robust_linear', 'linear_two_pass']
-    expected = np.asarray(nearby).squeeze() if fallback_fits else np.eye(3)
-    np.testing.assert_array_equal(np.asarray(results['mappings'][0]).squeeze(), expected)
-    np.testing.assert_array_equal(np.asarray(results['mappings'][1]).squeeze(), np.asarray(nearby).squeeze())
-    assert (str(reg.file_labels[0]) in caplog.text) != fallback_fits

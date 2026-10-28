@@ -220,6 +220,9 @@ registration:
   3D where the rest of the pipeline needs it
 - unset - Use multiview-stitcher's own default pairing
 
+The plugin preselects `orthogonal`: multiview-stitcher's own pairing adds corner-only diagonal pairs, on which a
+feature method such as SIFT can fit an arbitrary rotation that throws tiles far off in the global registration.
+
 `pairing: stack` replaces the old `register stack` / `stack` operations, which are no
 longer read - the plugin has no stack operation, so deriving this from the operation
 meant every stack-specific step was silently skipped there. Configuration files under

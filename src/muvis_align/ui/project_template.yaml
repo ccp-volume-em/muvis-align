@@ -280,7 +280,7 @@ parameters:
         value: "stack"
       - label: "Split: 2D x/y first"
         value: "split"
-    default: "default"
+    default: "orthogonal"
     cli_tag: "--pairing"
     cli_order: 2
     optional: True

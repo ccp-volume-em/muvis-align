@@ -30,11 +30,10 @@ squares with `linear_two_pass` as the solver: each round sets an edge's quality 
 weight of its last residual, 1 / (1 + (residual / scale)^2), and re-solves with pruning off (`mad_k` very large,
 `keep_mst=False`, `weight_mode='quality'`). Scale: half the voxel diagonal; it stops once the residuals settle.
 With a scale that small the weights act almost as 1 / residual^2, and the rounds can swing between a good fit and
-one flinging tiles far off (Supra 5x5, 2026-10-28: median edge residual 1.4 / 300 um alternately), so it returns
-the round with the lowest median residual. For a rigid solve a pair's quality is scaled by (overlap's longest side
-/ tile's longest side)^2: a corner-only diagonal overlap holds next to no rotation, yet its fit can say 108 deg.
-`register_global` then re-solves with `linear_two_pass` if any tile moved over half a tile from its metadata
-position, and keeps a tile still out at its metadata position.
+a bad one, so it returns the round with the lowest median residual. Corner-only (diagonal) pairs are what drove it
+there on Supra 5x5 (2026-10-28): SIFT on a ~5 um corner overlap fits arbitrary rotations (108 deg, at quality 0.07-0.14),
+which the 72 mm stage lever arm turns into tiles placed many tiles away. Orthogonal pairing, the plugin's default
+since, has no such pairs; phase correlation is unaffected as it fits no rotation.
 Registered as a named method, so `groupwise_resolution` runs it per component. Only 'translation' and 'rigid';
 other transform types fall back to `global_optimization`. Its rounds swap numpy versions of `linear_two_pass`'s
 parameter building and residuals in (1b), and it picks the reference view itself (1c).

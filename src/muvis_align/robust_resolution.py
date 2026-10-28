@@ -48,18 +48,6 @@ def voxel_diagonal(graph):
                for node in graph.nodes)
 
 
-def rotation_support(graph, edge):
-    """(overlap's longest side / the larger view's longest side)^2: a rotation's error grows with the distance across
-    the overlap, so a corner-only overlap says next to nothing about it. 1 without a bbox."""
-    bbox = graph.edges[edge].get('bbox')
-    if bbox is None:
-        return 1.0
-    lower, upper = np.asarray(bbox.data if isinstance(bbox, xr.DataArray) else bbox, dtype=float)
-    view_size = max(max(props['shape'][dim] * props['spacing'][dim] for dim in props['spacing'])
-                    for props in (graph.nodes[node]['stack_props'] for node in edge))
-    return min(1.0, float(np.max(upper - lower)) / view_size) ** 2
-
-
 def _build_params_from_templates(nodes, translations, rotations, scales, transform, ndim, x_in=None, x_out=None):
     """linear_two_pass._build_params_from_components with each transform a copy of a cached xarray: building them
     from scratch, twice a solve, is most of a round's time."""
@@ -120,8 +108,7 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
     of its last residual, 1 / (1 + (residual / scale)^2): bad pairs stop pulling the fit without being cut.
     Stops early once the `change_quantile` of the residuals' changes in a round is within `tolerance * scale`, as
     the weights then hardly change. `scale` defaults to half the voxel diagonal. Returns the round with the lowest
-    median residual; beyond translation, pair qualities are first scaled by their rotation_support. `progress` is
-    called after each round. Per connected component and timepoint, as any resolver."""
+    median residual. `progress` is called after each round. Per connected component and timepoint, as any resolver."""
     graph = g_reg_component_tp.copy()
     if reference_view is None or reference_view not in graph:
         reference_view = find_reference_view(graph)
@@ -130,8 +117,6 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
     edges = [tuple(sorted(edge)) for edge in graph.edges]
     qualities = {edge: scalar(graph.edges[edge].get('quality')) for edge in edges}
     qualities = {edge: quality if np.isfinite(quality) else 0.0 for edge, quality in qualities.items()}
-    if transform != 'translation':
-        qualities = {edge: quality * rotation_support(graph, edge) for edge, quality in qualities.items()}
     weights = dict.fromkeys(edges, 1.0)
     params, info, last_residuals = None, None, None
     # the reweighting can swing between a good and a bad fit, so the last round is not necessarily the best

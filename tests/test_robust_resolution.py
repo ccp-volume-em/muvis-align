@@ -102,31 +102,6 @@ def test_the_round_with_the_lowest_median_residual_is_returned_not_the_last(monk
     assert {float(np.asarray(param).squeeze()[0, 2]) for param in params.values()} == {2.0}
 
 
-@pytest.mark.parametrize('transform, corner_quality', [('translation', 0.9), ('rigid', 0.9 * 0.1 ** 2)])
-def test_a_corner_only_pair_counts_by_its_overlap_size_for_a_rigid_solve(monkeypatch, transform, corner_quality):
-    """A rotation's error grows across the overlap: a 10 x 10 corner of 100-long tiles weighs (10 / 100)^2 of a
-    full-side overlap, which keeps its weight."""
-    from muvis_align import robust_resolution
-    from muvis_align.robust_resolution import groupwise_resolution_robust_linear
-
-    graph = grid_graph(rows=2, cols=2)
-    graph.add_edge(0, 3, transform=translation_affine(), quality=0.9, overlap=0.01,
-                   bbox=xr.DataArray(np.array([[90.0, 90.0], [100.0, 100.0]]), dims=['point_index', 'dim']))
-    seen_qualities = []
-
-    def solve(graph, **_):
-        seen_qualities.append({tuple(sorted(edge)): graph.edges[edge]['quality'] for edge in graph.edges})
-        edges = list(graph.edges)
-        metrics = {'u': [edge[0] for edge in edges], 'v': [edge[1] for edge in edges], 'residual': [0.0] * len(edges)}
-        return {node: translation_affine() for node in graph.nodes}, {'metrics': metrics}
-    monkeypatch.setattr(robust_resolution, 'groupwise_resolution_linear_two_pass', solve)
-
-    groupwise_resolution_robust_linear(graph, transform=transform, scale=1.0, rounds=1)
-
-    assert seen_qualities[0].pop((0, 3)) == pytest.approx(corner_quality)
-    assert set(seen_qualities[0].values()) == {0.9}
-
-
 def test_one_flipping_edge_of_many_does_not_keep_the_rounds_going(monkeypatch):
     """On a large graph a few edges flip every round, so the largest change never settles: the 99th percentile does."""
     from muvis_align.robust_resolution import groupwise_resolution_robust_linear
