@@ -5,6 +5,7 @@ and how muvis-align works around it today. Checked against multiview-stitcher 0.
 main branch (2026-10-28) the code behind 1a-1c, 4 and 9 is unchanged. "Local" is the 3-section
 test data (153 sources, 1764 overlapping / 831 orthogonal pairs); "HPC" is the full run (34k sources, 1081
 sections, 229725 pairs). Background on each area: [multiview_stitcher.md](multiview_stitcher.md).
+Drafted as upstream issues, not posted yet: [multiview_stitcher_issues.md](multiview_stitcher_issues.md).
 
 Ordered by impact at HPC scale; global resolution (1) is the main one.
 
