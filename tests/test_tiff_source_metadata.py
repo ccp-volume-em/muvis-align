@@ -268,9 +268,16 @@ def test_uncompressed_strip_levels_are_read_as_their_rows_and_match_tifffile(tmp
     for wrapper, reference in zip(wrappers, expected):
         copy = pickle.loads(pickle.dumps(wrapper))
         assert copy.layout == wrapper.layout
-        for key in [slice(None), (slice(10, 90), slice(5, 50)), 7, (slice(None, None, 3), 4), (-1,)]:
+        for key in [slice(None), (slice(10, 90), slice(5, 50)), 7, (slice(None, None, 3), 4), (-1,),
+                    slice(3, 90, 4), (slice(5, 6, 16), slice(None, None, 16)), slice(50, 10, 2)]:
             assert np.array_equal(copy[key], reference[key])
     assert all(np.array_equal(np.asarray(level), reference) for level, reference in zip(levels, expected))
+
+    read_rows = []
+    original = type(wrappers[0])._read_rows
+    wrappers[0]._read_rows = lambda rows: read_rows.append(rows) or original(wrappers[0], rows)
+    wrappers[0][slice(5, 6, 16), slice(None, None, 16)]
+    assert read_rows == [slice(5, 6)]
 
 
 @pytest.mark.parametrize('options', [{'compression': 'zlib'}, {'tile': (64, 64)}])

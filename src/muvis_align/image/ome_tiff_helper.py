@@ -204,9 +204,11 @@ class PicklableTiffLevel:
         if isinstance(first, (int, np.integer)):
             rows = slice(int(first) % self.shape[0], int(first) % self.shape[0] + 1)
             rest = (0,) + key[1:]
-        elif isinstance(first, slice) and first.step in (None, 1):
-            rows = slice(*first.indices(self.shape[0])[:2])
-            rest = (slice(None),) + key[1:]
+        elif isinstance(first, slice) and (first.step or 1) > 0:
+            # a strided slice reads only its own span: a coarse level's one-row chunk is one row, not the file
+            start, stop, step = first.indices(self.shape[0])
+            rows = slice(start, max(stop, start))
+            rest = (slice(None, None, step),) + key[1:]
         else:
             rows = slice(0, self.shape[0])
             rest = key
@@ -218,6 +220,8 @@ class PicklableTiffLevel:
         dtype = np.dtype(self.dtype).newbyteorder(byteorder)
         count = max(rows.stop - rows.start, 0)
         data = np.empty((count,) + tuple(row_shape), dtype=dtype)
+        if count == 0:
+            return data.astype(self.dtype, copy=False)
         with open(self.filename, 'rb') as file:
             file.seek(offset + rows.start * int(np.prod(row_shape)) * dtype.itemsize)
             if file.readinto(memoryview(data).cast('B')) != data.nbytes:
