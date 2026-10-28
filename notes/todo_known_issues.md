@@ -124,8 +124,8 @@ MINOR
       NFS (42ms CPU a file on the HPC vs 2.7ms locally: ~31 small reads a file by tifffile).
 - [ ] **Lazy overview: strided reads of single-level sources** - each tile is read whole at full res, then strided;
       read only the strided rows (as the direct uncompressed-level reads do), and measure on a single-level set.
-- [ ] **Upstream fixes to multiview-stitcher** - raise the suggestions in notes/multiview_stitcher_suggestions.md
-      (robust global resolution first); its related sections also go to tifffile/zarr and dask.
+- [ ] **Upstream fixes to multiview-stitcher** - post the suggestions in notes/multiview_stitcher.md (each says
+      where and its title; robust global resolution first); its related sections go to tifffile/zarr and dask.
 
 From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in all, no errors):
 - [ ] **The msims build in global registration** - 18 min on one core (GIL-bound) for the full per-source pyramids
