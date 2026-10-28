@@ -1,9 +1,10 @@
 # Step by step in napari
 
 A walk through the plugin, one tab at a time: every parameter on it, and what each of its
-buttons does. The screenshots are of a 2×2 tile set (`data/S000/*.zarr` in this repository),
-taken after registering it. For how the plugin stores its settings, see
-[the napari plugin](napari.md).
+buttons does. It follows the plugin's first sample, **2D section**: a 2×2 tile set
+(`data/S000/*.zarr` in this repository), which the screenshots show after registering it.
+Open it as in [Following along on the sample](#following-along-on-the-sample) to run each step
+as you read.
 
 ## Opening the plugin
 
@@ -21,18 +22,21 @@ A tab is enabled once the step before it has run: at the start only **project** 
 Each tab ends in a **Process** button that runs its step. While a step runs, the plugin's
 other widgets are disabled, the button reads **Cancel** (it asks before cancelling, and the
 partial result is discarded), and its progress shows in napari's **activity** panel at the
-bottom right.
+bottom right. Each step has one progress bar, which follows the work itself rather than the
+number of dask tasks, so it does not restart partway through; the global optimisation is
+followed through its own log. Exporting shows two bars in turn: the export, then drawing the
+result.
 
 Hover over any parameter to see its description.
 
-## Trying it on sample data
+## Following along on the sample
 
-To try the plugin without data of your own, open one of its samples from
-**File → Open Sample → muvis-align**:
+To follow this guide, open **File → Open Sample → muvis-align → 2D section**. The other two
+samples try the plugin on more data, also without data of your own:
 
 | Sample | Data |
 |--------|------|
-| 2D section | 2×2 tiles of 800×800 pixels (`data/S000`, the tile set in the screenshots below) |
+| 2D section | 2×2 tiles of 800×800 pixels (`data/S000`, the tile set in this guide) |
 | 2D, two sections | two sections of 2×2 tiles each (`data/S000` and `data/S001`) |
 | 3D | 2×2 tiles of 200×128×128 voxels (`data/3d`) |
 
@@ -52,10 +56,36 @@ from the cache.
 |-----------|-------------|
 | Project path | The project file (`muvis_align_project.yml` by default) |
 
-**Select file** chooses an existing project file, or names a new one. An existing project
-opens with its settings in every tab; a new one is created with the defaults. Either way
-the next tabs are enabled. Every change on any tab is written straight back to this file,
-so the project reopens as you left it.
+A sample fills this in itself. With your own data, **Select file** chooses an existing
+project file, or names a new one. An existing project opens with its settings in every tab;
+a new one is created with the defaults. Either way the next tabs are enabled. A project file
+can also be opened with napari's **File → Open**, or dropped onto napari.
+
+Every change on any tab is written straight back to this file, so the project reopens as you
+left it. It has one section per tab, with paths relative to the project file's folder:
+
+```yaml
+input_output:
+  input_path: data/*/*.tiff
+  output_path: output
+  source_scale_x: '0.004'
+  source_position_x: fn[-2]*24
+  overwrite: true
+pre_processing:
+  scale: 8
+  normalisation: none
+registration:
+  operation: register
+  method: phase_correlation
+  transform_type: rigid
+fusion:
+  method: average
+  spacing: mean
+  ome_version: '0.5'
+```
+
+This is not the `general`/`operations` parameter file the
+[command-line pipeline](pipeline.md) takes.
 
 ## 2. Input output
 

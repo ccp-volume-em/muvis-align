@@ -5,7 +5,7 @@
 The muvis-align pipeline is command-line driven and uses YAML parameter files to configure all operations. The main entry point is `run.py`.
 
 For interactive work - loading a dataset, previewing pairs and fused results, and
-watching progress as it runs - see the [napari plugin](napari.md). The two use
+watching progress as it runs - see the [napari plugin](napari_guide.md). The two use
 separate configuration files: the pipeline takes the `general`/`operations` file
 described here, while the plugin reads and writes its own project file.
 

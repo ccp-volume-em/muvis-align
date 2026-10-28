@@ -58,7 +58,7 @@ not the pip package, so clone it to use those.
 
 | | |
 |---|---|
-| **[napari plugin](napari.md)** | Load a dataset, inspect the source layout, preview a single pair or the fused result, and run each step interactively. This is what to use to work out the parameters; on a cluster it needs no install (see the [quick start](#quick-start-in-your-browser)). |
+| **[napari plugin](napari_guide.md)** | Load a dataset, inspect the source layout, preview a single pair or the fused result, and run each step interactively. This is what to use to work out the parameters; on a cluster it needs no install (see the [quick start](#quick-start-in-your-browser)). |
 | **[Command-line pipeline](pipeline.md)** | A YAML parameter file describing one or more operations, run with `python run.py params.yml`. This is what to use for batch and cluster runs. |
 | **[Jupyter notebooks](notebooks.md)** | The registration classes driven step by step from Python, from a complete pipeline to feature-matching and overlap visualisation. This is what to use to script a custom workflow or look inside a registration. |
 
@@ -72,16 +72,16 @@ The plugin can also run in a container, in the browser through Xpra: on a cluste
 ## Getting started
 
 1. Install as above, or without Python use the [quick start](#quick-start-in-your-browser) on a cluster.
-2. Open the [napari plugin](napari.md) and follow the [step-by-step guide](napari_guide.md)
+2. Open the napari plugin and follow the [step-by-step guide](napari_guide.md)
    to set up a project and work out your parameters. To try it first, open a
-   [sample](napari_guide.md#trying-it-on-sample-data) from **File → Open Sample → muvis-align**.
+   [sample](napari_guide.md#following-along-on-the-sample) from **File → Open Sample → muvis-align**.
 3. For batch runs, copy one of the example parameter files under `resources/` and run it
    with the [command-line pipeline](pipeline.md).
 4. To work from Python, start with `pipeline.ipynb` in the [notebooks](notebooks.md).
 
 ## Reference
 
-- [napari plugin](napari.md) - the interactive interface
+- [napari plugin](napari_guide.md) - the interactive interface
 - [Pipeline parameters](pipeline.md) - every option the YAML file accepts
 - [Notebooks](notebooks.md) - worked examples and debugging workflows
 - [Technical overview](technical.md) - how the source implements NGFF, lazy data, FAIR metadata and resumable runs
