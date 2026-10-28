@@ -1,7 +1,8 @@
 # Suggested multiview-stitcher improvements
 
 Changes to multiview-stitcher that came out of muvis-align's work, each with what we measured, what we suggest,
-and how muvis-align works around it today. Checked against multiview-stitcher 0.1.62. "Local" is the 3-section
+and how muvis-align works around it today. Checked against multiview-stitcher 0.1.62, the latest release; on its
+main branch (2026-10-28) the code behind 1a-1c, 4 and 9 is unchanged. "Local" is the 3-section
 test data (153 sources, 1764 overlapping / 831 orthogonal pairs); "HPC" is the full run (34k sources, 1081
 sections, 229725 pairs). Background on each area: [multiview_stitcher.md](multiview_stitcher.md).
 
@@ -187,8 +188,51 @@ cost. Four parts, each useful on its own.
   slides registration, peak 2.0GB, the same section alignment.
 - **Suggestion:** a budget per dimensionality (e.g. 400**ndim, or a 2D default of the order of 1-4M pixels).
 - **muvis-align:** passes `registration_binning` for the section pairs, from the `split_binning` setting (default 8).
+- Upstream since 0.1.62: PR #183 (merged) projects a singleton spatial dim during registration; the budget itself is
+  unchanged on main.
 
-## 10. Smaller items
+## 10. HiGHS threads in the overlap tests
+
+- **Problem:** the overlap tests solve a linear program with scipy's `linprog` (HiGHS), which starts ~11 workers per
+  calling thread and tears them down when that thread exits. Called from changing pool threads (napari's, or a
+  thread pool's), a teardown spun in its TLS callback holding the Windows loader lock, so no thread could start:
+  the process hung, or raised access violations after a pass or two.
+- **Measured:** a 120-preview stress loop hung after ~20 previews; with one HiGHS thread, clean.
+- **Suggestion:** solve with `options={'threads': 1}` (each overlap test is tiny), or let callers pass HiGHS options.
+- **muvis-align:** `util.single_threaded_highs` runs every HiGHS solve with one thread.
+
+## 11. Elastix: a failed pair, and the transform type
+
+- **Problem:** `registration_ITKElastix` raises `RuntimeError` on a pair Elastix cannot register (e.g. data/3d's
+  13-voxel overlap: 'Too many samples map outside moving image buffer'), which ends the whole registration, where the
+  feature methods return the identity with quality 0. Its default stages end at rigid, whatever transform type the
+  rest of the registration uses.
+- **Suggestion:** return the identity with quality 0 (and a warning) for a pair that fails; default the stages from
+  the requested transform type.
+- **muvis-align:** `MVSRegistration.elastix_registration_or_identity`, with `transform_types` translation then the
+  project's type. On main, Elastix moved to `multiview_stitcher/elastix.py` (PR #184): recheck there first.
+
+## 12. OME-Zarr writing
+
+- **0.6:** the writers stop at 0.5. muvis-align writes 0.6 metadata through ngff-zarr
+  (`fusion_blocks.write_multiscales_metadata`). Open upstream: PR #189, affine support for the OME-Zarr 0.6 draft.
+- **Level names:** levels are named '0', '1', ... '10', which sort as text past 10 levels ('10' after '1'), so
+  napari's own reader takes them in the wrong order. Zero-padded names, or reading the multiscales list in order.
+- **Parallel blocks:** `ngff_utils`' zarr writing runs an export's blocks one after another (`n_batch=1`) unless a
+  `batch_func` is given. A parallel default would suit most uses; muvis-align runs the blocks on its own workers
+  (`fusion_blocks._run_blocks`).
+- **Multiscale input:** writing to zarr fuses level 0 and builds the pyramid from it, where the lazy path can fuse
+  each level from the sources' own levels. muvis-align fuses each level itself (`fusion_blocks.fuse_levels_to_ome_zarr`).
+
+## 13. Progress of the global optimisation
+
+- **Problem:** `groupwise_resolution` is one long blocking call with nothing to hook (no dask tasks, no tqdm); on
+  the HPC `global_optimization` ran for hours with no sign of whether it was converging.
+- **Suggestion:** a progress callback (passes, iterations, current residual).
+- **muvis-align:** `GlobalOptProgress` reads `global_optimization`'s debug log messages, so a rewording upstream
+  degrades it to a single phase.
+
+## 14. Smaller items
 
 - **Scheduler for the overlap graph:** without a dask scheduler set, building the view adjacency graph computes
   overlaps with spawned processes; a script without a `__main__` guard then re-runs itself in each (>10GB). A

@@ -363,6 +363,24 @@ pipeline.run()
 
 ---
 
+## Split pairing: planes first, then between them
+
+Serial sections (or channels) are often better registered in two stages than all at once, and the **Split** pairing
+does that with multiview-stitcher's own pieces:
+
+1. **Within each plane or channel:** the usual pairwise and groupwise registration, with pairs only between tiles of
+   the same z-plane or channel. multiview-stitcher's groupwise resolution resolves each connected component on its
+   own, so each plane is stitched independently.
+2. **Between them:** each stitched plane is fused at reduced resolution (the **Split binning** setting, default 8),
+   consecutive planes are registered with the same pairwise method, and a groupwise resolution over the planes
+   places them. The fused planes are registered channel-selected, as single tiles are, smoothed past the tile
+   pattern every plane repeats and with their background filled: an empty background, the same in every plane, would
+   otherwise match best at zero shift.
+
+The plane-to-plane shifts then apply to every tile in a plane, on top of its within-plane transform.
+
+---
+
 ## Performance metrics
 
 

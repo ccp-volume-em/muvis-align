@@ -68,6 +68,10 @@ On registered pairs multiview-stitcher's affine_matrix takes fixed crop pixels t
 pairs by brute-force shift search; the pair NCC improves with it). A synthetic scipy-shifted pair suggested the
 reverse. The preview grid follows the real data; the synthetic result is unexplained.
 
+### Windows access violations in the fault log are not always failures
+`faulthandler` on Windows also reports access violations that native code handles itself (e.g. scipy's HiGHS):
+a "Windows fatal exception: access violation" line alone is not the failure - look for the hang or exit that follows.
+
 ### Fusion pyramid levels use ~10-15% of RAM: expected
 Not a leak, nor dask filling what is free. Measured on the 2026-10-03 run's pyramid step
 (ngff_utils.write_sim_to_ome_zarr), one thread a CPU, each reading 2x2 (2x2x2 past 200 z) parent chunks and averaging
@@ -120,13 +124,8 @@ MINOR
       NFS (42ms CPU a file on the HPC vs 2.7ms locally: ~31 small reads a file by tifffile).
 - [ ] **Lazy overview: strided reads of single-level sources** - each tile is read whole at full res, then strided;
       read only the strided rows (as the direct uncompressed-level reads do), and measure on a single-level set.
-- [ ] **Upstream fixes to multiview-stitcher** - phase correlation's spearman quality for every candidate shift
-      (only the kept one is needed), the O(nodes x edges) reference-node search, the HiGHS thread pool from
-      changing threads. Details in notes/multiview_stitcher.md. And to dask: linear fusion's key names (a 115-char
-      prefix + 4 hex digits of hash()) collide between similar chains in one graph (see Done).
-      To multiview_stitcher also: OME-Zarr 0.6 in its writers; zarr writing that fuses each level for multiscale input
-      (as its lazy path does, with custom levels and per-level sources - see native fusion); level names that sort as
-      text past 10 levels (its writer's '10' lands after '1' in napari's own reader).
+- [ ] **Upstream fixes to multiview-stitcher** - raise the suggestions in notes/multiview_stitcher_suggestions.md
+      (robust global resolution first); its related sections also go to tifffile/zarr and dask.
 
 From the HPC run of 2026-10-02 (34k sources, 229725 pairs; registration 8.9h in all, no errors):
 - [ ] **The msims build in global registration** - 18 min on one core (GIL-bound) for the full per-source pyramids
