@@ -112,7 +112,13 @@ def test_a_file_takes_its_own_entry_of_the_run_metadata(file_label, index, expec
 
     assert selected.keys() == expected.keys()
     for key, value in expected.items():
-        assert selected[key] == (pytest.approx(value) if key != 'invert' else value)
+        if key == 'invert':
+            assert selected[key] == value
+        elif isinstance(value, list):
+            # pytest.approx rejects nested structures (from pytest 9.2)
+            assert selected[key] == [pytest.approx(item) for item in value]
+        else:
+            assert selected[key] == pytest.approx(value)
 
 
 @pytest.mark.parametrize('rotation, transform_rotation, expected', [
