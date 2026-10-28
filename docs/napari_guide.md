@@ -2,13 +2,14 @@
 
 A walk through the plugin, one tab at a time: every parameter on it, and what each of its
 buttons does. It follows the plugin's first sample, **2D section**: a 2×2 tile set
-(`data/S000/*.zarr` in this repository), which the screenshots show after registering it.
+(`data/S000/*.zarr` in this repository).
 Open it as in [Following along on the sample](#following-along-on-the-sample) to run each step
 as you read.
 
 ## Opening the plugin
 
-Start napari and open **Plugins → muvis-align**.
+Start napari and open **Plugins → muvis-align**. Below, the sample has just been opened and
+its sources read (**Process** on [input output](#2-input-output)).
 
 ![The plugin in napari](images/napari/window.png)
 
@@ -16,7 +17,8 @@ Start napari and open **Plugins → muvis-align**.
 - **At the bottom left**, the **muvis-align** overview: a small map of where the sources are,
   which stays put while you zoom into the main view.
 - **In the main view**, the sources at their positions, with each overlap between two
-  sources drawn as a green shape.
+  sources drawn as a shape: grey until registered, then coloured by the pair's registration
+  quality.
 
 A tab is enabled once the step before it has run: at the start only **project** is.
 Each tab ends in a **Process** button that runs its step. While a step runs, the plugin's
@@ -224,3 +226,12 @@ The buttons:
   (or `merged`). It first asks to confirm, with an estimate of the output size, and runs
   any registration still missing. It also writes an RO-Crate inside the OME-Zarr describing
   the acquisition, and updates the one in the output folder.
+
+## The registered result
+
+After **Process** on the registration tab, the sources sit at their registered positions. Each
+overlap, in the view, the overview and the metrics table, is coloured by its pair's
+registration quality, from red (poor) to green (good). Here the sample's settings (SIFT,
+rigid) give each pair a moderate quality.
+
+![The registered sample](images/napari/registered.png)

@@ -56,6 +56,7 @@ def main():
     parser.add_argument('--tabs', action='store_true',
                         help='once the action is done, save the plugin on each tab')
     parser.add_argument('--window', action='store_true', help='once the action is done, save the whole window')
+    parser.add_argument('--window-tab', default=None, help='the plugin tab (label) the whole window shows')
     parser.add_argument('--pair-offset', type=float, default=0,
                         help='modify_pair_registration: shift the moving image by this much in x (world units)')
     args = parser.parse_args()
@@ -155,6 +156,9 @@ def main():
                                                                       for layer in layers))
 
     def save_window():
+        if args.window_tab:
+            widget.setCurrentIndex(widget.tab_labels.index(args.window_tab))
+            QApplication.processEvents()
         geometry = viewer.window._qt_window.frameGeometry()
         # a screen grab: Qt's own leaves the OpenGL canvas black
         ImageGrab.grab(bbox=(geometry.left(), geometry.top(), geometry.right(), geometry.bottom())).save(
