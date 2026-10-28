@@ -1,3 +1,4 @@
+import numpy as np
 from magicgui.backends._qtpy.widgets import QBaseValueWidget
 from magicgui.widgets.bases import ValueWidget
 from qtpy.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
@@ -30,6 +31,8 @@ class ArrayTableModel(QAbstractTableModel):
             return None
         value = self.rows[index.row()][index.column()]
         if role == Qt.DisplayRole:
+            if isinstance(value, (float, np.floating)):
+                return f'{value:.4f}'
             return '' if value is None else str(value)
         if role == Qt.BackgroundRole and self.background is not None and value is not None:
             key = (index.row(), index.column())

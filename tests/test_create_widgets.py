@@ -1,3 +1,4 @@
+import numpy as np
 from muvis_align.ui.create_widgets import create_section_container
 from qtpy.QtWidgets import QApplication
 
@@ -80,3 +81,17 @@ def test_a_table_row_selection_calls_the_interfaces_selected_function():
     table.native.selectRow(1)
 
     assert selections == [1]
+
+
+def test_a_table_shows_floats_at_four_decimals():
+    _ = QApplication.instance() or QApplication([])
+    interface = MinimalInterface()
+    create_section_container('registration', [{'name': 'metrics', 'type': 'table', 'label': ' ',
+                                               'section_key': 'display_only', 'default': []}],
+                             interface, connect_changed=False, add_button=False)
+    table = interface.param_widgets['registration.metrics'].widget
+    table.value = {'data': [[0.25621754998563356, np.float32(0.5), 'z: 0', None]], 'index': ['summary'],
+                   'columns': ['quality', 'ncc', 'position', 'ssim']}
+    model = table.native.model()
+
+    assert [model.data(model.index(0, column)) for column in range(4)] == ['0.2562', '0.5000', 'z: 0', '']
