@@ -48,6 +48,18 @@ def voxel_diagonal(graph):
                for node in graph.nodes)
 
 
+def rotation_support(graph, edge):
+    """(overlap's longest side / the larger view's longest side)^2: a rotation's error grows with the distance across
+    the overlap, so a corner-only overlap says next to nothing about it. 1 without a bbox."""
+    bbox = graph.edges[edge].get('bbox')
+    if bbox is None:
+        return 1.0
+    lower, upper = np.asarray(bbox.data if isinstance(bbox, xr.DataArray) else bbox, dtype=float)
+    view_size = max(max(props['shape'][dim] * props['spacing'][dim] for dim in props['spacing'])
+                    for props in (graph.nodes[node]['stack_props'] for node in edge))
+    return min(1.0, float(np.max(upper - lower)) / view_size) ** 2
+
+
 def _build_params_from_templates(nodes, translations, rotations, scales, transform, ndim, x_in=None, x_out=None):
     """linear_two_pass._build_params_from_components with each transform a copy of a cached xarray: building them
     from scratch, twice a solve, is most of a round's time."""
@@ -107,8 +119,9 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
     """linear_two_pass re-solved up to `rounds` times, each edge weighted by its pair quality times a Cauchy weight
     of its last residual, 1 / (1 + (residual / scale)^2): bad pairs stop pulling the fit without being cut.
     Stops early once the `change_quantile` of the residuals' changes in a round is within `tolerance * scale`, as
-    the weights then hardly change. `scale` defaults to half the voxel diagonal. `progress` is called after each
-    round. Per connected component and timepoint, as any resolver."""
+    the weights then hardly change. `scale` defaults to half the voxel diagonal. Returns the round with the lowest
+    median residual; beyond translation, pair qualities are first scaled by their rotation_support. `progress` is
+    called after each round. Per connected component and timepoint, as any resolver."""
     graph = g_reg_component_tp.copy()
     if reference_view is None or reference_view not in graph:
         reference_view = find_reference_view(graph)
@@ -117,8 +130,12 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
     edges = [tuple(sorted(edge)) for edge in graph.edges]
     qualities = {edge: scalar(graph.edges[edge].get('quality')) for edge in edges}
     qualities = {edge: quality if np.isfinite(quality) else 0.0 for edge, quality in qualities.items()}
+    if transform != 'translation':
+        qualities = {edge: quality * rotation_support(graph, edge) for edge, quality in qualities.items()}
     weights = dict.fromkeys(edges, 1.0)
     params, info, last_residuals = None, None, None
+    # the reweighting can swing between a good and a bad fit, so the last round is not necessarily the best
+    best_params, best_info, best_residual = None, None, np.inf
     for round_index in range(rounds):
         raise_if_cancelled()
         for edge in edges:
@@ -141,8 +158,11 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
         last_residuals = residuals
         change = np.quantile(changes, change_quantile) if len(changes) else np.inf
         largest_change = max(changes, default=np.inf)
+        median_residual = float(np.median(list(residuals.values())))
+        if median_residual < best_residual:
+            best_params, best_info, best_residual = params, info, median_residual
         logging.info(f'Robust linear resolution: round {round_index + 1}/{rounds}, {len(edges)} edges,'
-                     f' median residual {np.median(list(residuals.values())):.3g},'
+                     f' median residual {median_residual:.3g},'
                      f' change {change_quantile:.0%} {change:.3g} (largest {largest_change:.3g},'
                      f' tolerance {tolerance * scale:.3g}) in {time.perf_counter() - round_start:.0f}s,'
                      f' {time.process_time() - round_cpu:.0f}s cpu')
@@ -151,7 +171,9 @@ def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, 
         if change <= tolerance * scale:
             logging.info(f'Robust linear resolution: converged after {round_index + 1} rounds')
             break
-    return params, info
+    if best_params is None:
+        return params, info
+    return best_params, best_info
 
 
 def residual_changes(last_residuals, residuals):

@@ -1620,6 +1620,8 @@ class MVSRegistration:
         transforms = [
             transforms_dict[iview] for iview in sorted(g_reg_computed.nodes())
         ]
+        transforms = self._guard_global_transforms(pair_msims, transforms, resolve_graph, groupwise_resolution_method,
+                                                   groupwise_resolution_kwargs, register_indices, ndims)
         if SPLIT in params.get('pairing', '').lower():
             transforms = self._register_split_groups(pair_msims, transforms, register_indices, params,
                                                      progress_factory=progress_factory)
@@ -1728,6 +1730,27 @@ class MVSRegistration:
                 'residual_errors': residual_error_dict,
                 'registration_qualities': registration_qualities_dict,
                 'metrics': metrics}
+
+    def _guard_global_transforms(self, pair_msims, transforms, resolve_graph, method, resolution_kwargs,
+                                 register_indices, ndims):
+        """The resolved transforms, unless they move a tile more than half a tile from its metadata position: pairs
+        come from metadata overlaps and each only sees its overlap, so no true fit moves that far. Then
+        linear_two_pass's pruned solve, and tiles still out back at their metadata position."""
+        moved = moved_beyond(pair_msims, transforms, self.source_transform_key)
+        if moved and method != 'linear_two_pass' and resolution_kwargs.get('transform') in ('translation', 'rigid'):
+            logging.warning(f'Global registration ({method}) moved {len(moved)} tiles more than half a tile from their'
+                            f' metadata position: resolving with linear_two_pass instead')
+            fallback_kwargs = {key: value for key, value in resolution_kwargs.items()
+                               if key in ('transform', 'reference_view')}
+            transforms_dict, _ = groupwise_resolution(resolve_graph, method='linear_two_pass', **fallback_kwargs)
+            transforms = [transforms_dict[node] for node in sorted(transforms_dict)]
+            moved = moved_beyond(pair_msims, transforms, self.source_transform_key)
+        if moved:
+            logging.warning('Global registration moved these more than half a tile, so kept at their metadata'
+                            ' position: ' + ', '.join(str(self.file_labels[register_indices[index]]) for index in moved))
+            transforms = [param_utils.identity_transform(ndim=ndims, t_coords=[0]) if index in moved else transform
+                          for index, transform in enumerate(transforms)]
+        return transforms
 
     @staticmethod
     def _fusion_batch_options(saving_zarr, max_workers=None):

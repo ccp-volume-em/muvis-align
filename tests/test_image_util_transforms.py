@@ -6,7 +6,7 @@ from multiview_stitcher import msi_utils, param_utils
 
 from muvis_align.image.util import (_adapt_transform_to_image_dims, copy_transforms_to_msims,
                                     draw_keypoints_matches_napari, gaussian_filter_sim, get_msim_transform_keys,
-                                    get_overlap_images, grid_point_pairs, make_msims_3d, NoOverlapError,
+                                    get_overlap_images, grid_point_pairs, make_msims_3d, moved_beyond, NoOverlapError,
                                     restore_msims_transform, set_msim_affine, snapshot_msims_transform,
                                     widen_xaffine_to_3d, widened_affine_matrix)
 from muvis_align.util import create_transform
@@ -194,3 +194,15 @@ def test_widening_matches_the_label_based_original(transform):
     np.testing.assert_allclose(widened_affine_matrix(transform), np.asarray(reference_widen(transform)))
     # an already 3D transform is returned as is
     assert (widen_xaffine_to_3d(transform) is transform) == (4 in transform.shape)
+
+
+def test_moved_beyond_flags_a_tile_whose_centre_moves_over_half_its_longest_side():
+    """Measured at the tile's own centre: a small rotation about the far-off stage origin moves it a long way."""
+    tile = {'shape': {'y': 100, 'x': 50}, 'spacing': {'y': 1.0, 'x': 1.0}, 'origin': {'y': 72000.0, 'x': 0.0}}
+    within = param_utils.affine_from_translation([49.0, 0.0])
+    beyond = param_utils.affine_from_translation([0.0, 51.0])
+    # 0.1 degree about the origin moves a centre 72050 away by about 126
+    angle = np.radians(0.1)
+    rotated = np.array([[np.cos(angle), -np.sin(angle), 0], [np.sin(angle), np.cos(angle), 0], [0, 0, 1]])
+
+    assert moved_beyond([tile] * 3, [within, beyond, rotated], None) == [1, 2]

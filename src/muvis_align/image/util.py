@@ -1661,6 +1661,22 @@ def stack_props_from_any(items, transform_key=None):
     return stack_props
 
 
+def moved_beyond(items, transforms, transform_key, max_fraction=0.5):
+    """Indices of the items whose centre (in `transform_key` space) its transform moves by more than `max_fraction`
+    of the item's longest side."""
+    indices = []
+    for index, (stack_props, transform) in enumerate(zip(stack_props_from_any(items, transform_key), transforms)):
+        vertices = np.asarray(mv_graph.get_vertices_from_stack_props(stack_props), dtype=float)
+        ndim = vertices.shape[1]
+        matrix = np.asarray(transform.data if isinstance(transform, xr.DataArray) else transform, dtype=float)
+        matrix = matrix.reshape(matrix.shape[-2:])[-(ndim + 1):, -(ndim + 1):]
+        centre = vertices.mean(axis=0)
+        distance = np.linalg.norm(matrix[:ndim, :ndim] @ centre + matrix[:ndim, ndim] - centre)
+        if distance > max_fraction * max(get_sim_physical_size(stack_props).values()):
+            indices.append(index)
+    return indices
+
+
 def create_image_shapes(items, transform_key=None,  force_2d=False):
     # accepts sims, msims or stack properties - only position/size metadata is read, never pixel
     # data, and never anything that would make a source open its file
