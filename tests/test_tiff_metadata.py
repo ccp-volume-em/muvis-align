@@ -256,22 +256,23 @@ def test_position_ignores_other_fields(tmp_path):
         assert get_position_um(get_extra_metadata(tif)) == {}
 
 
-# the image is turned by the scan rotation, the other way, apart from the
+# the image is turned by the scan rotation as written, apart from the
 # stage rotation, which turns the sample: (metadata, image, stage rotation)
 ROTATION_CASES = {
-    # Ciqtek, whose row of tiles at ElectricRotate -135 lines up at 135
     'ciqtek': ({'Beam': {'ElectricRotate': -135.0},
-                'Stage': {'StagePosR': -30.0, 'StagePosX': 0.002}}, 135.0, -30.0),
+                'Stage': {'StagePosR': -30.0, 'StagePosX': 0.002}}, -135.0, -30.0),
+    # a written -0 is no turn of -0.0
+    'ciqtek negative zero': ({'Beam': {'ElectricRotate': -0.0}}, 0.0, None),
     # Ciqtek writes to the FEI tag, but in degrees, under its own names
     'ciqtek in the fei tag': ({'FEI_HELIOS': {'Beam': {'ElectricRotate': 0.0},
                                               'Stage': {'StagePosR': 11.7}}},
                               0.0, 11.7),
     # FEI writes every angle in radians without saying so
     'fei': ({'FEI_HELIOS': {'Beam': {'ScanRotation': 0.5},
-                            'Stage': {'StageR': 1.07874}}}, -28.6479, 61.8072),
-    'phenom': ({'acquisition': {'scan': {'rotation': 90}}}, -90.0, None),
+                            'Stage': {'StageR': 1.07874}}}, 28.6479, 61.8072),
+    'phenom': ({'acquisition': {'scan': {'rotation': 90}}}, 90.0, None),
     'fibics': ({'Fibics': {'Scan': {'ScanRot': {'units': 'deg', 'value': 10}}}},
-               -10.0, None),
+               10.0, None),
     'stated radians': ({'Stage': {'R': {'value': 0.5, 'units': 'rad'}}},
                        None, 28.6479),
     'neither': ({'Stage': {'StagePosX': 0.002}}, None, None),

@@ -575,9 +575,9 @@ def get_rotation_deg(metadata: Dict) -> Optional[float]:
     degrees, or None.
 
     This is what places the image beside others by their stage positions.
-    The scan rotation turns the raster against the stage, so the image is
-    turned the other way: a row of Ciqtek tiles at ElectricRotate -135
-    lines up at 135. The stage rotation turns the sample rather than the
+    The scan rotation is taken as it is written. A stage whose y axis points
+    up, as a 2D Fibics grid's does, needs its y position inverted in the
+    source metadata. The stage rotation turns the sample rather than the
     axes the stage positions are in, so it plays no part.
     """
     implied_unit = implied_angle_unit(metadata)
@@ -595,8 +595,8 @@ def get_rotation_deg(metadata: Dict) -> Optional[float]:
             scan_rotation = parse_quantity(field_value, unit or implied_unit,
                                            DEGREE_CONVERSIONS)
             if scan_rotation is not None:
-                # subtracted from 0.0 rather than negated, which makes -0.0
-                return 0.0 - scan_rotation
+                # added to 0.0, which turns a written -0 into 0.0
+                return 0.0 + scan_rotation
     return None
 
 
