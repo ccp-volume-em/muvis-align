@@ -205,10 +205,10 @@ class PicklableTiffLevel:
             rows = slice(int(first) % self.shape[0], int(first) % self.shape[0] + 1)
             rest = (0,) + key[1:]
         elif isinstance(first, slice) and (first.step or 1) > 0:
-            # a strided slice reads only its own span: a coarse level's one-row chunk is one row, not the file
+            # a strided slice reads only its own rows: a coarse level's chunk is a few rows, not its whole span
             start, stop, step = first.indices(self.shape[0])
-            rows = slice(start, max(stop, start))
-            rest = (slice(None, None, step),) + key[1:]
+            rows = slice(start, max(stop, start), step)
+            rest = (slice(None),) + key[1:]
         else:
             rows = slice(0, self.shape[0])
             rest = key
@@ -218,14 +218,19 @@ class PicklableTiffLevel:
         offset, byteorder = self.layout
         row_shape = self.shape[1:]
         dtype = np.dtype(self.dtype).newbyteorder(byteorder)
-        count = max(rows.stop - rows.start, 0)
-        data = np.empty((count,) + tuple(row_shape), dtype=dtype)
-        if count == 0:
+        row_bytes = int(np.prod(row_shape)) * dtype.itemsize
+        step = rows.step or 1
+        starts = range(rows.start, rows.stop, step)
+        data = np.empty((len(starts),) + tuple(row_shape), dtype=dtype)
+        if len(starts) == 0:
             return data.astype(self.dtype, copy=False)
+        # consecutive rows in one read, strided ones each on their own
+        runs = [(rows.start, data)] if step == 1 else [(start, data[index]) for index, start in enumerate(starts)]
         with open(self.filename, 'rb') as file:
-            file.seek(offset + rows.start * int(np.prod(row_shape)) * dtype.itemsize)
-            if file.readinto(memoryview(data).cast('B')) != data.nbytes:
-                raise OSError(f'{self.filename}: fewer bytes than level {self.path} holds')
+            for start, target in runs:
+                file.seek(offset + start * row_bytes)
+                if file.readinto(memoryview(target).cast('B')) != target.nbytes:
+                    raise OSError(f'{self.filename}: fewer bytes than level {self.path} holds')
         return data.astype(self.dtype, copy=False)
 
     def __reduce__(self):
@@ -275,8 +280,12 @@ def read_tiff_level_arrays(filename):
     for level, array in enumerate(arrays):
         # NGFF shape: unsupported axes dropped, channel-like axes ('S' included) flattened onto 'c'
         shape = map_tiff_axes_to_ngff(axes, array.shape)[1]
+        chunks = array.chunks
+        if array.layout is not None:
+            # any row span reads in one go: a one-row-strip file's own chunks would make a block thousands of reads
+            chunks = (min(default_chunk_size, array.shape[0]),) + tuple(array.shape[1:])
         # meta given, so dask does not probe the dtype with a read
-        data = da.from_array(array, chunks=array.chunks, meta=np.empty((0,) * array.ndim, dtype=array.dtype),
+        data = da.from_array(array, chunks=chunks, meta=np.empty((0,) * array.ndim, dtype=array.dtype),
                              name='tiff-' + tokenize(filename, stat.st_size, stat.st_mtime_ns, level))
         if tuple(data.shape) != tuple(shape):
             data = reshape_tiff_for_channels(data, axes, tuple(array.shape), dims, tuple(shape),

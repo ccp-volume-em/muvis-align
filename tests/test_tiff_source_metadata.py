@@ -250,20 +250,26 @@ def _level_wrappers(levels):
             for value in (layer.values() if hasattr(layer, 'values') else []) if isinstance(value, PicklableTiffLevel)]
 
 
-def test_uncompressed_strip_levels_are_read_as_their_rows_and_match_tifffile(tmp_path):
+@pytest.mark.parametrize('rowsperstrip', [1, 300])
+def test_uncompressed_strip_levels_are_read_as_their_rows_and_match_tifffile(tmp_path, monkeypatch, rowsperstrip):
+    """Chunked in full-width bands of default_chunk_size rows, whatever the file's strips: a one-row-strip file's
+    own chunks made a fused block thousands of reads."""
     import pickle
+    from muvis_align.image import ome_tiff_helper
     from muvis_align.image.ome_tiff_helper import read_tiff_level_arrays
+    monkeypatch.setattr(ome_tiff_helper, 'default_chunk_size', 128)
     path = str(tmp_path / 'strips.tiff')
     data = np.random.default_rng(2).integers(0, 60000, (300, 200), dtype=np.uint16)
     with tifffile.TiffWriter(path) as writer:
-        writer.write(data, subifds=1, rowsperstrip=300)
-        writer.write(data[::2, ::2], subfiletype=1, rowsperstrip=150)
+        writer.write(data, subifds=1, rowsperstrip=rowsperstrip)
+        writer.write(data[::2, ::2], subfiletype=1, rowsperstrip=rowsperstrip)
 
     levels = read_tiff_level_arrays(path)
     wrappers = _level_wrappers(levels)
     with tifffile.TiffFile(path) as tif:
         expected = [level.asarray() for level in tif.series[0].levels]
 
+    assert [level.chunks for level in levels] == [((128, 128, 44), (200,)), ((128, 22), (100,))]
     assert [wrapper.layout is not None for wrapper in wrappers] == [True, True]
     for wrapper, reference in zip(wrappers, expected):
         copy = pickle.loads(pickle.dumps(wrapper))
@@ -273,11 +279,29 @@ def test_uncompressed_strip_levels_are_read_as_their_rows_and_match_tifffile(tmp
             assert np.array_equal(copy[key], reference[key])
     assert all(np.array_equal(np.asarray(level), reference) for level, reference in zip(levels, expected))
 
-    read_rows = []
-    original = type(wrappers[0])._read_rows
-    wrappers[0]._read_rows = lambda rows: read_rows.append(rows) or original(wrappers[0], rows)
-    wrappers[0][slice(5, 6, 16), slice(None, None, 16)]
-    assert read_rows == [slice(5, 6)]
+    # a strided slice reads its own rows, not the span between them
+    read_offsets = []
+
+    class RecordedFile:
+        def __init__(self, file):
+            self.file = file
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return self.file.__exit__(*args)
+
+        def seek(self, offset, *args):
+            read_offsets.append(offset)
+            return self.file.seek(offset, *args)
+
+        def readinto(self, buffer):
+            return self.file.readinto(buffer)
+    monkeypatch.setattr(ome_tiff_helper, 'open', lambda *args: RecordedFile(open(*args)), raising=False)
+    np.testing.assert_array_equal(wrappers[0][slice(5, 90, 40), slice(None, None, 16)], data[5:90:40, ::16])
+    row_bytes = data.shape[1] * data.itemsize
+    assert [offset - wrappers[0].layout[0] for offset in read_offsets] == [5 * row_bytes, 45 * row_bytes, 85 * row_bytes]
 
 
 @pytest.mark.parametrize('options', [{'compression': 'zlib'}, {'tile': (64, 64)}])
