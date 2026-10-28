@@ -54,13 +54,18 @@ def test_preview_matches_split_by_inlier_state_and_scale_with_the_image_shown(si
     points = np.array([[10.0, 10.0], [20.0, 20.0]])
 
     layers = {kwargs['name']: (data, kwargs, layer_type) for data, kwargs, layer_type in
-              draw_keypoints_matches_napari(image, points, image, points, matches=np.array([[0, 0], [1, 1]]),
-                                            inliers=np.array([False, True]))}
+              draw_keypoints_matches_napari(image, points, image[:side // 2], points, matches=np.array([[0, 0], [1, 1]]),
+                                            inliers=np.array([False, True]), outline_color='#ff00ff')}
 
-    assert [layers[name][2] for name in ('keypoints', 'matches', 'matches_inliers')] == ['points', 'shapes', 'shapes']
+    assert ([layers[name][2] for name in ('keypoints', 'matches', 'matches_inliers', 'overlaps')]
+            == ['points', 'shapes', 'shapes', 'shapes'])
     assert len(layers['matches'][0]) == len(layers['matches_inliers'][0]) == 1
     assert layers['keypoints'][1]['size'] == point_size
-    assert layers['matches_inliers'][1]['edge_width'] == line_width
+    assert layers['matches_inliers'][1]['edge_width'] == layers['overlaps'][1]['edge_width'] == line_width
+    # each crop outlined at its own size, the second beside the first along the shortest axis
+    half = side // 2
+    np.testing.assert_array_equal(layers['overlaps'][0], [[[-0.5, -0.5], [side - 0.5, half - 0.5]],
+                                                          [[-0.5, half - 0.5], [half - 0.5, side - 0.5]]])
 
 
 def pyramid_msim(index=0):

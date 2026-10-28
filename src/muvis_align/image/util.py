@@ -894,7 +894,7 @@ def grid_point_pairs(fixed_shape, moving_shape, affine_matrix, points_on_longest
 
 
 def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], inliers=[],
-                                  points_color='black', match_color='red', inlier_color='lime'):
+                                  points_color='black', match_color='red', inlier_color='lime', outline_color=None):
     def _as_points_array(points):
         points = np.asarray(points)
         if points.size == 0:
@@ -1039,6 +1039,29 @@ def draw_keypoints_matches_napari(image1, points1, image2, points2, matches=[], 
                     "edge_color": inlier_color,
                     "edge_width": line_width,
                     "opacity": 0.25,
+                },
+                "shapes",
+            )
+        )
+
+    if outline_color is not None and spatial_dims == 2:
+        # each crop's own extent, not the padded one: an empty (zero) part of a crop still shows as overlap
+        outlines = []
+        for crop, offset in ((image1, np.zeros(2)), (image2, offset2)):
+            if crop is not None:
+                size = np.array(np.shape(crop)[:2], dtype=float)
+                # napari centres pixels on integer coordinates, so a crop spans -0.5 to size - 0.5
+                outlines.append(np.array([offset - 0.5, offset + size - 0.5]))
+        layers.append(
+            (
+                outlines,
+                {
+                    "name": "overlaps",
+                    "shape_type": "rectangle",
+                    "edge_color": outline_color,
+                    "face_color": "transparent",
+                    "edge_width": line_width,
+                    "blending": "translucent_no_depth",
                 },
                 "shapes",
             )

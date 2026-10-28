@@ -1439,7 +1439,8 @@ class Interface:
                                    scale=None):
         layers = draw_keypoints_matches_napari(fixed_data2, fixed_points,
                                                moving_data2, moving_points,
-                                               matches, inliers, points_color='blue')
+                                               matches, inliers, points_color='blue',
+                                               outline_color=contrasting_color(None))
         self._clear_napari_view(viewer)
         for data, kwargs, layer_type in layers:
             if scale is not None:
