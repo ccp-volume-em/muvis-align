@@ -1,10 +1,10 @@
+from napari_meta_tiff.metadata import get_extra_metadata
 import tifffile
 from ngff_zarr import tiff_file_to_ngff_images, NgffMultiscales
 
 from muvis_align.image.ome_tiff_helper import read_tiff_level_arrays, read_tiff_source_metadata, read_tiff_creator
 from muvis_align.util import convert_to_um
 from muvis_align.image.ImageSource import ImageSource
-from muvis_align.image.tiff_metadata import get_extra_metadata
 from muvis_align.image.color_conversion import hexrgb_to_rgba
 
 

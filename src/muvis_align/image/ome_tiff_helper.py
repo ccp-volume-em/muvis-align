@@ -4,6 +4,7 @@ from xml.etree import ElementTree
 
 import dask.array as da
 from dask.base import tokenize
+from napari_meta_tiff.metadata import get_extra_metadata, get_pixel_size_um, get_position_um, get_rotation_deg
 import zarr
 from ome_zarr.scale import Scaler
 from tifffile import TiffWriter, tifffile
@@ -23,7 +24,6 @@ except ImportError:  # pragma: no cover - depends on the installed ngff_zarr
 
 from muvis_align.constants import default_chunk_size
 from muvis_align.image.color_conversion import hexrgb_to_rgba, rgba_to_int
-from muvis_align.image.tiff_metadata import get_extra_metadata, get_pixel_size_um, get_position_um, get_rotation_deg
 from muvis_align.util import *
 
 

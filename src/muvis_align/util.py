@@ -12,6 +12,7 @@ import json
 import logging
 import math
 import multiprocessing
+from napari_meta_tiff.metadata import UM_CONVERSIONS
 import numpy as np
 import pickle
 import os.path
@@ -23,8 +24,6 @@ import warnings
 from scipy.spatial.transform import Rotation
 from sklearn.neighbors import KDTree
 from xarray import DataArray
-
-from muvis_align.image.tiff_metadata import UM_CONVERSIONS
 
 
 def single_threaded_highs():
@@ -485,7 +484,7 @@ def eval_context(data, key, default_value, context):
 
 
 
-# tiff_metadata's table, plus the cased spellings OME writes
+# napari-meta-tiff's table, plus the cased spellings OME writes
 um_conversions = UM_CONVERSIONS | {'Å': 1e-4, 'A': 1e-4}
 
 
