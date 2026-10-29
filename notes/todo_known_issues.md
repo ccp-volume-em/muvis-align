@@ -91,6 +91,9 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **Optional registration packages in `[all]`** - `pyproject.toml`'s `[all]` extra (now only `napari[all]`)
+      to also install elastix (`itk-elastix`), ANTs (`antspyx`) and probreg (for CPD). probreg is a core dependency
+      now, limited to Python < 3.13 and not Windows; itk-elastix pulled its own numpy when tried (see below).
 - [ ] **Elastix registration (a reference method)** - tested 2026-10-24 on data/S000 (2D) and data/3d with
       itk-elastix 0.25.4 from a side folder (not a dependency: pip also pulls a numpy of its own). Fixed: the
       3D access violation (the deferred link quality read Elastix's freed resampled image; only phase correlation
