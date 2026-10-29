@@ -96,7 +96,7 @@ This is not the `general`/`operations` parameter file the
 | Parameter | Description |
 |-----------|-------------|
 | Input data | The sources: a file, a folder or a wildcard pattern such as `data/*/*.tiff` (TIFF, OME-TIFF, Zarr, OME-Zarr) |
-| Source position Z / Y / X | Where each source's position comes from: `source` reads it from the file's metadata, or an expression over the file name, such as `fn[-2]*24` (the second-last number in the name, times 24) |
+| Source position Z / Y / X | Where each source's position comes from: `source` reads it from the file's metadata (`source invert` negates it; `source y` takes the source's y, for a camera whose axes are the stage's swapped), or an expression over the file name, such as `fn[-2]*24` (the second-last number in the name, times 24) |
 | Source scale Z / Y / X | The pixel size, in the same way: `source`, a number, or an expression |
 | Source rotation | The rotation, in the same way |
 | Normalise rotated positions | Turn a rotated layout straight: positions are turned back by the sources' rotation, or by the tile grid's own angle where the metadata gives none |

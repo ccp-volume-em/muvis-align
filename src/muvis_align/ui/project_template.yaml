@@ -51,7 +51,7 @@ parameters:
   - name: source_position_z
     type: textbox
     label: "Source position Z"
-    description: "Metadata source for Z position"
+    description: "Metadata source for Z position: source, source invert, another axis of the source (e.g. source x), or a value or expression"
     default: "source"
     cli_tag: "--source_position_z"
     cli_order: 1
@@ -61,7 +61,7 @@ parameters:
   - name: source_position_y
     type: textbox
     label: "Source position Y"
-    description: "Metadata source for Y position"
+    description: "Metadata source for Y position: source, source invert, another axis of the source (e.g. source x), or a value or expression"
     default: "source"
     cli_tag: "--source_position_y"
     cli_order: 2
@@ -71,7 +71,7 @@ parameters:
   - name: source_position_x
     type: textbox
     label: "Source position X"
-    description: "Metadata source for X position"
+    description: "Metadata source for X position: source, source invert, another axis of the source (e.g. source y), or a value or expression"
     default: "source"
     cli_tag: "--source_position_x"
     cli_order: 3

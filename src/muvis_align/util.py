@@ -446,6 +446,12 @@ def is_source_value(value):
     return check_contains_value(value, 'source') or check_contains_value(value, 'invert')
 
 
+def get_source_axis(value):
+    # 'source y' takes the source's y value, for a camera whose axes are the stage's swapped
+    match = re.search(r'\bsource\s+([xyz])\b', value) if isinstance(value, str) else None
+    return match.group(1) if match else None
+
+
 def get_metadata_z_scale(metadata):
     """The configured z spacing from a source/extra metadata dict, as a number - or None when it
     is unset, blank, or 'source' (the file's own, already applied by ImageSource.fix_metadata).

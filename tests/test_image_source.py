@@ -149,6 +149,23 @@ def test_invert_alone_inverts_the_sources_own_values(rotation):
     assert source.rotation == -12.0
 
 
+@pytest.mark.parametrize('position, expected', [
+    ({'x': 'source y', 'y': 'source x'}, {'x': 7.0, 'y': 5.0}),
+    ({'x': 'source y invert', 'y': 'source x'}, {'x': -7.0, 'y': 5.0}),
+    # 'source invert' names no axis, so it keeps its own
+    ({'x': 'source invert', 'y': 'source x'}, {'x': -5.0, 'y': 5.0}),
+    # z is not in the source, so x has no value to take
+    ({'x': 'source z'}, {'y': 7.0}),
+])
+def test_position_from_another_source_axis(position, expected):
+    source = create_image_source(str(DATA_DIR / TIFF_FILES[0]))
+    source.position = {'x': 5.0, 'y': 7.0}
+
+    source.fix_metadata({'position': position})
+
+    assert source.position == expected
+
+
 def test_get_msim_caches_by_output_order_and_start_level():
     source = TiffImageSource(str(DATA_DIR / TIFF_FILES[0]))
 

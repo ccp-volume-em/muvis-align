@@ -9,7 +9,7 @@ from muvis_align.constants import default_transform_key
 from muvis_align.image.util import (build_source_redimensioned_msim, build_missing_pyramid_levels,
                                     calc_pyramid_level_factors, complete_translation, get_properties_from_transform)
 from muvis_align.util import (find_all_numbers, split_numeric_dict, eval_context, check_contains_value,
-                              is_source_value, load_sbemimage_best_config, adjust_sbemimage_properties,
+                              is_source_value, get_source_axis, load_sbemimage_best_config, adjust_sbemimage_properties,
                               find_sbemimage_meta_dir, xyz_to_dict)
 
 
@@ -104,10 +104,16 @@ class ImageSource:
             context = {'filename_numeric': filename_numeric, 'fn': filename_numeric} | filename_dict
             if 'position' in source_metadata:
                 translation = source_metadata['position']
+                source_position = dict(self.position)
                 for dim in 'xyz':
                     if dim in translation:
+                        source_axis = get_source_axis(translation[dim])
                         if not is_source_value(translation[dim]):
                             self.position[dim] = eval_context(translation, dim, 0, context)
+                        elif source_axis in source_position:
+                            self.position[dim] = source_position[source_axis]
+                        elif source_axis:
+                            self.position.pop(dim, None)
                         if check_contains_value(translation[dim], 'invert') and dim in self.position:
                             if isinstance(self.position[dim], (tuple, list)):
                                 self.position[dim] = -self.position[dim][0], self.position[dim][1]
