@@ -91,6 +91,13 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **multiview-stitcher's ngff-zarr cap** - its latest (0.1.62) requires `ngff-zarr<0.44`, muvis-align
+      `>=0.48,<0.49` (ngff-zarr is at 0.50), so pip installs multiview-stitcher 0.1.60, the last without the cap.
+      muvis-align-env runs 0.1.62 with ngff-zarr 0.48 anyway (`pip check` reports it). Needs the cap lifted upstream;
+      then require `multiview-stitcher>=0.1.62`.
+- [ ] **antspyx holds numpy and scipy back** - antspyx 0.6.3 (in `[all]`) requires `numpy<2.4` and `scipy<1.16`,
+      so `pip install "muvis-align[all]"` downgrades both (2.5.2 -> 2.3.5, 1.18.1 -> 1.15.3 locally). Kept in `[all]`;
+      muvis-align-env stays without antspyx/itk-elastix to keep the latest. Revisit once antspyx relaxes these.
 - [ ] **Elastix registration (a reference method)** - tested 2026-10-24 on data/S000 (2D) and data/3d with
       itk-elastix 0.25.4 from a side folder (not a dependency: pip also pulls a numpy of its own). Fixed: the
       3D access violation (the deferred link quality read Elastix's freed resampled image; only phase correlation
