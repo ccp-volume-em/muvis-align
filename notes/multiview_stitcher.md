@@ -308,6 +308,20 @@ reweighting `linear_two_pass` fits better at close to `linear_two_pass`'s cost. 
 - **Suggestion:** a line in the docstring for custom registration functions, or an explicit flag.
 - **Post:** new issue (docs). Title: *Document that dispatch_pairwise_reg_func reads the function's signature*.
 
+### 15. The `ngff-zarr<0.44` pin
+
+- **Problem:** #185 ("Quick fix for now", for the browser/Pyodide dependencies) pins `ngff-zarr<0.44` in the core
+  requirements of 0.1.61 onwards. muvis-align needs `ngff-zarr>=0.48`: its OME-Zarr 0.6 output (0.47 and earlier
+  write the draft '0.6.dev4'), and the TIFF/OME metadata fixes contributed there (fideus-labs/ngff-zarr #639 stage
+  position as translation, #689 and #711 translation dims and units).
+- **Measured:** pip resolves muvis-align to multiview-stitcher 0.1.60, the last release without the pin; with 0.1.62
+  installed anyway, `pip check` reports the conflict.
+- **Suggestion:** lift the pin, or move it to the `browser` extra only.
+- **muvis-align:** requires `multiview-stitcher>=0.1.56` (so pip takes 0.1.60) and `ngff-zarr>=0.48,<0.49`; once the
+  pin is lifted, require `multiview-stitcher>=0.1.62` (TODO in todo_known_issues.md).
+- **Post:** new issue, referencing #185 and #189 (which targets ngff-zarr 0.43's 0.6.dev4 schema). Title: *Lift the
+  ngff-zarr<0.44 pin, or limit it to the browser extra*.
+
 ### Related: tifffile and zarr
 
 - **Problem:** tifffile's `ZarrTiffStore.get()` does the file read and decode synchronously inside zarr 3's async
