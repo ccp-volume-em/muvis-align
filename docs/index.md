@@ -44,7 +44,7 @@ muvis-align needs Python 3.12 or later.
 pip install muvis-align
 ```
 
-Or, with napari and Qt included:
+Or, with napari and Qt, and the optional registration methods (Elastix, ANTs and CPD) included:
 
 ```bash
 pip install "muvis-align[all]"

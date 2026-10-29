@@ -52,7 +52,6 @@ dependencies = [
     "multiscale-spatial-image>=2.0.0,<2.2.0",
     "magic-class",
     "platformdirs",
-    "probreg; python_version < '3.13' and sys_platform != 'win32'",
 ]
 
 [project.urls]
@@ -63,8 +62,13 @@ dependencies = [
 
 [project.optional-dependencies]
 # Allow easily installation with the full, default napari installation
-# (including Qt backend) using muvis-align[all].
-all = ["napari[all]"]
+# (including Qt backend) and the optional registration methods using muvis-align[all].
+all = [
+    "napari[all]",
+    "multiview-stitcher[ants,itk-elastix]",
+    # CPD; no probreg wheels for Windows or Python 3.13+
+    "probreg; python_version < '3.13' and sys_platform != 'win32'",
+]
 
 [dependency-groups]
 dev = [
@@ -75,6 +79,7 @@ dev = [
     "napari[qt]",  # test with napari's default Qt bindings
     "nbmake",
     "ipykernel<7",  # 7.x hangs the napari notebook's kernel on Windows (Python 3.13+)
+    "probreg; python_version < '3.13' and sys_platform != 'win32'",  # for the CPD tests
 ]
 
 [project.entry-points."napari.manifest"]

@@ -204,9 +204,11 @@ registration:
 - `sift` - Scale-Invariant Feature Transform (scikit-image)
 - `orb` - Oriented FAST and Rotated BRIEF (OpenCV)
 - `feature` - Generic feature-based registration
-- `cpd` - Coherent Point Drift
-- `elastix` - Elastix registration
-- `ants` - Advanced Normalization Tools (requires the `antspyx` package)
+- `cpd` - Coherent Point Drift (requires `probreg`, not available for Windows or Python 3.13+)
+- `elastix` - Elastix registration (requires `itk-elastix`)
+- `ants` - Advanced Normalization Tools (requires `antspyx`)
+
+The packages of these last three are installed with `muvis-align[all]`.
 
 **Transform Types:**
 - `translation` - Only translation

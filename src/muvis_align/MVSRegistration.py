@@ -1117,7 +1117,10 @@ class MVSRegistration:
         method_kind = registration_method_kind(method)
 
         if method_kind == 'cpd':
-            from muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
+            try:
+                from muvis_align.registration_methods.RegistrationMethodCPD import RegistrationMethodCPD
+            except ImportError:
+                raise ImportError('probreg is required for CPD registration.')
             registration_method = RegistrationMethodCPD(sim0, params, self.debug)
             pairwise_reg_func = registration_method.registration
         elif method_kind == 'feature':

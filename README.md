@@ -56,7 +56,8 @@ muvis-align needs Python 3.12 or later. Install it via [pip]:
 pip install muvis-align
 ```
 
-If napari is not already installed, you can install `muvis-align` with napari and Qt via:
+To install `muvis-align` with napari and Qt, and the optional registration methods (Elastix, ANTs
+and CPD), use:
 
 ```
 pip install "muvis-align[all]"
