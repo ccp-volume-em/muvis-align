@@ -862,6 +862,8 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
     import json
     import zarr
     from multiview_stitcher import msi_utils, param_utils
+    from muvis_align.image.ome_zarr_helper import read_ome_zarr_scene
+    from muvis_align.image.util import read_composed_msims
     reg = prepared_registration(TWO_TILES, tmp_path, preprocess=False)
     shifts = [(0.0, 0.0), (1.5, -2.25)]
     for msim, shift in zip(reg.msims, shifts):
@@ -869,7 +871,9 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
         registered = source.copy(data=np.asarray(source) @ np.asarray(param_utils.affine_from_translation(shift)))
         msi_utils.set_affine_transform(msim, registered, transform_key=reg.reg_transform_key)
 
-    _, saved = reg.fuse(reg.msims, fusion_method='compose', output_filename='composed', ome_version='0.6')
+    # a channel the UI has no colour for
+    _, saved = reg.fuse(reg.msims, fusion_method='compose', output_filename='composed', ome_version='0.6',
+                        extra_metadata={'channels': [{'label': 'grey', 'color': None}]})
 
     assert saved
     scene = json.loads((tmp_path / 'composed.ome.zarr' / 'zarr.json').read_text())['attributes']['ome']['scene']
@@ -879,8 +883,17 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
                     for transform in scene['coordinateTransformations'] if transform['input']['path'] == label}
         assert np.array_equal(matrices['registered'][:, :-1], matrices['source_metadata'][:, :-1])
         assert np.array_equal(matrices['registered'][-2:, -1] - matrices['source_metadata'][-2:, -1], shift)
-        written = zarr.open_group(str(tmp_path / 'composed.ome.zarr' / label), mode='r')['scale0/image']
+        group = zarr.open_group(str(tmp_path / 'composed.ome.zarr' / label), mode='r')
+        assert group.attrs['ome']['omero']['channels'][0]['color'] == 'FFFFFF'
+        written = group['scale0/image']
         assert np.array_equal(written[...], np.asarray(msim['scale0'].ds['image'].data))
+
+    path = str(tmp_path / 'composed.ome.zarr')
+    for transform_key in ['registered', 'source_metadata']:
+        read = read_composed_msims(path, read_ome_zarr_scene(path), transform_key)
+        assert [np.asarray(msi_utils.get_transform_from_msim(msim, transform_key)).squeeze().tolist()
+                for msim in read] == [np.asarray(msi_utils.get_transform_from_msim(msim, transform_key)).squeeze().tolist()
+                                      for msim in reg.msims]
 
 
 def test_compose_needs_ome_zarr_06_to_write_a_scene(tmp_path):

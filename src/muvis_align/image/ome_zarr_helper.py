@@ -1,7 +1,9 @@
 from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, NgffMultiscales, NgffScene, \
     Omero, OmeroChannel, OmeroWindow
 from ngff_zarr.v06.zarr_metadata import Metadata, Affine, CoordinateSystem, CoordinateSystemIdentifier
+import json
 import numpy as np
+import os
 import ome_zarr.format
 import zarr
 
@@ -55,13 +57,7 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
     multiscales = to_multiscales(image, scale_factors=pyramid_downsample, chunks=create_chunk_dict(default_chunk_size, dim_order))
 
     if channels:
-        # `or`, not a get() default: a blank label is present but empty
-        omero = Omero(channels=[OmeroChannel(label=channel.get('label') or f'Channel {index}',
-                                             color=rgba_to_hexrgb(channel.get('color')),
-                                             window=OmeroWindow(**get_channel_window(multiscales.images[-1].data, dim_order, index)))
-                                for index, channel in enumerate(channels)])
-
-        multiscales.metadata.omero = omero
+        multiscales.metadata.omero = make_omero(channels, multiscales.images[-1].data, dim_order)
 
     chunks_per_shard = None
 
@@ -139,14 +135,18 @@ def make_ome_multiscale_levels(levels, dim_order, channels, translation, min_len
 
     metadata = Metadata(coordinateSystems=coordinate_systems, datasets=datasets)
     if channels:
-        # `or`, not a get() default: a blank label is present but empty
-        omero = Omero(channels=[OmeroChannel(label=channel.get('label') or f'Channel {index}',
-                                             color=rgba_to_hexrgb(channel.get('color')),
-                                             window=OmeroWindow(**get_channel_window(images[-1].data, dim_order, index)))
-                                for index, channel in enumerate(channels)])
-        metadata.omero = omero
+        metadata.omero = make_omero(channels, images[-1].data, dim_order)
 
     return NgffMultiscales(images=images, metadata=metadata)
+
+
+def make_omero(channels, overview_data, dim_order):
+    """OMERO channel metadata, each window from the overview level. A channel without a colour is white, as napari
+    shows it; `or`, not a get() default, as a blank label or colour is present but empty."""
+    return Omero(channels=[OmeroChannel(label=channel.get('label') or f'Channel {index}',
+                                        color=rgba_to_hexrgb(channel.get('color') or (1, 1, 1)),
+                                        window=OmeroWindow(**get_channel_window(overview_data, dim_order, index)))
+                           for index, channel in enumerate(channels)])
 
 
 def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_length=128, compression=None):
@@ -170,6 +170,25 @@ def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_le
     coordinate_systems = [CoordinateSystem(name=name, axes=axes) for name in coordinate_system_names]
     scene = NgffScene(images=images, coordinateTransformations=transforms, coordinateSystems=coordinate_systems)
     scene.to_ome_zarr(path, version='0.6', **get_storage_options(compression))
+
+
+def read_ome_zarr_scene(path):
+    """The scene metadata of an OME-Zarr 0.6 scene group, or None for any other store."""
+    metadata_path = os.path.join(path, 'zarr.json')
+    if not os.path.exists(metadata_path):
+        return None
+    with open(metadata_path, encoding='utf8') as file:
+        return json.load(file).get('attributes', {}).get('ome', {}).get('scene')
+
+
+def spatial_affine(matrix, axes, spatial_dims):
+    """full_dims_affine() reversed: the homogeneous affine over spatial_dims of an (N, N+1) matrix over axes."""
+    matrix = np.asarray(matrix)
+    indices = [axes.index(dim) for dim in spatial_dims]
+    affine = np.eye(len(indices) + 1)
+    affine[:-1, :-1] = matrix[np.ix_(indices, indices)]
+    affine[:-1, -1] = matrix[indices, -1]
+    return affine
 
 
 def full_dims_affine(affine, dim_order, spatial_dims):

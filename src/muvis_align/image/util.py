@@ -672,6 +672,29 @@ def get_msim_dims(msim):
     return get_msim_image0(msim).dims
 
 
+def read_composed_msims(path, scene, transform_key):
+    """The sources of a composed OME-Zarr scene (save_ome_zarr_scene()), lazily, each with its affine into the
+    scene's coordinate system `transform_key` (else its first) as `transform_key`."""
+    from multiview_stitcher import ngff_utils
+    from muvis_align.image.ome_zarr_helper import spatial_affine
+
+    names = [system['name'] for system in scene['coordinateSystems']]
+    name = transform_key if transform_key in names else names[0]
+    axes = [axis['name'] for axis in scene['coordinateSystems'][names.index(name)]['axes']]
+    msims = []
+    for transform in scene['coordinateTransformations']:
+        if transform['output']['name'] == name:
+            msim = ngff_utils.read_msim_from_ome_zarr(os.path.join(path, transform['input']['path']),
+                                                      transform_key=transform_key, array_backend='dask')
+            identity = msi_utils.get_transform_from_msim(msim, transform_key)
+            spatial_dims = [str(dim) for dim in identity.coords['x_in'].values[:-1]]
+            affine = spatial_affine(transform['affine'], axes, spatial_dims)
+            msi_utils.set_affine_transform(msim, identity.copy(data=np.broadcast_to(affine, identity.shape)),
+                                           transform_key=transform_key)
+            msims.append(msim)
+    return msims
+
+
 def get_msim_transform_keys(msim):
     # each transform key is a data_var alongside 'image' on every scale node's Dataset
     scale_key = msi_utils.get_sorted_scale_keys(msim)[0]

@@ -30,7 +30,8 @@ from muvis_align.image.util import get_sim_position_final, \
     promoted_geometry, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
     snapshot_msims_transform, restore_msims_transform, \
-    select_msim_subpyramid_at_scale, reduce_msims_to_fused_size
+    select_msim_subpyramid_at_scale, reduce_msims_to_fused_size, read_composed_msims
+from muvis_align.image.ome_zarr_helper import read_ome_zarr_scene
 from muvis_align.file.resources import get_project_template
 from muvis_align.logging import init_logging
 from muvis_align.metrics import calc_msims_metrics, remap_pair_metrics
@@ -1378,21 +1379,24 @@ class Interface:
         channels = self.extra_metadata.get('channels', [])
 
         if isinstance(fused, list):
-            # one layer per source; add_image() must stay on the Qt thread, so only the layer prep is pooled
-            def prep_layer(msim, channel):
-                image0 = get_msim_image0(msim)
-                scale = si_utils.get_spacing_from_sim(image0, asarray=True)
-                translate = si_utils.get_origin_from_sim(image0, asarray=True)
-                contrast_limits = get_contrast_limits(msim, cheap=cheap)
-                return dict(data=get_msim_level_data(msim), name=channel.get('label', layer_name),
-                           multiscale=True, colormap=channel.get('color', (1, 1, 1, 1)),
-                           contrast_limits=contrast_limits,
-                           scale=scale, translate=translate, units=spatial_unit, blending='additive')
+            # one layer per source, placed by its transform as the composed scene places it
+            transform_key = self.get_best_transform_key()
+            labels = self.reg.file_labels if len(self.reg.file_labels) == len(fused) else range(len(fused))
+            colormap = (channels[0].get('color') if len(channels) == 1 else None) or (1, 1, 1, 1)
 
-            channel_list = channels or [{}] * len(fused)
+            def prep_layer(msim, label):
+                image0 = get_msim_image0(msim)
+                transform = msi_utils.get_transform_from_msim(msim, transform_key)
+                transform = transform.sel(t=0) if 't' in transform.dims else transform
+                return dict(data=get_msim_level_data(msim), name=str(label), multiscale=True, colormap=colormap,
+                            contrast_limits=get_contrast_limits(msim, cheap=cheap),
+                            scale=si_utils.get_spacing_from_sim(image0, asarray=True),
+                            translate=si_utils.get_origin_from_sim(image0, asarray=True),
+                            affine=np.asarray(transform), units=spatial_unit, blending='additive')
+
             with Timer(f'_napari_view_add_fused_data: prep {len(fused)} layers',
                       verbose=self._timing_verbose()):
-                layer_kwargs = [prep_layer(msim, channel) for msim, channel in zip(fused, channel_list)]
+                layer_kwargs = [prep_layer(msim, label) for msim, label in zip(fused, labels)]
 
             with Timer(f'_napari_view_add_fused_data: add_image loop ({len(fused)} layers)',
                       verbose=self._timing_verbose()):
@@ -1950,7 +1954,11 @@ class Interface:
         transform_key = self.get_best_transform_key()
         with progress_phase(progress_factory, total=1, desc='Reading fused output') as pbar, \
              Timer('show fused output', verbose=self._timing_verbose()):
-            fused = ngff_utils.read_msim_from_ome_zarr(path, transform_key=transform_key, array_backend='dask')
+            scene = read_ome_zarr_scene(path)
+            if scene:
+                fused = read_composed_msims(path, scene, transform_key)
+            else:
+                fused = ngff_utils.read_msim_from_ome_zarr(path, transform_key=transform_key, array_backend='dask')
             self._show_view_image(self.viewer, fused, 'Fused')
             self.view_mode = ViewMode.FUSED
             if pbar is not None:

@@ -1926,6 +1926,31 @@ def test_each_channel_layer_gets_its_own_contrast_limits(bare_interface, limits,
     assert viewer.add_image.call_args.kwargs['contrast_limits'] == expected
 
 
+def test_each_composed_source_is_a_layer_placed_by_its_registered_transform(bare_interface):
+    from types import SimpleNamespace
+    from multiview_stitcher import msi_utils, param_utils
+    from tests.data_builders import make_msim
+
+    msims = [make_msim(np.zeros((4, 4), dtype=np.uint16)) for _ in range(2)]
+    shifts = [(0.0, 0.0), (1.5, -2.0)]
+    for msim, shift in zip(msims, shifts):
+        source = msi_utils.get_transform_from_msim(msim, 'source_metadata')
+        msi_utils.set_affine_transform(msim, source.copy(data=np.asarray(param_utils.affine_from_translation(shift))),
+                                       transform_key='registered')
+    bare_interface.extra_metadata = {'channels': [{'label': 'grey', 'color': None}]}
+    bare_interface.reg = SimpleNamespace(file_labels=['a', 'b'])
+    bare_interface.get_best_transform_key = lambda: 'registered'
+    viewer = MagicMock()
+
+    bare_interface._napari_view_add_fused_data(viewer, msims, 'data', cheap=True)
+
+    calls = viewer.add_image.call_args_list
+    assert [call.kwargs['name'] for call in calls] == ['a', 'b']
+    assert all(call.kwargs['colormap'] == (1, 1, 1, 1) for call in calls)
+    for call, shift in zip(calls, shifts):
+        assert np.array_equal(call.kwargs['affine'], np.asarray(param_utils.affine_from_translation(shift)))
+
+
 def test_preview_data_layer_is_real_multiscale_pyramid(make_napari_viewer, tmp_path):
     """The preview's data layer (_create_napari_data -> _napari_view_add_fused_data) is a genuine
     napari multiscale layer from msims end to end, as the fused export's is."""
