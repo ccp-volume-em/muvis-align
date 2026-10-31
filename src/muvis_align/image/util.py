@@ -688,7 +688,7 @@ def read_composed_msims(path, scene, transform_key):
                                                       transform_key=transform_key, array_backend='dask')
             identity = msi_utils.get_transform_from_msim(msim, transform_key)
             spatial_dims = [str(dim) for dim in identity.coords['x_in'].values[:-1]]
-            affine = spatial_affine(transform['affine'], axes, spatial_dims)
+            affine = spatial_affine(transform, axes, spatial_dims)
             msi_utils.set_affine_transform(msim, identity.copy(data=np.broadcast_to(affine, identity.shape)),
                                            transform_key=transform_key)
             msims.append(msim)

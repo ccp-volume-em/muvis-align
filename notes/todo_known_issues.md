@@ -94,8 +94,8 @@ MINOR
 - [ ] **Compose (OME-Zarr 0.6 scene) - left to check.** Writing, the plugin view and reopening are tested; the
       slides project (328 tiles, 5 sections) wrote a valid 30GB scene in 6.5 min. Not yet checked:
   - [ ] A reader other than muvis-align: napari-ome-zarr >=0.11 (muvis-align-env has 0.10) or the
-        unstitched-tiles-storage notebook env - does `registered` load as the default scene, and is `affine` read
-        (the notebook wrote `translation`)? If not, write `translation` when the registration is translation-only.
+        unstitched-tiles-storage notebook env - does `registered` load as the default scene? Translation-only
+        placements are written as `translation` (as the notebook does), others as `affine`: is `affine` read?
   - [ ] Inputs only run 2D, one channel, translation: a stack / 3D (z promotion), rotated sources, multichannel
         (the view gives a source one layer with a channel slider, not a layer per channel).
   - [ ] `image/reg_util.py`'s `__main__` reads mappings.json as square affines; they are now (N, N+1).

@@ -858,17 +858,23 @@ def test_ome_zarr_06_is_written_for_a_set_spacing_too(tmp_path):
     assert group['attributes']['ome']['version'] == '0.6'
 
 
-def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_scene(tmp_path):
+@pytest.mark.parametrize('linear, registered_type', [
+    (np.eye(2), 'translation'),
+    (np.array([[0.0, -1.0], [1.0, 0.0]]), 'affine'),
+], ids=['translation-only', 'rotated'])
+def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_scene(tmp_path, linear, registered_type):
     import json
     import zarr
-    from multiview_stitcher import msi_utils, param_utils
+    from multiview_stitcher import msi_utils
     from muvis_align.image.ome_zarr_helper import read_ome_zarr_scene
     from muvis_align.image.util import read_composed_msims
     reg = prepared_registration(TWO_TILES, tmp_path, preprocess=False)
     shifts = [(0.0, 0.0), (1.5, -2.25)]
     for msim, shift in zip(reg.msims, shifts):
         source = msi_utils.get_transform_from_msim(msim, reg.source_transform_key)
-        registered = source.copy(data=np.asarray(source) @ np.asarray(param_utils.affine_from_translation(shift)))
+        correction = np.eye(3)
+        correction[:2, :2], correction[:2, 2] = linear, shift
+        registered = source.copy(data=np.asarray(source) @ correction)
         msi_utils.set_affine_transform(msim, registered, transform_key=reg.reg_transform_key)
 
     # a channel the UI has no colour for
@@ -878,11 +884,10 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
     assert saved
     scene = json.loads((tmp_path / 'composed.ome.zarr' / 'zarr.json').read_text())['attributes']['ome']['scene']
     assert [system['name'] for system in scene['coordinateSystems']] == ['registered', 'source_metadata']
-    for label, msim, shift in zip(reg.file_labels, reg.msims, shifts):
-        matrices = {transform['output']['name']: np.array(transform['affine'])
-                    for transform in scene['coordinateTransformations'] if transform['input']['path'] == label}
-        assert np.array_equal(matrices['registered'][:, :-1], matrices['source_metadata'][:, :-1])
-        assert np.array_equal(matrices['registered'][-2:, -1] - matrices['source_metadata'][-2:, -1], shift)
+    for label, msim in zip(reg.file_labels, reg.msims):
+        types = {transform['output']['name']: transform['type']
+                 for transform in scene['coordinateTransformations'] if transform['input']['path'] == label}
+        assert types == {'registered': registered_type, 'source_metadata': 'translation'}
         group = zarr.open_group(str(tmp_path / 'composed.ome.zarr' / label), mode='r')
         assert group.attrs['ome']['omero']['channels'][0]['color'] == 'FFFFFF'
         written = group['scale0/image']

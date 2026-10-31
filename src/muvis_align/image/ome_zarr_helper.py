@@ -1,6 +1,6 @@
 from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, NgffMultiscales, NgffScene, \
     Omero, OmeroChannel, OmeroWindow
-from ngff_zarr.v06.zarr_metadata import Metadata, Affine, CoordinateSystem, CoordinateSystemIdentifier
+from ngff_zarr.v06.zarr_metadata import Metadata, Affine, Translation, CoordinateSystem, CoordinateSystemIdentifier
 import json
 import numpy as np
 import os
@@ -151,7 +151,7 @@ def make_omero(channels, overview_data, dim_order):
 
 def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_length=128, compression=None):
     """Separate images in one OME-Zarr 0.6 scene, each at its own native levels (make_ome_multiscale_levels()),
-    placed in every named coordinate system by its affine.
+    placed in every named coordinate system by its affine, written as a translation when it is only one.
 
     sources: {image path: (levels, dim_order, translation, spatial_dims, {coordinate system name: affine})}, each
     affine a homogeneous matrix over spatial_dims of the image's physical space, as multiview-stitcher keeps it.
@@ -164,8 +164,14 @@ def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_le
         images[image_path] = multiscales
         image_system = CoordinateSystemIdentifier(path=image_path, name=multiscales.metadata.coordinateSystems[0].name)
         for name in coordinate_system_names:
-            transforms.append(Affine(affine=full_dims_affine(affines[name], dim_order, spatial_dims).tolist(),
-                                     input=image_system, output=CoordinateSystemIdentifier(name=name)))
+            matrix = full_dims_affine(affines[name], dim_order, spatial_dims)
+            output_system = CoordinateSystemIdentifier(name=name)
+            # a translation is read by more viewers than an affine; only an exact one, so nothing is lost
+            if np.array_equal(matrix[:, :-1], np.eye(len(dim_order))):
+                transforms.append(Translation(translation=matrix[:, -1].tolist(), input=image_system,
+                                              output=output_system))
+            else:
+                transforms.append(Affine(affine=matrix.tolist(), input=image_system, output=output_system))
     axes = next(iter(images.values())).metadata.coordinateSystems[0].axes
     coordinate_systems = [CoordinateSystem(name=name, axes=axes) for name in coordinate_system_names]
     scene = NgffScene(images=images, coordinateTransformations=transforms, coordinateSystems=coordinate_systems)
@@ -181,9 +187,13 @@ def read_ome_zarr_scene(path):
         return json.load(file).get('attributes', {}).get('ome', {}).get('scene')
 
 
-def spatial_affine(matrix, axes, spatial_dims):
-    """full_dims_affine() reversed: the homogeneous affine over spatial_dims of an (N, N+1) matrix over axes."""
-    matrix = np.asarray(matrix)
+def spatial_affine(transform, axes, spatial_dims):
+    """A scene's translation or affine transform (as written by save_ome_zarr_scene()) over axes, as the
+    homogeneous affine over spatial_dims."""
+    if transform['type'] == 'translation':
+        matrix = np.hstack([np.eye(len(axes)), np.array(transform['translation'], dtype=float)[:, None]])
+    else:
+        matrix = np.asarray(transform['affine'])
     indices = [axes.index(dim) for dim in spatial_dims]
     affine = np.eye(len(indices) + 1)
     affine[:-1, :-1] = matrix[np.ix_(indices, indices)]
