@@ -265,7 +265,7 @@ fusion:
 - `exclusive` - Show only single tile data where overlapping
 - `additive` - Sum overlapping regions
 - `compose` - No fusion: each source keeps its own pyramid, written as one OME-Zarr 0.6 scene with a
-  `registered` and a `source_metadata` coordinate system (`registered` is the default view). Needs `ome_version: 0.6`
+  `registered` and a `source_metadata` coordinate system (`registered` is the default view). Always OME-Zarr 0.6, whatever `ome_version` is set
 
 **Fusion Options:**
 

@@ -1963,7 +1963,8 @@ class MVSRegistration:
                 fused_image = msims
                 if output_filename is not None:
                     if str(ome_version) != '0.6':
-                        raise ValueError(f'Compose writes an OME-Zarr scene, which needs OME-Zarr 0.6, not {ome_version}')
+                        logging.warning(f'Compose writes an OME-Zarr scene, which only 0.6 has: written as 0.6, '
+                                        f'not {ome_version}')
                     if not output_filename.lower().endswith('.zarr'):
                         output_filename += zarr_extension
                     self.save_composed(output_filename, msims, channels)

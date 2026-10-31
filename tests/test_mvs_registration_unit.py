@@ -896,12 +896,16 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
                                       for msim in reg.msims]
 
 
-def test_compose_needs_ome_zarr_06_to_write_a_scene(tmp_path):
+def test_compose_writes_its_scene_as_ome_zarr_06_whatever_version_is_set(tmp_path):
+    import json
     reg = prepared_registration(TWO_TILES, tmp_path, preprocess=False)
 
-    with pytest.raises(ValueError, match='0.6'):
-        reg.fuse(reg.msims, fusion_method='compose', transform_key=reg.source_transform_key,
-                 output_filename='composed', ome_version='0.5')
+    _, saved = reg.fuse(reg.msims, fusion_method='compose', transform_key=reg.source_transform_key,
+                        output_filename='composed', ome_version='0.5')
+
+    ome = json.loads((tmp_path / 'composed.ome.zarr' / 'zarr.json').read_text())['attributes']['ome']
+    assert saved
+    assert (ome['version'], 'scene' in ome) == ('0.6', True)
 
 
 def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):

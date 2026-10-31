@@ -98,7 +98,6 @@ MINOR
         (the notebook wrote `translation`)? If not, write `translation` when the registration is translation-only.
   - [ ] Inputs only run 2D, one channel, translation: a stack / 3D (z promotion), rotated sources, multichannel
         (the view gives a source one layer with a channel slider, not a layer per channel).
-  - [ ] The plugin with OME version 0.5 and Compose fails with an error: switch to 0.6 for Compose instead?
   - [ ] `image/reg_util.py`'s `__main__` reads mappings.json as square affines; they are now (N, N+1).
   - [ ] Not Compose: the slides project's registered layout is tilted a few degrees (0 rotation per tile, shifts
         growing along rows/columns, up to 22um). The 24um step (fn*24, 25.6um tiles) has nothing in the FastEM
