@@ -661,6 +661,13 @@ def get_msim_image0(msim, level=0):
     return msim[scale_key].ds['image']
 
 
+def msim_native_levels(msim):
+    """(levels as (data, pixel size) pairs finest first, dim order, origin) of msim's own pyramid."""
+    images = [msim[scale_key].ds['image'] for scale_key in msi_utils.get_sorted_scale_keys(msim)]
+    levels = [(image.data, si_utils.get_spacing_from_sim(image)) for image in images]
+    return levels, ''.join(images[0].dims), si_utils.get_origin_from_sim(images[0])
+
+
 def get_msim_dims(msim):
     return get_msim_image0(msim).dims
 

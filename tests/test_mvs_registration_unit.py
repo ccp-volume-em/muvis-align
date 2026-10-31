@@ -858,6 +858,39 @@ def test_ome_zarr_06_is_written_for_a_set_spacing_too(tmp_path):
     assert group['attributes']['ome']['version'] == '0.6'
 
 
+def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_scene(tmp_path):
+    import json
+    import zarr
+    from multiview_stitcher import msi_utils, param_utils
+    reg = prepared_registration(TWO_TILES, tmp_path, preprocess=False)
+    shifts = [(0.0, 0.0), (1.5, -2.25)]
+    for msim, shift in zip(reg.msims, shifts):
+        source = msi_utils.get_transform_from_msim(msim, reg.source_transform_key)
+        registered = source.copy(data=np.asarray(source) @ np.asarray(param_utils.affine_from_translation(shift)))
+        msi_utils.set_affine_transform(msim, registered, transform_key=reg.reg_transform_key)
+
+    _, saved = reg.fuse(reg.msims, fusion_method='compose', output_filename='composed', ome_version='0.6')
+
+    assert saved
+    scene = json.loads((tmp_path / 'composed.ome.zarr' / 'zarr.json').read_text())['attributes']['ome']['scene']
+    assert [system['name'] for system in scene['coordinateSystems']] == ['registered', 'source_metadata']
+    for label, msim, shift in zip(reg.file_labels, reg.msims, shifts):
+        matrices = {transform['output']['name']: np.array(transform['affine'])
+                    for transform in scene['coordinateTransformations'] if transform['input']['path'] == label}
+        assert np.array_equal(matrices['registered'][:, :-1], matrices['source_metadata'][:, :-1])
+        assert np.array_equal(matrices['registered'][-2:, -1] - matrices['source_metadata'][-2:, -1], shift)
+        written = zarr.open_group(str(tmp_path / 'composed.ome.zarr' / label), mode='r')['scale0/image']
+        assert np.array_equal(written[...], np.asarray(msim['scale0'].ds['image'].data))
+
+
+def test_compose_needs_ome_zarr_06_to_write_a_scene(tmp_path):
+    reg = prepared_registration(TWO_TILES, tmp_path, preprocess=False)
+
+    with pytest.raises(ValueError, match='0.6'):
+        reg.fuse(reg.msims, fusion_method='compose', transform_key=reg.source_transform_key,
+                 output_filename='composed', ome_version='0.5')
+
+
 def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):
     """A stack's sources carry no z of their own: fuse() promotes them, spacing the slices by index."""
     source_metadata = {'scale': {'y': '0.032', 'x': '0.032'}}

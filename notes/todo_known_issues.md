@@ -92,8 +92,8 @@ ESSENTIAL
 MINOR
 
 - [ ] **multiview-stitcher's ngff-zarr cap** - its latest (0.1.62) requires `ngff-zarr<0.44`, muvis-align
-      `>=0.48,<0.49` (ngff-zarr is at 0.50), so pip installs multiview-stitcher 0.1.60, the last without the cap.
-      muvis-align-env runs 0.1.62 with ngff-zarr 0.48 anyway (`pip check` reports it). Needs the cap lifted upstream;
+      `>=0.50,<0.52` (for OME-Zarr scenes), so pip installs multiview-stitcher 0.1.60, the last without the cap.
+      muvis-align-env runs 0.1.62 with ngff-zarr 0.51 anyway (`pip check` reports it). Needs the cap lifted upstream;
       then require `multiview-stitcher>=0.1.62`.
 - [ ] **antspyx holds numpy and scipy back** - antspyx 0.6.3 (in `[all]`) requires `numpy<2.4` and `scipy<1.16`,
       so `pip install "muvis-align[all]"` downgrades both (2.5.2 -> 2.3.5, 1.18.1 -> 1.15.3 locally). Kept in `[all]`;

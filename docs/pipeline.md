@@ -264,7 +264,8 @@ fusion:
 - `average` (default) - Average overlapping pixels
 - `exclusive` - Show only single tile data where overlapping
 - `additive` - Sum overlapping regions
-- `compose` - Compositional blending (*experimental*)
+- `compose` - No fusion: each source keeps its own pyramid, written as one OME-Zarr 0.6 scene with a
+  `registered` and a `source_metadata` coordinate system (`registered` is the default view). Needs `ome_version: 0.6`
 
 **Fusion Options:**
 

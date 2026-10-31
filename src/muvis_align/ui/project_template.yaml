@@ -474,7 +474,7 @@ parameters:
   - name: method
     type: dropdown
     label: "Method"
-    description: "Method for fusion (average, exclusive, additive, compose)"
+    description: "Method for fusion (average, exclusive, additive; compose: no fusion, sources in an OME-Zarr 0.6 scene)"
     options:
       - label: Average
         value: "average"

@@ -1,6 +1,7 @@
-from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, NgffMultiscales, \
+from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, NgffMultiscales, NgffScene, \
     Omero, OmeroChannel, OmeroWindow
-from ngff_zarr.v06.zarr_metadata import Metadata
+from ngff_zarr.v06.zarr_metadata import Metadata, Affine, CoordinateSystem, CoordinateSystemIdentifier
+import numpy as np
 import ome_zarr.format
 import zarr
 
@@ -47,12 +48,7 @@ def save_ome_zarr(filename, datas, dim_order, pixel_size, channels, translations
 def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rotation,
                    pyramid_downsample=None, compression=None, ome_version=default_ome_zarr_version):
 
-    storage_options = {}
-    compressor, compression_filters = create_compression_filter(compression)
-    if compressor is not None:
-        storage_options['compressor'] = compressor
-    if compression_filters is not None:
-        storage_options['filters'] = compression_filters
+    storage_options = get_storage_options(compression)
 
     axes_units = {dim: 'micrometer' for dim in dim_order if dim in 'xyz'}
     image = to_ngff_image(data, dims=dim_order, scale=pixel_size, translation=translation, axes_units=axes_units)
@@ -84,23 +80,33 @@ def get_padding_scale_factors(shape, dim_order, **kwargs):
         {dim: size for dim, size in zip(dim_order, shape) if dim in 'xyz'}, **kwargs)
 
 
-def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
-                               min_length=128, compression=None, ome_version=default_ome_zarr_version):
-    """Write pre-built pyramid levels exactly as given, without resampling, then pad with resampled coarser
-    levels, halving until the largest spatial extent is at most min_length.
-
-    The padding factors are computed here: to_multiscales(scale_factors=<int>) never writes a level smaller
-    than one chunk, leaving no level coarse enough for a zoomed-out preview.
-
-    levels: list of (data, pixel_size) pairs, finest first - data can be numpy or dask.
-    """
+def get_storage_options(compression):
     storage_options = {}
     compressor, compression_filters = create_compression_filter(compression)
     if compressor is not None:
         storage_options['compressor'] = compressor
     if compression_filters is not None:
         storage_options['filters'] = compression_filters
+    return storage_options
 
+
+def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
+                               min_length=128, compression=None, ome_version=default_ome_zarr_version):
+    """Write pre-built pyramid levels exactly as given, without resampling (see make_ome_multiscale_levels())."""
+    multiscales = make_ome_multiscale_levels(levels, dim_order, channels, translation, min_length=min_length)
+    to_ngff_zarr(path, multiscales, version=ome_version, **get_storage_options(compression))
+    return multiscales.metadata
+
+
+def make_ome_multiscale_levels(levels, dim_order, channels, translation, min_length=128):
+    """Pre-built pyramid levels exactly as given, without resampling, padded with resampled coarser levels,
+    halving until the largest spatial extent is at most min_length.
+
+    The padding factors are computed here: to_multiscales(scale_factors=<int>) never writes a level smaller
+    than one chunk, leaving no level coarse enough for a zoomed-out preview.
+
+    levels: list of (data, pixel_size) pairs, finest first - data can be numpy or dask.
+    """
     axes_units = {dim: 'micrometer' for dim in dim_order if dim in 'xyz'}
     chunks = create_chunk_dict(default_chunk_size, dim_order)
     images = []
@@ -140,10 +146,42 @@ def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
                                 for index, channel in enumerate(channels)])
         metadata.omero = omero
 
-    multiscales = NgffMultiscales(images=images, metadata=metadata)
-    to_ngff_zarr(path, multiscales, version=ome_version, **storage_options)
+    return NgffMultiscales(images=images, metadata=metadata)
 
-    return metadata
+
+def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_length=128, compression=None):
+    """Separate images in one OME-Zarr 0.6 scene, each at its own native levels (make_ome_multiscale_levels()),
+    placed in every named coordinate system by its affine.
+
+    sources: {image path: (levels, dim_order, translation, spatial_dims, {coordinate system name: affine})}, each
+    affine a homogeneous matrix over spatial_dims of the image's physical space, as multiview-stitcher keeps it.
+    coordinate_system_names: the first is the default view; napari-ome-zarr picks the alphabetically first instead.
+    """
+    images = {}
+    transforms = []
+    for image_path, (levels, dim_order, translation, spatial_dims, affines) in sources.items():
+        multiscales = make_ome_multiscale_levels(levels, dim_order, channels, translation, min_length=min_length)
+        images[image_path] = multiscales
+        image_system = CoordinateSystemIdentifier(path=image_path, name=multiscales.metadata.coordinateSystems[0].name)
+        for name in coordinate_system_names:
+            transforms.append(Affine(affine=full_dims_affine(affines[name], dim_order, spatial_dims).tolist(),
+                                     input=image_system, output=CoordinateSystemIdentifier(name=name)))
+    axes = next(iter(images.values())).metadata.coordinateSystems[0].axes
+    coordinate_systems = [CoordinateSystem(name=name, axes=axes) for name in coordinate_system_names]
+    scene = NgffScene(images=images, coordinateTransformations=transforms, coordinateSystems=coordinate_systems)
+    scene.to_ome_zarr(path, version='0.6', **get_storage_options(compression))
+
+
+def full_dims_affine(affine, dim_order, spatial_dims):
+    """A spatial homogeneous affine as OME-Zarr's (N, N+1) matrix over all of dim_order, identity on t/c."""
+    affine = np.asarray(affine)
+    matrix = np.eye(len(dim_order), len(dim_order) + 1)
+    for row, output_dim in enumerate(spatial_dims):
+        output_index = dim_order.index(output_dim)
+        for column, input_dim in enumerate(spatial_dims):
+            matrix[output_index, dim_order.index(input_dim)] = affine[row, column]
+        matrix[output_index, -1] = affine[row, -1]
+    return matrix
 
 
 def get_ome_zarr_format(ome_version):

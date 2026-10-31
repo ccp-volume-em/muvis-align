@@ -213,7 +213,7 @@ again to store it.
 
 | Parameter | Description |
 |-----------|-------------|
-| Method | How overlapping sources combine: **Average**, **Exclusive**, **Additive** or **Compose** |
+| Method | How overlapping sources combine: **Average**, **Exclusive**, **Additive** or **Compose** (no fusion: each source unresampled in an OME-Zarr 0.6 scene, at its registered and its source position) |
 | Spacing | Output pixel size: **Native** (each level at the sources' own pixel sizes, never upsampled), **Mean**, **Min** (highest resolution) or **Max** (lowest resolution) |
 | Block size | Block size of the output: its OME-Zarr chunks, which are also the blocks fusion works in, or its TIFF tiles. Automatic (4096) is fastest; a smaller size makes smaller files to view but costs fusion time. See [Block size](pipeline.md#block-size) |
 | OME version | OME-Zarr version to write: **0.4**, **0.5** or **0.6** |

@@ -32,7 +32,7 @@ from muvis_align.GlobalOptProgress import GlobalOptProgress
 from muvis_align.image.Video import Video
 from muvis_align.image.flatfield import flatfield_correction
 from muvis_align.image.ome_helper import save_image
-from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels
+from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels, save_ome_zarr_scene
 from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source
 from muvis_align.image.util import *
@@ -1959,8 +1959,15 @@ class MVSRegistration:
                                                   output_stack_properties=output_stack_properties,
                                                   output_chunksize=output_chunksize)
             else:
-                # 'compose' mode: no actual fusion, just return the per-source msims as-is
+                # 'compose' mode: no fusion, the sources as they are
                 fused_image = msims
+                if output_filename is not None:
+                    if str(ome_version) != '0.6':
+                        raise ValueError(f'Compose writes an OME-Zarr scene, which needs OME-Zarr 0.6, not {ome_version}')
+                    if not output_filename.lower().endswith('.zarr'):
+                        output_filename += zarr_extension
+                    self.save_composed(output_filename, msims, channels)
+                    saving_zarr = True
         return fused_image, saving_zarr
 
     def save_pair_results(self, pair_mappings, metrics=None, qualities=None):
@@ -2089,15 +2096,28 @@ class MVSRegistration:
         if position is not None and 'z' not in get_msim_dims(msim):
             msim = make_msims_3d([msim], z_scale=self._msim_z_scale, positions=[position])[0]
 
-        scale_keys = msi_utils.get_sorted_scale_keys(msim)
-        images = [msim[scale_key].ds['image'] for scale_key in scale_keys]
-        dim_order = ''.join(images[0].dims)
-        levels = [(image.data, si_utils.get_spacing_from_sim(image)) for image in images]
-        translation = si_utils.get_origin_from_sim(images[0])
-
+        levels, dim_order, translation = msim_native_levels(msim)
         save_ome_multiscale_levels(str(output_filename) + zarr_extension, levels, dim_order, channels,
                                    translation, min_length=min_length,
                                    compression=compression, ome_version=ome_version)
+
+    def save_composed(self, output_filename, msims, channels, min_length=128, compression=None):
+        """Each source as its own image at its native levels, in one OME-Zarr 0.6 scene with a coordinate system per
+        transform key; the registered one sorts first, so it is the default view."""
+        transform_keys = [key for key in sorted([self.reg_transform_key, self.source_transform_key])
+                          if key in get_msim_transform_keys(msims[0])]
+        labels = self.file_labels if len(self.file_labels) == len(msims) else [str(index) for index in range(len(msims))]
+        sources = {}
+        for label, msim in zip(labels, msims):
+            levels, dim_order, translation = msim_native_levels(msim)
+            affines = {}
+            for transform_key in transform_keys:
+                affine = msi_utils.get_transform_from_msim(msim, transform_key)
+                affines[transform_key] = affine.sel(t=0) if 't' in affine.dims else affine
+            spatial_dims = [str(dim) for dim in affines[transform_keys[0]].coords['x_in'].values[:-1]]
+            sources[label] = (levels, dim_order, translation, spatial_dims, affines)
+        save_ome_zarr_scene(output_filename, sources, transform_keys, channels, min_length=min_length,
+                            compression=compression)
 
     def save_video(self, output, msims, fused_msim):
         logging.info('Creating transition video...')
