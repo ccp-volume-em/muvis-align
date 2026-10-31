@@ -867,7 +867,8 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
     import zarr
     from multiview_stitcher import msi_utils
     from muvis_align.image.ome_zarr_helper import read_ome_zarr_scene
-    from muvis_align.image.util import read_composed_msims
+    from multiview_stitcher import spatial_image_utils as si_utils
+    from muvis_align.image.util import read_composed_msims, get_msim_image0
     reg = prepared_registration(TWO_TILES, tmp_path, preprocess=False)
     shifts = [(0.0, 0.0), (1.5, -2.25)]
     for msim, shift in zip(reg.msims, shifts):
@@ -890,15 +891,25 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
         assert types == {'registered': registered_type, 'source_metadata': 'translation'}
         group = zarr.open_group(str(tmp_path / 'composed.ome.zarr' / label), mode='r')
         assert group.attrs['ome']['omero']['channels'][0]['color'] == 'FFFFFF'
+        datasets = group.attrs['ome']['multiscales'][0]['datasets']
+        assert len(datasets) > 1
+        assert all(transform['input']['path'] == dataset['path']
+                   for dataset in datasets for transform in dataset['coordinateTransformations'])
         written = group['scale0/image']
         assert np.array_equal(written[...], np.asarray(msim['scale0'].ds['image'].data))
+
+    def placement(msim, transform_key):
+        """The source's pixel grid in the coordinate system: its affine after its origin."""
+        origin = np.eye(3)
+        origin[:2, 2] = list(si_utils.get_origin_from_sim(get_msim_image0(msim)).values())
+        return np.asarray(msi_utils.get_transform_from_msim(msim, transform_key)).squeeze() @ origin
 
     path = str(tmp_path / 'composed.ome.zarr')
     for transform_key in ['registered', 'source_metadata']:
         read = read_composed_msims(path, read_ome_zarr_scene(path), transform_key)
-        assert [np.asarray(msi_utils.get_transform_from_msim(msim, transform_key)).squeeze().tolist()
-                for msim in read] == [np.asarray(msi_utils.get_transform_from_msim(msim, transform_key)).squeeze().tolist()
-                                      for msim in reg.msims]
+        for read_msim, msim in zip(read, reg.msims):
+            np.testing.assert_allclose(placement(read_msim, transform_key), placement(msim, transform_key),
+                                       rtol=0, atol=1e-12)
 
 
 def test_compose_writes_its_scene_as_ome_zarr_06_whatever_version_is_set(tmp_path):

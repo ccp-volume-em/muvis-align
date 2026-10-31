@@ -93,10 +93,10 @@ MINOR
 
 - [ ] **Compose (OME-Zarr 0.6 scene) - left to check.** Writing, the plugin view and reopening are tested; the
       slides project (328 tiles, 5 sections) wrote a valid 30GB scene in 6.5 min. Not yet checked:
-  - [ ] A reader other than muvis-align: napari-ome-zarr >=0.11 (muvis-align-env has 0.10) or the
-        unstitched-tiles-storage notebook env - does `registered` load as the default scene? Translation-only
-        placements are written as `translation` (as the notebook does), others as `affine`: is `affine` read?
-  - [ ] Inputs only run 2D, one channel, translation: a stack / 3D (z promotion), rotated sources, multichannel
+  - [x] napari-ome-zarr 0.11 (with ome-zarr 0.21; muvis-align-env has 0.10/0.18) loads `registered` by default,
+        each tile named and placed (translation and affine), checked on data/S000. It ignores a level's
+        translation, so a tile's origin is in its scene transforms, not the image.
+  - [ ] Inputs only run 2D, one channel: a stack / 3D (z promotion), rotated sources, multichannel
         (the view gives a source one layer with a channel slider, not a layer per channel).
   - [ ] Not Compose: the slides project's registered layout is tilted a few degrees (0 rotation per tile, shifts
         growing along rows/columns, up to 22um). The 24um step (fn*24, 25.6um tiles) has nothing in the FastEM

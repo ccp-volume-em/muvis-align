@@ -94,7 +94,7 @@ def save_ome_multiscale_levels(path, levels, dim_order, channels, translation,
     return multiscales.metadata
 
 
-def make_ome_multiscale_levels(levels, dim_order, channels, translation, min_length=128):
+def make_ome_multiscale_levels(levels, dim_order, channels, translation, min_length=128, name=None):
     """Pre-built pyramid levels exactly as given, without resampling, padded with resampled coarser levels,
     halving until the largest spatial extent is at most min_length.
 
@@ -132,8 +132,13 @@ def make_ome_multiscale_levels(levels, dim_order, channels, translation, min_len
     # each level was built separately as 'scale0/image', so paths would otherwise collide
     for index, dataset in enumerate(datasets):
         dataset.path = f'scale{index}/image'
+        # 0.6 names the dataset's array as its transforms' input
+        for transform in dataset.coordinateTransformations or []:
+            if getattr(transform, 'input', None) is not None and transform.input.path is not None:
+                transform.input.path = dataset.path
+                transform.name = f'scale{index}_to_{transform.output.name}'
 
-    metadata = Metadata(coordinateSystems=coordinate_systems, datasets=datasets)
+    metadata = Metadata(coordinateSystems=coordinate_systems, datasets=datasets, name=name)
     if channels:
         metadata.omero = make_omero(channels, images[-1].data, dim_order)
 
@@ -151,7 +156,8 @@ def make_omero(channels, overview_data, dim_order):
 
 def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_length=128, compression=None):
     """Separate images in one OME-Zarr 0.6 scene, each at its own native levels (make_ome_multiscale_levels()),
-    placed in every named coordinate system by its affine, written as a translation when it is only one.
+    placed in every named coordinate system by its affine, written as a translation when it is only one. The image
+    itself has no translation: its origin is part of each placement, as napari-ome-zarr only reads a level's scale.
 
     sources: {image path: (levels, dim_order, translation, spatial_dims, {coordinate system name: affine})}, each
     affine a homogeneous matrix over spatial_dims of the image's physical space, as multiview-stitcher keeps it.
@@ -160,11 +166,14 @@ def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_le
     images = {}
     transforms = []
     for image_path, (levels, dim_order, translation, spatial_dims, affines) in sources.items():
-        multiscales = make_ome_multiscale_levels(levels, dim_order, channels, translation, min_length=min_length)
+        multiscales = make_ome_multiscale_levels(levels, dim_order, channels, {dim: 0.0 for dim in translation},
+                                                 min_length=min_length, name=image_path)
         images[image_path] = multiscales
         image_system = CoordinateSystemIdentifier(path=image_path, name=multiscales.metadata.coordinateSystems[0].name)
+        origin = np.eye(len(spatial_dims) + 1)
+        origin[:-1, -1] = [translation.get(dim, 0) for dim in spatial_dims]
         for name in coordinate_system_names:
-            matrix = full_dims_affine(affines[name], dim_order, spatial_dims)
+            matrix = full_dims_affine(np.asarray(affines[name]) @ origin, dim_order, spatial_dims)
             output_system = CoordinateSystemIdentifier(name=name)
             # a translation is read by more viewers than an affine; only an exact one, so nothing is lost
             if np.array_equal(matrix[:, :-1], np.eye(len(dim_order))):
