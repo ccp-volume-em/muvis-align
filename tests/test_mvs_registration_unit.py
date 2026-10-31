@@ -1116,6 +1116,22 @@ def test_a_loaded_global_registration_summarises_each_metric_under_the_registere
     assert reg.metrics['pairs'][(0, 1)] == {reg.reg_transform_key: {'quality': 0.4, 'ncc': 0.6}}
 
 
+def test_mappings_are_written_as_ome_zarr_affines_and_read_back_square_old_files_too(tmp_path):
+    import json
+    from muvis_align.file.transforms import write_transforms, read_transforms
+    from muvis_align.util import export_json
+
+    matrix = np.array([[0.0, -1.0, 2.5], [1.0, 0.0, -3.0], [0.0, 0.0, 1.0]])
+    write_transforms(tmp_path / 'mappings.json', {'a.tif': matrix})
+    old_square = json.loads((tmp_path / 'mappings.json').read_text())
+    old_square['a.tif']['affine'] = matrix.tolist()
+    export_json(tmp_path / 'old_mappings.json', old_square)
+
+    assert json.loads((tmp_path / 'mappings.json').read_text())['a.tif']['affine'] == matrix[:-1].tolist()
+    assert np.array_equal(read_transforms(tmp_path / 'mappings.json')['a.tif'], matrix)
+    assert np.array_equal(read_transforms(tmp_path / 'old_mappings.json')['a.tif'], matrix)
+
+
 
 def test_only_phase_correlation_defers_its_link_quality():
     """Other methods score at once: Elastix's resampled image is a view of a buffer freed once it returns."""
