@@ -1,7 +1,8 @@
 import numpy as np
 
+from muvis_align.file.transforms import read_transforms
 from muvis_align.image.util import combine_transforms
-from muvis_align.util import dir_regex, find_all_numbers, split_numeric_dict, import_json, export_json
+from muvis_align.util import dir_regex, find_all_numbers, split_numeric_dict, export_json, get_filetitle
 
 
 def get_composite_transforms(transforms, global_transforms):
@@ -35,8 +36,12 @@ if __name__ == "__main__":
 
     stitched_filenames = dir_regex(stitched_path)
     stitched_filenames = sorted(stitched_filenames, key=lambda file: list(find_all_numbers(file)))  # sort first key first
-    stitched_transforms = {'S' + split_numeric_dict(filename)['S']: import_json(filename) for filename in stitched_filenames}
-    aligned_transforms = import_json(aligned_path)
+    # keyed by label in older files, by source path since: section and tile titles fit both
+    stitched_transforms = {'S' + split_numeric_dict(filename)['S']:
+                               {get_filetitle(key): transform for key, transform in read_transforms(filename).items()}
+                           for filename in stitched_filenames}
+    aligned_transforms = {'S' + split_numeric_dict(key)['S']: transform
+                          for key, transform in read_transforms(aligned_path).items()}
     transforms2 = make_z_transforms(get_composite_transforms(stitched_transforms, aligned_transforms), to3d=True)
     export_json(output_path, transforms2)
     print(transforms2)

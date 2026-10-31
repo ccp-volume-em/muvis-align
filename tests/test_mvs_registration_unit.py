@@ -1148,10 +1148,12 @@ def test_mappings_are_written_as_ome_zarr_affines_and_read_back_square_old_files
     old_square = json.loads((tmp_path / 'mappings.json').read_text())
     old_square['a.tif']['affine'] = matrix.tolist()
     export_json(tmp_path / 'old_mappings.json', old_square)
+    # before the OME-Zarr model: the bare matrix
+    export_json(tmp_path / 'bare_mappings.json', {'a.tif': matrix.tolist()})
 
     assert json.loads((tmp_path / 'mappings.json').read_text())['a.tif']['affine'] == matrix[:-1].tolist()
-    assert np.array_equal(read_transforms(tmp_path / 'mappings.json')['a.tif'], matrix)
-    assert np.array_equal(read_transforms(tmp_path / 'old_mappings.json')['a.tif'], matrix)
+    for filename in ['mappings.json', 'old_mappings.json', 'bare_mappings.json']:
+        assert np.array_equal(read_transforms(tmp_path / filename)['a.tif'], matrix)
 
 
 

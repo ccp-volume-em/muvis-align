@@ -22,9 +22,12 @@ def write_transforms(filename, transforms_dict, source_key='source_metadata', tr
 
 
 def read_transforms(filename):
-    """Each label's affine as a square homogeneous matrix; files written before as square are read as they are."""
+    """Each label's affine as a square homogeneous matrix. Also reads the older files: square affines, and bare
+    matrices before the OME-Zarr model."""
     transforms = import_json(filename)
-    return {label: homogeneous_affine(Affine.model_validate(transform).affine) for label, transform in transforms.items()}
+    return {label: homogeneous_affine(Affine.model_validate(transform).affine if isinstance(transform, dict)
+                                      else transform)
+            for label, transform in transforms.items()}
 
 
 def homogeneous_affine(affine):
