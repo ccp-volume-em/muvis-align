@@ -78,7 +78,7 @@ dev = [
     "pytest-qt",  # https://pytest-qt.readthedocs.io/en/latest/
     "napari[qt]",  # test with napari's default Qt bindings
     "nbmake",
-    "ipykernel<7",  # 7.x hangs the napari notebook's kernel on Windows (Python 3.13+)
+    "ipykernel<8",  # 7.x hangs the napari notebook's kernel on Windows (Python 3.13+)
     "probreg; python_version < '3.13' and sys_platform != 'win32'",  # for the CPD tests
 ]
 
