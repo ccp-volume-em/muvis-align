@@ -232,6 +232,6 @@ The buttons:
 After **Process** on the registration tab, the sources sit at their registered positions. Each
 overlap, in the view, the overview and the metrics table, is coloured by its pair's
 registration quality, from red (poor) to green (good). Here the sample's settings (SIFT,
-rigid) give each pair a moderate quality.
+rigid) give each pair a good quality.
 
 ![The registered sample](images/napari/registered.png)
