@@ -235,3 +235,11 @@ registration quality, from red (poor) to green (good). Here the sample's setting
 rigid) give each pair a good quality.
 
 ![The registered sample](images/napari/registered.png)
+
+## The fused result
+
+After **Process** on the fusion tab, the view shows the fused export from the output folder,
+read at each of its pyramid levels rather than fused again. Hide the shapes layer to see the
+fused image without the overlap outlines.
+
+![The fused sample](images/napari/fused.png)
