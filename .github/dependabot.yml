@@ -13,6 +13,10 @@ updates:
       python-packages:
         patterns:
           - "*"
+    ignore:
+      # 7.x hangs the napari notebook's kernel on Windows (Python 3.13+)
+      - dependency-name: "ipykernel"
+        versions: [">=7"]
 
   # Monitor GitHub Actions and propose updates for security and maintenance
   - package-ecosystem: github-actions
