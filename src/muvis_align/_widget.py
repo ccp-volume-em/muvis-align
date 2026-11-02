@@ -28,6 +28,11 @@ class MainWidget(QTabWidget):
             area="left",
             add_vertical_stretch=False,
         )
+        # floating moves the canvas to a new GL context, leaving vispy's GL objects invalid
+        self.overview_dock.setFeatures(
+            self.overview_dock.features() & ~QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+        self.overview_dock.dockLocationChanged.connect(self.hide_overview_float_button)
+        self.hide_overview_float_button()
         self.interface = Interface(
             viewer,
             overview=self.overview,
@@ -57,6 +62,11 @@ class MainWidget(QTabWidget):
                 # napari's plugin menu hides the dock; its toggle action ignores tab switches
                 self.parent().toggleViewAction().toggled.connect(self.show_overview)
         return super().event(event)
+
+    def hide_overview_float_button(self, *args):
+        # napari's float button calls setFloating directly, ignoring the dock's features; it rebuilds its title bar on moves
+        if self.overview_dock is not None:
+            self.overview_dock.title.float_button.hide()
 
     def show_overview(self, visible):
         if self.overview_dock is not None:
