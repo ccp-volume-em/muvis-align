@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://ccp-volume-em.github.io/muvis-align/napari_guide/">
       
       
-        <link rel="prev" href="../napari/">
+        <link rel="prev" href="../pipeline/">
       
       
         <link rel="next" href="../notebooks/">
@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -323,33 +323,6 @@
       
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../napari/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    The napari plugin
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -424,6 +397,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#following-along-on-the-sample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Following along on the sample
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1-project" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -489,6 +473,28 @@
     <span class="md-ellipsis">
       
         5. Fusion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-registered-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The registered result
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fused-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fused result
       
     </span>
   </a>
@@ -649,6 +655,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#following-along-on-the-sample" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Following along on the sample
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#1-project" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -720,6 +737,28 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#the-registered-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The registered result
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-fused-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fused result
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -742,25 +781,63 @@
 
 <h1 id="step-by-step-in-napari">Step by step in napari</h1>
 <p>A walk through the plugin, one tab at a time: every parameter on it, and what each of its
-buttons does. The screenshots are of a 2×2 tile set (<code>data/S000/*.zarr</code> in this repository),
-taken after registering it. For how the plugin stores its settings, see
-<a href="../napari/">the napari plugin</a>.</p>
+buttons does. It follows the plugin's first sample, <strong>2D section</strong>: a 2×2 tile set
+(<code>data/S000/*.zarr</code> in this repository).
+Open it as in <a href="#following-along-on-the-sample">Following along on the sample</a> to run each step
+as you read.</p>
 <h2 id="opening-the-plugin">Opening the plugin</h2>
-<p>Start napari and open <strong>Plugins → muvis-align</strong>.</p>
+<p>Start napari and open <strong>Plugins → muvis-align</strong>. Below, the sample has just been opened and
+its sources read (<strong>Process</strong> on <a href="#2-input-output">input output</a>).</p>
 <p><img alt="The plugin in napari" src="../images/napari/window.png" /></p>
 <ul>
 <li><strong>On the right</strong>, the plugin itself: one tab per step, run from left to right.</li>
 <li><strong>At the bottom left</strong>, the <strong>muvis-align</strong> overview: a small map of where the sources are,
   which stays put while you zoom into the main view.</li>
 <li><strong>In the main view</strong>, the sources at their positions, with each overlap between two
-  sources drawn as a green shape.</li>
+  sources drawn as a shape: grey until registered, then coloured by the pair's registration
+  quality.</li>
 </ul>
 <p>A tab is enabled once the step before it has run: at the start only <strong>project</strong> is.
 Each tab ends in a <strong>Process</strong> button that runs its step. While a step runs, the plugin's
 other widgets are disabled, the button reads <strong>Cancel</strong> (it asks before cancelling, and the
 partial result is discarded), and its progress shows in napari's <strong>activity</strong> panel at the
-bottom right.</p>
+bottom right. Each step has one progress bar, which follows the work itself rather than the
+number of dask tasks, so it does not restart partway through; the global optimisation is
+followed through its own log. Exporting shows two bars in turn: the export, then drawing the
+result.</p>
 <p>Hover over any parameter to see its description.</p>
+<h2 id="following-along-on-the-sample">Following along on the sample</h2>
+<p>To follow this guide, open <strong>File → Open Sample → muvis-align → 2D section</strong>. The other two
+samples try the plugin on more data, also without data of your own:</p>
+<table>
+<thead>
+<tr>
+<th>Sample</th>
+<th>Data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2D section</td>
+<td>2×2 tiles of 800×800 pixels (<code>data/S000</code>, the tile set in this guide)</td>
+</tr>
+<tr>
+<td>2D, two sections</td>
+<td>two sections of 2×2 tiles each (<code>data/S000</code> and <code>data/S001</code>)</td>
+</tr>
+<tr>
+<td>3D</td>
+<td>2×2 tiles of 200×128×128 voxels (<code>data/3d</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>A sample is one of the test projects in this repository, with its data. It opens in the plugin as if chosen on the
+<strong>project</strong> tab, so its settings fill every tab and the next step is <strong>Process</strong> on
+<a href="#2-input-output">input output</a>. The first time, it is downloaded from GitHub (11-22 MB) into your user cache
+folder (<code>%LOCALAPPDATA%\muvis-align\Cache</code> on Windows, <code>~/Library/Caches/muvis-align</code> on macOS,
+<code>~/.cache/muvis-align</code> on Linux), where its output is written too. Its project file is fetched again on every open,
+so a sample always starts from the repository's settings; without a connection, a sample opened before still opens
+from the cache.</p>
 <h2 id="1-project">1. Project</h2>
 <p><img alt="The project tab" src="../images/napari/project.png" /></p>
 <table>
@@ -777,10 +854,32 @@ bottom right.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>Select file</strong> chooses an existing project file, or names a new one. An existing project
-opens with its settings in every tab; a new one is created with the defaults. Either way
-the next tabs are enabled. Every change on any tab is written straight back to this file,
-so the project reopens as you left it.</p>
+<p>A sample fills this in itself. With your own data, <strong>Select file</strong> chooses an existing
+project file, or names a new one. An existing project opens with its settings in every tab;
+a new one is created with the defaults. Either way the next tabs are enabled. A project file
+can also be opened with napari's <strong>File → Open</strong>, or dropped onto napari.</p>
+<p>Every change on any tab is written straight back to this file, so the project reopens as you
+left it. It has one section per tab, with paths relative to the project file's folder:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">input_output</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/*/*.tiff</span>
+<span class="w">  </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">output</span>
+<span class="w">  </span><span class="nt">source_scale_x</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0.004&#39;</span>
+<span class="w">  </span><span class="nt">source_position_x</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fn[-2]*24</span>
+<span class="w">  </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="nt">pre_processing</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8</span>
+<span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">none</span>
+<span class="nt">registration</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
+<span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">phase_correlation</span>
+<span class="w">  </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
+<span class="nt">fusion</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">average</span>
+<span class="w">  </span><span class="nt">spacing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mean</span>
+<span class="w">  </span><span class="nt">ome_version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0.5&#39;</span>
+</code></pre></div>
+<p>This is not the <code>general</code>/<code>operations</code> parameter file the
+<a href="../pipeline/">command-line pipeline</a> takes.</p>
 <h2 id="2-input-output">2. Input output</h2>
 <p><img alt="The input output tab" src="../images/napari/input_output.png" /></p>
 <table>
@@ -797,7 +896,7 @@ so the project reopens as you left it.</p>
 </tr>
 <tr>
 <td>Source position Z / Y / X</td>
-<td>Where each source's position comes from: <code>source</code> reads it from the file's metadata, or an expression over the file name, such as <code>fn[-2]*24</code> (the second-last number in the name, times 24)</td>
+<td>Where each source's position comes from: <code>source</code> reads it from the file's metadata (<code>source invert</code> negates it; <code>source y</code> takes the source's y, for a camera whose axes are the stage's swapped), or an expression over the file name, such as <code>fn[-2]*24</code> (the second-last number in the name, times 24)</td>
 </tr>
 <tr>
 <td>Source scale Z / Y / X</td>
@@ -1014,7 +1113,7 @@ again to store it.</p>
 <tbody>
 <tr>
 <td>Method</td>
-<td>How overlapping sources combine: <strong>Average</strong>, <strong>Exclusive</strong>, <strong>Additive</strong> or <strong>Compose</strong></td>
+<td>How overlapping sources combine: <strong>Average</strong>, <strong>Exclusive</strong>, <strong>Additive</strong> or <strong>Compose</strong> (no fusion: each source unresampled in an OME-Zarr 0.6 scene, at its registered and its source position; always 0.6, whatever OME version is set)</td>
 </tr>
 <tr>
 <td>Spacing</td>
@@ -1039,6 +1138,17 @@ again to store it.</p>
   any registration still missing. It also writes an RO-Crate inside the OME-Zarr describing
   the acquisition, and updates the one in the output folder.</li>
 </ul>
+<h2 id="the-registered-result">The registered result</h2>
+<p>After <strong>Process</strong> on the registration tab, the sources sit at their registered positions. Each
+overlap, in the view, the overview and the metrics table, is coloured by its pair's
+registration quality, from red (poor) to green (good). Here the sample's settings (SIFT,
+rigid) give each pair a good quality.</p>
+<p><img alt="The registered sample" src="../images/napari/registered.png" /></p>
+<h2 id="the-fused-result">The fused result</h2>
+<p>After <strong>Process</strong> on the fusion tab, the view shows the fused export from the output folder,
+read at each of its pyramid levels rather than fused again. Hide the shapes layer to see the
+fused image without the overlap outlines.</p>
+<p><img alt="The fused sample" src="../images/napari/fused.png" /></p>
 
 
 
@@ -1088,10 +1198,10 @@ again to store it.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
       
     
   </body>

@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -307,33 +307,6 @@
     
   
     Running the muvis-align Pipeline
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../napari/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    The napari plugin
   
 
     
@@ -1106,28 +1079,28 @@
 </ol>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Initialize</span>
-<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">'register'</span><span class="p">,</span> 
-                      <span class="n">input_path</span><span class="o">=</span><span class="s1">'../data/S000/*.zarr'</span><span class="p">,</span> 
-                      <span class="n">output_path</span><span class="o">=</span><span class="s1">'../../output/'</span><span class="p">,</span> 
-                      <span class="n">ui</span><span class="o">=</span><span class="s1">'mpl'</span><span class="p">)</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">)</span>
 
 <span class="c1"># Load and preprocess</span>
 <span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_data</span><span class="p">()</span>
-<span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">normalisation</span><span class="o">=</span><span class="s1">'global'</span><span class="p">)</span>
+<span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">normalisation</span><span class="o">=</span><span class="s1">&#39;global&#39;</span><span class="p">)</span>
 
 <span class="c1"># Configure and run registration</span>
 <span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'pairing'</span><span class="p">:</span> <span class="s1">'orthogonal'</span><span class="p">,</span>
-    <span class="s1">'transform_type'</span><span class="p">:</span> <span class="s1">'rigid'</span><span class="p">,</span>
-    <span class="s1">'method'</span><span class="p">:</span> <span class="s1">'sift'</span><span class="p">,</span>
-    <span class="s1">'max_keypoints'</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
     <span class="c1"># ... more parameters</span>
 <span class="p">}</span>
 
 <span class="n">results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">register_params</span><span class="p">)</span>
 
 <span class="c1"># Fuse registered images</span>
-<span class="n">fusion_params</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'method'</span><span class="p">:</span> <span class="s1">'average'</span><span class="p">}</span>
+<span class="n">fusion_params</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;average&#39;</span><span class="p">}</span>
 <span class="n">fused_sim</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">fuse</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">fusion_params</span><span class="p">)</span>
 </code></pre></div>
 <p><strong>Output:</strong> Registered and fused image with transformation matrices</p>
@@ -1142,29 +1115,29 @@
 - Includes quality reporting</p>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># One-step initialization, preprocessing, and registration</span>
-<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">'register'</span><span class="p">,</span> 
-                      <span class="n">input_path</span><span class="o">=</span><span class="s1">'../data/S000/*.zarr'</span><span class="p">,</span> 
-                      <span class="n">output_path</span><span class="o">=</span><span class="s1">'../../output/'</span><span class="p">,</span> 
-                      <span class="n">ui</span><span class="o">=</span><span class="s1">'mpl'</span><span class="p">)</span>
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">)</span>
 <span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_data</span><span class="p">()</span>
 <span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
 
 <span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'pairing'</span><span class="p">:</span> <span class="s1">'orthogonal'</span><span class="p">,</span>
-    <span class="s1">'transform_type'</span><span class="p">:</span> <span class="s1">'rigid'</span><span class="p">,</span>
-    <span class="s1">'method'</span><span class="p">:</span> <span class="s1">'sift'</span><span class="p">,</span>
-    <span class="s1">'gaussian_sigma'</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
-    <span class="s1">'normalisation'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="s1">'max_keypoints'</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
-    <span class="s1">'inlier_threshold_factor'</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
-    <span class="s1">'max_trials'</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
-    <span class="s1">'ransac_iterations'</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="s1">&#39;max_trials&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
 <span class="p">}</span>
 
 <span class="n">results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">register_params</span><span class="p">)</span>
 
 <span class="c1"># Report quality metrics</span>
-<span class="n">qualities</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s1">'registration_qualities'</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<span class="n">qualities</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;registration_qualities&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
 <span class="n">print_dict_simple</span><span class="p">(</span><span class="n">qualities</span><span class="p">)</span>
 </code></pre></div>
 <p><strong>Output:</strong> Registration quality metrics for pairwise registrations</p>
@@ -1181,10 +1154,10 @@
 </ol>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Initialize with debug mode for detailed output</span>
-<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">'register'</span><span class="p">,</span> 
-                      <span class="n">input_path</span><span class="o">=</span><span class="s1">'../data/S000/*.zarr'</span><span class="p">,</span> 
-                      <span class="n">output_path</span><span class="o">=</span><span class="s1">'../../output/'</span><span class="p">,</span> 
-                      <span class="n">ui</span><span class="o">=</span><span class="s1">'mpl'</span><span class="p">,</span> 
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
                       <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_data</span><span class="p">()</span>
 <span class="n">norm_sims</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
@@ -1196,15 +1169,15 @@
 
 <span class="c1"># Configure and visualize feature matching</span>
 <span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'transform_type'</span><span class="p">:</span> <span class="s1">'rigid'</span><span class="p">,</span>
-    <span class="s1">'pairing'</span><span class="p">:</span> <span class="s1">'orthogonal'</span><span class="p">,</span>
-    <span class="s1">'name'</span><span class="p">:</span> <span class="s1">'sift'</span><span class="p">,</span>  <span class="c1"># Try 'sift' or 'orb'</span>
-    <span class="s1">'normalisation'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="s1">'gaussian_sigma'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
-    <span class="s1">'max_keypoints'</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
-    <span class="s1">'inlier_threshold_factor'</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
-    <span class="s1">'max_trials'</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
-    <span class="s1">'ransac_iterations'</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;name&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>  <span class="c1"># Try &#39;sift&#39; or &#39;orb&#39;</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="s1">&#39;max_trials&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
 <span class="p">}</span>
 </code></pre></div>
 <p><strong>Interactive Exploration:</strong>
@@ -1229,10 +1202,10 @@
 </ol>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Initialize</span>
-<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">'register'</span><span class="p">,</span> 
-                      <span class="n">input_path</span><span class="o">=</span><span class="s1">'../data/S000/*.zarr'</span><span class="p">,</span> 
-                      <span class="n">output_path</span><span class="o">=</span><span class="s1">'../../output/'</span><span class="p">,</span> 
-                      <span class="n">ui</span><span class="o">=</span><span class="s1">'mpl'</span><span class="p">,</span> 
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
                       <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_data</span><span class="p">()</span>
 <span class="n">norm_sims</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
@@ -1264,16 +1237,16 @@
 </ol>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Specify exact tiles to compare</span>
-<span class="n">input_path</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'../data/S000/S000_000_000.ome.zarr'</span><span class="p">,</span> 
-              <span class="s1">'../data/S001/S001_000_001.ome.zarr'</span><span class="p">]</span>
-<span class="n">extra_metadata</span> <span class="o">=</span> <span class="s1">'../aligned_stitched_mappings1.json'</span>  <span class="c1"># Pre-computed transforms</span>
+<span class="n">input_path</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;../data/S000/S000_000_000.ome.zarr&#39;</span><span class="p">,</span> 
+              <span class="s1">&#39;../data/S001/S001_000_001.ome.zarr&#39;</span><span class="p">]</span>
+<span class="n">extra_metadata</span> <span class="o">=</span> <span class="s1">&#39;../aligned_stitched_mappings1.json&#39;</span>  <span class="c1"># Pre-computed transforms</span>
 
 <span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">input_path</span><span class="o">=</span><span class="n">input_path</span><span class="p">,</span> 
                       <span class="n">extra_metadata</span><span class="o">=</span><span class="n">extra_metadata</span><span class="p">,</span>
-                      <span class="n">output_path</span><span class="o">=</span><span class="s1">'../../output/'</span><span class="p">,</span> 
-                      <span class="n">ui</span><span class="o">=</span><span class="s1">'mpl'</span><span class="p">,</span> 
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
                       <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="n">reg</span><span class="o">.</span><span class="n">file_labels</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'S000_000_000'</span><span class="p">,</span> <span class="s1">'S001_000_001'</span><span class="p">]</span>
+<span class="n">reg</span><span class="o">.</span><span class="n">file_labels</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;S000_000_000&#39;</span><span class="p">,</span> <span class="s1">&#39;S001_000_001&#39;</span><span class="p">]</span>
 <span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_data</span><span class="p">()</span>
 <span class="n">norm_sims</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">preprocess</span><span class="p">(</span><span class="n">sims</span><span class="p">)</span>
 
@@ -1297,23 +1270,23 @@
 </ol>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'pairing'</span><span class="p">:</span> <span class="s1">'orthogonal'</span><span class="p">,</span>
-    <span class="s1">'transform_type'</span><span class="p">:</span> <span class="s1">'rigid'</span><span class="p">,</span>
-    <span class="s1">'method'</span><span class="p">:</span> <span class="s1">'sift'</span><span class="p">,</span>
-    <span class="s1">'gaussian_sigma'</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
-    <span class="s1">'normalisation'</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-    <span class="s1">'max_keypoints'</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
-    <span class="s1">'inlier_threshold_factor'</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
-    <span class="s1">'max_trials'</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
-    <span class="s1">'ransac_iterations'</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
-    <span class="s1">'metrics'</span><span class="p">:</span> <span class="p">[</span><span class="s1">'ncc'</span><span class="p">,</span> <span class="s1">'ssim'</span><span class="p">,</span> <span class="s1">'onmi'</span><span class="p">],</span>  <span class="c1"># Request metric computation</span>
-    <span class="s1">'n_parallel_pairwise_regs'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="s1">&#39;pairing&#39;</span><span class="p">:</span> <span class="s1">&#39;orthogonal&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;transform_type&#39;</span><span class="p">:</span> <span class="s1">&#39;rigid&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;sift&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">5000</span><span class="p">,</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+    <span class="s1">&#39;max_trials&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s1">&#39;metrics&#39;</span><span class="p">:</span> <span class="p">[</span><span class="s1">&#39;ncc&#39;</span><span class="p">,</span> <span class="s1">&#39;ssim&#39;</span><span class="p">,</span> <span class="s1">&#39;onmi&#39;</span><span class="p">],</span>  <span class="c1"># Request metric computation</span>
+    <span class="s1">&#39;n_parallel_pairwise_regs&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
 <span class="p">}</span>
 
 <span class="n">results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">reg_sims</span><span class="p">,</span> <span class="n">reg_indices</span><span class="p">,</span> <span class="n">register_params</span><span class="p">)</span>
 
 <span class="c1"># Access metrics</span>
-<span class="n">pair_metrics</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">'metrics'</span><span class="p">]</span>
+<span class="n">pair_metrics</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">&#39;metrics&#39;</span><span class="p">]</span>
 <span class="c1"># Analyze quality by examining the graph structure</span>
 </code></pre></div>
 <p><strong>Output Analysis:</strong>
@@ -1338,18 +1311,18 @@
                                      <span class="n">params</span><span class="o">=</span><span class="n">register_params</span><span class="p">)</span>
 
 <span class="c1"># Inspect pairwise results</span>
-<span class="n">pairs_graph</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">'pairs_graph'</span><span class="p">]</span>
-<span class="n">msims_reg</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">'msims'</span><span class="p">]</span>
-<span class="n">pair_metrics</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">'metrics'</span><span class="p">]</span>
+<span class="n">pairs_graph</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">&#39;pairs_graph&#39;</span><span class="p">]</span>
+<span class="n">msims_reg</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">&#39;msims&#39;</span><span class="p">]</span>
+<span class="n">pair_metrics</span> <span class="o">=</span> <span class="n">pairwise_results</span><span class="p">[</span><span class="s1">&#39;metrics&#39;</span><span class="p">]</span>
 
 <span class="c1"># Step 2: Global registration (with optional quality filtering)</span>
-<span class="n">register_params</span><span class="p">[</span><span class="s1">'post_registration_quality_threshold'</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.7</span>
+<span class="n">register_params</span><span class="p">[</span><span class="s1">&#39;post_registration_quality_threshold&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.7</span>
 <span class="n">global_results</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">register_global</span><span class="p">(</span><span class="n">sims</span><span class="p">,</span> <span class="n">msims_reg</span><span class="p">,</span> 
                                     <span class="n">register_indices</span><span class="o">=</span><span class="n">reg_indices</span><span class="p">,</span>
                                     <span class="n">params</span><span class="o">=</span><span class="n">register_params</span><span class="p">)</span>
 
 <span class="c1"># Step 3: Inspect and save</span>
-<span class="n">transforms</span> <span class="o">=</span> <span class="n">global_results</span><span class="p">[</span><span class="s1">'transforms'</span><span class="p">]</span>
+<span class="n">transforms</span> <span class="o">=</span> <span class="n">global_results</span><span class="p">[</span><span class="s1">&#39;transforms&#39;</span><span class="p">]</span>
 <span class="c1"># ... further analysis or visualization</span>
 </code></pre></div>
 <p><strong>Advanced Features:</strong>
@@ -1371,10 +1344,10 @@
 </ol>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># Initialize</span>
-<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">'register'</span><span class="p">,</span> 
-                      <span class="n">input_path</span><span class="o">=</span><span class="s1">'../data/S000/*.zarr'</span><span class="p">,</span>
-                      <span class="n">output_path</span><span class="o">=</span><span class="s1">'../../output/'</span><span class="p">,</span> 
-                      <span class="n">ui</span><span class="o">=</span><span class="s1">'mpl'</span><span class="p">,</span> 
+<span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">&#39;register&#39;</span><span class="p">,</span> 
+                      <span class="n">input_path</span><span class="o">=</span><span class="s1">&#39;../data/S000/*.zarr&#39;</span><span class="p">,</span>
+                      <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;../../output/&#39;</span><span class="p">,</span> 
+                      <span class="n">ui</span><span class="o">=</span><span class="s1">&#39;mpl&#39;</span><span class="p">,</span> 
                       <span class="n">debug</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">sims</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">init_data</span><span class="p">()</span>
 
@@ -1406,41 +1379,41 @@
 <ol>
 <li>
 <p><strong>Modify input paths</strong> to point to your data:
-   <div class="highlight"><pre><span></span><code><span class="n">input_path</span> <span class="o">=</span> <span class="s1">'/path/to/your/data/*.zarr'</span>  <span class="c1"># Supports wildcards</span>
+   <div class="highlight"><pre><span></span><code><span class="n">input_path</span> <span class="o">=</span> <span class="s1">&#39;/path/to/your/data/*.zarr&#39;</span>  <span class="c1"># Supports wildcards</span>
 </code></pre></div></p>
 </li>
 <li>
 <p><strong>Adjust output directory</strong>:
-   <div class="highlight"><pre><span></span><code><span class="n">output_path</span> <span class="o">=</span> <span class="s1">'/path/to/output/'</span>
+   <div class="highlight"><pre><span></span><code><span class="n">output_path</span> <span class="o">=</span> <span class="s1">&#39;/path/to/output/&#39;</span>
 </code></pre></div></p>
 </li>
 </ol>
 <h3 id="common-parameter-adjustments">Common Parameter Adjustments</h3>
 <p><strong>For faster processing (lower quality):</strong>
 <div class="highlight"><pre><span></span><code><span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'max_keypoints'</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>      <span class="c1"># Reduce from 5000</span>
-    <span class="s1">'gaussian_sigma'</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>        <span class="c1"># Increase blur</span>
-    <span class="s1">'scale'</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>                 <span class="c1"># Downsample during processing</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>      <span class="c1"># Reduce from 5000</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>        <span class="c1"># Increase blur</span>
+    <span class="s1">&#39;scale&#39;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>                 <span class="c1"># Downsample during processing</span>
 <span class="p">}</span>
 </code></pre></div></p>
 <p><strong>For better accuracy (slower):</strong>
 <div class="highlight"><pre><span></span><code><span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'max_keypoints'</span><span class="p">:</span> <span class="mi">10000</span><span class="p">,</span>       <span class="c1"># Increase from 5000</span>
-    <span class="s1">'ransac_iterations'</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>       <span class="c1"># Increase from 3</span>
-    <span class="s1">'inlier_threshold_factor'</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span>  <span class="c1"># Stricter threshold</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">10000</span><span class="p">,</span>       <span class="c1"># Increase from 5000</span>
+    <span class="s1">&#39;ransac_iterations&#39;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>       <span class="c1"># Increase from 3</span>
+    <span class="s1">&#39;inlier_threshold_factor&#39;</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span>  <span class="c1"># Stricter threshold</span>
 <span class="p">}</span>
 </code></pre></div></p>
 <p><strong>For different image types:</strong>
 <div class="highlight"><pre><span></span><code><span class="c1"># For very noisy images</span>
 <span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'gaussian_sigma'</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>        <span class="c1"># More blur</span>
-    <span class="s1">'normalisation'</span><span class="p">:</span> <span class="s1">'global'</span><span class="p">,</span>  <span class="c1"># Global normalization</span>
+    <span class="s1">&#39;gaussian_sigma&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>        <span class="c1"># More blur</span>
+    <span class="s1">&#39;normalisation&#39;</span><span class="p">:</span> <span class="s1">&#39;global&#39;</span><span class="p">,</span>  <span class="c1"># Global normalization</span>
 <span class="p">}</span>
 
 <span class="c1"># For high-contrast images</span>
 <span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s1">'method'</span><span class="p">:</span> <span class="s1">'orb'</span><span class="p">,</span>           <span class="c1"># Faster, good for high contrast</span>
-    <span class="s1">'max_keypoints'</span><span class="p">:</span> <span class="mi">3000</span><span class="p">,</span>     <span class="c1"># Fewer keypoints needed</span>
+    <span class="s1">&#39;method&#39;</span><span class="p">:</span> <span class="s1">&#39;orb&#39;</span><span class="p">,</span>           <span class="c1"># Faster, good for high contrast</span>
+    <span class="s1">&#39;max_keypoints&#39;</span><span class="p">:</span> <span class="mi">3000</span><span class="p">,</span>     <span class="c1"># Fewer keypoints needed</span>
 <span class="p">}</span>
 </code></pre></div></p>
 <h3 id="debugging-registration-issues">Debugging Registration Issues</h3>
@@ -1552,10 +1525,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
       
     
   </body>

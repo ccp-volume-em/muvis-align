@@ -16,14 +16,14 @@
         <link rel="prev" href="..">
       
       
-        <link rel="next" href="../napari/">
+        <link rel="next" href="../napari_guide/">
       
       
         
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -695,33 +695,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../napari/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    The napari plugin
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../napari_guide/" class="md-nav__link">
         
   
@@ -1222,7 +1195,7 @@
 <h2 id="overview">Overview</h2>
 <p>The muvis-align pipeline is command-line driven and uses YAML parameter files to configure all operations. The main entry point is <code>run.py</code>.</p>
 <p>For interactive work - loading a dataset, previewing pairs and fused results, and
-watching progress as it runs - see the <a href="../napari/">napari plugin</a>. The two use
+watching progress as it runs - see the <a href="../napari_guide/">napari plugin</a>. The two use
 separate configuration files: the pipeline takes the <code>general</code>/<code>operations</code> file
 described here, while the plugin reads and writes its own project file.</p>
 <h2 id="basic-usage">Basic Usage</h2>
@@ -1240,14 +1213,14 @@ described here, while the plugin reads and writes its own project file.</p>
 <span class="w">    </span><span class="nt">verbose</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 <span class="w">    </span><span class="nt">debug</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
 <span class="w">    </span><span class="nt">filename</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">log/muvis-align.log</span>
-<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">'%(asctime)s</span><span class="nv"> </span><span class="s">%(levelname)s:</span><span class="nv"> </span><span class="s">%(message)s'</span>
+<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;%(asctime)s</span><span class="nv"> </span><span class="s">%(levelname)s:</span><span class="nv"> </span><span class="s">%(message)s&#39;</span>
 <span class="w">  </span><span class="nt">output</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
 <span class="w">    </span><span class="nt">block_size</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">4096</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">4096</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">compression</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span>
 <span class="w">    </span><span class="nt">npyramid_add</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
 <span class="w">    </span><span class="nt">pyramid_downsample</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="w">    </span><span class="nt">ome_version</span><span class="p">:</span><span class="w"> </span><span class="s">'0.5'</span>
+<span class="w">    </span><span class="nt">ome_version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0.5&#39;</span>
 <span class="w">    </span><span class="nt">preview</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
 <span class="w">    </span><span class="nt">preview_scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">32</span>
 <span class="w">  </span><span class="nt">break_on_error</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
@@ -1456,9 +1429,9 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">registration</span><span class="p">:</span>
 <span class="w">  </span><span class="c1"># Registration method</span>
 <span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span><span class="w">              </span><span class="c1"># phase_correlation, sift, orb, feature, cpd, elastix, ants</span>
-<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span><span class="w">                 </span><span class="c1"># Alternative to 'method'</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span><span class="w">                 </span><span class="c1"># Alternative to &#39;method&#39;</span>
 
-<span class="w">  </span><span class="c1"># Overlap filtering (sift, orb and cpd only; pre-processing's apply to every method)</span>
+<span class="w">  </span><span class="c1"># Overlap filtering (sift, orb and cpd only; pre-processing&#39;s apply to every method)</span>
 <span class="w">  </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">         </span><span class="c1"># Gaussian filter sigma before detection</span>
 <span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 
@@ -1473,7 +1446,7 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 <span class="w">  </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
 
 <span class="w">  </span><span class="c1"># Pairing strategy</span>
-<span class="w">  </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span><span class="w">       </span><span class="c1"># orthogonal, stack; unset = multiview-stitcher's own pairing</span>
+<span class="w">  </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span><span class="w">       </span><span class="c1"># orthogonal, stack; unset = multiview-stitcher&#39;s own pairing</span>
 
 <span class="w">  </span><span class="c1"># Global resolution method</span>
 <span class="w">  </span><span class="nt">groupwise_resolution_method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global_optimization</span><span class="w">  </span><span class="c1"># or other methods</span>
@@ -1492,9 +1465,10 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 - <code>sift</code> - Scale-Invariant Feature Transform (scikit-image)
 - <code>orb</code> - Oriented FAST and Rotated BRIEF (OpenCV)
 - <code>feature</code> - Generic feature-based registration
-- <code>cpd</code> - Coherent Point Drift
-- <code>elastix</code> - Elastix registration
-- <code>ants</code> - Advanced Normalization Tools (requires the <code>antspyx</code> package)</p>
+- <code>cpd</code> - Coherent Point Drift (requires <code>probreg</code>, not available for Windows or Python 3.13+)
+- <code>elastix</code> - Elastix registration (requires <code>itk-elastix</code>)
+- <code>ants</code> - Advanced Normalization Tools (requires <code>antspyx</code>)</p>
+<p>The packages of these last three are installed with <code>muvis-align[all]</code>.</p>
 <p><strong>Transform Types:</strong>
 - <code>translation</code> - Only translation
 - <code>rigid</code> - Translation + rotation
@@ -1505,6 +1479,8 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 - <code>stack</code> - Treat the sources as a z-stack: pair consecutive views, and promote them to
   3D where the rest of the pipeline needs it
 - unset - Use multiview-stitcher's own default pairing</p>
+<p>The plugin preselects <code>orthogonal</code>: multiview-stitcher's own pairing adds corner-only diagonal pairs, on which a
+feature method such as SIFT can fit an arbitrary rotation that throws tiles far off in the global registration.</p>
 <p><code>pairing: stack</code> replaces the old <code>register stack</code> / <code>stack</code> operations, which are no
 longer read - the plugin has no stack operation, so deriving this from the operation
 meant every stack-specific step was silently skipped there. Configuration files under
@@ -1534,7 +1510,8 @@ orthogonally. It max-projects z to register the pairs in 2D.</p>
 - <code>average</code> (default) - Average overlapping pixels
 - <code>exclusive</code> - Show only single tile data where overlapping
 - <code>additive</code> - Sum overlapping regions
-- <code>compose</code> - Compositional blending (<em>experimental</em>)</p>
+- <code>compose</code> - No fusion: each source keeps its own pyramid, written as one OME-Zarr 0.6 scene with a
+  <code>registered</code> and a <code>source_metadata</code> coordinate system (<code>registered</code> is the default view). Always OME-Zarr 0.6, whatever <code>ome_version</code> is set</p>
 <p><strong>Fusion Options:</strong></p>
 <table>
 <thead>
@@ -1607,7 +1584,7 @@ export time. The napari plugin offers 1024, 2048, 4096 and 8192.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register match S</span>
 <span class="w">    </span><span class="nt">input</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/S???/*.tiff</span>
-<span class="w">    </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">'scale'</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">'x'</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">'y'</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">},</span><span class="w"> </span><span class="s">'position'</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">'y'</span><span class="p p-Indicator">:</span><span class="s">'fn[-3]*24'</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">'x'</span><span class="p p-Indicator">:</span><span class="s">'fn[-2]*24'</span><span class="p p-Indicator">}}</span>
+<span class="w">    </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;scale&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;x&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&#39;y&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">},</span><span class="w"> </span><span class="s">&#39;position&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;y&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;fn[-3]*24&#39;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&#39;x&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;fn[-2]*24&#39;</span><span class="p p-Indicator">}}</span>
 <span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
 <span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span>
 <span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span>
@@ -1731,10 +1708,10 @@ The script's 64G is enough for a 34,000-tile project.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
       
     
   </body>
