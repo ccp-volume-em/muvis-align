@@ -8,6 +8,8 @@ muvis-align handles x-y stitching and z reconstruction across image modalities, 
 designed for datasets in the terabyte range, and reads and writes the
 [OME-Zarr](https://ngff.openmicroscopy.org/) next-generation file format throughout.
 
+![A registered sample in the muvis-align napari plugin](images/napari/registered.png)
+
 ## Quick start in your browser
 
 With an account on a Slurm cluster (HPC) that has Apptainer, you can use the napari plugin in your web browser

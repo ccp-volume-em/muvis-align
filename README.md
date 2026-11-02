@@ -11,6 +11,8 @@
 Image registration pipeline for large volume EM and LM datasets, built on
 [multiview-stitcher], with a [napari] plugin, a command-line pipeline and Jupyter notebooks.
 
+![A registered sample in the muvis-align napari plugin](https://raw.githubusercontent.com/ccp-volume-em/muvis-align/main/docs/images/napari/registered.png)
+
 ## Documentation
 
 Main documentation: [ccp-volume-em.github.io/muvis-align](https://ccp-volume-em.github.io/muvis-align/)
