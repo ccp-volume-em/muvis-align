@@ -670,6 +670,8 @@ class Interface:
         # the second bar of opening a project: building and drawing the view
         section_tab = None
         if self.reg.is_fused():
+            # the fused view skips update_registered(), so its tables are filled here
+            self.populate_registered_tables()
             fused_path = self.reg.current_fused_output(
                 operation_to_past_participle(self.params['registration']['operation']))
             with self._operation_progress('Refreshing view', phases=2 + self.shapes_weight) as view_factory:
@@ -1716,8 +1718,8 @@ class Interface:
         table_widget.set_value((metrics_table, item_keys, col_headers))
         table_widget.set_table_column_resize_mode()
 
-    def update_registered(self, view_transform_key=None, progress_factory=None):
-        with Timer('update_registered: tables', verbose=self._timing_verbose()):
+    def populate_registered_tables(self):
+        with Timer('populate_registered_tables', verbose=self._timing_verbose()):
             # the coordinate systems from the state: reading them off the msims would build every one
             coord_systems = [self.reg.source_transform_key] + (
                 [self.reg.reg_transform_key] if self.reg.is_global_registered() else [])
@@ -1725,6 +1727,9 @@ class Interface:
             # the coordinate system still selected, so the table matches the dropdown
             self.populate_metadata_table(self.transform_key if self.transform_key in coord_systems else None)
             self.populate_metrics_table(self.reg.metrics)
+
+    def update_registered(self, view_transform_key=None, progress_factory=None):
+        self.populate_registered_tables()
         self.update_views(transform_key=view_transform_key, progress_factory=progress_factory)
 
     def enable_modify_pair_registration(self, enabled=True):

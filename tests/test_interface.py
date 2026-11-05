@@ -1782,10 +1782,12 @@ def test_show_loaded_project_opens_every_tab(bare_interface, pairs_registered, s
 
 @pytest.mark.parametrize("fused_path", ["output/registered.ome.zarr", None], ids=["current", "older than registration"])
 def test_a_fused_project_opens_its_export_unless_registered_since(bare_interface, fused_path, mocked_activity_contexts):
-    """The export is read as it was written; only one older than the saved registration is previewed again."""
+    """The export is read as it was written; only one older than the saved registration is previewed again.
+    The saved metrics fill the tables either way, as the fused view skips update_registered()."""
     bare_interface.viewer = MagicMock()
     bare_interface.params = {"registration": {"operation": "register"}}
     bare_interface.reg.is_fused.return_value = True
+    bare_interface.populate_registered_tables = MagicMock()
     bare_interface.reg.current_fused_output.return_value = fused_path
     bare_interface._copy_transforms_to_view_msims = MagicMock()
     bare_interface._show_fused_output = MagicMock()
@@ -1799,6 +1801,7 @@ def test_a_fused_project_opens_its_export_unless_registered_since(bare_interface
     assert bare_interface._show_fused_output.called is (fused_path is not None)
     assert bare_interface.preview_fusion.called is (fused_path is None)
     bare_interface.select_tab.assert_called_once_with(4)
+    bare_interface.populate_registered_tables.assert_called_once_with()
 
 
 def test_the_fused_output_is_read_and_shown_as_after_an_export(bare_interface, monkeypatch):
