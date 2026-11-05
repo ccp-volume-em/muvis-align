@@ -17,6 +17,9 @@ from multiview_stitcher.mv_graph import NotEnoughOverlapError
 from multiview_stitcher.param_resolution import groupwise_resolution
 from multiview_stitcher.registration import compute_pairwise_registrations, _plot_registration_summaries
 from datetime import datetime
+from fair_metadata_integration import create_ro_crate, create_zarr_ro_crate
+import importlib.metadata
+import importlib.resources
 import networkx as nx
 import numpy as np
 import os.path
@@ -27,7 +30,6 @@ import warnings
 import xarray as xr
 
 from muvis_align.constants import *
-from muvis_align.file.rocrate_utils import create_workflow_run_crate, create_zarr_ro_crate
 from muvis_align.file.transforms import write_transforms, read_transforms
 from muvis_align.GlobalOptProgress import GlobalOptProgress
 from muvis_align.image.Video import Video
@@ -538,7 +540,7 @@ class MVSRegistration:
             if 'register' in operation:
                 logging.info(metrics['summary'])
                 self.save_mappings_csv(mappings, normalise_orientation=normalise_orientation)
-                self.write_ro_crates([], self.params_path, {'general': self.params_general, **self.params})
+                self.write_ro_crates([], {'general': self.params_general, **self.params})
 
                 for reg_label, reg_item in reg_result.items():
                     if isinstance(reg_item, dict):
@@ -612,28 +614,43 @@ class MVSRegistration:
                 filename = output_filename + zarr_extension
                 image_paths.append(filename)
 
-        self.write_ro_crates(image_paths, self.params_path, {'general': self.params_general, **self.params})
+        self.write_ro_crates(image_paths, {'general': self.params_general, **self.params})
 
         if is_transition:
             self.save_video(output, msims, fused_msim)
 
         return True
 
-    def write_ro_crates(self, image_filenames, params_path, params):
-        """A crate in each fused zarr for its acquisition, and a workflow run crate over all output.
-        Written once the registration is saved, and again over the fused images."""
+    def write_ro_crates(self, image_filenames, params):
+        """A crate in each fused zarr for where it came from, and a workflow run crate over all output with the
+        run's parameter values. Written once the registration is saved, and again over the fused images."""
         output_dir = os.path.dirname(self.output)
+        end_time = datetime.now()
+        try:
+            software_version = importlib.metadata.version('muvis-align')
+        except importlib.metadata.PackageNotFoundError:
+            software_version = None
+        software = {'name': 'muvis-align', 'url': MUVIS_ALIGN_URL, 'version': software_version}
+        measurements = {name: {'value': value, 'description': f'Registration {name}, over the overlaps of all '
+                                                              f'registered pairs'}
+                        for name, value in self.summary_metrics().items()}
         for filename in image_filenames:
             if filename.endswith(zarr_extension):
-                create_zarr_ro_crate(self.output + filename, self.sources, self.filenames,
-                                     metrics=self.summary_metrics())
-        if params_path and os.path.abspath(os.path.dirname(params_path)) != os.path.abspath(output_dir):
-            output_params_path = os.path.join(output_dir, os.path.basename(params_path))
-            shutil.copyfile(params_path, output_params_path)
-            params_path = output_params_path
+                # the first and last sources stand for the acquisition: reading every source's metadata is too slow
+                create_zarr_ro_crate(self.output + filename, source_paths=self.filenames,
+                                     acquisition_metadata=[self.sources[0].metadata, self.sources[-1].metadata],
+                                     measurements=measurements,
+                                     description=f'OME-Zarr image fused by muvis-align from {len(self.filenames)} '
+                                                 f'sources',
+                                     derivation={'name': 'Fusion to OME-Zarr', 'software': software,
+                                                 'end_time': end_time})
         result_paths = [self.output + filename for filename in image_filenames] + sorted(self.saved_progress_paths())
-        create_workflow_run_crate(output_dir, params_path, params, self.filenames, result_paths,
-                                  start_time=self.start_time)
+        template = importlib.resources.files('muvis_align').joinpath(NAPARI_PROJECT_TEMPLATE)
+        with importlib.resources.as_file(template) as template_path:
+            create_ro_crate(output_dir, str(template_path), self.filenames, result_paths, parameters=params,
+                            name=f'muvis-align run: {get_filetitle(os.path.normpath(output_dir))}',
+                            run_name='muvis-align run', start_time=self.start_time, end_time=end_time,
+                            software=software)
 
     def middle_section_indices(self):
         """The files of the middle section, by section number (a label as S000 or SBEMimage's s00538), else by folder;

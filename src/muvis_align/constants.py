@@ -173,6 +173,7 @@ default_quality_key = 'quality'
 metric_value_ranges = {'ncc': (-1, 1), 'ssim': (-1, 1), 'onmi': (0, 1)}
 
 NAPARI_PROJECT_TEMPLATE = 'ui/project_template.yaml'
+MUVIS_ALIGN_URL = 'https://github.com/ccp-volume-em/muvis-align'
 
 # registration params read only by some methods (registration_method_kind()), greyed out in the plugin for the rest
 registration_method_params = {

@@ -1383,8 +1383,7 @@ def test_run_global_registration_persists_all_results(
         results["metrics"]
     )
     # the run crate describes the saved registration before any fusion rewrites it
-    crate_args, _ = bare_interface.reg.write_ro_crates.call_args
-    assert crate_args[0] == [] and crate_args[2] is bare_interface.params
+    bare_interface.reg.write_ro_crates.assert_called_once_with([], bare_interface.params)
 
 
 def _stub_preview_registration_deps(bare_interface, monkeypatch, label1="image-0", label2="image-1"):
@@ -1538,9 +1537,8 @@ def test_run_fusion_fuses_by_best_transform_key(bare_interface, monkeypatch, tmp
     assert fuse_kwargs["transform_key"] == "source_metadata"
     # is_saved was True, so the separate save() path is not taken
     assert not bare_interface.reg.save.called
-    # the project file kept in its own output is referenced as it is
     bare_interface.reg.write_ro_crates.assert_called_once_with(
-        ["merged" + interface_module.zarr_extension], bare_interface.params_path, bare_interface.params)
+        ["merged" + interface_module.zarr_extension], bare_interface.params)
 
 
 @pytest.mark.parametrize(

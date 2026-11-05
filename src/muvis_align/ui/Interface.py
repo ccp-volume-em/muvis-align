@@ -1847,8 +1847,7 @@ class Interface:
             self.reg.save_mappings(results['mappings'])
             self.reg.save_mappings_csv(results['mappings'])
             self.reg.save_metrics(results['metrics'])
-            self.reg.write_ro_crates([], self.get_output_params_path() or getattr(self, 'params_path', None),
-                                     self.params)
+            self.reg.write_ro_crates([], self.params)
         return results
 
     def pair_registration(self):
@@ -2174,9 +2173,7 @@ class Interface:
                                       ome_version=self.params['fusion']['ome_version'])
                     image_filenames = [path[len(self.reg.output):] for path in self._output_paths(output_filename)
                                        if os.path.exists(path)]
-                    self.reg.write_ro_crates(image_filenames,
-                                             self.get_output_params_path() or getattr(self, 'params_path', None),
-                                             self.params)
+                    self.reg.write_ro_crates(image_filenames, self.params)
                     return fused_image
 
             try:

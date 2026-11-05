@@ -214,61 +214,26 @@ def get_section_dict(template, keys=None):
     }
 ```
 
-The package creates a Workflow Run RO-Crate for each run, recording the project parameters, source images and results.
+The package creates a Workflow Run RO-Crate for each run, and one inside each fused OME-Zarr, with
+[fair-metadata-integration](https://github.com/NL-BioImaging/fair-metadata-integration).
 
-Source: [`src/muvis_align/file/rocrate_utils.py`](https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/file/rocrate_utils.py)
+The run crate in the output folder links the project template (the Bilayers workflow), the run's parameter
+values (`parameters.yaml`, nested by section as the template is), the source images and the results. The crate
+in an OME-Zarr records where the image came from: the source images it is based on, their acquisition
+(instrument and times, from the first and last source's metadata), the fusion by muvis-align, and the
+registration metrics.
 
-```python
-def create_workflow_run_crate(dest_path, params_path, params, source_paths, result_paths,
-                              start_time=None, end_time=None):
-    crate = ROCrate()
-    root = crate.root_dataset
-    root['name'] = f'muvis-align run: {get_filetitle(os.path.normpath(dest_path))}'
-    for profile_id, profile_name in WORKFLOW_RUN_PROFILES.items():
-        profile = crate.add(ContextEntity(crate, profile_id, {'@type': ['CreativeWork', 'Profile'],
-                                                              'name': profile_name, 'version': '0.5'}))
-        root.append_to('conformsTo', profile)
-
-    workflow_entity = add_workflow(crate)
-    parameters = add_formal_parameters(crate, workflow_entity)
-    ...
-    action_entity = crate.add_action(workflow_entity, identifier='#run-001', object=objects, result=results,
-                                     properties=action_properties)
-    root.append_to('mentions', action_entity)
-
-    crate.write(dest_path)
-    return crate
-```
-
-OME-Zarr outputs receive a Zarr-specific RO-Crate, recording the sources, acquisition, registration metrics and the fusion step.
-
-Source: [`src/muvis_align/file/rocrate_utils.py`](https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/file/rocrate_utils.py)
+Source: [`MVSRegistration.write_ro_crates`](https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py)
 
 ```python
-def create_zarr_ro_crate(dest_path, sources=None, source_paths=(), metrics=None):
-    crate = ZarrCrate()
-    # the crate is written as the fusion ends
-    fusion_time = to_iso_datetime(datetime.now())
-    properties = {'name': get_filetitle(dest_path),
-                  'description': f'OME-Zarr image fused by muvis-align from {len(source_paths)} sources',
-                  'datePublished': fusion_time,
-                  'encodingFormat': ZARR_ENCODING_FORMAT}
-    dataset_entity = crate.add_dataset(dest_path='.', properties=properties)
-    source_entities = [crate.add(ContextEntity(crate, to_crate_path(source_path, dest_path), {
-        '@type': 'Dataset' if os.path.isdir(source_path) else 'File'})) for source_path in source_paths]
-    if source_entities:
-        dataset_entity['isBasedOn'] = source_entities
-    if sources:
-        add_data_capture(crate, dataset_entity, sources, source_entities)
-    ...
-    fusion_properties = {'@type': 'CreateAction', 'name': 'Fusion to OME-Zarr', 'endTime': fusion_time,
-                         'instrument': add_software(crate), 'result': dataset_entity}
-    if source_entities:
-        fusion_properties['object'] = source_entities
-    fusion_entity = crate.add(ContextEntity(crate, '#fusion-001', fusion_properties))
-    dataset_entity.append_to('mentions', fusion_entity)
-    crate.write(dest_path)
-    return crate
+create_zarr_ro_crate(self.output + filename, source_paths=self.filenames,
+                     acquisition_metadata=acquisition_metadata, measurements=measurements,
+                     description=f'OME-Zarr image fused by muvis-align from {len(self.filenames)} sources',
+                     derivation={'name': 'Fusion to OME-Zarr', 'software': software, 'end_time': end_time})
+...
+create_ro_crate(output_dir, str(template_path), self.filenames, result_paths, parameters=params,
+                name=f'muvis-align run: {get_filetitle(os.path.normpath(output_dir))}',
+                run_name='muvis-align run', start_time=self.start_time, end_time=end_time, software=software)
 ```
 
 ---
