@@ -14,7 +14,8 @@ class RegistrationMethodCvFeatures(RegistrationMethod):
     def __init__(self, source, params, debug=False):
         super().__init__(source, params, debug)
         self.method = params.get('name', 'sift').lower()
-        self.full_size_gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 1))
+        # None (left blank) is 0: no filtering
+        self.full_size_gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 1)) or 0
         self.gaussian_sigma = self.full_size_gaussian_sigma
         self.downscale_factor = params.get('downscale_factor', params.get('downscale', np.sqrt(2)))
         self.nkeypoints = params.get('max_keypoints', 5000)

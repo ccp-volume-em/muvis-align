@@ -1,3 +1,5 @@
+import pytest
+
 from muvis_align.ui.bilayers_util import (
     bilayers_to_magicgui_field,
     get_section_dict,
@@ -44,6 +46,23 @@ def test_bilayers_to_magicgui_field_uses_param_name_for_value_lookup():
     assert spec.value == 'stack'
     assert spec.widget_type == 'Dropdown'
     assert spec.choices == {'default': 'Default', 'stack': 'Stack'}
+
+
+@pytest.mark.parametrize('field_type, default, saved, widget_type, value', [
+    ('float', None, {}, 'LineEdit', ''),
+    ('float', None, {'gaussian_sigma': 1.5}, 'LineEdit', '1.5'),
+    ('integer', None, {'gaussian_sigma': 4.0}, 'LineEdit', '4'),
+    ('float', 2.0, {}, 'FloatSpinBox', 2.0),
+])
+def test_a_number_field_without_default_is_a_blank_able_text_field(field_type, default, saved, widget_type, value):
+    template_item = {'name': 'gaussian_sigma', 'type': field_type, 'default': default}
+
+    spec = bilayers_to_magicgui_field(template_item, section_id='pre_processing', section_params=saved,
+                                      widget_type_map=map_bilayers_to_widget_type)
+
+    assert spec.widget_type == widget_type
+    assert spec.value == value
+    assert spec.number_type == (field_type if widget_type == 'LineEdit' else None)
 
 
 def test_bilayers_spec_builds_magicgui_choice_mapping():

@@ -1,4 +1,5 @@
 from magicgui.widgets import Table
+from napari.utils.notifications import show_warning
 from qtpy.QtCore import Qt
 from qtpy.QtWidgets import QHeaderView
 
@@ -7,11 +8,13 @@ from muvis_align.util import to_posix_path
 
 
 class ParamWidget:
-    def __init__(self, param_name, widget, interface, to_str=False):
+    def __init__(self, param_name, widget, interface, to_str=False, number_type=None):
         self.param_name = param_name
         self.widget = widget
         self.interface = interface
         self.to_str = to_str
+        self.number_type = number_type
+        self.is_invalid_number = False
 
     def get_value(self):
         return self.widget.get_value()
@@ -19,7 +22,9 @@ class ParamWidget:
     def set_value(self, value, choices=None):
         if choices is not None:
             self.set_choices(choices)
-        if isinstance(self.widget, Table):
+        if self.number_type is not None:
+            self.widget.set_value('' if value is None else str(value))
+        elif isinstance(self.widget, Table):
             self._set_table_value(value)
         else:
             self.widget.set_value(value)
@@ -41,7 +46,18 @@ class ParamWidget:
         self.widget.choices = to_magicgui_choices(choices)
 
     def value_changed(self, value):
-        if isinstance(value, dict):
+        if self.number_type is not None:
+            text = str(value).strip()
+            try:
+                value = None if not text else (int(text) if self.number_type == 'integer' else float(text))
+            except ValueError:
+                # warned once until valid again, as this runs on every keystroke; the last valid value is kept
+                if not self.is_invalid_number:
+                    show_warning(f'{self.param_name}: {text!r} is not a{"n integer" if self.number_type == "integer" else " number"}')
+                self.is_invalid_number = True
+                return
+            self.is_invalid_number = False
+        elif isinstance(value, dict):
             value0 = self.get_value()
             if isinstance(value0, dict):
                 value = update_dict_value(value0, value)

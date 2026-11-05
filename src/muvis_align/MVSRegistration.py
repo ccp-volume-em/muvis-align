@@ -1269,9 +1269,8 @@ class MVSRegistration:
 
         pairing = params.get('pairing', '').lower()
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
-        # blank or 0 is automatic; a widget can hand the number over as a string or a float
-        n_parallel_pairwise_regs = (int(float(n_parallel_pairwise_regs))
-                                    if is_valid_value(n_parallel_pairwise_regs) else None) or None
+        # None or 0 is automatic; a yaml value may be a float
+        n_parallel_pairwise_regs = int(n_parallel_pairwise_regs) if n_parallel_pairwise_regs else None
         logging.info(f"Pair registration settings: pairing {pairing or 'default'}, method {params.get('method')},"
                      f" transform {params.get('transform_type')}, channel {params.get('channel')},"
                      f" workers {n_parallel_pairwise_regs or f'automatic ({default_pair_workers})'},"
@@ -1568,9 +1567,8 @@ class MVSRegistration:
         post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
 
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
-        # blank or 0 is automatic; a text field hands the number over as a string
-        n_parallel_pairwise_regs = (int(float(n_parallel_pairwise_regs))
-                                    if is_valid_value(n_parallel_pairwise_regs) else None) or None
+        # None or 0 is automatic; a yaml value may be a float
+        n_parallel_pairwise_regs = int(n_parallel_pairwise_regs) if n_parallel_pairwise_regs else None
 
         plot_summary = self.mpl_ui
 

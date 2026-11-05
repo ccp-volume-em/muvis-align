@@ -12,7 +12,8 @@ from muvis_align.util import points_to_3d
 class RegistrationMethodCPD(RegistrationMethod):
     def __init__(self, source, params, debug=False):
         super().__init__(source, params, debug=debug)
-        self.full_size_gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 0))
+        # None (left blank) is 0: no filtering
+        self.full_size_gaussian_sigma = params.get('gaussian_sigma', params.get('sigma', 0)) or 0
         self.normalisation = params.get('normalisation')
         self.max_iter = params.get('max_iter', 1000)
         # CPD's cost grows with fixed x moving points: the largest areas/blobs are kept

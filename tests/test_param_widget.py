@@ -48,6 +48,33 @@ def test_value_changed_ignores_non_file_type_params():
     interface.change_param.assert_called_once_with('registration.method', 'phase')
 
 
+@pytest.mark.parametrize('number_type, typed, stored', [
+    ('float', '1.5', 1.5), ('float', ' 2 ', 2.0), ('float', '', None), ('integer', '4', 4), ('integer', '', None),
+])
+def test_a_number_text_field_stores_a_number_or_none(number_type, typed, stored):
+    interface = SimpleNamespace(change_param=MagicMock())
+    param_widget = ParamWidget('pre_processing.gaussian_sigma', MagicMock(), interface, number_type=number_type)
+
+    param_widget.value_changed(typed)
+
+    interface.change_param.assert_called_once_with('pre_processing.gaussian_sigma', stored)
+    assert type(interface.change_param.call_args.args[1]) is type(stored)
+
+
+def test_invalid_number_text_warns_once_and_keeps_the_last_value(monkeypatch):
+    import muvis_align.ui.ParamWidget as param_widget_module
+    warnings = []
+    monkeypatch.setattr(param_widget_module, 'show_warning', warnings.append)
+    interface = SimpleNamespace(change_param=MagicMock())
+    param_widget = ParamWidget('registration.n_parallel_pairwise_regs', MagicMock(), interface, number_type='integer')
+
+    for typed in ('1.5', 'x', '8'):
+        param_widget.value_changed(typed)
+
+    assert len(warnings) == 1
+    interface.change_param.assert_called_once_with('registration.n_parallel_pairwise_regs', 8)
+
+
 def test_a_table_filled_with_its_signals_held_matches_a_plain_fill(qapp):
     from magicgui.widgets import Table
     from qtpy.QtCore import Qt

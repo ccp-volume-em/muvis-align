@@ -98,7 +98,8 @@ def create_section_container(section_id, section_template, interface,
                 # read-only, and possibly a row per source or pair: a view that draws only the rows shown
                 widget_type = 'muvis_align.ui.ModelTable.ModelTable'
             full_name = section_id + '.' + spec.param_name
-            param_widget = ParamWidget(full_name, None, interface, to_str=spec.is_file_type)
+            param_widget = ParamWidget(full_name, None, interface, to_str=spec.is_file_type,
+                                       number_type=spec.number_type)
 
             options = {}
             if spec.widget_type == 'Dropdown' and spec.choices:

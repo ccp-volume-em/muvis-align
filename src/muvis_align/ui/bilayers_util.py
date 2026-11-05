@@ -56,6 +56,7 @@ class MagicGuiFieldSpec(BaseModel):
     default: Any = None
     is_output: bool = False
     is_file_type: bool = False
+    number_type: str | None = None
 
 
     def to_magicgui_choices(self):
@@ -106,17 +107,26 @@ def bilayers_to_magicgui_field(template_item, section_id, section_params, widget
     if widget_type == 'Dropdown' and item.options:
         choices = {option.value: option.label for option in item.options}
 
+    value = section_params.get(item.name, item.default)
+    number_type = None
+    if item.type in ('integer', 'float') and item.default in (None, ''):
+        # a spin box cannot be blank: a number field without a default is a text field, blank meaning None
+        widget_type = 'LineEdit'
+        number_type = item.type
+        value = '' if value is None else str(int(value) if item.type == 'integer' else value)
+
     return MagicGuiFieldSpec(
         section_id=section_id,
         section_key=item.section_key,
         param_name=item.name,
         param_label=item.label or item.name,
         widget_type=widget_type,
-        value=section_params.get(item.name, item.default),
+        value=value,
         description=item.description,
         choices=choices,
         file_count=item.file_count,
         default=item.default,
         is_output=(section_id == 'output' or item.output_dir_set),
         is_file_type=is_file_type,
+        number_type=number_type,
     )
