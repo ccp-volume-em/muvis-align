@@ -50,6 +50,8 @@ def main():
     parser.add_argument('--slow', action='append', default=[],
                         help='Interface-module name to delay, e.g. make_msims_3d or Interface.update_views')
     parser.add_argument('--delay', type=float, default=12)
+    parser.add_argument('--show-boxes', type=float, default=0,
+                        help='draw each message box for this many seconds before answering it, to screenshot it')
     parser.add_argument('--interval', type=float, default=1)
     parser.add_argument('--cancel-after', type=float, default=None,
                         help='seconds into the action to press its (by then Cancel) Process button')
@@ -80,9 +82,19 @@ def main():
         setattr(owner, attribute, slowed(name, getattr(owner, attribute)))
 
     # answer the plugin's confirmations and notices: a modal box would wait for a user who is not there
+    original_exec = QMessageBox.exec
+
     def answered(kind, reply):
         def answer(_parent, title, text, *_args, **_kwargs):
             logging.info(f'capture: {kind} {title!r}: {text!r} -> {reply}')
+            if args.show_boxes:
+                state['step'] = f'box {kind}'
+                box = QMessageBox(getattr(QMessageBox.Icon, kind.capitalize()), title, text)
+                # above the viewer, which is kept on top for the screenshots
+                box.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+                # still never waits on a user: the box closes itself
+                QTimer.singleShot(int(args.show_boxes * 1000), box.accept)
+                original_exec(box)
             return reply
         return staticmethod(answer)
     for kind, reply in (('question', QMessageBox.Yes), ('information', QMessageBox.Ok),
