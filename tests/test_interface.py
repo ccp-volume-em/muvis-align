@@ -297,6 +297,7 @@ def test_input_output_process_resolves_relative_paths_before_reg_init(
     bare_interface.need_source_reinit = False
     bare_interface.reg.init.return_value = True
     bare_interface.reg.middle_section_indices.return_value = None
+    bare_interface.reg.missing_metadata_summary = ''
     bare_interface.update_metadata_source = MagicMock(return_value=True)
     bare_interface.populate_image_selection = MagicMock()
     bare_interface._load_saved_progress = MagicMock()

@@ -5,7 +5,7 @@ from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.image.TiffImageSource import TiffImageSource
 from muvis_align.image.ZarrImageSource import ZarrImageSource
-from muvis_align.image.source_helper import create_image_source
+from muvis_align.image.source_helper import create_image_source, get_missing_metadata_summary
 from muvis_align.image.util import get_data_mapping
 from muvis_align.util import create_transform, find_all_numbers
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES
@@ -210,3 +210,35 @@ def test_get_msim_caches_by_output_order_and_start_level():
 def test_create_image_source_dispatches_on_extension():
     assert isinstance(create_image_source(str(DATA_DIR / TIFF_FILES[0])), TiffImageSource)
     assert isinstance(create_image_source(str(DATA_DIR / ZARR_FILES[0])), ZarrImageSource)
+
+
+@pytest.mark.parametrize('source_metadata, expected', [
+    (None, {'position': 'xy', 'pixel size': 'xy'}),
+    ({'scale': {'x': 'source', 'y': 0.5}}, {'position': 'xy', 'pixel size': 'x'}),
+    ({'scale': {'x': 0.5, 'y': 0.5}, 'position': {'x': 1, 'y': 2}}, {}),
+], ids=['none', 'one-scale-set', 'all-set'])
+def test_a_plain_tiff_reports_the_metadata_it_lacks(tmp_path, source_metadata, expected):
+    import tifffile
+    filename = str(tmp_path / 'plain.tif')
+    tifffile.imwrite(filename, np.zeros((8, 8), dtype=np.uint8))
+    assert TiffImageSource(filename, source_metadata).missing_metadata == expected
+
+
+def test_missing_metadata_summary_counts_without_filenames():
+    from types import SimpleNamespace
+
+    def fake_source(missing, position):
+        return SimpleNamespace(missing_metadata=missing, get_position=lambda: position)
+
+    sources = [fake_source({'position': 'xy', 'pixel size': 'xy'}, {}),
+               fake_source({'pixel size': 'xy'}, {'x': 0, 'y': 0, 'z': 0}),
+               fake_source({'pixel size': 'xy'}, {'x': 0, 'y': 0, 'z': 0})]
+    assert get_missing_metadata_summary(sources) == (
+        'Pixel size x/y missing in 3 of 3 files (1 µm used)\n'
+        'Position x/y missing in 1 of 3 files\n'
+        'All 2 files with a position have the same position\n'
+        'Set Source position / Source scale in the project settings')
+    # positions differing in z alone are not the same
+    sources[2] = fake_source({}, {'x': 0, 'y': 0, 'z': 1})
+    assert 'same position' not in get_missing_metadata_summary(sources)
+    assert get_missing_metadata_summary([fake_source({}, {'x': 0}), fake_source({}, {'x': 1})]) == ''

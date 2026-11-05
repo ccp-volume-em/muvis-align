@@ -35,7 +35,7 @@ from muvis_align.image.flatfield import apply_msim_flatfield_model, calc_msims_f
 from muvis_align.image.ome_helper import save_image
 from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels, save_ome_zarr_scene
 from muvis_align.image.ome_tiff_helper import save_tiff
-from muvis_align.image.source_helper import create_image_source
+from muvis_align.image.source_helper import create_image_source, get_missing_metadata_summary
 from muvis_align.image.util import *
 from muvis_align.fusion_blocks import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar, remap_pair_metrics
@@ -322,6 +322,8 @@ class MVSRegistration:
         self.pairs_graph = None
         self._scaled_msims = {}
         self.sources = []
+        # set on each source read, cleared once shown
+        self.missing_metadata_summary = ''
         self.metrics = {}
         self.group_pairs = {}
         self.register_indices = None
@@ -664,6 +666,9 @@ class MVSRegistration:
 
         self.sources = pooled_map(build_source, len(self.filenames), default_source_init_workers, progress_factory,
                                   desc='Initialising sources', timing_label='Init sources' if self.logging_time else None)
+        self.missing_metadata_summary = get_missing_metadata_summary(self.sources)
+        if self.missing_metadata_summary:
+            logging.warning(self.missing_metadata_summary)
 
     def init_data(self, source_metadata={}, extra_metadata={}, target_scale=None, store=True,
                   progress_factory=None):

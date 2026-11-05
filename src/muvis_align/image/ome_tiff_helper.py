@@ -146,6 +146,7 @@ def read_tiff_source_metadata(filename):
     return {'dimension_order': ''.join(dims), 'shapes': shapes, 'dtype': dtype,
             'pixel_sizes': pixel_sizes, 'position': (ome or {}).get('position') or {},
             'rotation': (ome or {}).get('rotation'),
+            'missing_scale': [dim for dim in spatial_dims if dim not in ome_scale],
             'channels': channels, 'creator': (ome or {}).get('creator') or ''}
 
 

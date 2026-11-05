@@ -1,3 +1,4 @@
+from collections import Counter
 import numpy as np
 import os
 
@@ -23,6 +24,22 @@ def create_image_source(filename, source_metadata=None, file_label=None, index=N
     return source
 
 
+def get_missing_metadata_summary(sources):
+    """One text for all sources, by count only: the position or pixel size their files lack, and whether every
+    file shares one position. '' when nothing is wrong."""
+    nsources = len(sources)
+    counts = Counter((kind, dims) for source in sources for kind, dims in source.missing_metadata.items())
+    lines = [f'{kind.capitalize()} {"/".join(dims)} missing in {count} of {nsources} files'
+             + (' (1 µm used)' if kind == 'pixel size' else '')
+             for (kind, dims), count in sorted(counts.items())]
+    positions = [tuple(sorted(source.get_position().items())) for source in sources if source.get_position()]
+    if len(positions) > 1 and len(set(positions)) == 1:
+        lines.append(f'All {len(positions)} files with a position have the same position')
+    if lines:
+        lines.append('Set Source position / Source scale in the project settings')
+    return '\n'.join(lines)
+
+
 def get_images_metadata(filenames, source_metadata=None):
     summary = 'Filename\tPixel size\tSize\tPosition\tRotation\n'
     sizes = []
@@ -31,9 +48,11 @@ def get_images_metadata(filenames, source_metadata=None):
     positions = []
     max_positions = []
     pixel_sizes = []
+    sources = []
     file_labels = get_unique_file_labels(filenames)
     for index, (filename, label) in enumerate(zip(filenames, file_labels)):
         source = create_image_source(filename, source_metadata, file_label=label, index=index)
+        sources.append(source)
         pixel_size = source.get_pixel_size()
         size = source.get_physical_size()
         sizes.append(size)
@@ -60,6 +79,9 @@ def get_images_metadata(filenames, source_metadata=None):
     max_position = {dim: max([position[dim] for position in max_positions]) for dim in max_positions[0]}
     area = {dim: max_position[dim] - min_position[dim] for dim in max_position}
     summary += f'Area: {print_dict_xyz(area)} Center: {print_dict_xyz(center)}\n'
+    missing_summary = get_missing_metadata_summary(sources)
+    if missing_summary:
+        summary += missing_summary + '\n'
 
     rotation = None
     if None in rotations:

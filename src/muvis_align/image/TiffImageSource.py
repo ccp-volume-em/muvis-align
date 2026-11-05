@@ -26,6 +26,7 @@ class TiffImageSource(ImageSource):
         self.pixel_size = self.pixel_sizes[0]
         self.position = metadata['position']
         self.rotation = metadata['rotation']
+        self.missing_scale = metadata['missing_scale']
         self.channels = metadata['channels']
         self.creator = metadata['creator']
         # TODO: check with RGB image if better approach is possible

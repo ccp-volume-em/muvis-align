@@ -462,6 +462,14 @@ class Interface:
             self.update_registered(view_transform_key=self.reg.source_transform_key)
         else:
             self.update_metadata_source()
+        self._show_missing_metadata()
+
+    def _show_missing_metadata(self):
+        # one dialog per source read, whatever the number of files
+        summary = self.reg.missing_metadata_summary
+        if summary:
+            self.reg.missing_metadata_summary = ''
+            QMessageBox.warning(None, 'muvis-align', 'Missing or unusable source metadata:\n\n' + summary)
 
     def _init_sources(self, input_path, output, params):
         with self._operation_progress('Initialising sources', phases=1) as factory:

@@ -35,6 +35,9 @@ class ImageSource:
         self.rotation = None
         self.channels = []
         self.creator = ''
+        # spatial dims whose pixel size the file lacks, defaulted to 1
+        self.missing_scale = []
+        self.missing_metadata = {}
         self._data = []
         self._metadata = None
         self._msim = None
@@ -137,15 +140,10 @@ class ImageSource:
                                 self.position[dim] = -self.position[dim]
             if 'scale' in source_metadata:
                 scale = source_metadata['scale']
-                if 'x' in scale:
-                    if not check_contains_value(scale['x'], 'source'):
-                        self.pixel_sizes[0]['x'] = eval_context(scale, 'x', 1, context)
-                if 'y' in scale:
-                    if not check_contains_value(scale['y'], 'source'):
-                        self.pixel_sizes[0]['y'] = eval_context(scale, 'y', 1, context)
-                if 'z' in scale:
-                    if not check_contains_value(scale['z'], 'source'):
-                        self.pixel_sizes[0]['z'] = eval_context(scale, 'z', 1, context)
+                for dim in 'xyz':
+                    if dim in scale and not check_contains_value(scale[dim], 'source'):
+                        self.pixel_sizes[0][dim] = eval_context(scale, dim, 1, context)
+                        self.missing_scale = [missing for missing in self.missing_scale if missing != dim]
             if 'rotation' in source_metadata:
                 if not is_source_value(source_metadata['rotation']):
                     self.rotation = eval_context(source_metadata, 'rotation', None, context)
@@ -196,6 +194,10 @@ class ImageSource:
                     self.position['x'] = -self.position['x']
                 if 'y' in self.position:
                     self.position['y'] = -self.position['y']
+
+        missing = {'position': ''.join(dim for dim in 'xy' if dim not in (self.position or {})),
+                   'pixel size': ''.join(dim for dim in 'xyz' if dim in self.missing_scale)}
+        self.missing_metadata = {kind: dims for kind, dims in missing.items() if dims}
 
     def select_source_metadata(self, source_metadata):
         """This file's own entry of a run's source_metadata: its label's matrix, else the run-level values, a list
