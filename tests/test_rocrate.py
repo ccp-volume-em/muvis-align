@@ -22,7 +22,7 @@ def make_registration(tmp_path, metrics=None):
     (output_dir / 'mappings.json').write_text('{}')
     reg = MVSRegistration()
     reg.output = str(output_dir) + '/'
-    reg.output_params = {}
+    reg.input_output_params = {}
     reg.filenames = [str(tmp_path / f'tile{index}.tiff') for index in range(3)]
     reg.sources = [StubSource({'index': index}) for index in range(3)]
     reg.start_time = None

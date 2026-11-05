@@ -1,26 +1,23 @@
 general:
-  show_original: False
-  break_on_error: True
-  metadata_summary: True
+  break_on_error: true
+  metadata_summary: true
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
-    clear: False
-    overwrite: True
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: D:/slides/EM04654_slice011/subset_small/*.ome.tif
+    output_path: aligned/
+  registration:
+    operation: register
+    method: phase_correlation
+    pairing: stack
+  fusion:
     format: ome.tiff
     block_size: [1024, 1024]
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: register
-    pairing: stack
-    input: D:/slides/EM04654_slice011/subset_small/*.ome.tif
-    source_metadata: source
-    registration: phase_correlation
-    output: aligned/

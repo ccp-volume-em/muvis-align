@@ -179,6 +179,14 @@ def resolve_registration_channel(msim, channel, chosen=None):
     return label
 
 
+def check_operation_layout(params):
+    """Raise for an operation in the CLI's former layout, which the project template's sections replaced."""
+    old_keys = sorted({'operation', 'input', 'output', 'preprocessing', 'source_metadata'} & set(params))
+    if old_keys:
+        raise ValueError(f'Operation settings in the former layout ({", ".join(old_keys)}): give them in the '
+                         f'sections input_output, pre_processing, registration and fusion, as a project file has them')
+
+
 class MVSRegistration:
     def __init__(self, operation='register', label='', input_path=None, output_path=None,
                  source_metadata={}, extra_metadata={},
@@ -188,7 +196,6 @@ class MVSRegistration:
         self.verbose = verbose
         self.logging_dask = self.verbose
         self.logging_time = self.verbose
-        self.params_path = None
         self.reset()
 
         if input_path is not None:
@@ -335,7 +342,7 @@ class MVSRegistration:
         self._flatfield_lock = threading.Lock()
         # per source index: the registration's correction on top of the source transform; absent means identity
         self.mappings = None
-        self.output_params = {}
+        self.input_output_params = {}
 
     def is_initialised(self):
         return self.state.value >= RegState.INIT.value
@@ -349,31 +356,28 @@ class MVSRegistration:
     def is_fused(self):
         return self.state.value >= RegState.FUSED.value
 
-    def init_params(self, params_general, params, label='', input_path=None, global_rotation=None, global_center=None,
-                    params_path=None):
+    def init_params(self, params_general, params, label='', input_path=None, global_rotation=None, global_center=None):
+        """A CLI operation: its settings in the project template's sections (input_output, pre_processing,
+        registration, fusion), as a project file has them, with the run's general settings."""
+        check_operation_layout(params)
         self.params_general = params_general
         self.params = params
-        self.params_path = params_path
-        self.input_params = params.get('input')
-        if isinstance(self.input_params, (str, list)):
-            self.input_params = {'path': self.input_params}
-        if input_path is None:
-            input_path = self.input_params.get('path')
-        self.output_params = params.get('output')
-        if isinstance(self.output_params, str):
-            self.output_params = {'path': self.output_params}
-        self.preprocess_params = params.get('preprocessing', {})
+        self.input_output_params = params.get('input_output', {})
+        self.preprocess_params = params.get('pre_processing', {})
         self.register_params = params.get('registration', {})
         self.fusion_params = params.get('fusion', {})
+        input_output = self.input_output_params
+        if input_path is None:
+            input_path = input_output.get('input_path')
 
-        return self.init(operation=params.get('operation'), label=label, input_path=input_path,
-                         pairing=params.get('pairing', self.register_params.get('pairing', '')),
-                         input_labels=self.input_params.get('labels'),
-                         output_path=self.output_params.get('path'),
-                         source_metadata=self.input_params.get('source_metadata', {}),
-                         extra_metadata=self.input_params.get('extra_metadata', {}),
+        return self.init(operation=self.register_params.get('operation', ''), label=label, input_path=input_path,
+                         pairing=self.register_params.get('pairing', ''),
+                         input_labels=input_output.get('labels'),
+                         output_path=input_output.get('output_path'),
+                         source_metadata=source_metadata_from_params(input_output),
+                         extra_metadata=extra_metadata_from_params(input_output),
                          global_rotation=global_rotation, global_center=global_center,
-                         overwrite=params_general.get('overwrite', False), clear=params_general.get('clear', False),
+                         overwrite=input_output.get('overwrite', False), clear=input_output.get('clear', False),
                          ui=params_general.get('ui', ''),
                          verbose=params_general.get('verbose', False), debug=params_general.get('debug', False))
 
@@ -459,20 +463,16 @@ class MVSRegistration:
         z_scale = get_metadata_z_scale(extra_metadata)
         channels = extra_metadata.get('channels', []) if isinstance(extra_metadata, dict) else []
         normalise_orientation = 'norm' in source_metadata
-        output_params = self.output_params
-        general_output_params = self.params_general.get('output', {})
-        overlap_threshold = self.register_params.get('overlap_threshold', self.params.get('overlap_threshold', 0.5))
-        save_images = self.output_params.get('save_images', self.params.get('save_images', True))
-        pairing = self.register_params.get('pairing', '').lower()
+        fusion_params = self.fusion_params
+        overlap_threshold = self.register_params.get('overlap_threshold', 0.5)
+        save_images = fusion_params.get('save_images', True)
 
-        output_format = output_params.get('format', general_output_params.get('format', zarr_extension))
-        # tile_size: the block size's name in params files written before
-        output_block_size = next((params[key] for params in (output_params, general_output_params)
-                                  for key in ('block_size', 'tile_size') if params.get(key) is not None), None)
-        output_compression = output_params.get('compression', general_output_params.get('compression'))
-        output_pyramid_downsample = output_params.get('pyramid_downsample', general_output_params.get('pyramid_downsample', 2))
-        output_npyramid_add = output_params.get('npyramid_add', general_output_params.get('npyramid_add', 0))
-        output_ome_version = output_params.get('ome_version', general_output_params.get('ome_version', default_ome_zarr_version))
+        output_format = fusion_params.get('format', zarr_extension)
+        output_block_size = parse_block_size(fusion_params.get('block_size'))
+        output_compression = fusion_params.get('compression')
+        output_pyramid_downsample = fusion_params.get('pyramid_downsample', 2)
+        output_npyramid_add = fusion_params.get('npyramid_add', 0)
+        output_ome_version = fusion_params.get('ome_version') or default_ome_zarr_version
 
         if len(filenames) == 0:
             logging.warning('Skipping (no images)')
@@ -569,7 +569,7 @@ class MVSRegistration:
 
         image_paths = []
         if save_images:
-            if output_params.get('preview', general_output_params.get('preview')):
+            if fusion_params.get('preview'):
                 with Timer('create preview', verbose=self.logging_time):
                     self.create_preview('preview_' + output_filename,
                                         nom_msims=msims,
@@ -844,8 +844,8 @@ class MVSRegistration:
     def has_saved_progress(self, output_filename=None, output_format=None):
         """Whether there is a saved registration to resume: the files check_progress() reads, without changing
         the state. Without an output filename only the mappings are checked."""
-        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
-        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        pair_mappings_filename = self.output + self.input_output_params.get('pair_mappings', default_pair_mappings_name)
+        mappings_filename = self.output + self.input_output_params.get('mappings', default_mappings_name)
         return bool((output_filename and self.output_exists(output_filename, output_format))
                     or os.path.exists(mappings_filename)
                     or os.path.exists(pair_mappings_filename))
@@ -853,9 +853,9 @@ class MVSRegistration:
     def saved_progress_paths(self, output=None):
         """The saved registration's existing files, in this run's output or another (e.g. before init() has run)."""
         output = os.path.join(output, '') if output else self.output
-        paths = [output + self.output_params.get('pair_mappings', default_pair_mappings_name),
-                 output + self.output_params.get('mappings', default_mappings_name),
-                 output + self.output_params.get('mappings', default_mappings_tabular_name),
+        paths = [output + self.input_output_params.get('pair_mappings', default_pair_mappings_name),
+                 output + self.input_output_params.get('mappings', default_mappings_name),
+                 output + self.input_output_params.get('mappings', default_mappings_tabular_name),
                  output + metrics_name]
         return [path for path in set(paths) if os.path.exists(path)]
 
@@ -866,8 +866,8 @@ class MVSRegistration:
         logging.info(f'Saved registration in {output or self.output} discarded')
 
     def check_progress(self, output_filename, output_format):
-        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
-        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        pair_mappings_filename = self.output + self.input_output_params.get('pair_mappings', default_pair_mappings_name)
+        mappings_filename = self.output + self.input_output_params.get('mappings', default_mappings_name)
         if self.output_exists(output_filename, output_format):
             self.state = RegState.FUSED
         elif os.path.exists(mappings_filename):
@@ -876,8 +876,8 @@ class MVSRegistration:
             self.state = RegState.PAIRS_REG
 
     def init_progress(self, output_filename, output_format, progress_factory=None):
-        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
-        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        pair_mappings_filename = self.output + self.input_output_params.get('pair_mappings', default_pair_mappings_name)
+        mappings_filename = self.output + self.input_output_params.get('mappings', default_mappings_name)
         metrics_filename = self.output + metrics_name
         self.check_progress(output_filename, output_format)
 
@@ -1325,18 +1325,8 @@ class MVSRegistration:
         return transform, result.get('quality'), result
 
     def fusion_settings(self):
-        """(method, output spacing) from the fusion params: a dict, or the method as text. The spacing is the
-        plugin's `spacing` or `output_spacing`, defaulting to native as in the plugin."""
-        if isinstance(self.fusion_params, dict):
-            fusion_method = self.fusion_params.get('method', '')
-            output_spacing = self.fusion_params.get('spacing', self.fusion_params.get('output_spacing'))
-        else:
-            fusion_method = self.fusion_params
-            output_spacing = None
-        if output_spacing is None:
-            # an operation's own `spacing` is the transition video's, not the fusion's
-            output_spacing = self.params.get('output_spacing', 'native')
-        return fusion_method, output_spacing
+        """(method, output spacing) from the fusion section, the spacing defaulting to native as in the plugin."""
+        return self.fusion_params.get('method', ''), self.fusion_params.get('spacing') or 'native'
 
     def create_fusion_method(self, fusion_method, sim0):
         if fusion_method is None:
@@ -2092,7 +2082,7 @@ class MVSRegistration:
         self.save_pair_mappings(pair_mappings, qualities, bboxes)
 
     def save_pair_mappings(self, mappings, qualities, bboxes):
-        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
+        pair_mappings_filename = self.output + self.input_output_params.get('pair_mappings', default_pair_mappings_name)
         output_mappings = {}
         for keys, mapping in mappings.items():
             label_key = json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]])
@@ -2111,7 +2101,7 @@ class MVSRegistration:
     def save_group_pair_mappings(self):
         """Split pairing's group (e.g. section) pairs added to the pair mappings file, keyed by their labels and marked
         by kind, replacing those of an earlier run."""
-        pair_mappings_filename = self.output + self.output_params.get('pair_mappings', default_pair_mappings_name)
+        pair_mappings_filename = self.output + self.input_output_params.get('pair_mappings', default_pair_mappings_name)
         output_mappings = import_json(pair_mappings_filename) if os.path.exists(pair_mappings_filename) else {}
         output_mappings = {key: value for key, value in output_mappings.items()
                            if value.get('kind') != split_group_pair_kind}
@@ -2120,7 +2110,7 @@ class MVSRegistration:
         export_json(pair_mappings_filename, output_mappings)
 
     def save_mappings(self, mappings):
-        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_name)
+        mappings_filename = self.output + self.input_output_params.get('mappings', default_mappings_name)
         output_mappings = {self.filenames[int(key)]: np.array(mapping.sel(t=0)).tolist()
                            for key, mapping in mappings.items()}
         write_transforms(mappings_filename, output_mappings, self.source_transform_key, self.reg_transform_key)
@@ -2128,7 +2118,7 @@ class MVSRegistration:
     def save_mappings_csv(self, mappings, normalise_orientation=False):
         data = []
         mappings_header = ['id',' filename', 'x_pixels', 'y_pixels', 'z_pixels', 'x', 'y', 'z', 'rotation']
-        mappings_filename = self.output + self.output_params.get('mappings', default_mappings_tabular_name)
+        mappings_filename = self.output + self.input_output_params.get('mappings', default_mappings_tabular_name)
         for label, filename, msim, mapping, scale, position, rotation \
                 in zip(self.file_labels, self.filenames, self.msims, mappings.values(), self.scales, self.positions, self.rotations):
             if not normalise_orientation:
@@ -2153,9 +2143,7 @@ class MVSRegistration:
         export_json(metrics_filename, output_metrics)
 
     def create_preview(self, output_filename=None, nom_msims=None, transform_key=None):
-        # the operation's own output settings win over general.output's
-        output_params = {**self.params_general.get('output', {}), **(self.output_params or {})}
-        preview_scale = parse_scale(output_params.get('preview_scale'), default=16)
+        preview_scale = parse_scale(self.input_output_params.get('preview_scale'), default=16)
         is_stack = self.is_stack
         z_scale = get_metadata_z_scale(self.extra_metadata)
 
@@ -2177,9 +2165,10 @@ class MVSRegistration:
         fused_msim, is_saved = self.fuse(msims, fusion_method=fusion_method, transform_key=transform_key,
                                          output_spacing='max', output_filename=output_filename)
         fused_sim = extract_sims_from_fused(fused_msim)
-        if output_filename and (not is_saved or 'tif' in output_params.get('preview')):
-            self.save(output_filename, fused_sim.squeeze(), transform_key=transform_key,
-                      format=output_params.get('preview'), ome_version=output_params.get('ome_version'))
+        preview_format = self.fusion_params.get('preview')
+        if output_filename and (not is_saved or 'tif' in preview_format):
+            self.save(output_filename, fused_sim.squeeze(), transform_key=transform_key, format=preview_format,
+                      ome_version=self.fusion_params.get('ome_version') or default_ome_zarr_version)
         return fused_sim
 
     def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None, channels=[],
@@ -2237,7 +2226,7 @@ class MVSRegistration:
         sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in msims]
         fused_image = extract_sims_from_fused(fused_msim)
         pixel_size = [si_utils.get_spacing_from_sim(sims[0]).get(dim, 1) for dim in 'xy']
-        params = self.params
+        params = self.fusion_params.get('transition', {})
         nframes = params.get('frames', 1)
         spacing = params.get('spacing', [1.1, 1])
         scale = params.get('scale', 1)

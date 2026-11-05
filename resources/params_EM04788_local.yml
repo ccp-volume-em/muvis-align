@@ -1,22 +1,22 @@
 general:
-  log_filename: log/muvis-align.log
-  log_format: '%(asctime)s %(levelname)s: %(message)s'
-  show_original: False
-  break_on_error: True
-  verbose: False
-  output:
+  break_on_error: true
+  logging:
+    filename: log/muvis-align.log
+    format: '%(asctime)s %(levelname)s: %(message)s'
+  verbose: false
+operations:
+- input_output:
+    input_path: C:/Project/slides/EM04788_02_Sub_02/Section20/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
     format: ome.zarr, ome.tiff
     block_size: []
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: register
-    #input: D:/slides/EM04788_02_Sub_02/Section5/.*_t\d{4}.*.tif
-    input: C:/Project/slides/EM04788_02_Sub_02/Section20/.*_t\d{4}.*.tif
-    normalisation: True
-    source_metadata: source normalise
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/

@@ -6,16 +6,16 @@ from threading import Thread
 from tqdm import tqdm
 
 from muvis_align.image.source_helper import get_images_metadata
-from muvis_align.MVSRegistration import MVSRegistration
+from muvis_align.MVSRegistration import MVSRegistration, check_operation_layout
 from muvis_align.logging import init_logging
-from muvis_align.util import dir_regex, get_filetitle, find_all_numbers, find_target_numeric
+from muvis_align.util import dir_regex, get_filetitle, find_all_numbers, find_target_numeric, \
+    source_metadata_from_params
 
 
 class Pipeline(Thread):
-    def __init__(self, params, params_path=None):
+    def __init__(self, params):
         super().__init__()
         self.params = params
-        self.params_path = params_path
 
         self.params_general = params['general']
         params_logging = self.params_general.get('logging', {})
@@ -31,9 +31,7 @@ class Pipeline(Thread):
         errors = 0
         for operation_params in tqdm(self.params['operations']):
             error = False
-            input_path = operation_params['input']
-            if isinstance(input_path, dict):
-                input_path = input_path.get('path')
+            input_path = operation_params.get('input_output', {}).get('input_path')
             logging.info(f'Input: {input_path}')
             try:
                 self.run_operation(operation_params)
@@ -53,14 +51,14 @@ class Pipeline(Thread):
         return errors == 0
 
     def run_operation(self, params):
-        operation = params['operation']
-        use_global_metadata = 'global' in params.get('source_metadata', '')
+        check_operation_layout(params)
+        input_output = params.get('input_output', {})
+        operation = params.get('registration', {}).get('operation', '')
+        source_metadata = source_metadata_from_params(input_output)
+        use_global_metadata = isinstance(source_metadata, dict) and 'global' in source_metadata
         metadata_summary = self.params_general.get('metadata_summary', False)
 
-        if isinstance(params['input'], dict):
-            path = params['input'].get('path')
-        else:
-            path = params['input']
+        path = input_output.get('input_path')
         filenames = sorted(dir_regex(path), key=lambda file: list(find_all_numbers(file)))    # sort first key first
         if len(filenames) == 0:
             logging.warning(f'Skipping operation {operation} (no files)')
@@ -99,7 +97,7 @@ class Pipeline(Thread):
         global_center = None
         if metadata_summary or use_global_metadata:
             for fileset, fileset_label in zip(filesets, fileset_labels):
-                metadata = get_images_metadata(fileset, params.get('source_metadata'))
+                metadata = get_images_metadata(fileset, source_metadata)
                 if metadata_summary:
                     logging.info(f'File set: {fileset_label} metadata:\n' + metadata['summary'])
                 metadatas.append(metadata)
@@ -108,7 +106,7 @@ class Pipeline(Thread):
                 rotations = [metadata['rotation'] for metadata in metadatas]
                 rotations = pd.Series(rotations).interpolate(limit_direction='both').to_numpy()
 
-        n_set_workers = params.get('n_set_workers', 1)
+        n_set_workers = input_output.get('n_set_workers', 1)
         if n_set_workers > 1:
             value_sets = []
             for index, (fileset, fileset_label) in enumerate(zip(filesets, fileset_labels)):
@@ -139,5 +137,5 @@ class Pipeline(Thread):
         mvs_registration = MVSRegistration()
         mvs_registration.init_params(params_general=self.params_general, params=params,
                                      label=fileset_label, input_path=fileset,
-                                     global_center=center, global_rotation=rotation, params_path=self.params_path)
+                                     global_center=center, global_rotation=rotation)
         return mvs_registration.run()

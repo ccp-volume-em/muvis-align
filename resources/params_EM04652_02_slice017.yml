@@ -2,31 +2,25 @@ general:
   logging:
     filename: log/muvis-align-EM04652.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    verbose: True
-  output:
-    overwrite: False
+    verbose: true
+operations:
+- input_output:
+    input_path: ['C:/Project/slides/EM04652-02_slice17_spaghettiandmeatballs2/data_*/*.ome.tif']
+    output_path: ../../all_fused/
+    preview_scale: 1um
+  registration:
+    operation: register
+    transform_type: translation
+    pairing: orthogonal
+    max_keypoints: 5000
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
+    method: phase_correlation
+  fusion:
     format: ome.zarr
     ome_version: 0.5
-    compression:
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
-    preview:
-    preview_scale: 1um
-
-operations:
-  - operation: register
-    input:
-#    - /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/tiles/**/*.ome.tif
-#    - /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/overviews/**/*.ome.tif
-    - C:/Project/slides/EM04652-02_slice17_spaghettiandmeatballs2/data_*/*.ome.tif
-#    preprocessing:
-#      normalisation: global
-    registration:
-      transform_type: translation
-      pairing: orthogonal
-      name: phase_correlation #orb
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output: ../../all_fused/
+    preview: null

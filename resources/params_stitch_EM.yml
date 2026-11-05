@@ -1,28 +1,27 @@
 general:
-  show_original: False
-  break_on_error: False
+  break_on_error: false
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
-    clear: True
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: C:/Project/slides/EM04768_01_substrate_04/EM/a0004/roi0000/.*.ome.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  pre_processing:
+    normalisation: global
+    filter_foreground: false
+  registration:
+    operation: register
+    method: phase_correlation
+    pairing: orthogonal
+    channel: 0
+  fusion:
     format: ome.zarr
     block_size: []
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: register
-    input: C:/Project/slides/EM04768_01_substrate_04/EM/a0004/roi0000/.*.ome.tif
-    source_metadata: source normalise
-    #flatfield_quantile: 0.95
-    normalisation: global
-    filter_foreground: False
-    use_orthogonal_pairs: True
-    channel: 0
-    registration: phase_correlation
-    output: stitched/

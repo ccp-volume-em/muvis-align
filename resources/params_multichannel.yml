@@ -1,46 +1,64 @@
 general:
-  show_original: False
-  break_on_error: True
+  break_on_error: true
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/.*.ome.tif
+    source_metadata: invert
+    output_path: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/reflection_stitched/
+  pre_processing:
+    flatfield_quantiles: [0.95]
+    filter_foreground: true
+    normalisation: global
+  registration:
+    operation: register
+    method: phase_correlation
+    pairing: orthogonal
+  fusion:
     format: ome.zarr, ome.tiff
-    block_size: []
-    compression: []
+    block_size: &id001 []
+    compression: &id002 []
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: register
-    input: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/.*.ome.tif
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/EM04768_01_sub_04_fluorescence_10x/converted/.*.ome.tif
+    source_metadata: invert
+    output_path: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/fluorescence_stitched/
+  pre_processing:
     flatfield_quantiles: [0.95]
-    source_metadata: source invert
-    filter_foreground: True
+    filter_foreground: true
     normalisation: global
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/reflection_stitched/
-
-  - operation: register
-    input: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/Fluorescence/20_percent_overlap/EM04768_01_sub_04_fluorescence_10x/converted/.*.ome.tif
-    flatfield_quantiles: [0.95]
-    source_metadata: source invert
-    filter_foreground: True
-    normalisation: global
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/fluorescence_stitched/
-
-  - operation: register
-    input:
-      - /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/reflection_stitched/registered.ome.zarr
-      - /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/fluorescence_stitched/registered.ome.zarr
+  registration:
+    operation: register
+    method: phase_correlation
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: [/nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/reflection_stitched/registered.ome.zarr,
+      /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/fluorescence_stitched/registered.ome.zarr]
+    channels_table:
+      label: [reflection, fluorescence]
+      color: ['(1, 1, 1, 1)', '(0, 1, 0, 1)']
+    output_path: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/
+  pre_processing:
     normalisation: individual
-    registration: ANTsPy
+  registration:
+    operation: register
+    method: ANTsPy
     channel: 0
-    extra_metadata: {'channels': [{'label':reflection, 'color':[1, 1, 1, 1]}, {'label':fluorescence, 'color':[0, 1, 0, 1]}]}
-    output: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2

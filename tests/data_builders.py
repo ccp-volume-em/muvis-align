@@ -159,7 +159,7 @@ def registration_from_resource(resource_file, output_path=None):
         params = yaml.safe_load(file)
     operation_params = params['operations'][0]
     if output_path is not None:
-        operation_params['output']['path'] = Path(output_path).as_posix() + '/'
+        operation_params['input_output']['output_path'] = Path(output_path).as_posix() + '/'
     registration = MVSRegistration()
     registration.init_params(params['general'], operation_params)
     registration.init_data()

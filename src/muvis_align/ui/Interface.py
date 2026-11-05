@@ -48,7 +48,7 @@ from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDoc
     clear_napari_dask_cache, operation_label, patch_multiscale_label_show, patch_shapes_text_coords, report_failure
 from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, \
-    SOURCE_METADATA_FIELDS, set_source_metadata_value, parse_channel_color, channels_from_table, \
+    SOURCE_METADATA_FIELDS, set_source_metadata_value, parse_channel_color, channels_from_table, parse_block_size, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
     resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase, \
     background_luminance, contrasting_color, get_scale_from_transform, get_rotation_from_transform
@@ -2066,19 +2066,6 @@ class Interface:
                     pbar.update(1)
         return True
 
-    def _fusion_block_size(self):
-        """The configured block size, or None: fuse() then sizes the export's blocks by what one costs in memory."""
-        block_size = self.params['fusion'].get('block_size')
-        if isinstance(block_size, str):
-            block_size = block_size.strip()
-            if not block_size:
-                block_size = None
-            elif ',' in block_size:
-                block_size = [int(size.strip()) for size in block_size.split(',')]
-            else:
-                block_size = int(block_size)
-        return block_size
-
     def _estimate_fusion_size(self):
         """reg.estimate_fusion_size() for the fusion settings, logged per level; None if it cannot be estimated."""
         try:
@@ -2087,7 +2074,8 @@ class Interface:
                     self.params['fusion']['method'], output_spacing=self.params['fusion']['spacing'],
                     transform_key=self.get_best_transform_key(),
                     dimension=self.params['input_output']['registration_dimension'],
-                    block_size=self._fusion_block_size(), extra_metadata=self.extra_metadata)
+                    block_size=parse_block_size(self.params['fusion'].get('block_size')),
+                    extra_metadata=self.extra_metadata)
         except Exception as error:
             # the question still stands without a size, and the bar without its level shares
             logging.warning(f'Could not estimate the fusion size: {error}')
@@ -2110,7 +2098,7 @@ class Interface:
     def run_fusion(self, progress_factory=None):
         operation = self.params['registration']['operation']
         output_filename = operation_to_past_participle(operation)
-        block_size = self._fusion_block_size()
+        block_size = parse_block_size(self.params['fusion'].get('block_size'))
         # the saves below are on-disk layout only, with no per-block cost, so they always get blocks
         save_block_size = block_size or default_chunk_size
 

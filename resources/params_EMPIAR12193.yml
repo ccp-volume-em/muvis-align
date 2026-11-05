@@ -1,65 +1,67 @@
 general:
-  show_original: False
-  metadata_summary: False
-  chunk_size: [4096, 4096]
-  break_on_error: True
-  overwrite: False
+  break_on_error: true
+  metadata_summary: false
   logging:
     filename: log/muvis-align-empiar12193.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
-    clear: False
-    overwrite: True
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: D:/slides/12193/data_subset_small/S*/*.tiff
+    source_scale_x: 0.004
+    source_scale_y: 0.004
+    source_position_y: fn[-3]*24
+    source_position_x: fn[-2]*24
+    output_path: ../../stitched/S{S}/
+    preview_scale: 32
+    overwrite: false
+  pre_processing:
+    scale: 4
+  registration:
+    operation: register match S
+    pairing: orthogonal
+    normalisation: true
+    transform_type: translation
+    gaussian_sigma: 1
+    max_keypoints: 5000
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
+    method: sift
+  fusion:
     format: ome.zarr
-    block_size: [4096, 4096]
-    compression:
+    block_size: &id001 [4096, 4096]
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
     preview: ome.zarr
+- input_output:
+    input_path: D:/slides/12193/stitched/S*/registered.ome.zarr
+    extra_metadata:
+      scale:
+        z: 0.1
+    output_path: ../../aligned/
     preview_scale: 32
-
-operations:
-  - operation: register match S
-    input:
-      #path: /nemo/project/proj-ccp-vem/datasets/12193/data/S*/*.tiff
-      path: D:/slides/12193/data_subset_small/S*/*.tiff
-      source_metadata: {'scale': {'x': 0.004, 'y': 0.004}, 'position': {'y':'fn[-3]*24', 'x':'fn[-2]*24'}}
-    preprocessing:
-      #normalisation: global  # normalise in custom registration function instead
-      scale: 4
-      #flatfield_quantiles: [0.5]
-    registration:
-      pairing: orthogonal
-      normalisation: True
-      transform_type: translation
-      name: sift
-      gaussian_sigma: 1
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output: ../../stitched/S{S}/
-
-  - operation: register
+    overwrite: false
+  pre_processing:
+    scale: 8
+  registration:
+    operation: register
+    normalisation: true
+    transform_type: rigid
+    gaussian_sigma: 3
+    max_keypoints: 5000
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
     pairing: stack
-    input:
-      #path: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S*/registered.ome.zarr
-      path: D:/slides/12193/stitched/S*/registered.ome.zarr
-      source_metadata: source
-    extra_metadata: {'scale': {'z': 0.1}}
-    preprocessing:
-      #normalisation: individual  # normalise in custom registration function instead
-      scale: 8
-    registration:
-      normalisation: True
-      transform_type: rigid
-      name: sift
-      gaussian_sigma: 3
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output: ../../aligned/
+    method: sift
+  fusion:
+    format: ome.zarr
+    block_size: *id001
+    compression: null
+    npyramid_add: 4
+    pyramid_downsample: 2
+    preview: ome.zarr

@@ -16,6 +16,6 @@ if __name__ == '__main__':
     with open(args.params, 'r', encoding='utf8') as file:
         params = yaml.safe_load(file)
 
-    pipeline = Pipeline(params, params_path=args.params)
+    pipeline = Pipeline(params)
     # a job or script sees a failed run as one
     sys.exit(0 if pipeline.run() else 1)

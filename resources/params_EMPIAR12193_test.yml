@@ -1,44 +1,36 @@
 general:
-  show_original: False
-  metadata_summary: False
-  chunk_size: [4096, 4096]
-  break_on_error: True
-  debug: True
+  break_on_error: true
+  metadata_summary: false
   logging:
     filename: log/muvis-align-empiar12193.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
-    clear: False
-    overwrite: False
+    dask: true
+    time: true
+    verbose: true
+  debug: true
+operations:
+- input_output:
+    input_path: D:/slides/12193/stitched_subset/S???/registered.ome.zarr
+    extra_metadata:
+      scale:
+        z: 0.1
+    output_path: ../../aligned_subset/
+  pre_processing:
+    scale: 4
+  registration:
+    operation: register
+    max_keypoints: 5000
+    gaussian_sigma: 10
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
+    pairing: stack
+    method: orb
+    transform_type: rigid
+  fusion:
     format: ome.zarr
     block_size: [4096, 4096]
-    compression:
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
-    preview:
-
-operations:
-  - operation: register
-    pairing: stack
-    #input:
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/stitched/S000/registered.ome.zarr
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/stitched/S001/registered.ome.zarr
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/stitched/S002/registered.ome.zarr
-    #input: D:/slides/12193/stitched_hpc/S???/registered.ome.zarr
-    input: D:/slides/12193/stitched_subset/S???/registered.ome.zarr
-    source_metadata: source
-    extra_metadata: {'scale': {'z': 0.1}}
-    scale: 4
-    #normalisation: individual  # normalise in custom registration function instead
-    transform_type: rigid
-    registration:
-      name: orb
-      max_keypoints: 5000
-      gaussian_sigma: 10
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output: ../../aligned_subset/
+    preview: null

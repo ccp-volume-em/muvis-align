@@ -123,33 +123,34 @@ def test_init_returns_false_when_pattern_has_no_files(tmp_path):
     assert result is False
 
 
-def test_init_params_normalises_sections_and_forwards_options():
+def test_init_params_reads_the_project_sections():
     registration = MVSRegistration()
     params = {
-        "operation": "register",
-        "input": "images/*.tif",
-        "output": "results/",
-        "preprocessing": {"scale": 2},
-        "registration": {"method": "phase"},
+        "input_output": {"input_path": "images/*.tif", "output_path": "results/", "overwrite": True,
+                         "source_position_x": "source invert", "normalise_rotated_positions": True,
+                         "source_metadata": "global"},
+        "pre_processing": {"scale": 2},
+        "registration": {"operation": "register", "method": "phase", "pairing": "stack"},
         "fusion": {"method": "max"},
     }
-    general = {
-        "overwrite": True,
-        "clear": True,
-        "ui": "napari",
-        "verbose": True,
-        "debug": True,
-    }
+    general = {"ui": "napari", "verbose": True, "debug": True}
 
     with patch.object(registration, "init", return_value=True) as init:
         result = registration.init_params(general, params, label="sample")
 
     assert result is True
-    assert registration.input_params == {"path": "images/*.tif"}
-    assert registration.output_params == {"path": "results/"}
     assert registration.preprocess_params == {"scale": 2}
-    assert init.call_args.kwargs["overwrite"] is True
-    assert init.call_args.kwargs["label"] == "sample"
+    assert registration.fusion_params == {"method": "max"}
+    kwargs = init.call_args.kwargs
+    assert (kwargs["operation"], kwargs["input_path"], kwargs["output_path"], kwargs["pairing"]) == (
+        "register", "images/*.tif", "results/", "stack")
+    assert kwargs["source_metadata"] == {"global": True, "position": {"x": "source invert"}, "norm": True}
+    assert (kwargs["overwrite"], kwargs["clear"], kwargs["label"], kwargs["verbose"]) == (True, False, "sample", True)
+
+
+def test_init_params_refuses_the_former_layout():
+    with pytest.raises(ValueError, match="former layout"):
+        MVSRegistration().init_params({}, {"operation": "register", "input": "images/*.tif"})
 
 
 def _make_msims(count=1, size=8, pixel_size=1.0):
@@ -353,7 +354,7 @@ def test_check_progress_uses_most_advanced_available_state(
 ):
     registration = MVSRegistration()
     registration.output = "output/"
-    registration.output_params = {
+    registration.input_output_params = {
         "pair_mappings": "pairs.json",
         "mappings": "mappings.json",
     }
@@ -1076,7 +1077,7 @@ def test_init_progress_loads_a_pair_registration_without_building_msims(monkeypa
     (tmp_path / 'pair_mappings.json').write_text('{}', encoding='utf8')
     reg = MVSRegistration.__new__(MVSRegistration)
     reg.output = tmp_path.as_posix() + '/'
-    reg.output_params = {}
+    reg.input_output_params = {}
     reg.state = RegState.PAIRS_REG
     reg.filenames = ['file-0']
     reg.source_transform_key = 'source_metadata'
@@ -1164,7 +1165,7 @@ def test_the_fused_output_is_current_when_written_after_the_saved_registration(t
     import os
     reg = MVSRegistration()
     reg.output = tmp_path.as_posix() + '/'
-    reg.output_params = {}
+    reg.input_output_params = {}
     paths = {'mappings': tmp_path / 'mappings.json', 'fused': tmp_path / 'registered.ome.zarr' / 'zarr.json'}
     for time_stamp, name in enumerate(order, start=1):
         paths[name].parent.mkdir(exist_ok=True)
@@ -1214,7 +1215,7 @@ def test_a_loaded_global_registration_summarises_each_metric_under_the_registere
     from muvis_align.util import export_json
 
     reg = MVSRegistration()
-    reg.output, reg.output_params = tmp_path.as_posix() + '/', {}
+    reg.output, reg.input_output_params = tmp_path.as_posix() + '/', {}
     reg.filenames = ['a.tif', 'b.tif', 'c.tif']
     reg._msims = None
     write_transforms(reg.output + 'mappings.json', {name: np.eye(3) for name in reg.filenames})

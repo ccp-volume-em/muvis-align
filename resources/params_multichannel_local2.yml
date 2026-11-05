@@ -1,29 +1,25 @@
 general:
-  show_original: False
-  show_filtered: False
-  break_on_error: True
+  break_on_error: true
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection/*.ome.tiff
+    source_metadata: invert
+    output_path: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched3/
+  pre_processing:
+    normalisation: global
+  registration:
+    operation: register
+    method: phase_correlation
+    pairing: orthogonal
+  fusion:
     format: ome.tiff, ome.zarr
     block_size: []
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: register
-    #input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
-    #input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection3/*.ome.tiff
-    input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection/*.ome.tiff
-    #flatfield_quantiles: [0.95]
-    source_metadata: source invert
-    #filter_foreground: True
-    normalisation: global
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched3/

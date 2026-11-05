@@ -1,34 +1,31 @@
 general:
-  show_original: False
-  break_on_error: True
+  break_on_error: true
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection3/*.ome.tiff
+    source_metadata: invert
+    output_path: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched3/
+  pre_processing:
+    flatfield_quantiles: [0.95]
+    normalisation: global
+  registration:
+    operation: transition
+    method: phase_correlation
+    pairing: orthogonal
+  fusion:
     format: ome.tiff
     block_size: []
     compression: []
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: transition
-    spacing: [0.5, 0]
-    scale: 0.5
-    frames: 100
-    fps: 20
-    #input: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
-    #input: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/subselection3/*.ome.tiff
-    #input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/ome_tif_reflection/converted/*.ome.tiff
-    input: D:/slides/EM04768_01_substrate_04/Reflection/20_percent_overlap/subselection3/*.ome.tiff
-    flatfield_quantiles: [0.95]
-    source_metadata: source invert
-    #filter_foreground: True
-    normalisation: global
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    #output: /nemo/project/proj-czi-vp/raw/lm/EM04768_01_substrate_04/registered/reflection_stitched3/
-    output: D:/slides/EM04768_01_substrate_04/registered/reflection_stitched3/
+    transition:
+      spacing: [0.5, 0]
+      scale: 0.5
+      frames: 100
+      fps: 20

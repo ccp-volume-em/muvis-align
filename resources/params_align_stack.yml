@@ -1,28 +1,30 @@
 general:
-  show_original: False
-  show_filtered: False
-  break_on_error: False
-  chunk_size: [1024, 1024]
+  break_on_error: false
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
-    clear: True
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: D:/slides/EM04788_02_Sub_02/10nm/subset/*.tif
+    source_metadata:
+      x: 0
+      y: 0
+    extra_metadata:
+      scale:
+        z: 0.05
+    output_path: aligned/
+  pre_processing:
+    normalisation: global
+  registration:
+    operation: register
+    method: cpd
+    pairing: stack
+  fusion:
     format: ome.tiff
     block_size: []
-    compression:
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: register
-    pairing: stack
-    input: D:/slides/EM04788_02_Sub_02/10nm/subset/*.tif
-    source_metadata: {'x': 0, 'y': 0}
-    extra_metadata: {'scale': {'z': 0.05}}
-    normalisation: global
-    registration: cpd #features
-    output: aligned/

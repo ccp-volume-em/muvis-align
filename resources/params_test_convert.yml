@@ -1,26 +1,25 @@
 general:
-  overwrite: True
   logging:
-    verbose: True
-  output:
-    format: ome.zarr
-
+    verbose: true
 operations:
-  - operation: convert
-    input:
-      path: data/*/*.tiff
-      source_metadata:
-        scale: {x: 0.032, y: 0.032}
-        position: {y: 'fn[-3]*24', x: 'fn[-2]*24'}
-    registration:
-      pairing: orthogonal
-      transform_type: affine
-      method: sift
-      gaussian_sigma: 2
-      normalisation: True
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output:
-      path: ../../output/
+- input_output:
+    input_path: data/*/*.tiff
+    source_scale_x: 0.032
+    source_scale_y: 0.032
+    source_position_y: fn[-3]*24
+    source_position_x: fn[-2]*24
+    output_path: ../../output/
+    overwrite: true
+  registration:
+    operation: convert
+    pairing: orthogonal
+    transform_type: affine
+    method: sift
+    gaussian_sigma: 2
+    normalisation: true
+    max_keypoints: 5000
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
+  fusion:
+    format: ome.zarr

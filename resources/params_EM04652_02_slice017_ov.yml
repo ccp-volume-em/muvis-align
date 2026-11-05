@@ -1,47 +1,40 @@
 general:
-  show_original: False
-  metadata_summary: False
-  chunk_size: [4096, 4096]
-  break_on_error: True
+  break_on_error: true
+  metadata_summary: false
   logging:
     filename: log/muvis-align-EM04652-ov.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: False
-  output:
-    clear: False
-    overwrite: False
+    dask: true
+    time: true
+    verbose: false
+operations:
+- input_output:
+    input_path: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/*.ome.tif
+    source_position_y: 0
+    source_position_x: 0
+    extra_metadata:
+      scale:
+        z: 0.05
+    output_path: ../../aligned_ov/
+    preview_scale: 16
+  pre_processing:
+    normalisation: global
+  registration:
+    operation: register
+    max_keypoints: 5000
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
+    pairing: stack
+    method: orb
+    gaussian_sigma: 2.5
+    transform_type: affine
+    n_parallel_pairwise_regs: 64
+  fusion:
     format: ome.zarr
     block_size: [4096, 4096]
-    compression:
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
     preview: ome.zarr
-    preview_scale: 16
-
-operations:
-  - operation: register
-    pairing: stack
-    input: /nemo/project/proj-mrc-mm/raw/em/EM04652/EM04652_02_slice017/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/*.ome.tif
-    #input: D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/*.ome.tif
-    #input:
-    #- D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00000.ome.tif
-    #- D:/slides/EM04652-02_slice17_spaghettiandmeatballs2/overviews/ov000/EM04652-02_slice17_spaghettiandmeatballs2_ov000_s00001.ome.tif
-    #source_metadata: sbemimage
-    source_metadata: {'position': {'y': 0, 'x': 0}}
-    extra_metadata: {scale: {z: 0.05}}
-    normalisation: global
-    gaussian_sigma: 2.5
-    transform_type: affine
-    #registration: phase_correlation
-    registration:
-      name: orb
-      #gaussian_sigma: 2.5
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output_spacing: mean
-    n_parallel_pairwise_regs: 64
-    output: ../../aligned_ov/
+    spacing: mean

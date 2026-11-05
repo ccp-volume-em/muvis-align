@@ -24,7 +24,7 @@ test_filenames = [
 def test(resource_file, tmp_path):
     with open(os.path.join('resources', resource_file), 'r', encoding='utf8') as file:
         params = yaml.safe_load(file)
-    params['operations'][0]['output']['path'] = tmp_path.as_posix() + '/'
+    params['operations'][0]['input_output']['output_path'] = tmp_path.as_posix() + '/'
 
     pipeline = Pipeline(params)
     assert pipeline.run()
@@ -36,7 +36,8 @@ def test(resource_file, tmp_path):
 ])
 def test_a_run_succeeds_only_if_no_operation_raised(tmp_path, monkeypatch, outcomes, expected):
     params = {'general': {'logging': {'filename': (tmp_path / 'log.log').as_posix()}},
-              'operations': [{'operation': 'register', 'input': 'unused'} for _ in outcomes]}
+              'operations': [{'input_output': {'input_path': 'unused'}, 'registration': {'operation': 'register'}}
+                             for _ in outcomes]}
     pipeline = Pipeline(params)
     results = iter(outcomes)
 
@@ -113,9 +114,7 @@ def test_fuse_channel_overlay_real_pyramid_matches_trivial_wrap():
     with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
         params = yaml.safe_load(file)
     operation_params = params['operations'][0]
-    operation_params['input']['extra_metadata'] = {
-        'channels': [{'label': f'ch{index}'} for index in range(4)]
-    }
+    operation_params['input_output']['channels_table'] = {'label': [f'ch{index}' for index in range(4)]}
 
     reg = MVSRegistration()
     reg.init_params(params['general'], operation_params)
@@ -168,7 +167,7 @@ def test_init_progress_resumes_a_registration_of_the_same_files_only(tmp_path, g
     reg.preprocess(reg.msims)
     reg.register(reg.register_msims, reg.register_indices,
                  params=dict(operation_params['registration'], method='phase_correlation'))
-    output_filename = operation_to_past_participle(operation_params['operation'])
+    output_filename = operation_to_past_participle(operation_params['registration']['operation'])
 
     resumed, _ = registration()
     resumed.init_progress(output_filename, 'ome.zarr')
@@ -191,17 +190,15 @@ def test_init_progress_resumes_a_registration_of_the_same_files_only(tmp_path, g
     assert other_fileset.state is RegState.INIT
 
 
-@pytest.mark.parametrize('fusion_params, operation_params, expected', [
-    ({}, {}, ('', 'native')),
-    ({'method': 'average', 'spacing': 'mean'}, {}, ('average', 'mean')),
-    ({'method': 'additive', 'output_spacing': 'max'}, {}, ('additive', 'max')),
-    ('compose', {'output_spacing': 'min', 'spacing': [0.5, 0]}, ('compose', 'min')),
-    ('exclusive', {'spacing': [0.5, 0]}, ('exclusive', 'native')),
-], ids=['default', 'spacing', 'output_spacing', 'method-text', 'transition-spacing'])
-def test_fusion_settings_take_the_plugins_spacing_and_default_to_native(fusion_params, operation_params, expected):
+@pytest.mark.parametrize('fusion_params, expected', [
+    ({}, ('', 'native')),
+    ({'method': 'average', 'spacing': 'mean'}, ('average', 'mean')),
+    # the plugin's empty choice, and the transition video's own spacing
+    ({'method': 'exclusive', 'spacing': '', 'transition': {'spacing': [0.5, 0]}}, ('exclusive', 'native')),
+], ids=['default', 'spacing', 'transition-spacing'])
+def test_fusion_settings_take_the_plugins_spacing_and_default_to_native(fusion_params, expected):
     reg = MVSRegistration()
     reg.fusion_params = fusion_params
-    reg.params = operation_params
 
     assert reg.fusion_settings() == expected
 
@@ -209,9 +206,10 @@ def test_fusion_settings_take_the_plugins_spacing_and_default_to_native(fusion_p
 def test_run_writes_an_operations_preview_at_a_pixel_size(tmp_path):
     with open(os.path.join('resources', 'params_test_2d.yml'), 'r', encoding='utf8') as file:
         params = yaml.safe_load(file)
-    params['general'].pop('output')
-    operation_params = dict(params['operations'][0], operation='fuse')
-    operation_params['output'] = {'path': tmp_path.as_posix() + '/', 'preview': 'ome.zarr', 'preview_scale': '0.128um'}
+    operation_params = params['operations'][0]
+    operation_params['registration']['operation'] = 'fuse'
+    operation_params['input_output'].update(output_path=tmp_path.as_posix() + '/', preview_scale='0.128um')
+    operation_params['fusion'] = {'preview': 'ome.zarr'}
     reg = MVSRegistration()
     reg.init_params(params['general'], operation_params)
 

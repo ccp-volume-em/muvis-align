@@ -1,38 +1,32 @@
 general:
-  show_original: False
-  metadata_summary: False
-  chunk_size: [4096, 4096]
-  break_on_error: True
+  break_on_error: true
+  metadata_summary: false
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
-    clear: False
-    overwrite: True
+    dask: true
+    time: true
+    verbose: true
+operations:
+- input_output:
+    input_path: ['D:/slides/13457227.zarr', 'D:/slides/13457227.zarr']
+    output_path: ../../test/
+    preview_scale: 32
+  pre_processing:
+    flatfield_quantiles: [0.5]
+  registration:
+    operation: register
+    gaussian_sigma: 4
+    inlier_threshold_factor: 0.05
+    max_trials: 10000
+    ransac_iterations: 10
+    method: sift
+    pairing: orthogonal
+    transform_type: translation
+  fusion:
     format: ome.zarr
     block_size: [4096, 4096]
-    compression:
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
     preview: ome.zarr
-    preview_scale: 32
-
-operations:
-  - operation: register
-    input:
-      - D:/slides/13457227.zarr
-      - D:/slides/13457227.zarr
-    #normalisation: global  # normalise in custom registration function instead
-    flatfield_quantiles: [0.5]
-    use_orthogonal_pairs: True
-    transform_type: translation
-    registration:
-      name: sift
-      gaussian_sigma: 4
-      inlier_threshold_factor: 0.05
-      max_trials: 10000
-      ransac_iterations: 10
-    output: ../../test/

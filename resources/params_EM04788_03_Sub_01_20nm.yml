@@ -1,184 +1,367 @@
 general:
-  log_filename: log/muvis-align.log
-  log_format: '%(asctime)s %(levelname)s: %(message)s'
-  show_original: False
-  break_on_error: False
-  verbose: False
-  output:
-    clear: True
-    overwrite: True
+  break_on_error: false
+  logging:
+    filename: log/muvis-align.log
+    format: '%(asctime)s %(levelname)s: %(message)s'
+  verbose: false
+operations:
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section1/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
     format: ome.zarr, ome.tiff
-    block_size: []
-    compression: []
+    block_size: &id001 []
+    compression: &id002 []
     npyramid_add: 4
     pyramid_downsample: 2
-
-operations:
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section1/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section2/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section3/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section4/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section5/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section6/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section7/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section8/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section9/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section10/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section11/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section12/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section13/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section14/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section15/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section16/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section17/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section18/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section19/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section20/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section21/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section22/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section23/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
-  - operation: register
-    input: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section24/.*_t\d{4}.*.tif
-    source_metadata: source normalise
-    normalisation: True
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: stitched/
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section2/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section3/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section4/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section5/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section6/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section7/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section8/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section9/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section10/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section11/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section12/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section13/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section14/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section15/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section16/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section17/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section18/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section19/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section20/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section21/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section22/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section23/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2
+- input_output:
+    input_path: /nemo/project/proj-czi-vp/processed/em/EM04788/EM04788_03/EM04788_03_Sub_01/20 nm pixel/Section24/.*_t\d{4}.*.tif
+    normalise_rotated_positions: true
+    output_path: stitched/
+  registration:
+    operation: register
+    method: phase_correlation
+    normalisation: true
+    pairing: orthogonal
+  fusion:
+    format: ome.zarr, ome.tiff
+    block_size: *id001
+    compression: *id002
+    npyramid_add: 4
+    pyramid_downsample: 2

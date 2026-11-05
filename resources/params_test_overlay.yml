@@ -1,25 +1,22 @@
 general:
-  overwrite: True
   logging:
-    verbose: True
-  output:
-    format: ome.zarr
-
+    verbose: true
 operations:
-  - operation: register
-    input:
-      path: [data/S000/S000_000_000.ome.zarr, data/S001/S001_000_001.ome.zarr]
-      source_metadata: source
-      extra_metadata: ../aligned_stitched_mappings1.json
-    registration:
-      pairing: orthogonal
-      transform_type: rigid
-      method: orb
-      gaussian_sigma: 2.5
-      normalisation: True
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    output:
-      path: ../../output/stitched/
+- input_output:
+    input_path: [data/S000/S000_000_000.ome.zarr, data/S001/S001_000_001.ome.zarr]
+    extra_metadata: ../aligned_stitched_mappings1.json
+    output_path: ../../output/stitched/
+    overwrite: true
+  registration:
+    operation: register
+    pairing: orthogonal
+    transform_type: rigid
+    method: orb
+    gaussian_sigma: 2.5
+    normalisation: true
+    max_keypoints: 5000
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
+  fusion:
+    format: ome.zarr

@@ -1,42 +1,46 @@
 general:
-  ui: napari  #mpl
-  show_original: True
-  break_on_error: True
-  metadata_summary: False
-  chunk_size: [4096, 4096]
+  break_on_error: true
+  metadata_summary: false
   logging:
     filename: log/muvis-align.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    verbose: True
-  output:
-    clear: False
-    overwrite: True
+    dask: true
+    time: true
+    verbose: true
+  ui: napari
+operations:
+- input_output:
+    input_path: D:/slides/EM04654_slice011/tiles_slice21_24/g????/t????/*.ome.tif
+    source_position_x: '{t} % 15 * 38.96'
+    source_position_y: '{t} // 15 * 28.72'
+    output_path: ../../../stitched/slice{s}/
+  pre_processing:
+    normalisation: global
+  registration:
+    operation: register match s
+    method: phase_correlation
+    pairing: orthogonal
+  fusion:
     format: ome.zarr
-    block_size: [4096, 4096]
-    compression:
+    block_size: &id001 [4096, 4096]
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
     preview: ome.tiff
-
-operations:
-  - operation: register match s
-    #input: /nemo/project/proj-mrc-mm/raw/em/EM04654/EM04654_slice011/EM04654_slice11_run_final_24-11-15/tiles/g????/t????/*.ome.tif
-    #input: D:/slides/EM04654_slice011/tiles/g????/t????/*.ome.tif
-    input: D:/slides/EM04654_slice011/tiles_slice21_24/g????/t????/*.ome.tif
-    #source_metadata: source normalise global center
-    source_metadata: {'position': {'x':'{t} % 15 * 38.96', 'y':'{t} // 15 * 28.72'}}
-    normalisation: global
-    use_orthogonal_pairs: True
-    registration: phase_correlation
-    output: ../../../stitched/slice{s}/
-
-  - operation: register
+- input_output:
+    input_path: D:/slides/EM04654_slice011/stitched/slice?????/registered.ome.zarr
+    extra_metadata:
+      scale:
+        z: 0.1
+    output_path: ../../aligned/
+  registration:
+    operation: register
+    method: phase_correlation
     pairing: stack
-    #input: /nemo/project/proj-mrc-mm/raw/em/EM04654/EM04654_slice011/EM04654_slice11_run_final_24-11-15/stitched/slice?????/*.ome.zarr
-    input: D:/slides/EM04654_slice011/stitched/slice?????/registered.ome.zarr
-    source_metadata: source
-    extra_metadata: {'scale': {'z': 0.1}}
-    registration: phase_correlation
-    output: ../../aligned/
+  fusion:
+    format: ome.zarr
+    block_size: *id001
+    compression: null
+    npyramid_add: 4
+    pyramid_downsample: 2
+    preview: ome.tiff

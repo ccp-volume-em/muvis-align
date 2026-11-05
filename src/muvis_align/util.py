@@ -225,6 +225,19 @@ def extra_metadata_from_params(input_output):
     return extra
 
 
+def parse_block_size(block_size):
+    """A block size setting (a number, a list, or text of either), or None: fuse() then sizes the export's blocks
+    by what one costs in memory."""
+    if isinstance(block_size, str):
+        block_size = block_size.strip()
+        if not block_size:
+            return None
+        if ',' in block_size:
+            return [int(size.strip()) for size in block_size.split(',')]
+        return int(block_size)
+    return block_size
+
+
 def filter_dict(dict0: dict) -> dict:
     new_dict = {}
     for key, value0 in dict0.items():

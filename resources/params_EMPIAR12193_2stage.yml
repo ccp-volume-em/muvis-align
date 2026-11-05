@@ -1,101 +1,45 @@
 general:
-  show_original: False
-  metadata_summary: False
-  chunk_size: [4096, 4096]
-  break_on_error: True
-  debug: False
+  break_on_error: true
+  metadata_summary: false
   logging:
     filename: log/muvis-align-empiar12193.log
     format: '%(asctime)s %(levelname)s: %(message)s'
-    dask: True
-    time: True
-    mvs: True
-    verbose: True
-  output:
-    clear: False
-    overwrite: False
+    dask: true
+    time: true
+    mvs: true
+    verbose: true
+  debug: false
+operations:
+- input_output:
+    input_path: /nemo/project/proj-ccp-vem/datasets/12193/data/S*/*.tiff
+    source_scale_x: 0.004
+    source_scale_y: 0.004
+    source_scale_z: 0.1
+    source_position_y: fn[-3]*24
+    source_position_x: fn[-2]*24
+    source_position_z: S*0.1
+    extra_metadata: ../../aligned_stitched_mappings1.json
+    output_path: ../../aligned2/
+  pre_processing:
+    scale: 8
+    flatfield_quantiles: [0.5]
+  registration:
+    operation: register
+    normalisation: true
+    max_keypoints: 5000
+    inlier_threshold_factor: 0.05
+    max_trials: 1000
+    ransac_iterations: 3
+    pairing: stack
+    method: orb
+    gaussian_sigma: 2
+    transform_type: rigid
+    groupwise_resolution_method: linear_two_pass
+    n_parallel_pairwise_regs: 64
+  fusion:
     format: ome.zarr
     block_size: [4096, 4096]
-    compression:
+    compression: null
     npyramid_add: 4
     pyramid_downsample: 2
     preview: ome.zarr
-
-operations:
-#  - operation: register match S
-#    #input: /nemo/project/proj-ccp-vem/datasets/12193/data/S???/*.tiff
-#    input: D:/slides/12193/data_subset/S???/*.tiff
-#    source_metadata: {'scale': {'x': 0.004, 'y': 0.004}, 'position': {'y':'fn[-3]*24', 'x':'fn[-2]*24'}}
-#    flatfield_quantiles: [0.5]
-#    pairing: orthogonal
-#    transform_type: translation
-#    scale: 4
-#    registration:
-#      name: sift
-#      gaussian_sigma: 2
-#      inlier_threshold_factor: 0.05
-#      max_trials: 1000
-#      ransac_iterations: 3
-#    output: ../../stitched/S{S}/
-#
-#  - operation: register
-#    pairing: stack
-#    #input: /nemo/project/proj-ccp-vem/datasets/12193/stitched/S???/registered.ome.zarr
-#    input: D:/slides/12193/stitched/S???/registered.ome.zarr
-#    source_metadata: source
-#    extra_metadata: {'scale': {'z': 0.1}}
-#    transform_type: rigid
-#    scale: 2
-#    registration:
-#      name: sift
-#      gaussian_sigma: 4
-#      max_keypoints: 10000
-#      inlier_threshold_factor: 0.05
-#      max_trials: 1000
-#      ransac_iterations: 3
-#    output: ../../aligned/
-#    save_images: False
-
-#  - operation: register 3d
-#    #input: /nemo/project/proj-ccp-vem/datasets/12193/data/S???/*.tiff
-#    input: D:/slides/12193/data_subset/S???/*.tiff
-#    source_metadata: {'scale': {'x': 0.004, 'y': 0.004, 'z': 0.1}, 'position': {'y':'fn[-3]*24', 'x':'fn[-2]*24', 'z':'S*0.1'}}
-#    extra_metadata: aligned_stitched_mappings2.json
-#    #flatfield_quantiles: [0.5]
-#    #pairing: orthogonal
-#    transform_type: rigid
-#    registration:
-#      name: 3din2d  # sift
-#      gaussian_sigma: 2
-#      inlier_threshold_factor: 0.05
-#      max_trials: 1000
-#      ransac_iterations: 10
-#    output: ../../aligned2/
-
-  - operation: register
-    input: /nemo/project/proj-ccp-vem/datasets/12193/data/S*/*.tiff
-    #input:
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/data/S000/*.tiff
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/data/S001/*.tiff
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/data/S002/*.tiff
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/data/S003/*.tiff
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/data/S004/*.tiff
-    #  - /nemo/project/proj-ccp-vem/datasets/12193/data/S005/*.tiff
-    #input: D:/slides/12193/data_subset_small/S*/*.tiff
-    source_metadata: {'scale': {'x': 0.004, 'y': 0.004, 'z': 0.1}, 'position': {'y':'fn[-3]*24', 'x':'fn[-2]*24', 'z':'S*0.1'}}
-    extra_metadata: ../../aligned_stitched_mappings1.json
-    scale: 8
-    gaussian_sigma: 2
-    flatfield_quantiles: [0.5]
-    pairing: stack
-    transform_type: rigid
-    groupwise_resolution_method: linear_two_pass
-    registration:
-      normalisation: True
-      name: orb
-      max_keypoints: 5000
-      inlier_threshold_factor: 0.05
-      max_trials: 1000
-      ransac_iterations: 3
-    n_parallel_pairwise_regs: 64
-    output: ../../aligned2/
