@@ -279,6 +279,9 @@ def test_sweep_candidate_pairs_handles_degenerate_and_empty_input():
     points = np.repeat([[1.0, 2.0, 3.0]], 5, axis=0)
     np.testing.assert_array_equal(_sweep_candidate_pairs(points, points),
                                   _all_pairs_overlaps(points, points))
+    # boxes without axes (sources without positions) all overlap
+    no_axes = np.empty((4, 0))
+    np.testing.assert_array_equal(_sweep_candidate_pairs(no_axes, no_axes), _all_pairs_overlaps(no_axes, no_axes))
 
 
 def test_a_cancel_stops_the_candidate_pair_sweep():

@@ -919,6 +919,8 @@ def get_grid_angle(positions, sizes):
     """How far a tile grid is turned, in degrees within (-45, 45], or None without neighbours to tell.
     Only same-sized neighbours at distinct xy count.
     """
+    if not any({'x', 'y'} & set(position) for position in positions):
+        return None
     pairs, _ = get_pairs(positions, sizes)
     directions = []
     for first, second in pairs:

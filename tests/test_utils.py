@@ -341,6 +341,8 @@ def test_get_grid_angle_without_neighbours_is_none():
     from muvis_align.util import get_grid_angle
 
     assert get_grid_angle([{'x': 0.0, 'y': 0.0}], [{'y': 100.0, 'x': 120.0}]) is None
+    # sources without positions
+    assert get_grid_angle([{}, {}, {}], [{'y': 100.0, 'x': 120.0}] * 3) is None
 
 
 def test_normalise_rotated_positions_straightens_the_grid_and_keeps_the_overview_with_it():

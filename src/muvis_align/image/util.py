@@ -1751,6 +1751,9 @@ def _sweep_candidate_pairs(mins, maxs, chunk_candidates=4_000_000):
     n = len(mins)
     if n < 2:
         return np.empty((0, 2), dtype=int)
+    if mins.shape[1] == 0:
+        # boxes without any axis overlap trivially, as in the all-pairs comparison
+        return np.transpose(np.triu_indices(n, 1))
 
     # sweep whichever axis separates these boxes best (a single-section mosaic gains nothing from z), by count
     best = None
