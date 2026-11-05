@@ -1014,8 +1014,8 @@ class MVSRegistration:
             scales0 = self.scales
 
             if scale and scale != 1:
-                # a sub-pyramid of native levels rather than a resize: registration picks its own resolution
-                msims = select_msim_subpyramid_at_scale(msims, self.sources, scale)
+                # native levels where the pyramid reaches the scale, binned down to it where it does not
+                msims = select_msim_subpyramid_at_scale(msims, self.sources, scale, bin_shortfall=True)
                 modified = True
                 update_progress()
 

@@ -209,7 +209,7 @@ def test_preprocess_applies_scale_via_select_msim_subpyramid():
         _, _, modified = registration.preprocess(msims, scale=2)
 
     assert modified is True
-    select_msim_subpyramid_at_scale.assert_called_once_with(msims, registration.sources, 2)
+    select_msim_subpyramid_at_scale.assert_called_once_with(msims, registration.sources, 2, bin_shortfall=True)
 
 
 def test_validate_overlap_reports_near_images():

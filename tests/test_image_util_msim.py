@@ -266,6 +266,30 @@ def test_a_preview_scale_shortfall_is_logged(caplog, dims, factors, logged):
     assert ('8x finer' in caplog.text) == logged
 
 
+@pytest.mark.parametrize('target_scale, expected_levels', [
+    # reachable: the native sub-pyramid, untouched
+    (2, [(8, 2.0)]),
+    # beyond the coarsest level (2x): that level mean-binned by the remaining 4x, as the only level
+    (8, [(2, 8.0)]),
+])
+def test_bin_shortfall_bins_the_coarsest_level_down_to_the_scale(caplog, target_scale, expected_levels):
+    data = np.arange(256, dtype=np.uint16).reshape(16, 16)
+    msim = msi_utils.get_msim_from_sims([make_sim(data), make_sim(data[::2, ::2], scale={'y': 2, 'x': 2})])
+    source = SimpleNamespace(scale_factors=[{'y': 1.0, 'x': 1.0}, {'y': 2.0, 'x': 2.0}],
+                             get_pixel_size=lambda: {'y': 1.0, 'x': 1.0})
+
+    with caplog.at_level(logging.WARNING):
+        selected = select_msim_subpyramid_at_scale([msim], [source], target_scale, bin_shortfall=True)[0]
+
+    levels = [msi_utils.get_sim_from_msim(selected, scale=scale_key)
+              for scale_key in msi_utils.get_sorted_scale_keys(selected)]
+    assert [(level.sizes['x'], si_utils.get_spacing_from_sim(level)['x']) for level in levels] == expected_levels
+    if target_scale == 8:
+        expected = data[::2, ::2].reshape(2, 4, 2, 4).mean(axis=(1, 3)).astype(np.uint16)
+        np.testing.assert_array_equal(np.asarray(levels[0]).squeeze(), expected)
+    assert 'not reachable' not in caplog.text
+
+
 # --- display contrast limits, which must never be the step that blocks first paint ---
 
 def test_contrast_limits_widen_a_flat_range_so_napari_gets_a_usable_span():

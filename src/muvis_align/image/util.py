@@ -1,3 +1,4 @@
+import copy
 import functools
 import itertools
 import logging
@@ -2442,13 +2443,14 @@ def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_m
                  f' over the {print_hbytes(max_bytes)} budget)')
     return reduced
 
-def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn_factor=4):
+def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn_factor=4, bin_shortfall=False):
     """Per source, every native pyramid level from the nearest match to `target_scale` to the coarsest, as a
     sub-pyramid msim - pure slicing, no resize.
 
     A pyramid that does not reach `target_scale` silently makes fusion cost the square of the shortfall more, so a
     shortfall of at least shortfall_warn_factor is logged, measured only over dims the pyramid reduces. A msim
-    built already truncated is sliced from where it starts, not from the source's level 0.
+    built already truncated is sliced from where it starts, not from the source's level 0. `bin_shortfall`
+    instead mean-bins the coarsest level by the (whole) shortfall, giving a single level at `target_scale`.
     """
     result = []
     residuals = []
@@ -2460,10 +2462,22 @@ def select_msim_subpyramid_at_scale(msims, sources, target_scale, shortfall_warn
         level = max(level - from_level, 0)
         # only dims this pyramid reduces: one constant across levels always keeps the full target factor
         coarsest = source.scale_factors[-1] if source.scale_factors else {}
-        reducible = [value for dim, value in residual.items() if coarsest.get(dim, 1) > 1]
-        residuals.append(max(reducible) if reducible else 1)
-        result.append(DataTree.from_dict({f'scale{i}': msim[scale_key].ds
-                                          for i, scale_key in enumerate(scale_keys[level:])}))
+        reducible = {dim: value for dim, value in residual.items() if coarsest.get(dim, 1) > 1}
+        binning = {dim: int(value) for dim, value in reducible.items()
+                   if int(value) > 1 and dim in msim[scale_keys[level]].ds['image'].dims}
+        if bin_shortfall and binning:
+            # a residual of 2 or more means `level` is already the coarsest native one
+            dataset = msim[scale_keys[level]].ds
+            image = dataset['image']
+            binned = image.coarsen(binning, boundary='trim').mean().astype(image.dtype)
+            binned.attrs.update(copy.deepcopy(image.attrs))
+            # a fresh dataset: the old one's full-size y/x coordinates would clash with the binned image's
+            variables = {name: dataset[name] for name in dataset.data_vars if name != 'image'}
+            result.append(DataTree.from_dict({'scale0': xr.Dataset({'image': binned, **variables})}))
+        else:
+            residuals.append(max(reducible.values()) if reducible else 1)
+            result.append(DataTree.from_dict({f'scale{i}': msim[scale_key].ds
+                                              for i, scale_key in enumerate(scale_keys[level:])}))
     worst = max(residuals) if residuals else 1
     if worst >= shortfall_warn_factor:
         short = sum(1 for residual in residuals if residual >= shortfall_warn_factor)
