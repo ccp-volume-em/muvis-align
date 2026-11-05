@@ -243,7 +243,7 @@ orthogonally. It max-projects z to register the pairs in 2D.
 
 ```yaml
 preprocessing:
-  flatfield_quantiles: [0.5, 0.95]  # Flat-field correction quantiles
+  flatfield_quantiles: [0.5, 0.95]  # Flat-field quantiles: one = light image, two = dark, light image
   gaussian_sigma: 1                  # Gaussian blur sigma (optional)
   normalisation: global              # Image normalization
   filter_foreground: True            # Filter out empty/background images

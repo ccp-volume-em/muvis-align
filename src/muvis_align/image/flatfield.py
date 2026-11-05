@@ -60,22 +60,19 @@ def calc_flatfield_model(dims0, quantiles, quantile_images):
     last, as apply_flatfield_model expects) and the per-channel mean_bright_dark.
     """
     has_c_dim = 'c' in dims0
-    dark = 0
-    bright = 1
-    for quantile, quantile_image in zip(quantiles, quantile_images):
-        if has_c_dim and dims0.index('c') != -1:
-            quantile_image = da.moveaxis(quantile_image, dims0.index('c'), -1)
-        if quantile <= 0.5:
-            dark = quantile_image
-        else:
-            bright = quantile_image
+    if has_c_dim:
+        quantile_images = [da.moveaxis(quantile_image, dims0.index('c'), -1) for quantile_image in quantile_images]
+    ordered_images = [quantile_image for _, quantile_image in sorted(zip(quantiles, quantile_images), key=lambda pair: pair[0])]
+    # a single quantile is always the light (flat) image, with a zero dark stub; a pair is dark, light
+    dark = ordered_images[0] if len(ordered_images) > 1 else 0
+    bright = ordered_images[-1]
 
     bright_dark_range = bright - dark
     if has_c_dim:
         axes = list(range(len(dims0) - 1))   # all except final 'c' axis
     else:
         axes = None
-    mean_bright_dark = np.array(np.mean(bright - dark, axis=axes))
+    mean_bright_dark = np.array(np.mean(bright_dark_range, axis=axes))
     return {
         'dims0': dims0,
         'has_c_dim': has_c_dim,
@@ -86,7 +83,7 @@ def calc_flatfield_model(dims0, quantiles, quantile_images):
 
 
 def _resize_correction_image(image, target_shape):
-    if tuple(np.shape(image)) == tuple(target_shape):
+    if np.ndim(image) == 0 or tuple(np.shape(image)) == tuple(target_shape):
         return image
     return resize(np.asarray(image), target_shape, preserve_range=True)
 
@@ -118,12 +115,9 @@ def apply_flatfield_model(sim, transform_key, model):
     )
 
 
-def image_flatfield_correction(image0, dark, bright_dark_range, mean_bright_dark, clip=False):
+def image_flatfield_correction(image0, dark, bright_dark_range, mean_bright_dark):
     # Input/output: float images
     # https://en.wikipedia.org/wiki/Flat-field_correction
     image = (image0 - dark) * mean_bright_dark / bright_dark_range
-    if clip:
-        image = image.clip(0, 1)    # np.clip(image) is not dask-compatible, use image.clip() instead
-    else:
-        image -= np.min(image)
-    return image
+    # clip rather than offset per image, so all tiles keep the same intensity mapping
+    return image.clip(0, 1)    # np.clip(image) is not dask-compatible, use image.clip() instead

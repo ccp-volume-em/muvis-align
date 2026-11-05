@@ -64,6 +64,24 @@ def test_flatfield_model_resizes_correction_images_per_level(quantile_images):
     np.testing.assert_array_equal(corrected, expected)
 
 
+@pytest.mark.parametrize('quantile', [0.1, 0.9])
+def test_single_quantile_divides_every_tile_by_one_shared_light_image(monkeypatch, quantile_images, quantile):
+    # any single quantile is the light image (no dark subtraction), with no per-tile offset
+    light = quantile_images[1]
+    multi_msims = [noise_msim(seed) for seed in range(2)]
+    monkeypatch.setattr(flatfield, 'calc_flatfield_images', lambda sims, quantiles, foreground_map=None: [light])
+
+    result = flatfield.flatfield_correction(multi_msims, 'source_metadata', [quantile])
+
+    light_image = np.asarray(light)[0, 0]
+    for msim, corrected_msim in zip(multi_msims, result):
+        image = int2float_image(msi_utils.get_sim_from_msim(msim, scale='scale0').data[0, 0])
+        expected_float = image * np.mean(light_image) / light_image
+        expected = float2int_image(expected_float.clip(0, 1), np.dtype(np.uint16))
+        corrected = msi_utils.get_sim_from_msim(corrected_msim, scale='scale0').data[0, 0]
+        np.testing.assert_array_equal(np.asarray(corrected), np.asarray(expected))
+
+
 def test_flatfield_correction_is_msims_in_msims_out(monkeypatch, quantile_images):
     # flatfield_correction() itself takes msims and returns msims - verify the public entry point
     # end to end (with calc_flatfield_images stubbed out, for the same pre-existing da.quantile

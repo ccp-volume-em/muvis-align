@@ -192,7 +192,7 @@ parameters:
   - name: flatfield_quantiles
     type: textbox
     label: "Flat-field quantiles"
-    description: "One or two quantile values for flat-field correction, separated by comma (e.g. 0.5 or 0.01,0.99)"
+    description: "Flat-field correction quantiles across all tiles: one value gives the light image (e.g. 0.5); two values, separated by comma, give the dark and light image (e.g. 0.01,0.99)"
     default: ""
     cli_tag: "--flatfield_quantiles"
     cli_order: 2
