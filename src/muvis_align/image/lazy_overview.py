@@ -182,7 +182,7 @@ def _read(image):
     return np.asarray(data)
 
 
-def _contrast_limits(readers, max_sources=default_contrast_sources, workers=default_plane_readers):
+def sample_contrast_limits(readers, max_sources=default_contrast_sources, workers=default_plane_readers):
     """Per channel, the display range (get_display_range) and level (get_display_level) of the coarsest level of up
     to `max_sources` readers spread evenly, None where there is nothing to set them: (ranges, levels), empty without
     readers."""
@@ -333,7 +333,7 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     channel_readers = [[reader] for reader in readers] if channel_labels else [readers]
     ranges, levels = [], []
     for group in channel_readers:
-        group_ranges, group_levels = _contrast_limits(group, workers=workers)
+        group_ranges, group_levels = sample_contrast_limits(group, workers=workers)
         ranges += group_ranges or [None] * plane_shape[0]
         levels += group_levels or [None] * plane_shape[0]
     msim.attrs['contrast_limits'] = [display_range or dtype_limits for display_range in ranges]

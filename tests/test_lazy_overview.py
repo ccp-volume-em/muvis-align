@@ -8,7 +8,7 @@ from dask.callbacks import Callback
 import tifffile
 from multiview_stitcher import msi_utils
 
-from muvis_align.image.lazy_overview import lazy_section_overview, _contrast_limits, MsimLevels
+from muvis_align.image.lazy_overview import lazy_section_overview, sample_contrast_limits, MsimLevels
 from muvis_align.image.util import coarsest_level_within
 from muvis_align.MVSRegistration import MVSRegistration
 
@@ -79,10 +79,10 @@ def test_contrast_comes_from_a_spread_sample_of_coarsest_levels_without_their_ze
                for value in (100, 200, 300, 400, 500)]
 
     # and where the typical value shows: halfway between two equally common values
-    assert _contrast_limits(readers, max_sources=2) == ([[101.0, 501.0]], [0.5])
-    assert _contrast_limits(readers[:1]) == ([[101.0, 102.0]], [0.0])
-    assert _contrast_limits([None]) == ([], [])
-    assert _contrast_limits([SimpleNamespace(pixel_sizes=[{}], level_data=lambda level: np.zeros((4, 4)))]) == (
+    assert sample_contrast_limits(readers, max_sources=2) == ([[101.0, 501.0]], [0.5])
+    assert sample_contrast_limits(readers[:1]) == ([[101.0, 102.0]], [0.0])
+    assert sample_contrast_limits([None]) == ([], [])
+    assert sample_contrast_limits([SimpleNamespace(pixel_sizes=[{}], level_data=lambda level: np.zeros((4, 4)))]) == (
         [None], [None])
 
 

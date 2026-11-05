@@ -29,7 +29,7 @@ from muvis_align.MVSRegistration import MVSRegistration, RegState, metric_value_
 from muvis_align.image.util import get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
     draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, NoOverlapError, \
-    promoted_geometry, metric_to_rgb, get_msim_level_data, get_contrast_limits, \
+    promoted_geometry, metric_to_rgb, get_msim_level_data, get_contrast_limits, get_dtype_contrast_limits, \
     get_msim_image0, wrap_sims_as_msims, extract_sims_from_fused, extract_sims_from_msims, \
     snapshot_msims_transform, restore_msims_transform, \
     select_msim_subpyramid_at_scale, reduce_msims_to_fused_size, read_composed_msims
@@ -43,7 +43,7 @@ from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress, SilentProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
-from muvis_align.image.lazy_overview import lazy_section_overview, FlatfieldLevels, MsimLevels, SourceLevels
+from muvis_align.image.lazy_overview import lazy_section_overview, sample_contrast_limits, FlatfieldLevels, MsimLevels, SourceLevels
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events, \
     clear_napari_dask_cache, operation_label, patch_multiscale_label_show, patch_shapes_text_coords, report_failure
 from muvis_align.ui.bilayers_util import get_section_dict
@@ -1336,6 +1336,11 @@ class Interface:
                                           fusion_method=fusion_method,
                                           dimension=self.params['input_output']['registration_dimension'],
                                           extra_metadata=self.extra_metadata)
+        # from a sample of the sources, as the overview: the fused coarsest level is too costly to compute for many
+        ranges, levels = sample_contrast_limits([MsimLevels(msim) for msim in msims])
+        dtype_limits = get_dtype_contrast_limits(get_msim_image0(fused_msim).dtype)
+        fused_msim.attrs['contrast_limits'] = [display_range or dtype_limits for display_range in ranges]
+        fused_msim.attrs['display_levels'] = levels
         return fused_msim
 
     def _view_background_luminance(self, viewer):
