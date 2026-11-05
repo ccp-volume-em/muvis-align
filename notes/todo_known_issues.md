@@ -81,10 +81,7 @@ quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB 
 
 ## In progress
 
-RO-Crates via fair-metadata-integration (FMI): done in both repos, committed locally, not pushed.
-Waiting on: FMI push + v0.9.0 release (muvis-align now requires fair-metadata-integration>=0.9.0), then push
-muvis-align. CLI-format params (general, operation, input, output, registration.metrics) are not in the
-template: kept in parameters.yaml, warned once per run.
+Nothing.
 
 ## TODO
 
