@@ -1568,8 +1568,9 @@ class MVSRegistration:
         post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
 
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
-        if n_parallel_pairwise_regs is not None and n_parallel_pairwise_regs == '0':
-            n_parallel_pairwise_regs = None
+        # blank or 0 is automatic; a text field hands the number over as a string
+        n_parallel_pairwise_regs = (int(float(n_parallel_pairwise_regs))
+                                    if is_valid_value(n_parallel_pairwise_regs) else None) or None
 
         plot_summary = self.mpl_ui
 

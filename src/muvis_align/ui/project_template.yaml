@@ -400,10 +400,10 @@ parameters:
     section_id: "registration"
     mode: "beginner"
   - name: n_parallel_pairwise_regs
-    type: integer
-    label: "Threads"
-    description: "Number of parallel threads for pairwise registrations (0 / blank for automatic detection)"
-    default:
+    type: textbox
+    label: "Parallel pairs"
+    description: "Number of pairs registered in parallel, each in its own process (blank for automatic)"
+    default: ""
     cli_tag: "--n_parallel_pairwise_regs"
     cli_order: 11
     optional: True
