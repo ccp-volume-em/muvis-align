@@ -1,46 +1,23 @@
 import dask.array as da
-from multiview_stitcher import spatial_image_utils as si_utils
 import numpy as np
-import os
 from skimage.transform import resize
+import xarray as xr
 
-from muvis_align.image.ome_tiff_helper import load_tiff, save_tiff
 from muvis_align.image.util import *
 
 
-def flatfield_correction(msims, transform_key, quantiles, foreground_map=None, cache_location=None):
-    """Flatfield-correct msims: the model (quantile images) is computed once at scale0, then resized to and
-    applied at every pyramid level.
-    """
+def calc_msims_flatfield_model(msims, quantiles, foreground_map=None):
+    """The flat-field model of msims, from their scale0 quantile images."""
     sims = [get_msim_image0(msim) for msim in msims]
-
-    quantile_images = []
-    if cache_location is not None:
-        for quantile in quantiles:
-            filename = get_quantile_filename(cache_location, quantile)
-            if os.path.exists(filename):
-                quantile_images.append(load_tiff(filename))
-
-    if len(quantile_images) < len(quantiles):
-        quantile_images = calc_flatfield_images(sims, quantiles, foreground_map)
-        if cache_location is not None:
-            for quantile, quantile_image in zip(quantiles, quantile_images):
-                filename = get_quantile_filename(cache_location, quantile)
-                save_tiff(filename, quantile_image)
-
-    model = calc_flatfield_model(sims[0].dims, quantiles, quantile_images)
-
-    new_msims = []
-    for msim in msims:
-        def level_func(level_sim, scale_key, model=model):
-            return apply_flatfield_model(level_sim, transform_key, model)
-        new_msims.append(map_msim_levels(msim, level_func))
-    return new_msims
+    quantile_images = calc_flatfield_images(sims, quantiles, foreground_map)
+    return calc_flatfield_model(sims[0].dims, quantiles, quantile_images)
 
 
-def get_quantile_filename(cache_location, quantile):
-    filename = os.path.join(cache_location, 'quantile_' + f'{quantile}'.replace('.', '_') + '.tiff')
-    return filename
+def apply_msim_flatfield_model(msim, model):
+    """msim flat-field corrected at every pyramid level, the model resized to each."""
+    def level_func(level_sim, scale_key):
+        return apply_flatfield_model(level_sim, model)
+    return map_msim_levels(msim, level_func)
 
 
 def calc_flatfield_images(sims, quantiles, foreground_map=None):
@@ -56,63 +33,39 @@ def calc_flatfield_images(sims, quantiles, foreground_map=None):
 
 
 def calc_flatfield_model(dims0, quantiles, quantile_images):
-    """The flatfield correction model at a reference resolution: dark and bright-dark range images (channel
-    last, as apply_flatfield_model expects) and the per-channel mean_bright_dark.
-    """
-    has_c_dim = 'c' in dims0
-    if has_c_dim:
-        quantile_images = [da.moveaxis(quantile_image, dims0.index('c'), -1) for quantile_image in quantile_images]
-    ordered_images = [quantile_image for _, quantile_image in sorted(zip(quantiles, quantile_images), key=lambda pair: pair[0])]
+    """The flat-field model at the quantile images' resolution, as named images (dims0, t dropped): the dark image,
+    the light-dark range and its per-channel mean."""
+    images = [xr.DataArray(np.asarray(image), dims=list(dims0)).isel(t=0, missing_dims='ignore')
+              for _, image in sorted(zip(quantiles, quantile_images), key=lambda pair: pair[0])]
     # a single quantile is always the light (flat) image, with a zero dark stub; a pair is dark, light
-    dark = ordered_images[0] if len(ordered_images) > 1 else 0
-    bright = ordered_images[-1]
-
-    bright_dark_range = bright - dark
-    if has_c_dim:
-        axes = list(range(len(dims0) - 1))   # all except final 'c' axis
-    else:
-        axes = None
-    mean_bright_dark = np.array(np.mean(bright_dark_range, axis=axes))
-    return {
-        'dims0': dims0,
-        'has_c_dim': has_c_dim,
-        'dark': dark,
-        'bright_dark_range': bright_dark_range,
-        'mean_bright_dark': mean_bright_dark,
-    }
+    dark = images[0] if len(images) > 1 else 0
+    bright_dark_range = images[-1] - dark
+    spatial_dims = [dim for dim in bright_dark_range.dims if dim in 'zyx']
+    # skipna off: np.mean's own summation, as for any other mean of the image
+    mean_bright_dark = bright_dark_range.mean(spatial_dims, skipna=False)
+    return {'dark': dark, 'bright_dark_range': bright_dark_range, 'mean_bright_dark': mean_bright_dark}
 
 
-def _resize_correction_image(image, target_shape):
-    if np.ndim(image) == 0 or tuple(np.shape(image)) == tuple(target_shape):
-        return image
-    return resize(np.asarray(image), target_shape, preserve_range=True)
+def _correction_at(correction, image):
+    """A model image matched to `image` by dim name: a dim the image lacks dropped, spatial sizes resized to its."""
+    if np.ndim(correction) == 0:
+        return correction
+    correction = correction.isel({dim: 0 for dim in correction.dims if dim not in image.dims})
+    shape = tuple(image.sizes[dim] for dim in correction.dims)
+    if shape == correction.shape:
+        return correction
+    return xr.DataArray(resize(correction.values, shape, preserve_range=True), dims=correction.dims)
 
 
-def apply_flatfield_model(sim, transform_key, model):
-    dims0, has_c_dim = model['dims0'], model['has_c_dim']
-    dtype = sim.dtype
-    if has_c_dim:
-        image0 = sim.transpose(..., 'c')
-    else:
-        image0 = sim
-
-    dark = _resize_correction_image(model['dark'], image0.shape)
-    bright_dark_range = _resize_correction_image(model['bright_dark_range'], image0.shape)
-
-    image = float2int_image(
-        image_flatfield_correction(int2float_image(image0), dark, bright_dark_range, model['mean_bright_dark']),
-        dtype)
-    if has_c_dim:
-        image = image.transpose(*dims0)     # revert to original order
-    return si_utils.get_sim_from_array(
-        image,
-        dims=sim.dims,
-        scale=si_utils.get_spacing_from_sim(sim),
-        translation=si_utils.get_origin_from_sim(sim),
-        transform_key=transform_key,
-        affine=si_utils.get_affine_from_sim(sim, transform_key),
-        c_coords=sim.c
-    )
+def apply_flatfield_model(image, model):
+    """`image` (a sim or any DataArray with named dims) flat-field corrected, in its own dtype and dims."""
+    dark = _correction_at(model['dark'], image)
+    bright_dark_range = _correction_at(model['bright_dark_range'], image)
+    mean_bright_dark = _correction_at(model['mean_bright_dark'], image)
+    corrected = float2int_image(
+        image_flatfield_correction(int2float_image(image), dark, bright_dark_range, mean_bright_dark), image.dtype)
+    # a copy keeps every transform (registered too, for fusion), not only the source one
+    return image.copy(data=corrected.transpose(*image.dims).data)
 
 
 def image_flatfield_correction(image0, dark, bright_dark_range, mean_bright_dark):

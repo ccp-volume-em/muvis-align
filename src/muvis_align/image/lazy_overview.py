@@ -14,6 +14,7 @@ from multiview_stitcher import msi_utils, mv_graph
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.constants import default_interactive_preview_scale
+from muvis_align.image.flatfield import apply_flatfield_model
 from muvis_align.image.util import (build_source_stack_props, coarsest_level_within, combine_msims_as_channels,
                                    get_display_level, get_display_range, get_dtype_contrast_limits,
                                    wrap_sims_as_msims)
@@ -56,6 +57,17 @@ class MsimLevels:
 
     def level_data(self, level):
         return self.sims[level]
+
+
+class FlatfieldLevels:
+    """Another reader's levels flat-field corrected with `model`, each only when read."""
+
+    def __init__(self, reader, model):
+        self.reader, self.model = reader, model
+        self.pixel_sizes, self.dtype = reader.pixel_sizes, reader.dtype
+
+    def level_data(self, level):
+        return apply_flatfield_model(self.reader.level_data(level), self.model)
 
 
 class SectionPlanes:

@@ -42,7 +42,7 @@ from muvis_align.ui.MagicColorPicker import MagicColorPicker
 from muvis_align.ui.NapariMVSProgress import NapariMVSProgress
 from muvis_align.ui.NapariPhaseProgress import NapariPhaseProgress, SilentProgress
 from muvis_align.ui.ParamWidget import create_dict_of_lists, update_dict_value
-from muvis_align.image.lazy_overview import lazy_section_overview, MsimLevels
+from muvis_align.image.lazy_overview import lazy_section_overview, FlatfieldLevels, MsimLevels, SourceLevels
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events, \
     clear_napari_dask_cache, operation_label, patch_multiscale_label_show, patch_shapes_text_coords, report_failure
 from muvis_align.ui.bilayers_util import get_section_dict
@@ -1062,6 +1062,13 @@ class Interface:
             for index, msim in zip(reg.register_indices, reg.register_msims):
                 readers[index] = MsimLevels(msim)
             label = 'Pre-processed overview'
+        else:
+            # only a model already computed: opening a project must not read every tile for one
+            flatfield_models = reg.flatfield_models(self.params.get('pre_processing', {}))
+            if flatfield_models is not None:
+                readers = [FlatfieldLevels(SourceLevels(source), model)
+                           for source, model in zip(reg.sources, flatfield_models)]
+                label = 'Flat-field corrected overview'
         channel_labels = None
         if reg.is_channel_overlay(self.params['input_output']['registration_dimension'], self.extra_metadata):
             channels = self.extra_metadata.get('channels', [])
@@ -1249,8 +1256,9 @@ class Interface:
         return shapes, refs, labels, face_colors
 
     def _create_napari_data(self, transform_key, fusion_method='additive', show_preprocessed=False,
-                            progress_factory=None, weight=1):
+                            progress_factory=None, weight=1, flatfield=False):
         # `weight` is this step's share of the caller's bar, split between sub-steps by rough cost
+        # `flatfield`: as the export is fused; the plain view shows the sources as they are
         def phase(share, total=None):
             return progress_phase(progress_factory, total=total,
                                         weight=max(weight * share, 1))
@@ -1283,6 +1291,8 @@ class Interface:
                  Timer(f'_create_napari_data: select_msim_subpyramid_at_scale ({len(view_msims)} images)',
                       verbose=self._timing_verbose()):
                 msims = select_msim_subpyramid_at_scale(view_msims, self.reg.sources, preview_scale)
+                if flatfield:
+                    msims = self.reg.flatfield_corrected_msims(msims, self.params.get('pre_processing', {}))
                 if pbar is not None:
                     pbar.update(1)
         # sources at several heights are sized as if promoted to 3D, each at its own z as make_msims_3d() takes it,
@@ -2017,7 +2027,7 @@ class Interface:
                 with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_fusion=True):
                     return self._create_napari_data(
                         transform_key, fusion_method=self.params['fusion']['method'],
-                        progress_factory=worker_factory, weight=fusion_weight)
+                        progress_factory=worker_factory, weight=fusion_weight, flatfield=True)
 
             data = self._run_off_thread(fuse, factory)
             with factory(total=1) as pbar:
@@ -2116,7 +2126,7 @@ class Interface:
                 with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_fusion=True), \
                         Timer('fusion', verbose=self._timing_verbose()):
                     fused_image, is_saved = self.reg.fuse(
-                        self.reg.msims,
+                        self.reg.flatfield_corrected_msims(self.reg.msims, self.params.get('pre_processing', {})),
                         fusion_method=self.params['fusion']['method'],
                         # fuse()'s default reg_transform_key does not exist for a merge
                         transform_key=self.get_best_transform_key(),

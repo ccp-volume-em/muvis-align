@@ -30,7 +30,7 @@ from muvis_align.file.rocrate_utils import create_workflow_run_crate, create_zar
 from muvis_align.file.transforms import write_transforms, read_transforms
 from muvis_align.GlobalOptProgress import GlobalOptProgress
 from muvis_align.image.Video import Video
-from muvis_align.image.flatfield import flatfield_correction
+from muvis_align.image.flatfield import apply_msim_flatfield_model, calc_msims_flatfield_model
 from muvis_align.image.ome_helper import save_image
 from muvis_align.image.ome_zarr_helper import save_ome_multiscale_levels, save_ome_zarr_scene
 from muvis_align.image.ome_tiff_helper import save_tiff
@@ -315,6 +315,9 @@ class MVSRegistration:
         self.metrics = {}
         self.group_pairs = {}
         self.register_indices = None
+        # per source index, for fusion and the view as well as registration
+        self._flatfield_models = None
+        self._flatfield_settings = None
         # per source index: the registration's correction on top of the source transform; absent means identity
         self.mappings = None
         self.output_params = {}
@@ -562,7 +565,8 @@ class MVSRegistration:
                     fusion_method, output_spacing = self.fusion_settings()
                     zarr_output_filename = output_filename if 'zar' in output_format else None
                     # msims as stored (2D for a stack): fuse() promotes what it needs to
-                    fused_msim, is_saved = self.fuse(msims, fusion_method=fusion_method, output_spacing=output_spacing,
+                    fuse_msims = self.flatfield_corrected_msims(msims, self.preprocess_params)
+                    fused_msim, is_saved = self.fuse(fuse_msims, fusion_method=fusion_method, output_spacing=output_spacing,
                                                      transform_key=transform_key, output_filename=zarr_output_filename,
                                                      block_size=output_block_size, ome_version=output_ome_version)
                     self.state = RegState.FUSED
@@ -1028,20 +1032,10 @@ class MVSRegistration:
 
             if flatfield_quantiles:
                 logging.info('Flat-field correction...')
-                if isinstance(flatfield_quantiles, str):
-                    flatfield_quantiles = [float(quantile.strip()) for quantile in flatfield_quantiles.split(',')]
-                new_msims = [None] * len(msims)
-                for msim_indices in group_sims_by_z(msims, self.positions):
-                    msims_z_set = [msims[i] for i in msim_indices]
-                    foreground_map_z_set = [foreground_map[i] for i in
-                                            msim_indices] if foreground_map is not None else None
-                    # the correction model is computed per z-set at scale0 and applied to every level
-                    new_msims_z_set = flatfield_correction(msims_z_set, self.source_transform_key,
-                                                           flatfield_quantiles,
-                                                           foreground_map=foreground_map_z_set)
-                    for msim_index, msim in zip(msim_indices, new_msims_z_set):
-                        new_msims[msim_index] = msim
-                msims = new_msims
+                flatfield_params = {'flatfield_quantiles': flatfield_quantiles, 'scale': scale,
+                                    'filter_foreground': filter_foreground}
+                self.flatfield_models(flatfield_params, msims=msims, foreground_map=foreground_map)
+                msims = self.flatfield_corrected_msims(msims, flatfield_params)
                 modified = True
                 update_progress()
 
@@ -1105,6 +1099,54 @@ class MVSRegistration:
         self.register_msims = msims
         self.register_indices = indices
         return msims, indices, modified
+
+    @staticmethod
+    def flatfield_settings(params):
+        """(quantiles, scale, filter_foreground) of pre-processing params, parsed: what a flat-field model depends on."""
+        quantiles = params.get('flatfield_quantiles')
+        if isinstance(quantiles, str):
+            quantiles = [quantile for quantile in quantiles.split(',') if quantile.strip()]
+        if not isinstance(quantiles, (list, tuple)):
+            quantiles = [quantiles] if quantiles else []
+        return (tuple(float(quantile) for quantile in quantiles), parse_scale(params.get('scale'), default=None),
+                bool(params.get('filter_foreground')))
+
+    def flatfield_models(self, params, msims=None, foreground_map=None, compute=False):
+        """A flat-field model per source (shared per z-set) for pre-processing `params`; None without quantiles. Kept
+        from the last computation if its settings match, else computed from `msims` (every source at the
+        pre-processing scale) or, with `compute`, from msims built at that scale; else None."""
+        settings = self.flatfield_settings(params)
+        quantiles, scale, filter_foreground = settings
+        if not quantiles:
+            return None
+        if self._flatfield_models is not None and self._flatfield_settings == settings:
+            return self._flatfield_models
+        if msims is None:
+            if not compute:
+                return None
+            logging.info('Flat-field model...')
+            msims = self.ensure_msims(target_scale=scale, ends_only=True)
+            if scale and scale != 1:
+                msims = select_msim_subpyramid_at_scale(msims, self.sources, scale, bin_shortfall=True)
+        if filter_foreground and foreground_map is None:
+            foreground_map = calc_foreground_map(msims)
+        models = [None] * len(msims)
+        for msim_indices in group_sims_by_z(msims, self.positions):
+            foreground_map_z_set = ([foreground_map[index] for index in msim_indices]
+                                    if foreground_map is not None else None)
+            model = calc_msims_flatfield_model([msims[index] for index in msim_indices], quantiles,
+                                               foreground_map=foreground_map_z_set)
+            for index in msim_indices:
+                models[index] = model
+        self._flatfield_models, self._flatfield_settings = models, settings
+        return models
+
+    def flatfield_corrected_msims(self, msims, params, compute=True):
+        """msims (every source, in source order) flat-field corrected by flatfield_models(); unchanged without one."""
+        models = self.flatfield_models(params, compute=compute)
+        if models is None:
+            return msims
+        return [apply_msim_flatfield_model(msim, model) for msim, model in zip(msims, models)]
 
     def create_registration_method(self, sim0, params={}, method=''):
         registration_method = None
@@ -2048,6 +2090,7 @@ class MVSRegistration:
         z_scale = get_metadata_z_scale(self.extra_metadata)
 
         msims = select_msim_subpyramid_at_scale(self.msims, self.sources, preview_scale)
+        msims = self.flatfield_corrected_msims(msims, self.preprocess_params)
         if is_stack:
             msims = make_msims_3d(msims, z_scale, self.positions)
 
