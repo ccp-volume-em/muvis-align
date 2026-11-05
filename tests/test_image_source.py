@@ -66,6 +66,29 @@ def test_zarr_image_source_reads_its_levels_straight_off_the_store():
         np.testing.assert_array_equal(np.asarray(level_data.compute()), np.asarray(sim_data.compute()))
 
 
+def test_threads_reading_a_source_at_once_all_get_its_levels(monkeypatch):
+    """The view's contrast reads and a flat-field model's build can open one source together: each gets the
+    levels, none an empty list from before the first load finished, and they are loaded once."""
+    import threading
+    import time
+    source = ZarrImageSource(str(DATA_DIR / ZARR_FILES[0]))
+    load_data, loads = source._load_data, []
+
+    def slow_load():
+        loads.append(1)
+        time.sleep(0.2)
+        load_data()
+    monkeypatch.setattr(source, '_load_data', slow_load)
+    counts = []
+    threads = [threading.Thread(target=lambda: counts.append(len(source.data))) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert counts == [3] * 4 and loads == [1]
+
+
 def test_zarr_image_source_scale_override_reaches_getters_and_msim_coords():
     native_pixel_size = ZarrImageSource(str(DATA_DIR / ZARR_FILES[0])).get_pixel_size()
     assert native_pixel_size['x'] != pytest.approx(0.01)

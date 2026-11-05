@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from muvis_align.constants import default_fusion_memory_pool, default_fusion_workers
 from muvis_align.MVSRegistration import MVSRegistration, RegState
+from muvis_align.image.flatfield import apply_msim_flatfield_model
 from muvis_align.image.util import get_msim_dims, get_msim_image0
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, make_msim, prepared_registration
 
@@ -178,38 +179,73 @@ def test_preprocess_sets_modified_flag_for_enabled_steps(kwargs, expected_modifi
     assert modified is expected_modified
 
 
-def test_fusion_flatfield_corrects_every_source_with_the_pre_processing_model():
-    # a foreground-filtered source is left out of registration, never out of fusion; only the flat-field applies
+def _flatfield_registration(z_positions):
+    """A registration of small uint16 sources at `z_positions` (a section per z), each source's msim built as itself,
+    and the flat-field model stubbed: (registration, msims, the stub's calls, patches to enter, the model)."""
     import muvis_align.MVSRegistration as mvs_registration_module
     from muvis_align.image import flatfield
 
     registration = MVSRegistration()
-    registration.scales = [{"x": 1.0, "y": 1.0}] * 3
-    registration.positions = [{"x": index * 8.0, "y": 0.0} for index in range(3)]
+    count = len(z_positions)
+    registration.scales = [{"x": 1.0, "y": 1.0}] * count
+    registration.positions = [{"x": index * 8.0, "y": 0.0, "z": z} for index, z in enumerate(z_positions)]
     msims = [make_msim(np.random.default_rng(index).integers(1000, 60000, (8, 8)).astype(np.uint16))
-             for index in range(3)]
-    registration.ensure_msims = lambda **kwargs: msims
-    dims = get_msim_dims(msims[0])
+             for index in range(count)]
+    registration.sources = [SimpleNamespace(index=index) for index in range(count)]
+    registration._msim_output_order, registration._msim_z_scale = 'yx', None
+    registration._msim_transforms = [None] * count
     light = (np.random.default_rng(9).random((1, 1, 8, 8)) * 0.3 + 0.6).astype(np.float32)
-    model = flatfield.calc_flatfield_model(dims, [0.5], [light])
+    model = flatfield.calc_flatfield_model(get_msim_dims(msims[0]), [0.5], [light])
     model_calls = []
 
     def stub_model(model_msims, quantiles, foreground_map=None):
         model_calls.append((len(model_msims), tuple(quantiles), foreground_map))
         return model
 
+    patches = (patch.object(mvs_registration_module, "calc_msims_flatfield_model", stub_model),
+               patch.object(mvs_registration_module, "build_source_msim",
+                            lambda source, *args, **kwargs: msims[source.index]))
+    return registration, msims, model_calls, patches, model
+
+
+def test_the_view_computes_a_sections_flatfield_model_from_its_own_tiles_only():
+    # two tiles at z 0, one at z 1: viewing the second section reads its one tile; fusion adds only the first
+    registration, msims, model_calls, patches, model = _flatfield_registration([0, 0, 1])
+    params = {"flatfield_quantiles": "0.5"}
+    with patches[0], patches[1]:
+        viewed = registration.flatfield_model(2, params)
+        viewed_again = registration.flatfield_model(2, params)
+        calls_after_view = list(model_calls)
+        fuse_msims = registration.flatfield_corrected_msims(msims, params)
+
+    assert viewed is model and viewed_again is model
+    assert calls_after_view == [(1, (0.5,), None)]
+    assert model_calls == [(1, (0.5,), None), (2, (0.5,), None)]
+    for msim, fuse_msim in zip(msims, fuse_msims):
+        expected = get_msim_image0(apply_msim_flatfield_model(msim, model))
+        np.testing.assert_array_equal(np.asarray(get_msim_image0(fuse_msim)), np.asarray(expected))
+
+
+def test_fusion_flatfield_corrects_every_source_with_the_pre_processing_model():
+    # a foreground-filtered source is left out of registration, never out of fusion; only the flat-field applies
+    import muvis_align.MVSRegistration as mvs_registration_module
+    from muvis_align.image import flatfield
+
+    registration, msims, model_calls, patches, model = _flatfield_registration([0, 0, 0])
     params = {"flatfield_quantiles": "0.5", "filter_foreground": True, "gaussian_sigma": 2, "normalisation": "global"}
-    with patch.object(mvs_registration_module, "calc_msims_flatfield_model", stub_model), \
+    with patches[0], patches[1], \
             patch.object(mvs_registration_module, "calc_foreground_map", lambda items: [True, False, True]):
-        # the view asks without computing: nothing before pre-processing
-        view_models_before = registration.flatfield_models(params)
+        # with foreground filtering the view gets no model of its own: its tile selection needs every tile
+        viewed_before = registration.flatfield_model(0, params)
+        calls_before = list(model_calls)
         registered_msims, _, _ = registration.preprocess(msims, **params)
         view_models = registration.flatfield_models(params)
         fuse_msims = registration.flatfield_corrected_msims(msims, params)
         unchanged = registration.flatfield_corrected_msims(msims, {**params, "flatfield_quantiles": ""})
         registration.flatfield_corrected_msims(msims, {**params, "flatfield_quantiles": "0.9"})
 
-    assert view_models_before is None and view_models == [model] * 3
+    assert viewed_before is None and calls_before == []
+    assert view_models == [model] * 3
     assert len(registered_msims) == 2 and len(fuse_msims) == 3
     for msim, fuse_msim in zip(msims, fuse_msims):
         expected = flatfield.apply_msim_flatfield_model(msim, model)

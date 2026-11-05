@@ -120,7 +120,10 @@ def test_a_raw_level_without_t_or_c_is_corrected_as_its_msim_level(quantile_imag
     corrected_msim = flatfield.apply_msim_flatfield_model(multi_msim, model)
 
     for level, key in enumerate(('scale0', 'scale1')):
-        corrected = FlatfieldLevels(reader, model).level_data(level)
+        corrected = FlatfieldLevels(reader, lambda: model).level_data(level)
         assert corrected.dims == ('y', 'x') and corrected.dtype == np.uint16
         np.testing.assert_array_equal(np.asarray(corrected),
                                       np.asarray(msi_utils.get_sim_from_msim(corrected_msim, scale=key).data)[0, 0])
+    # no model (yet): the level as read
+    assert FlatfieldLevels(reader, lambda: None).level_data(1) is not None
+    np.testing.assert_array_equal(np.asarray(FlatfieldLevels(reader, lambda: None).level_data(1)), levels[1])

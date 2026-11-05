@@ -5,6 +5,7 @@ from contextlib import contextmanager, nullcontext
 import copy
 import dask
 import functools
+import threading
 import time
 from dask.array.core import PerformanceWarning
 from dask.diagnostics import ProgressBar
@@ -325,8 +326,9 @@ class MVSRegistration:
         self.group_pairs = {}
         self.register_indices = None
         # per source index, for fusion and the view as well as registration
-        self._flatfield_models = None
-        self._flatfield_settings = None
+        self._flatfield_key = None
+        self._flatfield_models = {}
+        self._flatfield_lock = threading.Lock()
         # per source index: the registration's correction on top of the source transform; absent means identity
         self.mappings = None
         self.output_params = {}
@@ -1120,39 +1122,76 @@ class MVSRegistration:
         return (tuple(float(quantile) for quantile in quantiles), parse_scale(params.get('scale'), default=None),
                 bool(params.get('filter_foreground')))
 
-    def flatfield_models(self, params, msims=None, foreground_map=None, compute=False):
-        """A flat-field model per source (shared per z-set) for pre-processing `params`; None without quantiles. Kept
-        from the last computation if its settings match, else computed from `msims` (every source at the
-        pre-processing scale) or, with `compute`, from msims built at that scale; else None."""
-        settings = self.flatfield_settings(params)
-        quantiles, scale, filter_foreground = settings
-        if not quantiles:
-            return None
-        if self._flatfield_models is not None and self._flatfield_settings == settings:
-            return self._flatfield_models
-        if msims is None:
-            if not compute:
-                return None
-            logging.info('Flat-field model...')
-            msims = self.ensure_msims(target_scale=scale, ends_only=True)
-            if scale and scale != 1:
-                msims = select_msim_subpyramid_at_scale(msims, self.sources, scale, bin_shortfall=True)
-        if filter_foreground and foreground_map is None:
-            foreground_map = calc_foreground_map(msims)
-        models = [None] * len(msims)
-        for msim_indices in group_sims_by_z(msims, self.positions):
-            foreground_map_z_set = ([foreground_map[index] for index in msim_indices]
-                                    if foreground_map is not None else None)
-            model = calc_msims_flatfield_model([msims[index] for index in msim_indices], quantiles,
-                                               foreground_map=foreground_map_z_set)
-            for index in msim_indices:
-                models[index] = model
-        self._flatfield_models, self._flatfield_settings = models, settings
-        return models
+    def _flatfield_section_of(self, settings):
+        """{source index: section (z-set)} the models are kept by, emptied when the settings or sources change."""
+        key = (settings, id(self.positions))
+        if self._flatfield_key != key:
+            self._flatfield_key, self._flatfield_models = key, {}
+            self._flatfield_sections = group_sims_by_z(self.positions, self.positions)
+            self._flatfield_section_index = {index: section for section, indices in enumerate(self._flatfield_sections)
+                                             for index in indices}
+        return self._flatfield_section_index
 
-    def flatfield_corrected_msims(self, msims, params, compute=True):
+    def _calc_flatfield_sections(self, sections, settings, msims=None, foreground_map=None):
+        """Models of `sections`, from `msims` (every source at the pre-processing scale) or their own tiles built at
+        that scale as pre-processing builds them."""
+        quantiles, scale, filter_foreground = settings
+        indices = [index for section in sections for index in self._flatfield_sections[section]]
+        if msims is None:
+            def build_msim(index):
+                from_level = get_level_from_scale(self.sources[index], scale)[0] if scale else 0
+                return build_source_msim(self.sources[index], self._msim_output_order, self.positions[index],
+                                         self._msim_transforms[index], self.source_transform_key,
+                                         z_scale=self._msim_z_scale, from_level=from_level, ends_only=True)
+            built = thread_map(build_msim, indices, default_msim_build_workers)
+            if scale and scale != 1:
+                built = select_msim_subpyramid_at_scale(built, [self.sources[index] for index in indices], scale,
+                                                        bin_shortfall=True)
+            msims = dict(zip(indices, built))
+        if filter_foreground and foreground_map is None:
+            # the tiles kept out of the quantiles are chosen over every source: sections are then computed all at once
+            foreground_map = calc_foreground_map([msims[index] for index in range(len(self.sources))])
+        for section in sections:
+            section_indices = self._flatfield_sections[section]
+            self._flatfield_models[section] = calc_msims_flatfield_model(
+                [msims[index] for index in section_indices], quantiles,
+                foreground_map=[foreground_map[index] for index in section_indices] if foreground_map is not None
+                else None)
+
+    def flatfield_model(self, index, params):
+        """Source `index`'s flat-field model, its section's computed from that section's tiles alone when first asked:
+        None without quantiles, and with foreground filtering until flatfield_models() has computed every section."""
+        settings = self.flatfield_settings(params)
+        if not settings[0]:
+            return None
+        with self._flatfield_lock:
+            section = self._flatfield_section_of(settings)[index]
+            if section not in self._flatfield_models and not settings[2]:
+                self._calc_flatfield_sections([section], settings)
+            return self._flatfield_models.get(section)
+
+    def flatfield_models(self, params, msims=None, foreground_map=None):
+        """Every source's flat-field model (None without quantiles), the sections not computed yet computed together:
+        from `msims` (every source at the pre-processing scale) if given, else from their tiles."""
+        settings = self.flatfield_settings(params)
+        if not settings[0]:
+            return None
+        with self._flatfield_lock:
+            section_of = self._flatfield_section_of(settings)
+            missing = [section for section in range(len(self._flatfield_sections))
+                       if section not in self._flatfield_models]
+            if missing and settings[2]:
+                missing = list(range(len(self._flatfield_sections)))
+            if missing:
+                logging.info(f'Flat-field model of {len(missing)} section(s)...')
+                if msims is not None:
+                    msims = dict(enumerate(msims))
+                self._calc_flatfield_sections(missing, settings, msims, foreground_map)
+            return [self._flatfield_models[section_of[index]] for index in range(len(self.sources))]
+
+    def flatfield_corrected_msims(self, msims, params):
         """msims (every source, in source order) flat-field corrected by flatfield_models(); unchanged without one."""
-        models = self.flatfield_models(params, compute=compute)
+        models = self.flatfield_models(params)
         if models is None:
             return msims
         return [apply_msim_flatfield_model(msim, model) for msim, model in zip(msims, models)]

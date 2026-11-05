@@ -60,14 +60,16 @@ class MsimLevels:
 
 
 class FlatfieldLevels:
-    """Another reader's levels flat-field corrected with `model`, each only when read."""
+    """Another reader's levels flat-field corrected, each only when read, by the model `get_model()` gives then
+    (none: as read)."""
 
-    def __init__(self, reader, model):
-        self.reader, self.model = reader, model
+    def __init__(self, reader, get_model):
+        self.reader, self.get_model = reader, get_model
         self.pixel_sizes, self.dtype = reader.pixel_sizes, reader.dtype
 
     def level_data(self, level):
-        return apply_flatfield_model(self.reader.level_data(level), self.model)
+        image, model = self.reader.level_data(level), self.get_model()
+        return apply_flatfield_model(image, model) if model is not None else image
 
 
 class SectionPlanes:

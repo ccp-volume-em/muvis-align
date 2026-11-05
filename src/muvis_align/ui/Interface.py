@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import functools
 import logging
 from enum import Enum, auto
 import weakref
@@ -1063,12 +1064,12 @@ class Interface:
                 readers[index] = MsimLevels(msim)
             label = 'Pre-processed overview'
         else:
-            # only a model already computed: opening a project must not read every tile for one
-            flatfield_models = reg.flatfield_models(self.params.get('pre_processing', {}))
-            if flatfield_models is not None:
-                readers = [FlatfieldLevels(SourceLevels(source), model)
-                           for source, model in zip(reg.sources, flatfield_models)]
-                label = 'Flat-field corrected overview'
+            pre_processing = self.params.get('pre_processing', {})
+            if reg.flatfield_settings(pre_processing)[0]:
+                # each section's model computed from its own tiles when its plane is first built, not every tile's
+                readers = [FlatfieldLevels(SourceLevels(source), functools.partial(reg.flatfield_model, index,
+                                                                                   pre_processing))
+                           for index, source in enumerate(reg.sources)]
         channel_labels = None
         if reg.is_channel_overlay(self.params['input_output']['registration_dimension'], self.extra_metadata):
             channels = self.extra_metadata.get('channels', [])

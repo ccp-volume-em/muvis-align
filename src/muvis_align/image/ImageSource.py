@@ -1,5 +1,6 @@
 import logging
 from math import ceil
+import threading
 
 import numpy as np
 from multiview_stitcher import msi_utils, param_utils
@@ -39,6 +40,8 @@ class ImageSource:
         self._msim = None
         self._redimensioned_msims = {}
         self._data_loaded = False
+        self._data_ready = False
+        self._data_lock = threading.Lock()
         self.init_metadata()
         self.fix_metadata(source_metadata)
         # settle synthesized levels' metadata up front so get_shape/get_pixel_size answer the same
@@ -51,14 +54,27 @@ class ImageSource:
             self._build_msim()
         return self._msim
 
+    def __getstate__(self):
+        state = dict(self.__dict__)
+        state.pop('_data_lock', None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._data_lock = threading.Lock()
+
     @property
     def data(self):
         """One array per pyramid level, loaded on first access, never during __init__: project load
         only reads metadata."""
-        if not self._data_loaded:
-            self._data_loaded = True
-            self._load_data()
-            self._add_missing_pyramid_level_data()
+        if not self._data_ready:
+            # one load: another thread reading meanwhile waits for it rather than finding no levels yet
+            with self._data_lock:
+                if not self._data_loaded:
+                    self._data_loaded = True
+                    self._load_data()
+                    self._add_missing_pyramid_level_data()
+                self._data_ready = True
         return self._data
 
     @data.setter
