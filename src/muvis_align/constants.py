@@ -149,9 +149,10 @@ split_grid_margin = 0.05
 default_export_chunk_size = 4096
 # on-screen overview reduction per source, matching create_preview()'s 'preview_scale'
 default_interactive_preview_scale = 16
-# upper bound on the fused preview, only a few hundred pixels on screen; preview_scale is relative to
-# each source, so the bound is on the result (see image.util.reduce_msims_to_fused_size)
-default_preview_max_bytes = 4 * 1024 ** 3
+# upper bound on a fused preview (about 2000x2000 at 16 bits), or one of several z planes; preview_scale is
+# relative to each source, so the bound is on the result (see image.util.reduce_msims_to_fused_size)
+default_preview_max_bytes = 2048 * 2048 * 2
+default_preview_max_volume_bytes = 4 * 1024 ** 3
 
 prereg_mappings_name = 'prereg_mappings.csv'
 default_pair_mappings_name = 'pair_mappings.json'

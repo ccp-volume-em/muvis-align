@@ -32,7 +32,8 @@ except Exception as e:
 
 from muvis_align.constants import (default_chunk_size, default_contrast_limits_max_tasks,
                                    default_export_chunk_size, default_fusion_block_bytes,
-                                   default_fusion_chunk_bytes, default_preview_max_bytes, fusion_stack_arrays)
+                                   default_fusion_chunk_bytes, default_preview_max_bytes,
+                                   default_preview_max_volume_bytes, fusion_stack_arrays)
 from muvis_align.util import *
 
 
@@ -2410,15 +2411,17 @@ def build_pairs_graph(stack_props, pairs, overlaps=None):
 
 def reduce_msims_to_fused_size(msims, transform_key, max_bytes=default_preview_max_bytes,
                                output_spacing_method=None, z_scale=None, max_steps=16,
-                               label='preview', z_positions=None):
-    """`msims` stepped to coarser levels until fusing them would produce at most max_bytes, keeping an on-screen
-    preview from fusing an arbitrarily large stack.
+                               label='preview', z_positions=None, max_volume_bytes=default_preview_max_volume_bytes):
+    """`msims` stepped to coarser levels until fusing them would produce at most max_bytes, or max_volume_bytes for
+    more than one z plane, keeping an on-screen preview from fusing an arbitrarily large stack.
 
     Bounds the fused size itself, as preview_scale picks levels per source pyramid and so still scales with the
     dataset. Stops when nothing can be reduced further. z_positions: 2D sources at several heights, sized as if
     promoted to 3D (see calc_output_properties) without promoting them.
     """
-    size, _ = estimate_fused_size(msims, transform_key, output_spacing_method, z_scale, z_positions)
+    size, properties = estimate_fused_size(msims, transform_key, output_spacing_method, z_scale, z_positions)
+    if int(properties['shape'].get('z', 1)) > 1:
+        max_bytes = max_volume_bytes
     if size <= max_bytes:
         return msims
     original_size = size
