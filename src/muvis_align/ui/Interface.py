@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import logging
 from enum import Enum, auto
+import weakref
 from magicclass.ext.napari import ViewerWidget
 from multiview_stitcher import msi_utils, ngff_utils, spatial_image_utils as si_utils, param_utils
 from magicgui.widgets import ComboBox
@@ -80,6 +81,15 @@ def has_layer(viewer, layer):
     return any(getattr(shown, '__wrapped__', shown) is layer for shown in viewer.layers)
 
 
+def _weak_view_click(interface_ref):
+    """A viewer click callback holding the Interface weakly, so a closed viewer is not kept alive through it."""
+    def on_view_click(view_model, event):
+        interface = interface_ref()
+        if interface is not None:
+            yield from interface._on_view_click(view_model, event)
+    return on_view_click
+
+
 def position_sort_key(position):
     return position.get('z', 0), position.get('y', 0), position.get('x', 0)
 
@@ -131,6 +141,12 @@ class Interface:
         # per viewer (by id): the shape layer drawn and the signature of what it was drawn from
         self._shape_layers = {}
         self._detached_view = None
+        # on the viewers, not the shape layers: a layer's mouse callbacks fire only while it is the active layer
+        on_click = _weak_view_click(weakref.ref(self))
+        for view in (viewer, overview):
+            view_model = view._qtwidget._viewer_model if isinstance(view, ViewerWidget) else view
+            if view_model is not None:
+                view_model.mouse_drag_callbacks.append(on_click)
 
         self.reg = MVSRegistration()
         if initialize:
@@ -915,11 +931,38 @@ class Interface:
         index = 1 if len(labels) > 1 else 0
         widget2.set_value(labels[index], choices=labels)
 
+    def _on_view_click(self, view_model, event):
+        """A left click on a viewer's shapes picks that pair; a drag (pan, rotate) picks nothing."""
+        if event.button != 1:
+            return
+        press_pos = np.array(event.pos)
+        pick = dict(position=event.position, view_direction=event.view_direction,
+                    dims_displayed=event.dims_displayed, world=True)
+        yield
+        while event.type == 'mouse_move':
+            yield
+        # napari updates `event` in place, so it is the release now; a few pixels of jitter is still a click
+        # the shape layer drawn in this viewer; has_layer sees past a plugin's proxies of viewer and layer
+        layer = next((layer for _, layer in self._shape_layers.values()
+                      if layer is not None and has_layer(view_model, layer)), None)
+        if np.linalg.norm(np.array(event.pos) - press_pos) <= 4 and layer is not None and layer.visible:
+            value = layer.get_value(**pick)
+            if value is not None and value[0] is not None:
+                self.select_pair_preview(layer.features['refs'][value[0]])
+
     def select_pair_preview(self, ref):
         # only an overlap shape's ref ('0 1') names a pair; single-image clicks are ignored
-        indices = ref.split()
+        indices = [int(index) for index in ref.split()]
         if len(indices) == 2:
-            self.set_preview_images([int(index) for index in indices])
+            row_label = next((label for label, pair in getattr(self, 'metrics_row_pairs', {}).items()
+                              if sorted(pair) == sorted(indices)), None)
+            table = self.param_widgets.get('registration.metrics_table')
+            if row_label is not None and table is not None:
+                # the table never selects shapes back, so this cannot loop
+                table.widget.native.select_row_label(row_label)
+                indices = list(self.metrics_row_pairs[row_label])
+            # also when the row was already selected, and so emitted no change
+            self.set_preview_images(indices)
 
     def metrics_table_selected(self):
         table = self.param_widgets.get('registration.metrics_table').widget.native
@@ -1362,14 +1405,6 @@ class Interface:
                                       edge_width=edge_width, edge_color=edge_color, blending=blending,
                                       units=spatial_unit, metadata={'line_color': line_color})
 
-            @layer.mouse_drag_callbacks.append
-            def on_shape_click(clicked_layer, event, refs=refs):
-                if event.button == 1:
-                    value = clicked_layer.get_value(event.position, view_direction=event.view_direction,
-                                                    dims_displayed=event.dims_displayed, world=True)
-                    shape_index = value[0] if value is not None else None
-                    if shape_index is not None:
-                        self.select_pair_preview(refs[shape_index])
             return layer
         return None
 

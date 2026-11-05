@@ -63,3 +63,17 @@ def test_a_table_filled_with_its_signals_held_matches_a_plain_fill(qapp):
         assert ([held.native.model().headerData(index, orientation) for index in range(count)]
                 == [plain.native.model().headerData(index, orientation) for index in range(count)])
     assert held.native.verticalHeader().count() == 3
+
+
+def test_selecting_a_row_by_label_makes_it_current_before_the_selection_signal(qapp):
+    from muvis_align.ui.ModelTable import QModelTableView
+
+    table = QModelTableView()
+    table.setValue(([[0.9], [0.5], [0.1]], ['summary', 'a - b', 'b - c'], ['quality']))
+    rows_on_signal = []
+    table.itemSelectionChanged.connect(lambda: rows_on_signal.append(table.currentRow()))
+
+    table.select_row_label('b - c')
+
+    assert rows_on_signal == [2]
+    assert [index.row() for index in table.selectionModel().selectedRows()] == [2]

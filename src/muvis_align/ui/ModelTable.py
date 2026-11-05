@@ -1,7 +1,7 @@
 import numpy as np
 from magicgui.backends._qtpy.widgets import QBaseValueWidget
 from magicgui.widgets.bases import ValueWidget
-from qtpy.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
+from qtpy.QtCore import QAbstractTableModel, QItemSelectionModel, QModelIndex, Qt, Signal
 from qtpy.QtWidgets import QTableView
 
 
@@ -87,6 +87,13 @@ class QModelTableView(QTableView):
     def row_label(self, row):
         labels = self.table_model.row_labels
         return labels[row] if 0 <= row < len(labels) else None
+
+    def select_row_label(self, label):
+        """The row with this label made current, selected and scrolled to, as a click on it would."""
+        index = self.table_model.index(self.table_model.row_labels.index(label), 0)
+        self.selectionModel().setCurrentIndex(
+            index, QItemSelectionModel.SelectionFlag.ClearAndSelect | QItemSelectionModel.SelectionFlag.Rows)
+        self.scrollTo(index)
 
 
 class _QModelTableWidget(QBaseValueWidget):

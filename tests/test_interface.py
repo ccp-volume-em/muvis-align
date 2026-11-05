@@ -2256,6 +2256,59 @@ def test_selecting_a_metrics_row_picks_its_pair_for_preview(bare_interface, row,
         image2.set_value.assert_called_once_with(selected[1])
 
 
+@pytest.mark.parametrize(("metrics_row_pairs", "row_label", "selected"), [
+    ({'S000_001 - S000_000': (1, 0)}, 'S000_001 - S000_000', ('S000_001', 'S000_000')),
+    ({}, None, ('S000_000', 'S000_001')),
+], ids=["metrics-row", "no-metrics"])
+def test_clicking_an_overlap_selects_its_metrics_row_and_preview(bare_interface, metrics_row_pairs, row_label,
+                                                                 selected):
+    bare_interface.reg.file_labels = ['S000_000', 'S000_001']
+    bare_interface.metrics_row_pairs = metrics_row_pairs
+    table, image1, image2 = MagicMock(), MagicMock(), MagicMock()
+    bare_interface.param_widgets = {'registration.metrics_table': table,
+                                    'registration.reg_preview_image1': image1,
+                                    'registration.reg_preview_image2': image2}
+
+    bare_interface.select_pair_preview('0 1')
+
+    if row_label is None:
+        assert not table.widget.native.select_row_label.called
+    else:
+        table.widget.native.select_row_label.assert_called_once_with(row_label)
+    image1.set_value.assert_called_once_with(selected[0])
+    image2.set_value.assert_called_once_with(selected[1])
+
+
+@pytest.mark.parametrize(("release_pos", "picked"), [((11, 10), True), ((40, 10), False)],
+                         ids=["click", "drag"])
+def test_a_click_on_the_view_picks_a_shape_but_a_drag_does_not(bare_interface, release_pos, picked):
+    view_model, other_model = MagicMock(), MagicMock()
+    layer, other_layer = (MagicMock(visible=True, features={'refs': ['0', '0 1']}) for _ in range(2))
+    layer.get_value.return_value = (1, None)
+    bare_interface._shape_layers = {1: (None, other_layer), 2: (None, layer)}
+    shown = {id(view_model): layer, id(other_model): other_layer}
+    bare_interface.select_pair_preview = MagicMock()
+    event = SimpleNamespace(button=1, pos=(10, 10), position=(5, 5), view_direction=None,
+                            dims_displayed=[0, 1], type='mouse_press')
+
+    with patch('muvis_align.ui.Interface.has_layer',
+               side_effect=lambda viewer, drawn: shown[id(viewer)] is drawn):
+        click = bare_interface._on_view_click(view_model, event)
+        next(click)
+        event.type, event.pos = 'mouse_move', release_pos
+        next(click)
+        event.type = 'mouse_release'
+        with pytest.raises(StopIteration):
+            next(click)
+
+    if picked:
+        layer.get_value.assert_called_once_with(position=(5, 5), view_direction=None, dims_displayed=[0, 1],
+                                                world=True)
+        bare_interface.select_pair_preview.assert_called_once_with('0 1')
+    else:
+        assert not bare_interface.select_pair_preview.called
+
+
 def test_the_project_file_is_copied_into_the_output_folder_as_an_action_starts(bare_interface, tmp_path):
     project = tmp_path / "project.yml"
     project.write_text("input_output:\n  output_path: output\n")
