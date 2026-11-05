@@ -1,6 +1,7 @@
 import dask.array as da
 import numpy as np
 from skimage.transform import resize
+import uuid
 import xarray as xr
 
 from muvis_align.image.util import *
@@ -43,25 +44,38 @@ def calc_flatfield_model(dims0, quantiles, quantile_images):
     spatial_dims = [dim for dim in bright_dark_range.dims if dim in 'zyx']
     # skipna off: np.mean's own summation, as for any other mean of the image
     mean_bright_dark = bright_dark_range.mean(spatial_dims, skipna=False)
-    return {'dark': dark, 'bright_dark_range': bright_dark_range, 'mean_bright_dark': mean_bright_dark}
+    # 'resized': each image resized once per shape, shared by every tile the model corrects
+    return {'dark': dark, 'bright_dark_range': bright_dark_range, 'mean_bright_dark': mean_bright_dark,
+            'token': uuid.uuid4().hex, 'resized': {}}
 
 
-def _correction_at(correction, image):
+def _correction_at(model, key, image):
     """A model image matched to `image` by dim name: a dim the image lacks dropped, spatial sizes resized to its."""
+    correction = model[key]
     if np.ndim(correction) == 0:
         return correction
     correction = correction.isel({dim: 0 for dim in correction.dims if dim not in image.dims})
     shape = tuple(image.sizes[dim] for dim in correction.dims)
     if shape == correction.shape:
         return correction
-    return xr.DataArray(resize(correction.values, shape, preserve_range=True), dims=correction.dims)
+    cache_key = (key, correction.dims, shape)
+    resized = model['resized'].get(cache_key)
+    if resized is None:
+        data = resize(correction.values, shape, preserve_range=True)
+        chunks = (tuple(image.data.chunks[image.dims.index(dim)] for dim in correction.dims)
+                  if hasattr(image.data, 'chunks') else 'auto')
+        # named, not tokenized: hashing the full-size array again for every tile is what would cost
+        name = f'flatfield-{model["token"]}-{key}-{"x".join(map(str, shape))}'
+        resized = xr.DataArray(da.from_array(data, chunks=chunks, name=name), dims=correction.dims)
+        model['resized'][cache_key] = resized
+    return resized
 
 
 def apply_flatfield_model(image, model):
     """`image` (a sim or any DataArray with named dims) flat-field corrected, in its own dtype and dims."""
-    dark = _correction_at(model['dark'], image)
-    bright_dark_range = _correction_at(model['bright_dark_range'], image)
-    mean_bright_dark = _correction_at(model['mean_bright_dark'], image)
+    dark = _correction_at(model, 'dark', image)
+    bright_dark_range = _correction_at(model, 'bright_dark_range', image)
+    mean_bright_dark = _correction_at(model, 'mean_bright_dark', image)
     corrected = float2int_image(
         image_flatfield_correction(int2float_image(image), dark, bright_dark_range, mean_bright_dark), image.dtype)
     # a copy keeps every transform (registered too, for fusion), not only the source one
