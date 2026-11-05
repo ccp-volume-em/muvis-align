@@ -168,6 +168,8 @@ section_number_labels = ('section', 'slice', 's', 'z')
 
 default_transform_key = 'transform'
 default_quality_key = 'quality'
+# each metric's value range, for its red-yellow-green colouring; others (e.g. match rate) are 0..1
+metric_value_ranges = {'ncc': (-1, 1), 'ssim': (-1, 1), 'onmi': (0, 1)}
 
 NAPARI_PROJECT_TEMPLATE = 'ui/project_template.yaml'
 

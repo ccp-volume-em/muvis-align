@@ -166,7 +166,7 @@ Settings only some methods read are greyed out for the others.
 | Threads | Pair registrations run in parallel; 0 or empty to choose automatically |
 | Registration preview image 1 / 2 | The pair that **Preview** and **Modify pair registration** work on |
 | Split binning | Split pairing only: the binning of the stitched planes or channels when registering them against each other (1 is the pre-processed pixel size) |
-| Metrics table | Read-only: each pair's registration quality, from source positions and once registered, ordered by position. The summary row is over all pairs |
+| Metrics table | Read-only: each pair's registration quality, from source positions and once registered, ordered by position. The summary row is over all pairs. Each metric is coloured from red (poor) to green (good) over its own range: NCC, SSIM and phase correlation, Elastix or ANTs quality from -1 to 1, ONMI and feature-method quality from 0 to 1 |
 | Global method | How the pair registrations are resolved into one position per source: **Robust linear** (fast, for large projects, translation or rigid only), **Global optimisation** (iterative, slow for many tiles), **Linear two-pass** (fastest, less robust to bad pairs) or **Shortest paths** |
 
 The buttons:

@@ -389,11 +389,15 @@ The project calculates registration metrics such as NCC, SSIM, normalized mutual
 
 `muvis-align` computes several complementary image similarity metrics to evaluate registration quality. Each metric captures a different aspect of alignment quality, making it useful to evaluate multiple metrics together rather than relying on a single score.
 
-| Metric | Full name                                 | Measures                                             | Typical range |
-| ------ | ----------------------------------------- | ---------------------------------------------------- | ------------- |
-| NCC    | Normalized Cross-Correlation              | Intensity correlation between images                 | -1 to 1       |
-| SSIM   | Structural Similarity Index Measure       | Similarity of local image structures                 | 0 to 1        |
-| ONMI   | Overlapping Normalized Mutual Information | Shared information between overlapping image regions | 0 to 1+       |
+| Metric  | Full name                                 | Measures                                             | Range   |
+| ------- | ----------------------------------------- | ---------------------------------------------------- | ------- |
+| NCC     | Normalized Cross-Correlation              | Intensity correlation between images                 | -1 to 1 |
+| SSIM    | Structural Similarity Index Measure       | Similarity of local image structures                 | -1 to 1 |
+| ONMI    | Overlapping Normalized Mutual Information | Shared information between overlapping image regions | 0 to 1  |
+| Quality | The registration method's own score       | Spearman correlation of the overlap (phase correlation, Elastix, ANTs), or the share of matched points (feature methods, CPD) | -1 to 1, or 0 to 1 |
+
+The plugin colours each metric from red (poor) to green (good) over its own range: for a -1 to 1 metric, 0 (no
+correlation) is the middle of the scale.
 
 The metrics are implemented in `metrics.py`:
 
@@ -437,12 +441,14 @@ Unlike pixel-wise metrics, SSIM is sensitive to structural preservation and is t
 
 * `SSIM = 1` indicates identical structure.
 * Values close to zero indicate poor structural agreement.
+* Negative values indicate inverse structure; overlapping tiles rarely score below zero.
 
 SSIM is often more representative of perceived image quality than correlation-based metrics.
 
 #### ONMI — Overlapping Normalized Mutual Information
 
-ONMI measures the amount of shared information between overlapping image regions.
+ONMI measures the amount of shared information between overlapping image regions. scikit-image's normalized mutual
+information runs from 1 (independent) to 2 (identical); `muvis-align` subtracts 1, so ONMI runs from 0 to 1.
 
 Mutual information is particularly valuable when images originate from different modalities, channels, or acquisition conditions because it does not assume similar intensity values.
 

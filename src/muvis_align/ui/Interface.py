@@ -24,7 +24,7 @@ from muvis_align.constants import zarr_extension, tiff_extension, default_transf
     spatial_unit, registration_method_params
 from muvis_align.file.project_yaml import (read_params, get_template_params, get_unknown_params, write_params,
                                              update_params)
-from muvis_align.MVSRegistration import MVSRegistration, RegState, registration_method_kind
+from muvis_align.MVSRegistration import MVSRegistration, RegState, metric_value_range, registration_method_kind
 from muvis_align.image.util import get_sim_position_final, \
     create_image_shapes, create_overlap_shapes, build_source_stack_props, \
     draw_keypoints_matches_napari, grid_point_pairs, get_transforms, copy_transforms_to_msims, NoOverlapError, \
@@ -1175,7 +1175,9 @@ class Interface:
 
     def _recolor_pair_shapes(self, pair):
         """A pair's overlap coloured by its quality now in both viewers' shapes, the others left as drawn."""
-        color = transform_color(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair)))[0]
+        quality_range = metric_value_range(default_quality_key, self.params.get('registration', {}).get('method'))
+        color = transform_color(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair),
+                                              value_range=quality_range))[0]
         pair_refs = [f'{pair[0]} {pair[1]}', f'{pair[1]} {pair[0]}']
         for viewer in (self.viewer, self.overview):
             _, layer = self._shape_layers.get(id(viewer), (None, None))
@@ -1251,7 +1253,9 @@ class Interface:
         refs += [f'{index1} {index2}' for index1, index2 in pairs]
         labels += ['' for _ in pairs]
         # grey for an overlap without a quality (not registered): black would hide the image under overlapping tiles
-        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair), missing=(0.5, 0.5, 0.5)))
+        quality_range = metric_value_range(default_quality_key, self.params.get('registration', {}).get('method'))
+        face_colors += [np.array(metric_to_rgb(self.reg.get_metrics(default_quality_key, pair),
+                                               value_range=quality_range, missing=(0.5, 0.5, 0.5)))
                         for pair in pairs]
         return shapes, refs, labels, face_colors
 
@@ -1723,8 +1727,16 @@ class Interface:
 
         table_widget = self.param_widgets.get('registration.metrics_table')
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
-        table_widget.widget.native.set_background(
-            lambda value: QColor(*metric_to_rgb(value, max_light=0.5, output_range=255)))
+        method = self.params.get('registration', {}).get('method')
+        # transform columns hold one metric, whose range colours them all
+        table_metric = metric_keys[0] if len(metric_keys) == 1 else None
+
+        def background(value, column_label):
+            metric = column_label if is_metric_cols else table_metric
+            return QColor(*metric_to_rgb(value, value_range=metric_value_range(metric, method), max_light=0.5,
+                                         output_range=255))
+
+        table_widget.widget.native.set_background(background)
         table_widget.set_value((metrics_table, item_keys, col_headers))
         table_widget.set_table_column_resize_mode()
 

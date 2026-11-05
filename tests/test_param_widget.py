@@ -92,6 +92,21 @@ def test_a_table_filled_with_its_signals_held_matches_a_plain_fill(qapp):
     assert held.native.verticalHeader().count() == 3
 
 
+def test_a_cell_background_is_asked_with_its_column_label(qapp):
+    from qtpy.QtCore import Qt
+    from muvis_align.ui.ModelTable import QModelTableView
+
+    table = QModelTableView()
+    table.setValue(([[0.9, 0.1]], ['summary'], ['quality', 'ncc']))
+    asked = []
+    table.set_background(lambda value, column_label: asked.append((value, column_label)) or 'colour')
+
+    model = table.table_model
+    backgrounds = [model.data(model.index(0, column), Qt.BackgroundRole) for column in range(2)]
+
+    assert backgrounds == ['colour', 'colour'] and asked == [(0.9, 'quality'), (0.1, 'ncc')]
+
+
 def test_selecting_a_row_by_label_makes_it_current_before_the_selection_signal(qapp):
     from muvis_align.ui.ModelTable import QModelTableView
 

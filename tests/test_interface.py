@@ -187,6 +187,7 @@ def bare_interface():
     interface.verbose = False
     interface.enable_plugin_widget = None
     interface.extra_metadata = {}
+    interface.params = {}
     interface.param_widgets = {}
     interface.need_source_reinit = False
     interface._shape_layers = {}
@@ -2207,6 +2208,29 @@ def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interfa
     assert rows == ['summary', 'S000_000 - S000_001', 'S000 - S001']
     assert columns == ['quality', 'ncc']
     assert values[2] == [0.3, None]
+
+
+@pytest.mark.parametrize(("method", "quality_zero_fraction"), [("phase_correlation", 0.5), ("sift", 0.0)])
+def test_metrics_table_colours_each_metric_over_its_own_range(bare_interface, method, quality_zero_fraction):
+    """ncc and ssim run -1..1, onmi 0..1, quality as the registration method scores it: 0 is mid-scale only for -1..1."""
+    from qtpy.QtGui import QColor
+    bare_interface.reg.file_labels = ['S000_000', 'S000_001']
+    bare_interface.reg.positions = [{'y': 0, 'x': 0}, {'y': 0, 'x': 1}]
+    bare_interface.params = {'registration': {'method': method}}
+    table = MagicMock()
+    bare_interface.param_widgets = {'registration.metrics_table': table}
+    bare_interface.populate_metrics_table(
+        {'pairs': {(0, 1): {'registered': {'quality': 0.0, 'ncc': 0.0, 'ssim': 0.0, 'onmi': 0.0}}}})
+    background = table.widget.native.set_background.call_args[0][0]
+
+    def colour(fraction):
+        return QColor(*interface_module.metric_to_rgb(fraction, max_light=0.5, output_range=255))
+
+    assert background(0.0, 'ncc') == colour(0.5) and background(0.0, 'ssim') == colour(0.5)
+    assert background(0.0, 'onmi') == colour(0.0)
+    assert background(0.0, 'quality') == colour(quality_zero_fraction)
+    # out of range clipped to the scale's ends
+    assert background(-2.0, 'ncc') == colour(0.0) and background(1.5, 'onmi') == colour(1.0)
 
 
 @pytest.mark.parametrize(("source_metrics", "columns", "summary_row"), [

@@ -74,6 +74,15 @@ def registration_method_kind(method):
     return 'phase_correlation'
 
 
+def metric_value_range(metric, method=None):
+    """A metric's (low, high) value range. Quality is the registration method's own: multiview_stitcher scores phase
+    correlation, Elastix and ANTs by Spearman correlation, the feature methods and CPD by a 0..1 match rate."""
+    if metric == default_quality_key:
+        is_correlation = registration_method_kind(method) in ('phase_correlation', 'elastix', 'ants')
+        return (-1, 1) if is_correlation else (0, 1)
+    return metric_value_ranges.get(metric, (0, 1))
+
+
 class _DeferredQuality:
     """A link quality whose computation waits until it is known to be kept."""
     __slots__ = ('func', 'args')

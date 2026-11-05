@@ -206,9 +206,9 @@ register_params = { /* ... */ }
 ```
 
 **Metrics Computed:**
-- **NCC** (Normalized Cross Correlation) - 0 to 1, higher is better
+- **NCC** (Normalized Cross Correlation) - -1 to 1, higher is better
 - **SSIM** (Structural Similarity Index) - -1 to 1, higher is better  
-- **ONMI** (Overlapping Normalized Mutual Information) - Higher is better
+- **ONMI** (Overlapping Normalized Mutual Information) - 0 to 1, higher is better
 
 **Use Case:** Parameter tuning by iteratively adjusting parameters and checking improvement in metrics
 

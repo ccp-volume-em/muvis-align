@@ -37,7 +37,9 @@ class ArrayTableModel(QAbstractTableModel):
         if role == Qt.BackgroundRole and self.background is not None and value is not None:
             key = (index.row(), index.column())
             if key not in self._backgrounds:
-                self._backgrounds[key] = self.background(value)
+                column = index.column()
+                column_label = self.column_labels[column] if column < len(self.column_labels) else None
+                self._backgrounds[key] = self.background(value, column_label)
             return self._backgrounds[key]
         return None
 
@@ -77,7 +79,7 @@ class QModelTableView(QTableView):
         self.valueChanged.emit(self.value())
 
     def set_background(self, background):
-        """`background(value)` gives a cell's QColor, asked only for the cells shown."""
+        """`background(value, column_label)` gives a cell's QColor, asked only for the cells shown."""
         self.table_model.background = background
         self.table_model._backgrounds = {}
 
