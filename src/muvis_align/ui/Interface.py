@@ -47,7 +47,8 @@ from muvis_align.image.lazy_overview import lazy_section_overview, sample_contra
 from muvis_align.ui._utils import TemporarilyDisabledWidgets, VisibleActivityDock, catch_run_errors, flush_paint_events, \
     clear_napari_dask_cache, operation_label, patch_multiscale_label_show, patch_shapes_text_coords, report_failure
 from muvis_align.ui.bilayers_util import get_section_dict
-from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, set_dict_value, is_valid_value, \
+from muvis_align.util import OperationCancelled, cancellable, request_cancel, print_dict_simple, \
+    SOURCE_METADATA_FIELDS, set_source_metadata_value, parse_channel_color, channels_from_table, \
     calculate_rigid_difference, operation_to_past_participle, eval_path, path_param_to_text, \
     resolve_to_project_dir, relativize_to_project_dir, parse_scale, get_filetitle, print_hbytes, progress_phase, \
     background_luminance, contrasting_color, get_scale_from_transform, get_rotation_from_transform
@@ -93,15 +94,6 @@ def _weak_view_click(interface_ref):
 
 def position_sort_key(position):
     return position.get('z', 0), position.get('y', 0), position.get('x', 0)
-
-
-def parse_channel_color(color):
-    if isinstance(color, str):
-        try:
-            return tuple(eval(color))
-        except Exception:
-            return None
-    return color
 
 
 class Interface:
@@ -366,35 +358,28 @@ class Interface:
         self.need_source_reinit = True
 
     def source_position_z(self, value):
-        self._set_source_metadata_value(['position', 'z'], value)
+        self._set_source_metadata_value('source_position_z', value)
 
     def source_position_y(self, value):
-        self._set_source_metadata_value(['position', 'y'], value)
+        self._set_source_metadata_value('source_position_y', value)
 
     def source_position_x(self, value):
-        self._set_source_metadata_value(['position', 'x'], value)
+        self._set_source_metadata_value('source_position_x', value)
 
     def source_scale_z(self, value):
-        self._set_source_metadata_value(['scale', 'z'], value)
+        self._set_source_metadata_value('source_scale_z', value)
 
     def source_scale_y(self, value):
-        self._set_source_metadata_value(['scale', 'y'], value)
+        self._set_source_metadata_value('source_scale_y', value)
 
     def source_scale_x(self, value):
-        self._set_source_metadata_value(['scale', 'x'], value)
+        self._set_source_metadata_value('source_scale_x', value)
 
     def source_rotation(self, value):
-        self._set_source_metadata_value(['rotation'], value)
+        self._set_source_metadata_value('source_rotation', value)
 
-    def _set_source_metadata_value(self, keys, value):
-        # an emptied field drops its override, so the source's own value applies, as for 'source'
-        if is_valid_value(value):
-            set_dict_value(self.source_metadata, keys, value)
-        else:
-            parent = self.source_metadata
-            for key in keys[:-1]:
-                parent = parent.get(key, {})
-            parent.pop(keys[-1], None)
+    def _set_source_metadata_value(self, name, value):
+        set_source_metadata_value(self.source_metadata, SOURCE_METADATA_FIELDS[name], value)
         self.need_source_reinit = True
 
     def normalise_rotated_positions(self, value):
@@ -413,13 +398,7 @@ class Interface:
         self.set_channels(update_dict_value(old_value, value))
 
     def set_channels(self, channels_dict):
-        channels = [{'label': label} for label in channels_dict.get('label', [])]
-        for channeli, channel in enumerate(channels):
-            if channeli < len(channels_dict.get('color', [])):
-                color = parse_channel_color(channels_dict['color'][channeli])
-                if color is not None:
-                    channel['color'] = color
-        self.extra_metadata['channels'] = channels
+        self.extra_metadata['channels'] = channels_from_table(channels_dict)
 
     def input_output_process(self):
         try:

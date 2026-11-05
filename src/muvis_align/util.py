@@ -1,6 +1,7 @@
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, ThreadPoolExecutor, wait
 from configparser import ConfigParser
 from contextlib import contextmanager, nullcontext
+import copy
 import csv
 import cv2 as cv
 import functools
@@ -156,6 +157,72 @@ def set_dict_value(dct, keys, value):
             if key not in dct:
                 dct[key] = {}
             dct = dct[key]
+
+
+# the project's input_output fields that set the sources' metadata, with where each goes in source_metadata
+SOURCE_METADATA_FIELDS = {
+    'source_position_z': ['position', 'z'], 'source_position_y': ['position', 'y'],
+    'source_position_x': ['position', 'x'], 'source_scale_z': ['scale', 'z'], 'source_scale_y': ['scale', 'y'],
+    'source_scale_x': ['scale', 'x'], 'source_rotation': ['rotation'],
+}
+
+
+def set_source_metadata_value(source_metadata, keys, value):
+    # an emptied field drops its override, so the source's own value applies, as for 'source'
+    if is_valid_value(value):
+        set_dict_value(source_metadata, keys, value)
+    else:
+        parent = source_metadata
+        for key in keys[:-1]:
+            parent = parent.get(key, {})
+        parent.pop(keys[-1], None)
+
+
+def source_metadata_from_params(input_output):
+    """The source_metadata the project's input_output fields give; its own `source_metadata` holds what no field
+    does: a metadata file, per-file values, or flags (e.g. 'global center')."""
+    extra = input_output.get('source_metadata')
+    if isinstance(extra, str) and os.path.splitext(extra)[1]:
+        return extra
+    if isinstance(extra, dict):
+        source_metadata = copy.deepcopy(extra)
+    else:
+        source_metadata = {flag: True for flag in str(extra or '').split()}
+    for name, keys in SOURCE_METADATA_FIELDS.items():
+        if name in input_output:
+            set_source_metadata_value(source_metadata, keys, input_output[name])
+    if input_output.get('normalise_rotated_positions'):
+        source_metadata['norm'] = True
+    return source_metadata
+
+
+def parse_channel_color(color):
+    if isinstance(color, str):
+        try:
+            return tuple(eval(color))
+        except Exception:
+            return None
+    return color
+
+
+def channels_from_table(table):
+    """The channels ({'label', 'color'}) of a channels table: a dict of a list per column."""
+    channels = [{'label': label} for label in table.get('label', [])]
+    for channel, color in zip(channels, table.get('color', [])):
+        color = parse_channel_color(color)
+        if color is not None:
+            channel['color'] = color
+    return channels
+
+
+def extra_metadata_from_params(input_output):
+    """The extra_metadata of the project's input_output: its own `extra_metadata` (a dict or a metadata file),
+    with the channels of its channels table."""
+    extra = input_output.get('extra_metadata') or {}
+    channels = channels_from_table(input_output.get('channels_table') or {})
+    if isinstance(extra, dict) and channels:
+        extra = dict(extra, channels=channels)
+    return extra
 
 
 def filter_dict(dict0: dict) -> dict:

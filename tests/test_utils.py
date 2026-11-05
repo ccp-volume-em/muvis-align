@@ -677,3 +677,30 @@ def test_shape_lines_contrast_with_the_image_under_them(levels, colors, expected
     from muvis_align.util import background_luminance, contrasting_color
     assert contrasting_color(background_luminance(levels, colors)) == expected
 
+
+
+@pytest.mark.parametrize('input_output, expected', [
+    ({'source_position_x': 'source invert', 'source_position_y': '', 'source_scale_x': '0.5',
+      'normalise_rotated_positions': True},
+     {'position': {'x': 'source invert'}, 'scale': {'x': 0.5}, 'norm': True}),
+    # what no field holds: flags, or values to keep under the fields' own
+    ({'source_metadata': 'global center', 'source_rotation': 'source'},
+     {'global': True, 'center': True, 'rotation': 'source'}),
+    ({'source_metadata': {'position': {'x': [0, 10]}}, 'source_position_y': '5'},
+     {'position': {'x': [0, 10], 'y': 5.0}}),
+    ({'source_metadata': 'positions.csv', 'source_position_x': 'source'}, 'positions.csv'),
+])
+def test_source_metadata_from_params(input_output, expected):
+    from muvis_align.util import source_metadata_from_params
+
+    assert source_metadata_from_params(input_output) == expected
+
+
+def test_extra_metadata_from_params_takes_the_channels_table():
+    from muvis_align.util import extra_metadata_from_params
+
+    input_output = {'extra_metadata': {'scale': {'z': 0.1}},
+                    'channels_table': {'label': ['a', 'b'], 'color': ['(1, 0, 0)', 'bad']}}
+    assert extra_metadata_from_params(input_output) == {
+        'scale': {'z': 0.1}, 'channels': [{'label': 'a', 'color': (1, 0, 0)}, {'label': 'b'}]}
+    assert extra_metadata_from_params({'extra_metadata': 'channels.json'}) == 'channels.json'
