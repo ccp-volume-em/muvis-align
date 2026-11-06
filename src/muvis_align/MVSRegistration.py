@@ -40,7 +40,8 @@ from muvis_align.image.ome_tiff_helper import save_tiff
 from muvis_align.image.source_helper import create_image_source, get_missing_metadata_summary
 from muvis_align.image.util import *
 from muvis_align.fusion_blocks import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
-from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar, remap_pair_metrics
+from muvis_align.metrics import (calc_pair_metrics, calc_global_metrics, create_metric_methods, quality_to_scalar,
+                                 remap_pair_metrics)
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
 from muvis_align.split_registration import (SPLIT, channel_groups, group_label, register_groups, split_groups,
                                             within_group_pairs)
@@ -969,11 +970,20 @@ class MVSRegistration:
                 rows = import_csv(metrics_filename) if os.path.exists(metrics_filename) else []
                 indexed_metrics = {}
                 for row in rows:
-                    index1, index2 = file_index(row['filename1']), file_index(row['filename2'])
-                    if index1 is not None and index2 is not None:
-                        # an empty cell: a metric this pair has no value for
-                        indexed_metrics[index1, index2] = {metric: float(value) for metric, value in row.items()
-                                                           if metric not in pair_table_columns and value != ''}
+                    # an empty cell: a metric this pair has no value for
+                    values = {metric: float(value) for metric, value in row.items()
+                              if metric not in pair_table_columns and value not in ('', None)}
+                    # a split group pair's row has no filenames, and an empty name would match any file
+                    if not row.get('filename1'):
+                        labels = (row['id1'], row['id2'])
+                        if labels in self.group_pairs:
+                            # its quality is the pair mappings file's
+                            self.group_pairs[labels]['metrics'] = {metric: value for metric, value in values.items()
+                                                                   if metric != default_quality_key}
+                    else:
+                        index1, index2 = file_index(row['filename1']), file_index(row['filename2'])
+                        if index1 is not None and index2 is not None:
+                            indexed_metrics[index1, index2] = values
                 # each metric's mean under the registered key, as a global registration's own summary
                 metric_keys = list(dict.fromkeys(metric for value in indexed_metrics.values() for metric in value))
                 summary = {metric: float(np.mean([value[metric] for value in indexed_metrics.values()
@@ -1657,7 +1667,8 @@ class MVSRegistration:
             transforms, group_graph = register_groups(
                 pair_msims, transforms, self.split_groups(list(register_indices)), self.source_transform_key,
                 pairwise_reg_func, pairwise_reg_func_kwargs, resolution_method=resolution_method,
-                resolution_kwargs={'transform': transform_type}, binning=binning)
+                resolution_kwargs={'transform': transform_type}, binning=binning,
+                metric_funcs=create_metric_methods(params['metrics'], pair_msims[0]) if params.get('metrics') else None)
         labels = self.split_group_labels(list(register_indices))
         self.group_pairs = {}
         for group1, group2 in group_graph.edges:
@@ -1666,6 +1677,8 @@ class MVSRegistration:
                      default_quality_key: float(quality_to_scalar(data[default_quality_key]))}
             if 'bbox' in data:
                 entry['bbox'] = np.array(data['bbox'].sel(t=0)).tolist()
+            if data.get('metrics'):
+                entry['metrics'] = data['metrics']
             self.group_pairs[(labels[group1], labels[group2])] = entry
         return transforms
 
@@ -2130,7 +2143,8 @@ class MVSRegistration:
         export_json(pair_mappings_filename, output_mappings)
 
     def group_pair_metrics(self):
-        return {labels: {self.reg_transform_key: {default_quality_key: entry[default_quality_key]}}
+        return {labels: {self.reg_transform_key: entry.get('metrics', {})
+                         | {default_quality_key: entry[default_quality_key]}}
                 for labels, entry in self.group_pairs.items()}
 
     def save_group_pair_mappings(self):
@@ -2141,7 +2155,9 @@ class MVSRegistration:
         output_mappings = {key: value for key, value in output_mappings.items()
                            if value.get('kind') != split_group_pair_kind}
         for labels, entry in self.group_pairs.items():
-            output_mappings[json.dumps(list(labels))] = {'kind': split_group_pair_kind} | entry
+            # its image metrics go in the metrics file, as every pair's do
+            output_mappings[json.dumps(list(labels))] = {'kind': split_group_pair_kind} | {
+                key: value for key, value in entry.items() if key != 'metrics'}
         export_json(pair_mappings_filename, output_mappings)
 
     def save_mappings(self, mappings):
@@ -2171,13 +2187,19 @@ class MVSRegistration:
         export_csv(mappings_filename, data, header=mappings_header)
 
     def save_metrics(self, metrics):
-        """The registered pairs' metrics, also read back on resuming."""
+        """The registered pairs' metrics, then split pairing's group pairs' (without filenames), also read back on
+        resuming."""
         pair_metrics = {keys: {metric: float(value) for metric, value in metric_dict[self.reg_transform_key].items()}
                         for keys, metric_dict in metrics['pairs'].items() if metric_dict[self.reg_transform_key]}
-        metric_names = list(dict.fromkeys(metric for values in pair_metrics.values() for metric in values))
+        group_metrics = {labels: metric_dict[self.reg_transform_key]
+                         for labels, metric_dict in metrics.get('group_pairs', {}).items()}
+        metric_names = list(dict.fromkeys(metric for values in list(pair_metrics.values()) + list(group_metrics.values())
+                                          for metric in values))
         rows = [[self.file_labels[keys[0]], self.file_labels[keys[1]], self.filenames[keys[0]], self.filenames[keys[1]]]
                 + [values.get(metric) for metric in metric_names]
                 for keys, values in sorted(pair_metrics.items())]
+        rows += [list(labels) + ['', ''] + [values.get(metric) for metric in metric_names]
+                 for labels, values in group_metrics.items()]
         export_csv(self.output + metrics_name, rows, header=pair_table_columns + metric_names)
 
     def log_residuals(self, residuals):

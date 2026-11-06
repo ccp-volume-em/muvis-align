@@ -95,6 +95,27 @@ def test_a_fused_plane_is_smoothed_with_its_background_filled_by_its_mean():
     assert np.all(smoothed > 0)
 
 
+def test_a_group_is_measured_binned_and_cropped_to_its_tiles_with_nan_between_them():
+    from muvis_align.split_registration import metrics_group_msim
+
+    data = np.zeros((12, 16), dtype=np.uint16)
+    data[4:8, 2:6] = 10
+    data[4:6, 10:14] = 30
+    grid = {'origin': {'y': 100.0, 'x': 200.0}, 'spacing': {'y': 0.5, 'x': 0.5}, 'shape': {'y': 12, 'x': 16}}
+
+    sim = msi_utils.get_sim_from_msim(metrics_group_msim(data, grid, binning=2))
+
+    expected = np.full((2, 6), np.nan)
+    expected[:, :2] = 10
+    expected[0, 4:] = 30
+    np.testing.assert_array_equal(np.asarray(sim.data).squeeze(), expected)
+    # the first binned pixel's centre: grid origin + (2 binned pixels + half a bin less half a pixel) * spacing
+    assert float(sim.coords['y'][0]) == 100.0 + (4 + 0.5) * 0.5
+    assert float(sim.coords['x'][0]) == 200.0 + (2 + 0.5) * 0.5
+    assert float(sim.coords['x'][1] - sim.coords['x'][0]) == 1.0
+    assert metrics_group_msim(np.zeros((4, 4)), grid, binning=2) is None
+
+
 def test_group_pairs_are_registered_binned_by_multiview_stitcher(monkeypatch):
     import muvis_align.split_registration as split_registration
     seen = {}
@@ -124,10 +145,11 @@ def test_a_group_is_labelled_by_its_sources_common_prefix_up_to_a_separator():
 
 def test_split_pairing_registers_within_planes_and_saves_group_pairs_apart_from_tile_pairs(tmp_path):
     import json
+    from muvis_align.util import import_csv
 
     reg = prepared_registration(ALL_TILES, tmp_path)
-    params = {'method': 'phase_correlation', 'pairing': 'split', 'transform_type': 'translation', 'metrics': [],
-              'n_parallel_pairwise_regs': 1}
+    params = {'method': 'phase_correlation', 'pairing': 'split', 'transform_type': 'translation',
+              'metrics': ['ncc', 'ssim'], 'n_parallel_pairwise_regs': 1}
     results = reg.register(reg.register_msims, params=params)
 
     groups = reg.split_groups()
@@ -139,10 +161,15 @@ def test_split_pairing_registers_within_planes_and_saves_group_pairs_apart_from_
     assert list(group_entries) == [json.dumps(['S000', 'S001'])]
     assert {'mapping', 'quality'} <= set(group_entries[json.dumps(['S000', 'S001'])])
     assert len(saved) - len(group_entries) == reg.pairs_graph.number_of_edges()
+    # the group pair's image metrics in the metrics file with the tile pairs', as its row without filenames
+    group_rows = [row for row in import_csv(reg.output + 'metrics.csv') if not row['filename1']]
+    assert [(row['id1'], row['id2']) for row in group_rows] == [('S000', 'S001')]
+    assert all(group_rows[0][metric] != '' for metric in ('ncc', 'ssim', 'quality'))
 
     resumed = prepared_registration(ALL_TILES, tmp_path, preprocess=False)
     resumed.init_progress('registered', 'ome.zarr')
     # the labels match files under S000/ and S001/ - they must not come back as tile pairs
     assert resumed.pairs_graph.number_of_edges() == reg.pairs_graph.number_of_edges()
     assert list(resumed.group_pairs) == [('S000', 'S001')]
-    assert ('S000', 'S001') in resumed.metrics['group_pairs']
+    assert (set(resumed.metrics['group_pairs'][('S000', 'S001')][resumed.reg_transform_key])
+            == {'ncc', 'ssim', 'quality'})

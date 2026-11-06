@@ -108,6 +108,7 @@ ok = Pipeline(params).run()     # True if no operation raised; runs in the calli
 
 The output folder holds, next to the image:
 - `metrics.csv` - per registered pair: quality, ncc, ssim, onmi over the overlap. Low values flag bad pairs.
+  With split pairing the group pairs (planes/channels) follow, without filenames.
 - `residuals.csv` - each pair's disagreement with the global solution; a large one is a pair to distrust.
 - `positions_*.pdf` - the tile layout, to spot a source that moved far from its stage position.
 - `mappings.json`/`.csv` - the final transform per source; `parameters.yaml` + `ro-crate-metadata.json` -

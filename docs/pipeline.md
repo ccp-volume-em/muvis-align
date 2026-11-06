@@ -410,9 +410,12 @@ The script's 64G is enough for a 34,000-tile project.
 After successful registration:
 - `registered.ome.zarr` - Registered & fused output image (named after the operation)
 - `mappings.json` / `mappings.csv` - Final registration mappings
-- `pair_mappings.json` - Per-pair registration mappings
+- `pair_mappings.json` - Per-pair registration mappings; with split pairing also each group pair's, marked
+  `"kind": "split_group"`
 - `prereg_mappings.csv` - Pre-registration mappings
-- `metrics.csv` - Each registered pair's metrics (quality, ncc, ssim, onmi) over its registered overlap
+- `metrics.csv` - Each registered pair's metrics (quality, ncc, ssim, onmi) over its registered overlap; with
+  split pairing, then each group pair's (e.g. two channels'), on the fused groups binned by `split_binning`, with no
+  filenames
 - `residuals.csv` - Each pair's residual from the global solution (RMS distance, physical units)
 - `positions_original.pdf`, `positions_registered.pdf` - Position visualizations
 - `ro-crate-metadata.json`, `parameters.yaml` - The run's RO-Crate, and every setting it used
