@@ -81,14 +81,7 @@ quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB 
 
 ## In progress
 
-**Input path list widget, then one channel per input item.**
-1. [x] `ui/PathList.py`: editable list for multi-path inputs (`inputs` with file_count multiple): Add files /
-   Add folder (dialogs start at the selected item's folder, else the project folder), Remove, Up/Down.
-   Value is a list; stored relative to the project, a single item as a string, several as a yaml list.
-   `init` expands a plain folder item to its files (a `.zarr` folder stays one source).
-2. [ ] Plan (agree before editing): registration_dimension 'c' with several input items = one channel per item
-   (track item index per source through dir_regex; split_groups, fusion per group then stacked, channels
-   table one row per item). One item: fall back to grouping by metadata channel label.
+Nothing.
 
 ## TODO
 

@@ -870,13 +870,14 @@ class Interface:
         channels = self.extra_metadata.get('channels')
         # blank-labelled channels count as unconfigured, so they are derived again
         if not channels or not any(channel.get('label') for channel in channels):
-            source0 = self.reg.sources[0]
-            channels = source0.get_channels()
-
             dimension = self.params['input_output']['registration_dimension']
-            while dimension.lower() == 'c' and len(channels) < len(self.reg.sources):
-                channel = {'label': f'channel {len(channels)}'}
-                channels.append(channel)
+            if dimension.lower() == 'c':
+                # one per channel group, its first source's channel (e.g. its color) under the group's label
+                groups = self.reg.channel_groups()
+                channels = [{**(self.reg.sources[groups.index(group)].get_channels() or [{}])[0], 'label': label}
+                            for group, label in enumerate(self.reg.channel_labels())]
+            else:
+                channels = self.reg.sources[0].get_channels()
 
             self.extra_metadata['channels'] = channels
 
@@ -1061,16 +1062,15 @@ class Interface:
                 readers = [FlatfieldLevels(SourceLevels(source), functools.partial(reg.flatfield_model, index,
                                                                                    pre_processing))
                            for index, source in enumerate(reg.sources)]
-        channel_labels = None
+        channel_labels, channel_groups = None, None
         if reg.is_channel_overlay(self.params['input_output']['registration_dimension'], self.extra_metadata):
-            channels = self.extra_metadata.get('channels', [])
-            channel_labels = [channels[index].get('label') if index < len(channels) else f'channel {index}'
-                              for index in range(len(reg.sources))]
+            channel_groups = reg.channel_groups()
+            channel_labels = reg.channel_labels(self.extra_metadata.get('channels'))
         return lazy_section_overview(reg.sources, reg.positions, transforms, output_order, transform_key,
                                      z_scale=getattr(reg, '_msim_z_scale', None),
                                      preview_scale=self.params['input_output'].get('preview_scale'),
                                      readers=readers, label=f'{label} ({len(reg.sources)} images)',
-                                     channel_labels=channel_labels)
+                                     channel_labels=channel_labels, channel_groups=channel_groups)
 
     def _shapes_signature(self, transform_key, force_2d):
         # the source geometry a shape set is drawn from; pair registration moves no source
@@ -1326,7 +1326,8 @@ class Interface:
                                           transform_key=transform_key,
                                           fusion_method=fusion_method,
                                           dimension=self.params['input_output']['registration_dimension'],
-                                          extra_metadata=self.extra_metadata)
+                                          extra_metadata=self.extra_metadata,
+                                          source_indices=self.reg.register_indices if show_preprocessed else None)
         # from a sample of the sources, as the overview: the fused coarsest level is too costly to compute for many
         ranges, levels = sample_contrast_limits([MsimLevels(msim) for msim in msims])
         dtype_limits = get_dtype_contrast_limits(get_msim_image0(fused_msim).dtype)

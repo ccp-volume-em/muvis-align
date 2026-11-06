@@ -24,13 +24,27 @@ STAGE1_KEY = 'split_stage1'
 GROUP_KEY = 'split_group'
 
 
-def split_groups(positions, sources, dimension=None):
-    """Each source's group index: its channel label for registration_dimension 'c', else its z-plane."""
+def split_groups(positions, sources, dimension=None, input_groups=None):
+    """Each source's group index: its channel (see channel_groups) for registration_dimension 'c', else its z-plane."""
     if dimension == 'c':
-        keys = [(source.get_channels() or [{}])[0].get('label', '') for source in sources]
-    else:
-        keys = [round(float(position.get('z', 0.0)), 9) for position in positions]
+        return channel_groups(sources, input_groups)
+    keys = [round(float(position.get('z', 0.0)), 9) for position in positions]
     order = sorted(set(keys))
+    return [order.index(key) for key in keys]
+
+
+def channel_groups(sources, input_groups=None):
+    """Each source's channel index: the input path item it came from when there are several, else its metadata
+    channel label in order of appearance, else (all labels alike) its own index."""
+    if input_groups is not None and len(set(input_groups)) > 1:
+        # in the items' order, not their files'
+        keys = list(input_groups)
+        order = sorted(set(keys))
+    else:
+        keys = [(source.get_channels() or [{}])[0].get('label') or '' for source in sources]
+        if len(set(keys)) <= 1:
+            keys = list(range(len(sources)))
+        order = list(dict.fromkeys(keys))
     return [order.index(key) for key in keys]
 
 

@@ -2595,3 +2595,19 @@ def test_an_image_layer_reads_in_micrometres(bare_interface, make_napari_viewer,
 
     assert {str(unit) for unit in layer.units} == {"micrometer"}
     np.testing.assert_allclose(layer.scale[-2:], [0.5, 0.5])
+
+
+def test_a_channel_registration_derives_one_output_channel_per_channel_group(bare_interface):
+    from types import SimpleNamespace
+
+    colors = [(0, 0, 1), (0, 1, 0), (0, 0, 1)]
+    bare_interface.reg.sources = [SimpleNamespace(get_channels=lambda color=color: [{'label': '', 'color': color}])
+                                  for color in colors]
+    bare_interface.reg.channel_groups.return_value = [0, 1, 0]
+    bare_interface.reg.channel_labels.return_value = ['tiles', 'overviews']
+    bare_interface.params = {'input_output': {'registration_dimension': 'c'}}
+
+    assert bare_interface.update_output_channels()
+
+    assert bare_interface.extra_metadata['channels'] == [{'label': 'tiles', 'color': (0, 0, 1)},
+                                                         {'label': 'overviews', 'color': (0, 1, 0)}]

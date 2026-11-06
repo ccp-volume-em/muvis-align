@@ -64,6 +64,18 @@ def test_channel_labels_make_each_source_a_channel_of_its_own_on_the_shared_grid
     assert np.all(data[3, 1, :64, :64] == 40) and np.all(data[3, 0] == 0)
 
 
+def test_channel_groups_put_several_sources_in_one_channel(tmp_path):
+    groups = [0, 0, 1, 1]
+    sim = msi_utils.get_sim_from_msim(overview(registration(tmp_path), channel_labels=['a', 'b'],
+                                               channel_groups=groups))
+    data = np.asarray(sim.data).squeeze()
+
+    assert list(sim.coords['c'].values) == ['a', 'b']
+    for group, ((z, y, x), value) in zip(groups, TILES.items()):
+        tile_area = (z, slice(y * 64, (y + 1) * 64), slice(x * 64, (x + 1) * 64))
+        assert np.all(data[group][tile_area] == value) and np.all(data[1 - group][tile_area] == 0)
+
+
 def test_each_channel_takes_its_contrast_from_its_own_sources(tmp_path):
     reg = registration(tmp_path)
 

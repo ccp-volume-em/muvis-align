@@ -226,17 +226,20 @@ def _plane_spacing(preview_scale, level0_spacing):
 
 def lazy_section_overview(sources, translations, transforms, output_order, transform_key, z_scale=None,
                           preview_scale=default_interactive_preview_scale, max_plane_bytes=default_plane_max_bytes,
-                          readers=None, label='Overview', channel_labels=None, workers=default_plane_readers):
+                          readers=None, label='Overview', channel_labels=None, channel_groups=None,
+                          workers=default_plane_readers):
     """The overview msim (c, z, y, x) of the sources, each z-plane computed on demand at `preview_scale`: 2D sources
     a plane per section, volumes a plane per z at the finest z spacing read. None for anything it cannot place
     faithfully: a rotated transform, 2D and 3D sources together, or sources with differing channels.
     `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place.
-    `channel_labels` (one a single-channel source) make each source a channel of its own, on the same grid, as fuse()
-    does. attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one;
+    `channel_labels` (one a channel) make the sources channels on the same grid, as fuse() does: each source its own,
+    or the channel index `channel_groups` gives it. attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one;
     attrs['display_levels'] where its typical value shows in it (get_display_level).
     `workers`: tile reads at once (one: none in other threads, and no planes built ahead)."""
     if readers is None:
         readers = [SourceLevels(source) for source in sources]
+    if channel_labels and channel_groups is None:
+        channel_groups = list(range(len(sources)))
     if not sources or all(reader is None for reader in readers):
         return None
     is_volume = sources[0].get_size().get('z', 1) > 1
@@ -296,7 +299,7 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
         edge = {dim: float(low[axis] - lower[axis] - props['spacing'][dim] / 2) for axis, dim in enumerate(dims)}
         entry = {'reader': reader, 'level': level, 'edge': (edge['y'], edge['x']),
                  'spacing': tuple(float(level_spacing.get(dim, props['spacing'][dim])) for dim in 'yx')}
-        entries = channel_entries[source_index if channel_labels else 0]
+        entries = channel_entries[channel_groups[source_index] if channel_labels else 0]
         if is_volume:
             # built once here for its z size, then shared by the volume's planes
             entry['image'] = _level_image(reader, level)
@@ -330,7 +333,8 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     msim = combine_msims_as_channels(msims, channel_labels) if channel_labels else msims[0]
     msim.attrs['section_planes'] = section_planes
     dtype_limits = get_dtype_contrast_limits(dtype)
-    channel_readers = [[reader] for reader in readers] if channel_labels else [readers]
+    channel_readers = ([[reader for reader, group in zip(readers, channel_groups) if group == channel]
+                        for channel in range(len(channel_labels))] if channel_labels else [readers])
     ranges, levels = [], []
     for group in channel_readers:
         group_ranges, group_levels = sample_contrast_limits(group, workers=workers)

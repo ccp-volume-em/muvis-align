@@ -126,6 +126,7 @@ def test_init_expands_a_folder_item_to_its_files_but_keeps_a_zarr_folder_whole(t
                                       (tmp_path / "tiles" / "tile_01.tif").as_posix(),
                                       (tmp_path / "tiles" / "tile_02.tif").as_posix()]
     assert registration.output == str(tmp_path / "tiles" / "results") + "/"
+    assert registration.input_groups == [1, 0, 0]
 
 
 def test_init_returns_false_when_pattern_has_no_files(tmp_path):
@@ -1038,6 +1039,27 @@ def test_compose_writes_its_scene_as_ome_zarr_06_whatever_version_is_set(tmp_pat
     ome = json.loads((tmp_path / 'composed.ome.zarr' / 'zarr.json').read_text())['attributes']['ome']
     assert saved
     assert (ome['version'], 'scene' in ome) == ('0.6', True)
+
+
+def test_a_channel_overlay_fuses_each_input_item_as_one_channel(tmp_path):
+    """Two input items of two tiles each: two channels, each the same as fusing that item's tiles alone."""
+    source_metadata = {'scale': {'y': '0.032', 'x': '0.032'}}
+    reg = MVSRegistration()
+    reg.init(operation='register', input_path=['data/S000/000_*_0.tiff', 'data/S000/001_*_0.tiff'],
+             output_path=tmp_path.as_posix() + '/', source_metadata=source_metadata)
+    reg.init_data(source_metadata=source_metadata)
+
+    fused_msim, _ = reg.fuse(reg.msims, transform_key=reg.source_transform_key, dimension='c',
+                             extra_metadata={'channels': [{'label': 'first'}]})
+    first_only, _ = reg.fuse(reg.msims[:2], transform_key=reg.source_transform_key)
+
+    fused = fused_msim['scale0'].ds['image']
+    assert reg.input_groups == [0, 0, 1, 1]
+    # the set label, else the item's files' common label prefix
+    assert list(fused.coords['c'].values) == ['first', reg.channel_labels()[1]]
+    expected = first_only['scale0'].ds['image'].isel(c=0, drop=True)
+    actual = fused.sel(c='first', drop=True).sel(y=expected.coords['y'], x=expected.coords['x'])
+    assert np.array_equal(actual.values, expected.values)
 
 
 def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):

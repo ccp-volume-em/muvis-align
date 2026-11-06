@@ -50,6 +50,10 @@ operations:                  # run in order; each has the napari project file's 
     format: ome.zarr                    # ome.zarr | ome.tiff | "ome.zarr, ome.tiff"
 ```
 
+With `input_output: registration_dimension: c`, the images are channels on one grid: each `input_path` list item
+is one channel (its tiles fused together); a single item is split by the files' metadata channel label, or one
+channel per file if they share it.
+
 Settings sit in the four sections `input_output`, `pre_processing`, `registration`, `fusion`. Keys at the
 top level of an operation (`operation`, `input`, `output`) are an old layout and raise an error.
 

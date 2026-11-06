@@ -2,6 +2,7 @@ import glob
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import xarray as xr
 from multiview_stitcher import msi_utils
 
@@ -16,8 +17,21 @@ def test_groups_are_z_planes_or_for_channel_registration_channels():
     sources = [SimpleNamespace(get_channels=lambda label=label: [{'label': label}]) for label in ('b', 'a', 'a')]
 
     assert split_groups(positions, sources) == [1, 0, 1]
-    assert split_groups(positions, sources, 'c') == [1, 0, 0]
+    assert split_groups(positions, sources, 'c') == [0, 1, 1]
     assert within_group_pairs([(0, 1), (0, 2), (1, 2)], [1, 0, 1]) == [(0, 2)]
+
+
+@pytest.mark.parametrize(('labels', 'input_groups', 'expected'), [
+    (('b', 'a', 'a'), [1, 1, 0], [1, 1, 0]),    # several input items: one channel each, in the items' order
+    (('b', 'a', 'a'), [0, 0, 0], [0, 1, 1]),    # one item: by metadata label, in order of appearance
+    (('a', 'a', 'a'), None, [0, 1, 2]),         # labels alike: each source its own
+    (('', '', ''), [0, 0, 0], [0, 1, 2]),
+])
+def test_channel_groups_follow_input_items_else_metadata_labels(labels, input_groups, expected):
+    from muvis_align.split_registration import channel_groups
+
+    sources = [SimpleNamespace(get_channels=lambda label=label: [{'label': label}]) for label in labels]
+    assert channel_groups(sources, input_groups) == expected
 
 
 def textured_msim(image, origin_x):

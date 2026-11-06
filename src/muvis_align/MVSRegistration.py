@@ -42,7 +42,8 @@ from muvis_align.image.util import *
 from muvis_align.fusion_blocks import export_levels, fuse_levels_to_ome_zarr, level_blocks, written_voxels
 from muvis_align.metrics import calc_pair_metrics, calc_global_metrics, quality_to_scalar, remap_pair_metrics
 from muvis_align.robust_resolution import ROBUST_LINEAR, default_robust_rounds, find_reference_view
-from muvis_align.split_registration import SPLIT, group_label, register_groups, split_groups, within_group_pairs
+from muvis_align.split_registration import (SPLIT, channel_groups, group_label, register_groups, split_groups,
+                                            within_group_pairs)
 from muvis_align.Timer import Timer
 from muvis_align.util import *
 
@@ -415,12 +416,14 @@ class MVSRegistration:
         # a folder stands for its files, but a zarr folder is one image
         patterns = [os.path.join(path, '*') if os.path.isdir(path) and '.zar' not in path.lower() else path
                     for path in ensure_list(input_path)]
-        self.filenames = dir_regex(patterns)
         self.input_dir = pattern_base_dir(patterns[0])
+        self.filenames = [Path(path).as_posix() for path in dir_regex(patterns)]
         if not self.filenames:
             return False
-
-        self.filenames = [Path(path).as_posix() for path in self.filenames]
+        item_files = [{Path(path).as_posix() for path in dir_regex(pattern)} for pattern in patterns]
+        # the input path item each file came from: a channel each, in a channel registration
+        self.input_groups = [next(item for item, files in enumerate(item_files) if filename in files)
+                             for filename in self.filenames]
 
         if input_labels:
             self.file_labels = input_labels
@@ -1586,12 +1589,36 @@ class MVSRegistration:
         """Group index per source (of `indices`, renumbered from 0): z-planes, or channels for dimension 'c'."""
         dimension = (getattr(self, 'registration_dimension', None)
                      or getattr(self, 'register_params', {}).get('registration_dimension'))
-        groups = split_groups(self.positions, self.sources, dimension)
+        groups = split_groups(self.positions, self.sources, dimension, getattr(self, 'input_groups', None))
         if indices is not None:
             groups = [groups[index] for index in indices]
             order = sorted(set(groups))
             groups = [order.index(group) for group in groups]
         return groups
+
+    def channel_groups(self):
+        """Each source's output channel in a channel overlay: see split_registration.channel_groups."""
+        return channel_groups(self.sources, getattr(self, 'input_groups', None))
+
+    def channel_labels(self, channels=None):
+        """A label per channel of channel_groups(): as set in `channels` (extra_metadata's), else its sources' shared
+        metadata channel label if no other channel has it, else their common label prefix, else 'channel <index>'."""
+        groups = self.channel_groups()
+        members = [[index for index, member_group in enumerate(groups) if member_group == group]
+                   for group in range(max(groups, default=-1) + 1)]
+        metadata_labels = []
+        for group_members in members:
+            group_labels = {(self.sources[index].get_channels() or [{}])[0].get('label') or ''
+                            for index in group_members}
+            metadata_labels.append(group_labels.pop() if len(group_labels) == 1 else '')
+        labels = []
+        for group, group_members in enumerate(members):
+            label = metadata_labels[group] if metadata_labels.count(metadata_labels[group]) == 1 else ''
+            if channels and group < len(channels):
+                label = channels[group].get('label') or label
+            labels.append(label or group_label([self.file_labels[index] for index in group_members])
+                          or f'channel {group}')
+        return labels
 
     def split_group_labels(self, indices):
         """A label per group of split_groups(indices): its sources' common label prefix (e.g. 'S000'), else its
@@ -1937,9 +1964,10 @@ class MVSRegistration:
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
              dimension=None, output_filename=None,
              block_size=None, ome_version=default_ome_zarr_version, extra_metadata=None,
-             output_chunksize=None, workers=None, level_bytes=None):
+             output_chunksize=None, workers=None, level_bytes=None, source_indices=None):
         """Fuse the sources' msims into one multiscale output msim; returns (fused, whether it was written).
-        Sims are wrapped first with util.wrap_sims_as_msims.
+        Sims are wrapped first with util.wrap_sims_as_msims. `source_indices`: each msim's source, when not all are
+        given in order, for its channel in a channel overlay.
 
         output_chunksize, a chunk size per spatial dim, is used as-is; otherwise it is sized against memory.
         Written to a file, every level is fused from the sources (fusion_blocks.export_levels): with output_spacing
@@ -1992,19 +2020,26 @@ class MVSRegistration:
                                                    num_z_positions=num_z_positions)
         saving_zarr = False
         if is_channel_overlay:
-            # one channel per source
-            def build_channel_result(msim):
-                return fusion.fuse(
-                    [msim],
+            # each channel's sources fused together, onto the same grid
+            source_groups = self.channel_groups()
+            groups = [source_groups[index] for index in (source_indices or range(len(msims)))]
+            labels = self.channel_labels(channels)
+            labels = [labels[group] for group in sorted(set(groups))]
+            fuse_func = self.create_fusion_method(fusion_method, sim0)
+            channel_results = []
+            for group in sorted(set(groups)):
+                group_msims = unify_msim_channels([msim for msim, msim_group in zip(msims, groups)
+                                                   if msim_group == group])
+                channel_results.append(fusion.fuse(
+                    group_msims,
+                    # compose (no fusion function) still fuses, as a channel needs one image
+                    fusion_func=fuse_func or fusion.weighted_average_fusion,
                     transform_key=transform_key,
                     output_stack_properties=output_stack_properties,
-                    # one source per call, so not sized against all sources
                     output_chunksize=output_chunksize or get_chunk_sizes(
-                        sim0.dtype, list(output_stack_properties['shape']))
-                )
-
-            channel_results = [build_channel_result(msim) for msim in msims]
-            fused_image = combine_msims_as_channels(channel_results, [channel['label'] for channel in channels])
+                        sim0.dtype, list(output_stack_properties['shape']), num_sources=len(group_msims),
+                        num_z_positions=num_z_positions)))
+            fused_image = combine_msims_as_channels(channel_results, labels)
         else:
             if fusion_method:
                 logging.info(f'Fusion method: {fusion_method}')
