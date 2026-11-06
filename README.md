@@ -73,6 +73,11 @@ not the pip package: see the [documentation](https://ccp-volume-em.github.io/muv
 Contributions are very welcome. Tests can be run with [tox], please ensure
 the coverage at least stays the same before you submit a pull request.
 
+## Use of AI
+
+Though completely human-designed and created, generative AI coding assistants were used in developing this software, including tests and documentation.
+All changes are directed and approved by a maintainer, and checked by automated tests where applicable.
+
 ## License
 
 Distributed under the terms of the [MIT] license,
@@ -81,6 +86,8 @@ Distributed under the terms of the [MIT] license,
 ## Issues
 
 If you encounter any problems, please [file an issue] along with a detailed description.
+
+For support and discussion, please use the [Image.sc](https://forum.image.sc) forum and post to the forum with the tag 'muvis-align'.
 
 ----------------------------------
 
