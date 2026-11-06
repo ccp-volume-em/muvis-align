@@ -36,7 +36,7 @@ def save_image(filename, data, output_format=zarr_extension,
         if 'z' in data0.dims and len(block_size) < 3:
             block_size = list(block_size) + [1]
         block_size = tuple(reversed(block_size))
-        chunking = retuple(block_size, data0.shape)
+        chunking = dict(zip(data0.dims, retuple(block_size, data0.shape)))
         if isinstance(data, list):
             data = [data1.chunk(chunks=chunking) for data1 in data]
         else:
