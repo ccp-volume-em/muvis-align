@@ -22,9 +22,10 @@ avoid the common mistakes; look settings up there rather than guessing names.
 | Inspecting intermediate results (pairs, mappings) step by step | `MVSRegistration` - see [python-api.md](references/python-api.md) |
 | A person wants to look, preview pairs, fix a pair by hand | The napari plugin (*Plugins > muvis-align*) - same settings as a project file |
 
-Install: `pip install muvis-align`, or the latest from GitHub:
-`pip install "muvis-align @ git+https://github.com/ccp-volume-em/muvis-align"`
-(`muvis-align[all]` adds napari and the elastix/ANTs/CPD methods). `run.py` is in the repository, not the
+Install: for the plugin, from the [napari hub](https://napari-hub.org/plugins/muvis-align) (in napari:
+*Plugins > Install/Uninstall Plugins...*, search `muvis-align`). For scripts: `pip install muvis-align`
+(`muvis-align[all]` adds napari and the elastix/ANTs/CPD methods), or the latest from GitHub:
+`pip install "muvis-align @ git+https://github.com/ccp-volume-em/muvis-align"`. `run.py` is in the repository, not the
 installed package: from an installed package, use the Python form below.
 
 ## Parameter file shape
