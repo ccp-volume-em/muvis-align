@@ -214,57 +214,47 @@ def merge_metric_results(results):
     return merged
 
 
-def calc_global_metrics(msims, base_transform_key, reg_transform_key, metric_methods, reg_channel=None,
-                        reg_results=None, n_parallel_pairs=None, progress_factory=None):
-    query_transform_keys = [base_transform_key, reg_transform_key]
-    if reg_results is not None:
-        # only the registered pairs: over all msims the overlap mode would measure every overlapping pair
-        workers = n_parallel_pairs or default_pair_workers
-        edges = sorted({tuple(sorted(edge)) for edge in reg_results['pairwise_registration']['graph'].edges()})
+def calc_global_metrics(msims, reg_transform_key, metric_methods, reg_results, n_parallel_pairs=None,
+                        progress_factory=None):
+    """Each registered pair's metrics over its overlap under the registered transforms, with its pair quality."""
+    query_transform_keys = [reg_transform_key]
+    # only the registered pairs: over all msims the overlap mode would measure every overlapping pair
+    workers = n_parallel_pairs or default_pair_workers
+    edges = sorted({tuple(sorted(edge)) for edge in reg_results['pairwise_registration']['graph'].edges()})
 
-        def pair_arguments(edge):
-            return [msims[node] for node in edge], edge, metric_methods, base_transform_key, query_transform_keys
+    def pair_arguments(edge):
+        # the registered key as base too: the overlap measured is where the pair lies once registered
+        return [msims[node] for node in edge], edge, metric_methods, reg_transform_key, query_transform_keys
 
-        if metric_methods:
-            metric_results = merge_metric_results(
-                map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory, desc='Global metrics',
-                                 threaded=False))
-        else:
-            metric_results = unmeasured_pair_results(edges, query_transform_keys)
+    if metric_methods:
+        metric_results = merge_metric_results(
+            map_pair_metrics(msims, edges, pair_arguments, workers, progress_factory, desc='Global metrics',
+                             threaded=False))
     else:
-        metric_funcs = create_metric_methods(metric_methods, msims[0])
-        with _pair_metrics_compute():
-            metric_results = multiview_stitcher.metrics.tile_pair_image_metrics(
-                msims,
-                base_transform_key=base_transform_key,  # defines overlap region
-                query_transform_keys=query_transform_keys,
-                metric_funcs=metric_funcs,
-                n_parallel_pairs=n_parallel_pairs
-            )
+        metric_results = unmeasured_pair_results(edges, query_transform_keys)
 
-    if reg_results is not None:
-        # the summary as the plain mean over the registered pairs
-        for candidate_key, metric_values in metric_results['summary'].items():
-            for metric_key in list(metric_values):
-                values = [value[candidate_key][metric_key] for value in metric_results['pairs'].values()
-                         if candidate_key in value and value[candidate_key].get(metric_key) is not None
-                         and not np.isnan(value[candidate_key][metric_key])]
-                metric_values[metric_key] = float(np.mean(values)) if values else None
+    # the summary as the plain mean over the registered pairs
+    for candidate_key, metric_values in metric_results['summary'].items():
+        for metric_key in list(metric_values):
+            values = [value[candidate_key][metric_key] for value in metric_results['pairs'].values()
+                     if candidate_key in value and value[candidate_key].get(metric_key) is not None
+                     and not np.isnan(value[candidate_key][metric_key])]
+            metric_values[metric_key] = float(np.mean(values)) if values else None
 
-        qualities = reg_results['pairwise_registration']['metrics']['qualities']
-        # a pair_key may be reversed, or missing from metric_results['pairs']: match by unordered identity
-        pairs_by_unordered_key = {frozenset(key): key for key in metric_results['pairs']}
+    qualities = reg_results['pairwise_registration']['metrics']['qualities']
+    # a pair_key may be reversed, or missing from metric_results['pairs']: match by unordered identity
+    pairs_by_unordered_key = {frozenset(key): key for key in metric_results['pairs']}
 
-        quality_values = []
-        for pair_key, value in qualities.items():
-            value = quality_to_scalar(value)
-            if value:
-                actual_key = pairs_by_unordered_key.get(frozenset(pair_key), pair_key)
-                metric_results['pairs'].setdefault(actual_key, {})
-                metric_results['pairs'][actual_key].setdefault(reg_transform_key, {})[default_quality_key] = value
-                quality_values.append(value)
+    quality_values = []
+    for pair_key, value in qualities.items():
+        value = quality_to_scalar(value)
+        if value:
+            actual_key = pairs_by_unordered_key.get(frozenset(pair_key), pair_key)
+            metric_results['pairs'].setdefault(actual_key, {})
+            metric_results['pairs'][actual_key].setdefault(reg_transform_key, {})[default_quality_key] = value
+            quality_values.append(value)
 
-        metric_results['summary'][reg_transform_key][default_quality_key] = float(np.nanmean(quality_values))
+    metric_results['summary'][reg_transform_key][default_quality_key] = float(np.nanmean(quality_values))
 
     return metric_results
 

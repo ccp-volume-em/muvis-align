@@ -93,8 +93,7 @@ def test_with_no_metric_asked_for_no_pair_is_imaged_but_the_results_are_the_same
 
     def both(metric_methods):
         return (calc_pair_metrics(msims, graph, metric_methods, transform_key, n_parallel_pairs=1),
-                calc_global_metrics(msims, transform_key, 'registered', metric_methods, reg_results=reg_results,
-                                    n_parallel_pairs=1))
+                calc_global_metrics(msims, 'registered', metric_methods, reg_results, n_parallel_pairs=1))
 
     with patch('muvis_align.metrics.map_pair_metrics', side_effect=AssertionError('imaged a pair')):
         skipped = both([])
@@ -119,7 +118,8 @@ def test_ssim_takes_the_crops_as_single_channel():
 
 def test_global_metrics_measure_only_the_registered_pairs_as_the_overlap_mode_does(register_msims):
     """Over all msims at once the overlap mode measures every overlapping pair; per registered pair, in
-    worker processes, the same values must come out for those pairs and no others."""
+    worker processes, the same values must come out for those pairs and no others, over their registered overlap
+    and under the registered transforms only."""
     import multiview_stitcher.metrics
     from multiview_stitcher import msi_utils
     from unittest.mock import patch
@@ -137,20 +137,21 @@ def test_global_metrics_measure_only_the_registered_pairs_as_the_overlap_mode_do
 
     with _pair_metrics_compute():
         whole = multiview_stitcher.metrics.tile_pair_image_metrics(
-            msims, base_transform_key=transform_key, query_transform_keys=[transform_key, 'registered'],
+            msims, base_transform_key='registered', query_transform_keys=['registered'],
             metric_funcs=create_metric_methods(['ncc'], msims[0]))
     with patch.object(metrics_module, 'worker_process_pool', wraps=metrics_module.worker_process_pool) as pool:
-        result = calc_global_metrics(msims, transform_key, 'registered', ['ncc'], reg_results=reg_results,
-                                     n_parallel_pairs=2)
+        result = calc_global_metrics(msims, 'registered', ['ncc'], reg_results, n_parallel_pairs=2)
 
     assert pool.called
     whole_by_pair = {frozenset(pair): value for pair, value in whole['pairs'].items()}
     assert len(whole_by_pair) > graph.number_of_edges()
     assert {frozenset(pair) for pair in result['pairs']} == {frozenset(edge) for edge in graph.edges}
+    assert list(result['summary']) == ['registered']
     for pair, value in result['pairs'].items():
-        for key in (transform_key, 'registered'):
-            # workers run BLAS at one thread: summation order can move the last digit
-            assert np.isclose(value[key]['ncc'], whole_by_pair[frozenset(pair)][key]['ncc'], rtol=1e-9, atol=0)
+        assert list(value) == ['registered']
+        # workers run BLAS at one thread: summation order can move the last digit
+        assert np.isclose(value['registered']['ncc'], whole_by_pair[frozenset(pair)]['registered']['ncc'],
+                          rtol=1e-9, atol=0)
 
 
 @pytest.mark.parametrize('scheduler', ['threads', 'synchronous'])

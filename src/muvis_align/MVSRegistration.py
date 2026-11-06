@@ -1813,11 +1813,8 @@ class MVSRegistration:
         # re-index from subset of sims
         mappings_dict = {index: mapping for index, mapping in zip(register_indices, mappings)}
 
-        reg_channel = params.get('channel', 0)
         with Timer('global registration metrics', verbose=self.logging_time):
-            metrics = calc_global_metrics(pair_msims, self.source_transform_key, self.reg_transform_key,
-                                          params.get('metrics', []), reg_channel=reg_channel,
-                                          reg_results=reg_result,
+            metrics = calc_global_metrics(pair_msims, self.reg_transform_key, params.get('metrics', []), reg_result,
                                           n_parallel_pairs=n_parallel_pairwise_regs,
                                           progress_factory=progress_factory)
             remap_pair_metrics(metrics, register_indices)
