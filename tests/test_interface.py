@@ -207,18 +207,27 @@ def bare_interface():
         # a file dialog reports an absolute path: stored relative to the project, to stay portable
         ("input_output.input_path", "{project}/data/input", "data/input"),
         ("registration.method", "{project}/not-a-path-param", "{project_posix}/not-a-path-param"),
+        # the input path list: each item relativized, one item stored as a plain string
+        ("input_output.input_path", ["{project}/tiles", "overviews/*.tif"], ["tiles", "overviews/*.tif"]),
+        ("input_output.input_path", ["{project}/tiles"], "tiles"),
     ],
-    ids=["value", "path-relativized", "other-param-as-is"],
+    ids=["value", "path-relativized", "other-param-as-is", "list", "list-of-one"],
 )
 def test_change_param_stores_the_value_and_writes(bare_interface, tmp_path, param, value, stored):
     bare_interface.params = {}
     bare_interface.write_params = MagicMock()
     bare_interface.params_path = str(tmp_path / "project.yml")
 
-    bare_interface.change_param(param, value.format(project=str(tmp_path)))
+    if isinstance(value, list):
+        value = [item.format(project=str(tmp_path)) for item in value]
+    else:
+        value = value.format(project=str(tmp_path))
+    bare_interface.change_param(param, value)
 
     section, name = param.split(".")
-    assert bare_interface.params == {section: {name: stored.format(project_posix=tmp_path.as_posix())}}
+    if isinstance(stored, str):
+        stored = stored.format(project_posix=tmp_path.as_posix())
+    assert bare_interface.params == {section: {name: stored}}
     bare_interface.write_params.assert_called_once_with()
 
 

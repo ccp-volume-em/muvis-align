@@ -111,6 +111,23 @@ def test_init_with_explicit_files_sets_labels_and_output(tmp_path):
     assert registration.output == str(tmp_path / "results") + "/"
 
 
+def test_init_expands_a_folder_item_to_its_files_but_keeps_a_zarr_folder_whole(tmp_path):
+    (tmp_path / "tiles").mkdir()
+    for name in ("tile_01.tif", "tile_02.tif"):
+        (tmp_path / "tiles" / name).touch()
+    (tmp_path / "image.ome.zarr").mkdir()
+    (tmp_path / "image.ome.zarr" / "zarr.json").touch()
+
+    registration = MVSRegistration()
+    registration.init(operation="register", input_path=[str(tmp_path / "tiles"), str(tmp_path / "image.ome.zarr")],
+                      output_path="results/")
+
+    assert registration.filenames == [(tmp_path / "image.ome.zarr").as_posix(),
+                                      (tmp_path / "tiles" / "tile_01.tif").as_posix(),
+                                      (tmp_path / "tiles" / "tile_02.tif").as_posix()]
+    assert registration.output == str(tmp_path / "tiles" / "results") + "/"
+
+
 def test_init_returns_false_when_pattern_has_no_files(tmp_path):
     registration = MVSRegistration()
 

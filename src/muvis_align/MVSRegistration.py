@@ -412,15 +412,11 @@ class MVSRegistration:
         self.start_time = datetime.now()
 
         self.input_path = input_path
-        if isinstance(input_path, list):
-            self.filenames = dir_regex(input_path)
-            self.input_dir = pattern_base_dir(input_path[0])
-        elif os.path.isdir(input_path):
-            self.filenames = dir_regex(os.path.join(input_path, '*'))
-            self.input_dir = input_path
-        else:
-            self.filenames = dir_regex(input_path)
-            self.input_dir = pattern_base_dir(input_path)
+        # a folder stands for its files, but a zarr folder is one image
+        patterns = [os.path.join(path, '*') if os.path.isdir(path) and '.zar' not in path.lower() else path
+                    for path in ensure_list(input_path)]
+        self.filenames = dir_regex(patterns)
+        self.input_dir = pattern_base_dir(patterns[0])
         if not self.filenames:
             return False
 

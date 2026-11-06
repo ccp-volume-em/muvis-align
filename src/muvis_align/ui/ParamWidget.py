@@ -61,6 +61,8 @@ class ParamWidget:
             value0 = self.get_value()
             if isinstance(value0, dict):
                 value = update_dict_value(value0, value)
+        elif isinstance(value, list):
+            value = [to_posix_path(str(item)) for item in value]
         elif self.to_str:
             # the widget's text is left as typed: rewriting it live would erase a trailing '/' mid-typing
             value = to_posix_path(str(value))

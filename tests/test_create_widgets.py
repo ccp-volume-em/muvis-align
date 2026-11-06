@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 from muvis_align.ui.create_widgets import create_section_container
 from qtpy.QtWidgets import QApplication
@@ -17,7 +19,7 @@ class MinimalInterface:
         return None
 
 
-def test_create_section_container_end_to_end_dropdown_and_fileedit():
+def test_create_section_container_end_to_end_dropdown_and_path_list():
     _ = QApplication.instance() or QApplication([])
     interface = MinimalInterface()
     section_template = [
@@ -57,9 +59,36 @@ def test_create_section_container_end_to_end_dropdown_and_fileedit():
     assert pairing_widget.value == 'stack'
     assert tuple(pairing_widget.choices) == ('default', 'stack')
 
-    assert input_widget.widget_type == 'FileEdit'
-    assert input_widget.filter == '*.zarr'
-    assert 'directory' in str(input_widget.mode).lower()
+    assert type(input_widget).__name__ == 'PathList'
+    assert input_widget.value == ['data/*.zarr']
+
+
+def test_a_path_list_adds_to_moves_and_removes_from_its_paths(monkeypatch, tmp_path):
+    from qtpy.QtWidgets import QFileDialog
+    from muvis_align.ui.PathList import PathList
+
+    _ = QApplication.instance() or QApplication([])
+    widget = PathList(value='tiles/*.tif, overviews')
+    widget.native.base_dir = lambda: str(tmp_path)
+    changes = []
+    widget.changed.connect(changes.append)
+    start_dirs = []
+
+    def get_existing_directory(parent, caption, start_dir):
+        start_dirs.append(start_dir)
+        return (tmp_path / 'channel2').as_posix()
+
+    monkeypatch.setattr(QFileDialog, 'getExistingDirectory', get_existing_directory)
+    widget.native._add_folder()
+    widget.native._move(-1)
+    widget.native.list_widget.setCurrentRow(0)
+    widget.native._remove()
+
+    # nothing selected: the dialog opens where the last path is, resolved against the project folder
+    assert [Path(start_dir) for start_dir in start_dirs] == [tmp_path]
+    assert changes == [['tiles/*.tif', 'overviews', (tmp_path / 'channel2').as_posix()],
+                       ['tiles/*.tif', (tmp_path / 'channel2').as_posix(), 'overviews'],
+                       [(tmp_path / 'channel2').as_posix(), 'overviews']]
 
 
 

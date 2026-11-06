@@ -8,6 +8,7 @@ import os.path
 
 from muvis_align.ui.ParamWidget import ParamWidget
 from muvis_align.ui.bilayers_util import bilayers_to_magicgui_field
+from muvis_align.util import path_param_to_list
 
 
 map_bilayers_to_widget_type = {
@@ -97,6 +98,10 @@ def create_section_container(section_id, section_template, interface,
             if widget_type == 'Table' and spec.section_key == 'display_only':
                 # read-only, and possibly a row per source or pair: a view that draws only the rows shown
                 widget_type = 'muvis_align.ui.ModelTable.ModelTable'
+            is_path_list = (spec.is_file_type and spec.section_key == 'inputs'
+                            and 'multiple' in (spec.file_count or ''))
+            if is_path_list:
+                widget_type = 'muvis_align.ui.PathList.PathList'
             full_name = section_id + '.' + spec.param_name
             param_widget = ParamWidget(full_name, None, interface, to_str=spec.is_file_type,
                                        number_type=spec.number_type)
@@ -105,7 +110,9 @@ def create_section_container(section_id, section_template, interface,
             if spec.widget_type == 'Dropdown' and spec.choices:
                 options['choices'] = spec.to_magicgui_choices()
 
-            if spec.is_file_type:
+            if is_path_list:
+                spec.value = path_param_to_list(spec.value) or None
+            elif spec.is_file_type:
                 options['mode'] = get_file_dialog_mode(spec.is_output, spec.file_count)
                 ext = os.path.splitext(str(spec.default))[1]
                 if ext:
@@ -128,6 +135,8 @@ def create_section_container(section_id, section_template, interface,
                 )
             if spec.is_file_type and options.get('mode') == 'w' and hasattr(widget, '_show_file_dialog'):
                 widget._show_file_dialog = _show_optional_file_dialog_without_overwrite_confirm
+            if is_path_list:
+                widget.native.base_dir = getattr(interface, 'get_project_dir', lambda: None)
             # explicitly setting value=None triggers type deduction, and results in an error
             param_widget.widget = widget
             if spec.description:

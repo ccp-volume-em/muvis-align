@@ -320,7 +320,11 @@ class Interface:
         keys = param_name.split('.')
         if keys[0] not in self.params:
             self.params[keys[0]] = {}
-        if isinstance(value, str):
+        if isinstance(value, list):
+            # stored relative, as a single string for one path to keep simple projects unchanged
+            value = [relativize_to_project_dir(item, self.get_project_dir()) for item in value]
+            value = value[0] if len(value) == 1 else value
+        elif isinstance(value, str):
             value = value.replace('\\', '/')
             if param_name in ('input_output.input_path', 'input_output.output_path'):
                 # the file dialog reports an absolute path: store it relative, keeping the project portable

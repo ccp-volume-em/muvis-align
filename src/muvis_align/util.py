@@ -1235,6 +1235,10 @@ def path_param_to_text(value):
     return '' if value is None else str(value)
 
 
+def path_param_to_list(value):
+    return [part.strip() for part in path_param_to_text(value).split(',') if part.strip()]
+
+
 def eval_path(path):
     if ',' in path:
         parts = path.split(',')

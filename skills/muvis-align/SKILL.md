@@ -37,7 +37,7 @@ general:
   break_on_error: false
 operations:                  # run in order; each has the napari project file's sections
 - input_output:
-    input_path: data/S000/*.zarr        # glob, directory, or list of paths
+    input_path: data/S000/*.zarr        # glob, folder (its files; a .zarr folder is one image), or a list of these
     output_path: ../stitched/           # RELATIVE TO THE INPUT DIRECTORY (see pitfalls)
     overwrite: true
   pre_processing: {}                    # optional: scale, normalisation, gaussian_sigma, flatfield_quantiles
