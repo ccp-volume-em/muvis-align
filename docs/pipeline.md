@@ -411,7 +411,8 @@ After successful registration:
 - `mappings.json` / `mappings.csv` - Final registration mappings
 - `pair_mappings.json` - Per-pair registration mappings
 - `prereg_mappings.csv` - Pre-registration mappings
-- `metrics.json` - Calculated metrics
+- `metrics.csv` - Each registered pair's metrics (quality, ncc, ssim, onmi) over its registered overlap
+- `residuals.csv` - Each pair's residual from the global solution (RMS distance, physical units)
 - `positions_original.pdf`, `positions_registered.pdf` - Position visualizations
 - `ro-crate-metadata.json`, `parameters.yaml` - The run's RO-Crate, and every setting it used
 

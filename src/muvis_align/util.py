@@ -1310,9 +1310,9 @@ def export_json(filename, data):
 
 
 def import_csv(filename):
-    with open(filename, encoding='utf8') as file:
-        data = csv.reader(file)
-    return data
+    """The rows, each by its header's column names."""
+    with open(filename, encoding='utf8', newline='') as file:
+        return list(csv.DictReader(file))
 
 
 def export_csv(filename, data, header=None):

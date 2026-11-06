@@ -444,7 +444,8 @@ Source: [`src/muvis_align/constants.py`](https://github.com/ccp-volume-em/muvis-
 ```python
 default_pair_mappings_name = 'pair_mappings.json'
 default_mappings_name = 'mappings.json'
-metrics_name = 'metrics.json'
+metrics_name = 'metrics.csv'
+residuals_name = 'residuals.csv'
 default_mappings_tabular_name = 'mappings.csv'
 ```
 
@@ -676,6 +677,6 @@ every start, in which case the sandbox `xpra-pull.sh` builds is the faster choic
 | FAIR implementation     | package metadata, YAML configuration, RO-Crate generation, OME-Zarr outputs |
 | Persistent metadata     | OME metadata parsing, `xarray`/`MSIM` spatial transforms, positions, scales, channels; interoperable NGFF RFC 6 affine transforms |
 | Performance metrics     | NCC, SSIM, ONMI, MSE-derived score, match metrics, timing logs              |
-| Resumable workflow      | state machine, pair mappings, global mappings, metrics JSON                 |
+| Resumable workflow      | state machine, pair mappings, global mappings, metrics CSV                  |
 | Xpra interface          | Docker stage exposing browser-based napari over Xpra                        |
 

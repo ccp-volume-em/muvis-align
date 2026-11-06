@@ -754,7 +754,7 @@ def test_resolve_output_settings_reloads_or_discards_on_changed_source_metadata(
     from muvis_align.MVSRegistration import MVSRegistration
     output = tmp_path / "output"
     output.mkdir()
-    for name in ("pair_mappings.json", "mappings.json", "metrics.json"):
+    for name in ("pair_mappings.json", "mappings.json", "metrics.csv"):
         (output / name).write_text("{}")
     (output / "registered.ome.zarr").mkdir()
     bare_interface.reg = MVSRegistration()
@@ -1362,6 +1362,7 @@ def test_run_global_registration_persists_all_results(
     results = {
         "mappings": {"image-0": "mapping"},
         "metrics": {"summary": {}},
+        "residual_errors": {(0, 1): 0.5},
     }
     bare_interface.reg.register_global.return_value = results
 
@@ -1384,6 +1385,7 @@ def test_run_global_registration_persists_all_results(
     bare_interface.reg.save_metrics.assert_called_once_with(
         results["metrics"]
     )
+    bare_interface.reg.save_residuals.assert_called_once_with(results["residual_errors"])
     # the run crate describes the saved registration before any fusion rewrites it
     bare_interface.reg.write_ro_crates.assert_called_once_with([], bare_interface.params)
 

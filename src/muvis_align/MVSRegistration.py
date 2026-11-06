@@ -540,6 +540,7 @@ class MVSRegistration:
             if 'register' in operation:
                 logging.info(metrics['summary'])
                 self.save_mappings_csv(mappings, normalise_orientation=normalise_orientation)
+                self.save_residuals(results['residual_errors'])
                 self.write_ro_crates([], {'general': self.params_general, **self.params})
 
                 for reg_label, reg_item in reg_result.items():
@@ -856,7 +857,8 @@ class MVSRegistration:
         paths = [output + self.input_output_params.get('pair_mappings', default_pair_mappings_name),
                  output + self.input_output_params.get('mappings', default_mappings_name),
                  output + self.input_output_params.get('mappings', default_mappings_tabular_name),
-                 output + metrics_name]
+                 output + metrics_name,
+                 output + residuals_name]
         return [path for path in set(paths) if os.path.exists(path)]
 
     def discard_saved_progress(self, output=None):
@@ -954,14 +956,15 @@ class MVSRegistration:
                 if self._msims is not None:
                     self._apply_mappings(self._msims)
                 self.pair_msims = self._msims
-                metrics = import_json(metrics_filename)
+                # a project saved before metrics.csv reopens without metrics
+                rows = import_csv(metrics_filename) if os.path.exists(metrics_filename) else []
                 indexed_metrics = {}
-                for key, value in metrics.items():
-                    key1, key2 = json.loads(key)
-                    index1, index2 = file_index(key1), file_index(key2)
+                for row in rows:
+                    index1, index2 = file_index(row['filename1']), file_index(row['filename2'])
                     if index1 is not None and index2 is not None:
-                        indexed_key = index1, index2
-                        indexed_metrics[indexed_key] = value
+                        # an empty cell: a metric this pair has no value for
+                        indexed_metrics[index1, index2] = {metric: float(value) for metric, value in row.items()
+                                                           if metric not in pair_table_columns and value != ''}
                 # each metric's mean under the registered key, as a global registration's own summary
                 metric_keys = list(dict.fromkeys(metric for value in indexed_metrics.values() for metric in value))
                 summary = {metric: float(np.mean([value[metric] for value in indexed_metrics.values()
@@ -1803,9 +1806,11 @@ class MVSRegistration:
 
         mappings = reg_result['params']
         # re-index from subset of sims
-        residual_error_dict = reg_result.get('groupwise_resolution', {}).get('metrics', {}).get('residuals', {})
-        residual_error_dict = {(register_indices[key[0]], register_indices[key[1]]): value.item()
-                               for key, value in residual_error_dict.items()}
+        # per timepoint index; a registration resolves its first timepoint
+        edge_residuals = (groupwise_resolution_info_dict.get('edge_residuals') or {}).get(0, {})
+        residual_error_dict = {(int(register_indices[key[0]]), int(register_indices[key[1]])): float(value)
+                               for key, value in edge_residuals.items()}
+        self.log_residuals(residual_error_dict)
         registration_qualities_dict = reg_result.get('pairwise_registration', {}).get('metrics', {}).get('qualities', {})
         registration_qualities_dict = {(register_indices[key[0]], register_indices[key[1]]): value
                                        for key, value in registration_qualities_dict.items()}
@@ -2133,11 +2138,28 @@ class MVSRegistration:
         export_csv(mappings_filename, data, header=mappings_header)
 
     def save_metrics(self, metrics):
-        metrics_filename = self.output + metrics_name
-        output_metrics = {json.dumps([self.filenames[keys[0]], self.filenames[keys[1]]]):
-                              {metric: float(value) for metric, value in metric_dict[self.reg_transform_key].items()}
-                          for keys, metric_dict in metrics['pairs'].items() if metric_dict[self.reg_transform_key]}
-        export_json(metrics_filename, output_metrics)
+        """The registered pairs' metrics, also read back on resuming."""
+        pair_metrics = {keys: {metric: float(value) for metric, value in metric_dict[self.reg_transform_key].items()}
+                        for keys, metric_dict in metrics['pairs'].items() if metric_dict[self.reg_transform_key]}
+        metric_names = list(dict.fromkeys(metric for values in pair_metrics.values() for metric in values))
+        rows = [[self.file_labels[keys[0]], self.file_labels[keys[1]], self.filenames[keys[0]], self.filenames[keys[1]]]
+                + [values.get(metric) for metric in metric_names]
+                for keys, values in sorted(pair_metrics.items())]
+        export_csv(self.output + metrics_name, rows, header=pair_table_columns + metric_names)
+
+    def log_residuals(self, residuals):
+        """Each pair's residual from the global solution (RMS distance, physical units), the largest first."""
+        if residuals:
+            values = list(residuals.values())
+            pair_lines = [f'  {self.file_labels[keys[0]]} - {self.file_labels[keys[1]]}: {value:.4g}'
+                          for keys, value in sorted(residuals.items(), key=lambda item: -item[1])]
+            logging.info(f'Global registration residuals over {len(values)} pairs: mean {np.mean(values):.4g},'
+                         f' median {np.median(values):.4g}, max {np.max(values):.4g}\n' + '\n'.join(pair_lines))
+
+    def save_residuals(self, residuals):
+        rows = [[self.file_labels[keys[0]], self.file_labels[keys[1]], self.filenames[keys[0]], self.filenames[keys[1]],
+                 value] for keys, value in sorted(residuals.items())]
+        export_csv(self.output + residuals_name, rows, header=pair_table_columns + ['residual'])
 
     def create_preview(self, output_filename=None, nom_msims=None, transform_key=None):
         preview_scale = parse_scale(self.input_output_params.get('preview_scale'), default=16)
@@ -2262,7 +2284,7 @@ class MVSRegistration:
             # the pairs' registration quality is kept apart from the metrics of their registered overlaps
             values = summary[self.reg_transform_key] | summary.get(default_transform_key, {})
         else:
-            # loaded from metrics.json, without the overlap areas the summary weighs its pairs by
+            # loaded from the metrics file, without the overlap areas the summary weighs its pairs by
             pair_metrics = [pair.get(self.reg_transform_key, {}) for pair in self.metrics.get('pairs', {}).values()]
             names = {name for metrics in pair_metrics for name in metrics}
             values = {name: np.mean([metrics[name] for metrics in pair_metrics if name in metrics]) for name in names}

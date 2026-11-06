@@ -75,7 +75,7 @@ def test_reset_clears_registration_state():
     ({'summary': {'source_metadata': {'ncc': 0.25}, 'registered': {'ncc': 0.75, 'ssim': np.nan},
                   'transform': {'quality': 0.5}}},
      {'ncc': 0.75, 'quality': 0.5}),
-    # loaded from metrics.json: the mean over its pairs
+    # loaded from the metrics file: the mean over its pairs
     ({'summary': {'transform': {'registered': 0.5}},
       'pairs': {(0, 1): {'registered': {'ncc': 0.5, 'quality': 0.25}}, (1, 2): {'registered': {'ncc': 1.0}}}},
      {'ncc': 0.75, 'quality': 0.25}),
@@ -379,9 +379,10 @@ def test_check_progress_uses_most_advanced_available_state(
 def test_discard_saved_progress_leaves_no_registration_to_resume(tmp_path):
     registration = MVSRegistration()
     registration.output = "elsewhere/"
-    for name in ("pair_mappings.json", "mappings.json", "mappings.csv", "metrics.json", "project.yml"):
+    for name in ("pair_mappings.json", "mappings.json", "mappings.csv", "metrics.csv", "residuals.csv",
+                 "project.yml"):
         (tmp_path / name).write_text("{}")
-    assert len(registration.saved_progress_paths(str(tmp_path))) == 4
+    assert len(registration.saved_progress_paths(str(tmp_path))) == 5
 
     registration.discard_saved_progress(str(tmp_path))
 
@@ -780,26 +781,44 @@ def test_register_pairs_in_worker_processes_matches_registering_in_this_process(
         assert here[edge][0] == in_workers[edge][0] or (np.isnan(here[edge][0]) and np.isnan(in_workers[edge][0]))
 
 
-def test_register_global_resolves_with_the_named_groupwise_method_and_reports_metrics_by_pair(monkeypatch, tmp_path):
+def test_register_global_resolves_with_the_named_groupwise_method_and_reports_metrics_by_pair(monkeypatch, tmp_path,
+                                                                                              caplog):
     """The robust linear method is selectable by name: register_global hands it to multiview_stitcher's resolution
-    and maps every tile - not how close its fit comes to another method's, which is not this code's to decide."""
+    and maps every tile - not how close its fit comes to another method's, which is not this code's to decide. Its
+    edge residuals are logged and saved by source, and the metrics are of the registered overlaps only."""
+    import csv
     import muvis_align.MVSRegistration as mvs_module
     reg = prepared_registration(S000_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'rigid',
               'groupwise_resolution_method': 'robust_linear', 'metrics': ['ncc']}
     reg.register_pairs(reg.register_msims, params=params)
     methods = []
+    residuals = {}
     original = mvs_module.groupwise_resolution
 
     def recorded(graph, method=None, **kwargs):
         methods.append((method, kwargs.get('transform')))
-        return original(graph, method=method, **kwargs)
+        transforms, info = original(graph, method=method, **kwargs)
+        residuals.update({tuple(sorted(edge)): 0.5 + index for index, edge in enumerate(graph.edges)})
+        return transforms, info | {'edge_residuals': {0: residuals}}
     monkeypatch.setattr(mvs_module, 'groupwise_resolution', recorded)
 
-    results = reg.register_global(reg.pair_msims, params=params)
+    with caplog.at_level(logging.INFO):
+        results = reg.register_global(reg.pair_msims, params=params)
+    reg.save_residuals(results['residual_errors'])
 
     assert methods == [('robust_linear', 'rigid')]
     assert sorted(results['mappings']) == list(range(len(reg.pair_msims)))
+    expected = residuals
+    assert results['residual_errors'] == expected
+    worst = max(expected, key=expected.get)
+    assert (f'{reg.file_labels[worst[0]]} - {reg.file_labels[worst[1]]}: {expected[worst]:.4g}' in caplog.text)
+    with open(reg.output + 'residuals.csv', encoding='utf8') as file:
+        rows = list(csv.DictReader(file))
+    assert {(row['filename1'], row['filename2']): float(row['residual']) for row in rows} == {
+        (reg.filenames[keys[0]], reg.filenames[keys[1]]): value for keys, value in expected.items()}
+    assert list(results['metrics']['summary']) == [reg.reg_transform_key]
+    assert all(list(pair) == [reg.reg_transform_key] for pair in results['metrics']['pairs'].values())
 
 
 @pytest.mark.parametrize('pairing', ['', 'orthogonal'], ids=['candidates', 'orthogonal'])
@@ -808,7 +827,7 @@ def test_register_with_a_source_filtered_out_saves_pairs_under_their_own_filenam
     the sources by their own index, as foreground filtering drops sources before them. Orthogonal pairs are found
     over every source, so only those between retained ones are registered."""
     import json
-    from muvis_align.util import import_json
+    from muvis_align.util import import_csv, import_json
 
     reg = prepared_registration(S000_TILES, tmp_path)
     retained = [1, 2, 3]
@@ -821,7 +840,8 @@ def test_register_with_a_source_filtered_out_saves_pairs_under_their_own_filenam
     pair_mappings = import_json(reg.output + 'pair_mappings.json')
     assert set(pair_mappings) == expected
     assert all('quality' in entry for entry in pair_mappings.values())
-    assert set(import_json(reg.output + 'metrics.json')) <= expected
+    saved_pairs = {json.dumps([row['filename1'], row['filename2']]) for row in import_csv(reg.output + 'metrics.csv')}
+    assert saved_pairs and saved_pairs <= expected
     assert set(reg.metrics['pairs']) <= {tuple(retained[node] for node in edge) for edge in reg.pairs_graph.edges()}
     if pairing == 'orthogonal':
         # the 2x2 grid's orthogonal pairs (0, 1), (0, 2), (1, 3), (2, 3), without source 0's
@@ -1208,24 +1228,31 @@ def test_registered_geometry_without_msims_is_what_the_registered_msims_give(tmp
                                    atol=1e-9)
 
 
-def test_a_loaded_global_registration_summarises_each_metric_under_the_registered_key(tmp_path):
-    import json
+@pytest.mark.parametrize('saved', [True, False], ids=['saved', 'older project without metrics file'])
+def test_a_loaded_global_registration_summarises_each_metric_under_the_registered_key(tmp_path, saved):
+    """The saved metrics read back as they were saved, a metric a pair lacks left out; without the file, none."""
     import numpy as np
     from muvis_align.file.transforms import write_transforms
-    from muvis_align.util import export_json
 
     reg = MVSRegistration()
     reg.output, reg.input_output_params = tmp_path.as_posix() + '/', {}
     reg.filenames = ['a.tif', 'b.tif', 'c.tif']
+    reg.file_labels = ['a', 'b', 'c']
     reg._msims = None
     write_transforms(reg.output + 'mappings.json', {name: np.eye(3) for name in reg.filenames})
-    export_json(reg.output + 'metrics.json', {json.dumps(['a.tif', 'b.tif']): {'quality': 0.4, 'ncc': 0.6},
-                                              json.dumps(['b.tif', 'c.tif']): {'quality': 0.8, 'ncc': 0.8}})
+    pairs = {(0, 1): {reg.reg_transform_key: {'quality': 0.4, 'ncc': 0.6}},
+             (1, 2): {reg.reg_transform_key: {'quality': 0.8}}}
+    if saved:
+        reg.save_metrics({'pairs': pairs})
 
     reg.init_progress('registered', 'zarr')
 
-    assert reg.metrics['summary'] == {reg.reg_transform_key: {'quality': pytest.approx(0.6), 'ncc': pytest.approx(0.7)}}
-    assert reg.metrics['pairs'][(0, 1)] == {reg.reg_transform_key: {'quality': 0.4, 'ncc': 0.6}}
+    if saved:
+        assert reg.metrics['summary'] == {reg.reg_transform_key: {'quality': pytest.approx(0.6),
+                                                                  'ncc': pytest.approx(0.6)}}
+        assert reg.metrics['pairs'] == pairs
+    else:
+        assert reg.metrics['pairs'] == {}
 
 
 def test_mappings_are_written_as_ome_zarr_affines_and_read_back_square_old_files_too(tmp_path):

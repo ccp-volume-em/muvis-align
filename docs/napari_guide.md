@@ -184,7 +184,8 @@ The buttons:
 - **Process** runs the global registration, which resolves the pair registrations into a
   position for each source, and shows the registered layout. It runs pair registration
   first if that has not been done. It saves the result in the output folder:
-  `pair_mappings.json`, `mappings.json` and `mappings.csv` (the transforms), `metrics.json`,
+  `pair_mappings.json`, `mappings.json` and `mappings.csv` (the transforms), `metrics.csv`
+  (each pair's metrics), `residuals.csv` (each pair's distance from the global solution)
   and an RO-Crate (`ro-crate-metadata.json`) describing the run.
 
 ### Modifying a pair registration

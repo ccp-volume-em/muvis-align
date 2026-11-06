@@ -162,7 +162,10 @@ default_mappings_name = 'mappings.json'
 default_mappings_tabular_name = 'mappings.csv'
 original_positions_name = 'positions_original.pdf'
 registered_positions_name = 'positions_registered.pdf'
-metrics_name = 'metrics.json'
+metrics_name = 'metrics.csv'
+residuals_name = 'residuals.csv'
+# the columns naming each pair in the metrics and residuals files, before its values
+pair_table_columns = ['id1', 'id2', 'filename1', 'filename2']
 
 # file name labels of a section's number, most specific first ('S000', SBEMimage's 's00538')
 section_number_labels = ('section', 'slice', 's', 'z')

@@ -1827,6 +1827,7 @@ class Interface:
             self.reg.save_mappings(results['mappings'])
             self.reg.save_mappings_csv(results['mappings'])
             self.reg.save_metrics(results['metrics'])
+            self.reg.save_residuals(results['residual_errors'])
             self.reg.write_ro_crates([], self.params)
         return results
 

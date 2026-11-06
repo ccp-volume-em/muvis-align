@@ -14,9 +14,9 @@ import numpy as np
 import tifffile
 import yaml
 
-from muvis_align.constants import default_quality_key
+from muvis_align.constants import default_quality_key, pair_table_columns
 from muvis_align.file.transforms import write_transforms
-from muvis_align.util import create_transform, export_json
+from muvis_align.util import create_transform, export_csv, export_json
 
 TILE, PIXEL_SIZE, OVERLAP = 64, 0.4, 0.1
 SECTION_OFFSETS = [(0, 1), (1, 0), (1, 1), (1, -1)]
@@ -55,8 +55,11 @@ def main():
                     'mapping': np.eye(3).tolist(), default_quality_key: float(rng.uniform(0.3, 1)),
                     'bbox': [[0.0, 0.0], [TILE * PIXEL_SIZE * OVERLAP, TILE * PIXEL_SIZE]]}
     export_json(f'{output}/pair_mappings.json', pairs)
-    export_json(f'{output}/metrics.json', {key: {default_quality_key: value[default_quality_key],
-                                                 'ncc': float(rng.uniform(0.3, 1))} for key, value in pairs.items()})
+    metric_rows = []
+    for key, value in pairs.items():
+        path1, path2 = json.loads(key)
+        metric_rows.append([path1, path2, path1, path2, value[default_quality_key], float(rng.uniform(0.3, 1))])
+    export_csv(f'{output}/metrics.csv', metric_rows, header=pair_table_columns + [default_quality_key, 'ncc'])
     write_transforms(f'{output}/mappings.json',
                      {path: create_transform(None, 0, translation=list(rng.uniform(-1, 1, 2)), matrix_size=3)
                       for path in filenames.values()})
