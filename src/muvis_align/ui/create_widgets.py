@@ -8,7 +8,8 @@ import os.path
 
 from muvis_align.ui.ParamWidget import ParamWidget
 from muvis_align.ui.bilayers_util import bilayers_to_magicgui_field
-from muvis_align.util import path_param_to_list
+from muvis_align.util import (path_param_to_list, path_param_to_text, relativize_to_project_dir,
+                              resolve_to_project_dir, to_posix_path)
 
 
 map_bilayers_to_widget_type = {
@@ -58,6 +59,23 @@ def _show_optional_file_dialog_without_overwrite_confirm(
         if selected_files:
             return selected_files[0]
     return None
+
+
+def _project_relative_file_dialog(widget, show_dialog, get_project_dir):
+    """`widget`'s file dialog opened at its path as resolved against the project, the choice shown relative to it:
+    FileEdit itself resolves against the working directory and shows the choice absolute."""
+    def show(mode, caption=None, start_path=None, filter=None):
+        project_dir = get_project_dir()
+        start_path = resolve_to_project_dir(widget.line_edit.value, project_dir) or project_dir
+        # an output not written yet: its nearest existing folder
+        while start_path and not os.path.exists(start_path) and os.path.dirname(start_path) != start_path:
+            start_path = os.path.dirname(start_path)
+        result = show_dialog(mode, caption=caption, start_path=start_path, filter=filter)
+        if result:
+            widget.line_edit.value = relativize_to_project_dir(to_posix_path(path_param_to_text(result)), project_dir)
+        # nothing for FileEdit to set: it would make the path absolute again
+        return None
+    return show
 
 
 def create_project_widget(interface, function):
@@ -135,6 +153,10 @@ def create_section_container(section_id, section_template, interface,
                 )
             if spec.is_file_type and options.get('mode') == 'w' and hasattr(widget, '_show_file_dialog'):
                 widget._show_file_dialog = _show_optional_file_dialog_without_overwrite_confirm
+            if spec.is_file_type and not is_path_list and section_id != 'project' \
+                    and hasattr(widget, '_show_file_dialog'):
+                widget._show_file_dialog = _project_relative_file_dialog(
+                    widget, widget._show_file_dialog, getattr(interface, 'get_project_dir', lambda: None))
             if is_path_list:
                 widget.native.base_dir = getattr(interface, 'get_project_dir', lambda: None)
             # explicitly setting value=None triggers type deduction, and results in an error

@@ -6,7 +6,8 @@ from qtpy.QtCore import Qt, Signal
 from qtpy.QtWidgets import (QAbstractItemView, QFileDialog, QHBoxLayout, QListWidget, QListWidgetItem,
                             QPushButton, QVBoxLayout, QWidget)
 
-from muvis_align.util import path_param_to_list, pattern_base_dir, resolve_to_project_dir
+from muvis_align.util import (path_param_to_list, pattern_base_dir, relativize_to_project_dir,
+                              resolve_to_project_dir)
 
 
 class QPathList(QWidget):
@@ -69,7 +70,8 @@ class QPathList(QWidget):
 
     def _add_paths(self, paths):
         for path in paths:
-            self._append(path.replace('\\', '/'))
+            # shown as stored: relative to the project, as the dialogs report absolute paths
+            self._append(relativize_to_project_dir(path, self.base_dir()))
         if paths:
             self.list_widget.setCurrentRow(self.list_widget.count() - 1)
             self.pathsChanged.emit(self.paths())

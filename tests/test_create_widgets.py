@@ -86,9 +86,10 @@ def test_a_path_list_adds_to_moves_and_removes_from_its_paths(monkeypatch, tmp_p
 
     # nothing selected: the dialog opens where the last path is, resolved against the project folder
     assert [Path(start_dir) for start_dir in start_dirs] == [tmp_path]
-    assert changes == [['tiles/*.tif', 'overviews', (tmp_path / 'channel2').as_posix()],
-                       ['tiles/*.tif', (tmp_path / 'channel2').as_posix(), 'overviews'],
-                       [(tmp_path / 'channel2').as_posix(), 'overviews']]
+    # the dialog's absolute path is shown relative to the project
+    assert changes == [['tiles/*.tif', 'overviews', 'channel2'],
+                       ['tiles/*.tif', 'channel2', 'overviews'],
+                       ['channel2', 'overviews']]
 
 
 
@@ -124,3 +125,31 @@ def test_a_table_shows_floats_at_four_decimals():
     model = table.native.model()
 
     assert [model.data(model.index(0, column)) for column in range(4)] == ['0.2562', '0.5000', 'z: 0', '']
+
+
+def test_a_file_dialog_starts_from_the_project_and_shows_its_choice_relative(monkeypatch, tmp_path):
+    import magicgui.backends._qtpy as qt_backend
+
+    _ = QApplication.instance() or QApplication([])
+    interface = MinimalInterface()
+    interface.params['input_output']['output_path'] = 'results/run1'
+    interface.get_project_dir = lambda: str(tmp_path)
+    (tmp_path / 'results').mkdir()
+    start_paths = []
+
+    def show_file_dialog(mode, caption=None, start_path=None, filter=None):
+        start_paths.append(start_path)
+        return str(tmp_path / 'stitched')
+
+    monkeypatch.setattr(qt_backend, 'show_file_dialog', show_file_dialog)
+    create_section_container('input_output', [{'name': 'output_path', 'type': 'image', 'label': 'Output data',
+                                               'section_key': 'outputs', 'default': 'output',
+                                               'file_count': 'multiple'}],
+                             interface, connect_changed=False, add_button=False)
+    widget = interface.param_widgets['input_output.output_path'].widget
+
+    widget._on_choose_clicked()
+
+    # results/run1 does not exist yet: its nearest existing folder
+    assert [Path(start_path) for start_path in start_paths] == [tmp_path / 'results']
+    assert widget.line_edit.value == 'stitched'
