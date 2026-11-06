@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -863,7 +863,7 @@ left it. It has one section per tab, with paths relative to the project file's f
 <div class="highlight"><pre><span></span><code><span class="nt">input_output</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/*/*.tiff</span>
 <span class="w">  </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">output</span>
-<span class="w">  </span><span class="nt">source_scale_x</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0.004&#39;</span>
+<span class="w">  </span><span class="nt">source_scale_x</span><span class="p">:</span><span class="w"> </span><span class="s">'0.004'</span>
 <span class="w">  </span><span class="nt">source_position_x</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fn[-2]*24</span>
 <span class="w">  </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <span class="nt">pre_processing</span><span class="p">:</span>
@@ -876,7 +876,7 @@ left it. It has one section per tab, with paths relative to the project file's f
 <span class="nt">fusion</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">average</span>
 <span class="w">  </span><span class="nt">spacing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mean</span>
-<span class="w">  </span><span class="nt">ome_version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0.5&#39;</span>
+<span class="w">  </span><span class="nt">ome_version</span><span class="p">:</span><span class="w"> </span><span class="s">'0.5'</span>
 </code></pre></div>
 <p>This is not the <code>general</code>/<code>operations</code> parameter file the
 <a href="../pipeline/">command-line pipeline</a> takes.</p>
@@ -973,10 +973,6 @@ original sources.</p>
 <td>Gaussian sigma</td>
 <td>Gaussian blur before registration; 0 or empty for none</td>
 </tr>
-<tr>
-<td>Filter foreground</td>
-<td>Leave out tiles with little image signal, such as empty tiles</td>
-</tr>
 </tbody>
 </table>
 <p><strong>Process</strong> pre-processes the sources and shows the result in the view, then moves on to the
@@ -1062,11 +1058,15 @@ out of date, as it was made from the previous images.</p>
 </tr>
 <tr>
 <td>Metrics table</td>
-<td>Read-only: each pair's registration quality, from source positions and once registered, ordered by position. The summary row is over all pairs</td>
+<td>Read-only: each pair's registration quality, from source positions and once registered, ordered by position. The summary row is over all pairs. Each metric is coloured from red (poor) to green (good) over its own range: NCC, SSIM and phase correlation, Elastix or ANTs quality from -1 to 1, ONMI and feature-method quality from 0 to 1</td>
 </tr>
 <tr>
 <td>Global method</td>
 <td>How the pair registrations are resolved into one position per source: <strong>Robust linear</strong> (fast, for large projects, translation or rigid only), <strong>Global optimisation</strong> (iterative, slow for many tiles), <strong>Linear two-pass</strong> (fastest, less robust to bad pairs) or <strong>Shortest paths</strong></td>
+</tr>
+<tr>
+<td>Minimum pair quality</td>
+<td>Pairs registered at this quality or below are left out of the global registration, for weak or misleading pairs (e.g. tiles with little texture); a tile left without pairs keeps its metadata position. Blank: only failed pairs (0 or below)</td>
 </tr>
 </tbody>
 </table>
@@ -1085,7 +1085,8 @@ out of date, as it was made from the previous images.</p>
 <li><strong>Process</strong> runs the global registration, which resolves the pair registrations into a
   position for each source, and shows the registered layout. It runs pair registration
   first if that has not been done. It saves the result in the output folder:
-  <code>pair_mappings.json</code>, <code>mappings.json</code> and <code>mappings.csv</code> (the transforms), <code>metrics.json</code>,
+  <code>pair_mappings.json</code>, <code>mappings.json</code> and <code>mappings.csv</code> (the transforms), <code>metrics.csv</code>
+  (each pair's metrics), <code>residuals.csv</code> (each pair's distance from the global solution)
   and an RO-Crate (<code>ro-crate-metadata.json</code>) describing the run.</li>
 </ul>
 <h3 id="modifying-a-pair-registration">Modifying a pair registration</h3>
@@ -1198,10 +1199,10 @@ fused image without the overlap outlines.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>

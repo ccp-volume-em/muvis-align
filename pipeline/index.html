@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.618322db.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -405,43 +405,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#general-options-explained" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        General options explained:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#logging-options" class="md-nav__link">
     <span class="md-ellipsis">
       
         Logging options:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#output-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output options:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#other-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Other options:
       
     </span>
   </a>
@@ -494,10 +461,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#input-configuration" class="md-nav__link">
+  <a href="#input-and-output-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Input Configuration
+        Input and Output Configuration
       
     </span>
   </a>
@@ -550,23 +517,6 @@
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Block size">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#output-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output Configuration
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
         
@@ -896,43 +846,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#general-options-explained" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        General options explained:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#logging-options" class="md-nav__link">
     <span class="md-ellipsis">
       
         Logging options:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#output-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output options:
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#other-options" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Other options:
       
     </span>
   </a>
@@ -985,10 +902,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#input-configuration" class="md-nav__link">
+  <a href="#input-and-output-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Input Configuration
+        Input and Output Configuration
       
     </span>
   </a>
@@ -1041,23 +958,6 @@
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Block size">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#output-configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Output Configuration
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
         
@@ -1195,9 +1095,11 @@
 <h2 id="overview">Overview</h2>
 <p>The muvis-align pipeline is command-line driven and uses YAML parameter files to configure all operations. The main entry point is <code>run.py</code>.</p>
 <p>For interactive work - loading a dataset, previewing pairs and fused results, and
-watching progress as it runs - see the <a href="../napari_guide/">napari plugin</a>. The two use
-separate configuration files: the pipeline takes the <code>general</code>/<code>operations</code> file
-described here, while the plugin reads and writes its own project file.</p>
+watching progress as it runs - see the <a href="../napari_guide/">napari plugin</a>. Both use the
+same settings: each operation of a pipeline file has the sections of a plugin project
+file (<code>input_output</code>, <code>pre_processing</code>, <code>registration</code>, <code>fusion</code>), with the names the
+project template gives them. The pipeline file adds the run's <code>general</code> settings and
+can list several operations.</p>
 <h2 id="basic-usage">Basic Usage</h2>
 <div class="highlight"><pre><span></span><code>python<span class="w"> </span>run.py<span class="w"> </span>resources/params_test_2d.yml
 </code></pre></div>
@@ -1205,28 +1107,16 @@ described here, while the plugin reads and writes its own project file.</p>
 <h2 id="parameter-file-structure">Parameter File Structure</h2>
 <p>The parameter file uses YAML format with two main sections:</p>
 <h3 id="1-general-configuration-general">1. General Configuration (<code>general</code>)</h3>
-<p>Global settings for logging, output, and error handling.</p>
+<p>Settings of the run itself: logging and error handling.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">general</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
-<span class="w">  </span><span class="nt">clear</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
 <span class="w">  </span><span class="nt">logging</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">verbose</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 <span class="w">    </span><span class="nt">debug</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
 <span class="w">    </span><span class="nt">filename</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">log/muvis-align.log</span>
-<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;%(asctime)s</span><span class="nv"> </span><span class="s">%(levelname)s:</span><span class="nv"> </span><span class="s">%(message)s&#39;</span>
-<span class="w">  </span><span class="nt">output</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
-<span class="w">    </span><span class="nt">block_size</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">4096</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">4096</span><span class="p p-Indicator">]</span>
-<span class="w">    </span><span class="nt">compression</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span>
-<span class="w">    </span><span class="nt">npyramid_add</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
-<span class="w">    </span><span class="nt">pyramid_downsample</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
-<span class="w">    </span><span class="nt">ome_version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0.5&#39;</span>
-<span class="w">    </span><span class="nt">preview</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
-<span class="w">    </span><span class="nt">preview_scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">32</span>
+<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">'%(asctime)s</span><span class="nv"> </span><span class="s">%(levelname)s:</span><span class="nv"> </span><span class="s">%(message)s'</span>
 <span class="w">  </span><span class="nt">break_on_error</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
 <span class="w">  </span><span class="nt">metadata_summary</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
 </code></pre></div>
-<h4 id="general-options-explained">General options explained:</h4>
 <table>
 <thead>
 <tr>
@@ -1237,18 +1127,6 @@ described here, while the plugin reads and writes its own project file.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><code>overwrite</code></td>
-<td>bool</td>
-<td><code>False</code></td>
-<td>Overwrite existing output files</td>
-</tr>
-<tr>
-<td><code>clear</code></td>
-<td>bool</td>
-<td><code>False</code></td>
-<td>Clear output directory before processing</td>
-</tr>
 <tr>
 <td><code>break_on_error</code></td>
 <td>bool</td>
@@ -1295,86 +1173,15 @@ described here, while the plugin reads and writes its own project file.</p>
 </tr>
 </tbody>
 </table>
-<h4 id="output-options">Output options:</h4>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>format</code></td>
-<td>str</td>
-<td>Output format: <code>ome.zarr</code> or <code>ome.tiff</code> (or both: <code>ome.zarr, ome.tiff</code>)</td>
-</tr>
-<tr>
-<td><code>block_size</code></td>
-<td>list</td>
-<td>Block size for the output <code>[x, y]</code> or <code>[x, y, z]</code>. Leave unset to size it automatically - see <a href="#block-size">Block size</a></td>
-</tr>
-<tr>
-<td><code>compression</code></td>
-<td>str/list</td>
-<td>Compression method(s)</td>
-</tr>
-<tr>
-<td><code>npyramid_add</code></td>
-<td>int</td>
-<td>Number of pyramid levels to add (default <code>0</code>)</td>
-</tr>
-<tr>
-<td><code>pyramid_downsample</code></td>
-<td>int</td>
-<td>Downsampling factor for pyramid (default <code>2</code>)</td>
-</tr>
-<tr>
-<td><code>ome_version</code></td>
-<td>str</td>
-<td>OME-Zarr version to write: <code>'0.4'</code> or <code>'0.5'</code> (default <code>'0.5'</code>)</td>
-</tr>
-<tr>
-<td><code>preview</code></td>
-<td>str</td>
-<td>Preview format</td>
-</tr>
-<tr>
-<td><code>preview_scale</code></td>
-<td>int/str</td>
-<td>Preview downscale factor (default <code>16</code>), or a physical size such as <code>1um</code></td>
-</tr>
-</tbody>
-</table>
-<p>These may also be set per operation, under that operation's own <code>output:</code> - the
-operation's value wins, falling back to <code>general.output</code>.</p>
-<p><code>clear</code> and <code>overwrite</code> are read at the <code>general</code> level, not under <code>output</code>.</p>
-<h4 id="other-options">Other options:</h4>
-<table>
-<thead>
-<tr>
-<th>Parameter</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>overlap_threshold</code></td>
-<td>float</td>
-<td>Minimum overall overlap required to proceed (default <code>0.5</code>). Set per operation</td>
-</tr>
-</tbody>
-</table>
 <h3 id="2-operations-operations">2. Operations (<code>operations</code>)</h3>
-<p>List of processing operations to run sequentially.</p>
+<p>List of processing operations to run sequentially, each in the project template's sections.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
-<span class="w">    </span><span class="nt">input</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span>
-<span class="w">      </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">input_output</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span>
+<span class="w">      </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span>
+<span class="w">      </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 <span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
 <span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span>
 <span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
 <span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span>
@@ -1386,10 +1193,19 @@ operation's value wins, falling back to <code>general.output</code>.</p>
 <span class="w">      </span><span class="nt">ransac_iterations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
 <span class="w">      </span><span class="nt">metrics</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ncc</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ssim</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">onmi</span><span class="p p-Indicator">]</span>
 <span class="w">      </span><span class="nt">n_parallel_pairwise_regs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<span class="w">    </span><span class="nt">output</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span>
+<span class="w">    </span><span class="nt">fusion</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
 </code></pre></div>
+<p>An operation in the former layout (<code>operation</code>, <code>input</code> or <code>output</code> at its top level) is
+refused with an error naming the sections to use instead.</p>
+<p>A few settings have no field in the plugin. They go in the section they belong to, and
+the run's RO-Crate keeps them, with a warning that the project template lacks them:
+<code>input_output.labels</code>, <code>extra_metadata</code>, <code>source_metadata</code> and <code>n_set_workers</code>;
+<code>registration.metrics</code> and <code>overlap_threshold</code>;
+<code>fusion.format</code>, <code>compression</code>, <code>npyramid_add</code>, <code>pyramid_downsample</code>, <code>preview</code>,
+<code>save_images</code> and <code>transition</code>.</p>
 <h2 id="operation-types">Operation Types</h2>
+<p>The operation is <code>registration.operation</code>.</p>
 <h3 id="register-image-registration"><code>register</code> - Image Registration</h3>
 <p>Registers (aligns) images using feature matching or phase correlation.</p>
 <p><strong>Variants:</strong>
@@ -1401,10 +1217,8 @@ operation's value wins, falling back to <code>general.output</code>.</p>
 <code>register</code> writes <code>registered.ome.zarr</code> and <code>fuse</code> writes <code>fused.ome.zarr</code>.</p>
 <p>3D registration is not a separate variant - it follows from the data. Sources with a
 real z extent are registered in 3D.</p>
-<p>Registering a z-stack is asked for with <code>pairing: stack</code>, not by the operation. An
-earlier <code>register stack</code> operation did the same thing and no longer has any effect -
-see the pairing strategies under
-<a href="#registration-configuration">Registration Configuration</a>.</p>
+<p>Registering a z-stack is asked for with <code>pairing: stack</code>, not by the operation - see
+the pairing strategies under <a href="#registration-configuration">Registration Configuration</a>.</p>
 <div class="admonition warning">
 <p class="admonition-title">Convert is implemented in the napari plugin only</p>
 <p>Converting each source individually to OME-Zarr, keeping its native pyramid levels,
@@ -1413,25 +1227,41 @@ is currently implemented only in the plugin - see <a href="../napari_guide/#4-re
 <code>resources/params_test_convert.yml</code> uses it), but the pipeline has no convert step:
 it neither registers nor writes converted output. Use the plugin for this.</p>
 </div>
-<h4 id="input-configuration">Input Configuration</h4>
-<div class="highlight"><pre><span></span><code><span class="nt">input</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span><span class="w">            </span><span class="c1"># File path pattern (supports wildcards)</span>
-<span class="w">  </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span><span class="w">           </span><span class="c1"># How to interpret source file metadata</span>
-<span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">tile_00_00</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">tile_00_01</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Optional: custom labels for input files</span>
-<span class="w">  </span><span class="nt">extra_metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span><span class="w">                </span><span class="c1"># Extra metadata to apply</span>
+<h4 id="input-and-output-configuration">Input and Output Configuration</h4>
+<div class="highlight"><pre><span></span><code><span class="nt">input_output</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span><span class="w">        </span><span class="c1"># File path pattern (supports wildcards), or a list of paths</span>
+<span class="w">  </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span><span class="w"> </span><span class="c1"># Output directory</span>
+<span class="w">  </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w">                     </span><span class="c1"># Overwrite existing output (default False)</span>
+<span class="w">  </span><span class="nt">clear</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span><span class="w">                        </span><span class="c1"># Clear the output directory before processing</span>
+<span class="w">  </span><span class="nt">source_position_x</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span><span class="w">           </span><span class="c1"># Where each position, scale and rotation comes from</span>
+<span class="w">  </span><span class="nt">source_position_y</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
+<span class="w">  </span><span class="nt">source_scale_x</span><span class="p">:</span><span class="w"> </span><span class="s">'0.004'</span>
+<span class="w">  </span><span class="nt">source_rotation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
+<span class="w">  </span><span class="nt">normalise_rotated_positions</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">  </span><span class="nt">preview_scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16</span><span class="w">                   </span><span class="c1"># Preview downscale factor, or a physical size such as 1um</span>
+<span class="w">  </span><span class="nt">channels_table</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">label</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">DAPI</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">GFP</span><span class="p p-Indicator">],</span><span class="nt"> color</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">'(0,</span><span class="nv"> </span><span class="s">0,</span><span class="nv"> </span><span class="s">1)'</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">'(0,</span><span class="nv"> </span><span class="s">1,</span><span class="nv"> </span><span class="s">0)'</span><span class="p p-Indicator">]}</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">tile_00_00</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">tile_00_01</span><span class="p p-Indicator">]</span><span class="w">    </span><span class="c1"># Optional: custom labels for input files</span>
+<span class="w">  </span><span class="nt">n_set_workers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">                    </span><span class="c1"># File sets of a `match` operation run at once</span>
 </code></pre></div>
-<p><strong>source_metadata options:</strong>
-- <code>source</code> - Use metadata from source image files
-- <code>source invert</code> - Use source metadata but invert x/y coordinates
-- <code>global</code> - Use global metadata (requires <code>metadata_summary: True</code>)
-- <code>source_metadata: {'scale': {'x': 0.004, 'y': 0.004}, ...}</code> - Custom metadata dict</p>
+<p><strong>Source position, scale and rotation</strong> (<code>source_position_x/y/z</code>, <code>source_scale_x/y/z</code>,
+<code>source_rotation</code>), as in the plugin:
+- <code>source</code> - the source file's own value
+- <code>source invert</code> - the source's own value, inverted
+- <code>source y</code> - the source's value of another axis
+- a value or expression, e.g. <code>fn[-3]*24</code> (see <a href="#parameter-resolution">Parameter Resolution</a>)</p>
+<p><code>normalise_rotated_positions</code> straightens a rotated tile grid.</p>
+<p>What no field holds goes in <code>input_output.source_metadata</code>: flags such as <code>global center</code>
+(the centre over all file sets of a <code>match</code> operation; <code>global</code> also needs
+<code>metadata_summary: True</code>), per-file values, or a metadata file (<code>.json</code>/<code>.csv</code>).
+<code>input_output.extra_metadata</code> holds further metadata such as a z <code>scale</code>, or a metadata file.</p>
 <h4 id="registration-configuration">Registration Configuration</h4>
 <div class="highlight"><pre><span></span><code><span class="nt">registration</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
+
 <span class="w">  </span><span class="c1"># Registration method</span>
 <span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span><span class="w">              </span><span class="c1"># phase_correlation, sift, orb, feature, cpd, elastix, ants</span>
-<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span><span class="w">                 </span><span class="c1"># Alternative to &#39;method&#39;</span>
 
-<span class="w">  </span><span class="c1"># Overlap filtering (sift, orb and cpd only; pre-processing&#39;s apply to every method)</span>
+<span class="w">  </span><span class="c1"># Overlap filtering (sift, orb and cpd only; pre-processing's apply to every method)</span>
 <span class="w">  </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">         </span><span class="c1"># Gaussian filter sigma before detection</span>
 <span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 
@@ -1446,13 +1276,14 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 <span class="w">  </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
 
 <span class="w">  </span><span class="c1"># Pairing strategy</span>
-<span class="w">  </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span><span class="w">       </span><span class="c1"># orthogonal, stack; unset = multiview-stitcher&#39;s own pairing</span>
+<span class="w">  </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span><span class="w">       </span><span class="c1"># orthogonal, stack; unset = multiview-stitcher's own pairing</span>
 
 <span class="w">  </span><span class="c1"># Global resolution method</span>
 <span class="w">  </span><span class="nt">groupwise_resolution_method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global_optimization</span><span class="w">  </span><span class="c1"># or other methods</span>
 
 <span class="w">  </span><span class="c1"># Quality filtering</span>
-<span class="w">  </span><span class="nt">post_registration_quality_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span>
+<span class="w">  </span><span class="nt">post_registration_quality_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span><span class="w">  </span><span class="c1"># pairs at this quality or below are left out of the global solve</span>
+<span class="w">  </span><span class="nt">overlap_threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.5</span><span class="w">    </span><span class="c1"># Minimum overall overlap required to proceed</span>
 
 <span class="w">  </span><span class="c1"># Parallel processing</span>
 <span class="w">  </span><span class="nt">n_parallel_pairwise_regs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
@@ -1481,10 +1312,6 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 - unset - Use multiview-stitcher's own default pairing</p>
 <p>The plugin preselects <code>orthogonal</code>: multiview-stitcher's own pairing adds corner-only diagonal pairs, on which a
 feature method such as SIFT can fit an arbitrary rotation that throws tiles far off in the global registration.</p>
-<p><code>pairing: stack</code> replaces the old <code>register stack</code> / <code>stack</code> operations, which are no
-longer read - the plugin has no stack operation, so deriving this from the operation
-meant every stack-specific step was silently skipped there. Configuration files under
-<code>resources/</code> have been updated to <code>operation: register</code> with <code>pairing: stack</code>.</p>
 <p><code>stack</code> pairs consecutive views - N to N+1, N+1 to N+2, and so on - so it is an
 alternative to <code>orthogonal</code>, not a modifier on it: a stack is never paired
 orthogonally. It max-projects z to register the pairs in 2D.</p>
@@ -1493,18 +1320,26 @@ orthogonally. It max-projects z to register the pairs in 2D.</p>
 - <code>ssim</code> - Structural Similarity Index
 - <code>onmi</code> - Overlapping Normalized Mutual Information</p>
 <h4 id="preprocessing-options">Preprocessing Options</h4>
-<div class="highlight"><pre><span></span><code><span class="nt">preprocessing</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">flatfield_quantiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.5</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.95</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Flat-field correction quantiles</span>
+<div class="highlight"><pre><span></span><code><span class="nt">pre_processing</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">flatfield_quantiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.5</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.95</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Flat-field quantiles: one = light image, two = dark, light image</span>
 <span class="w">  </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">                  </span><span class="c1"># Gaussian blur sigma (optional)</span>
-<span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global</span><span class="w">              </span><span class="c1"># Image normalization</span>
-<span class="w">  </span><span class="nt">filter_foreground</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w">            </span><span class="c1"># Filter out empty/background images</span>
+<span class="w">  </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">global</span><span class="w">              </span><span class="c1"># Image normalization: single, global or none</span>
+<span class="w">  </span><span class="nt">filter_foreground</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span><span class="w">            </span><span class="c1"># Leave tiles unlike the median tile out of registration (pipeline only):</span>
+<span class="w">                                     </span><span class="c1"># suits one channel of mostly empty tiles, else drops the wrong ones</span>
 <span class="w">  </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">                           </span><span class="c1"># Downsampling factor for processing, or a pixel size such as 1um</span>
 </code></pre></div>
 <h4 id="fusion-options">Fusion Options</h4>
-<p>Combine registered images into a single output.</p>
+<p>Combine registered images into a single output, and write it.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">fusion</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">average</span><span class="w">          </span><span class="c1"># average, exclusive, additive, compose</span>
 <span class="w">  </span><span class="nt">spacing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">native</span><span class="w">          </span><span class="c1"># native, mean, min, max</span>
+<span class="w">  </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
+<span class="w">  </span><span class="nt">block_size</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">4096</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">4096</span><span class="p p-Indicator">]</span>
+<span class="w">  </span><span class="nt">ome_version</span><span class="p">:</span><span class="w"> </span><span class="s">'0.5'</span>
+<span class="w">  </span><span class="nt">compression</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">null</span>
+<span class="w">  </span><span class="nt">npyramid_add</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+<span class="w">  </span><span class="nt">pyramid_downsample</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="w">  </span><span class="nt">preview</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
 </code></pre></div>
 <p><strong>Fusion Methods:</strong>
 - <code>average</code> (default) - Average overlapping pixels
@@ -1533,16 +1368,69 @@ orthogonally. It max-projects z to register the pairs in 2D.</p>
 <td><code>spacing</code></td>
 <td>str</td>
 <td><code>native</code></td>
-<td>Output pixel size: <code>native</code> (each level at the sources' own pixel sizes, never upsampled; written to zarr only, else <code>mean</code>), <code>mean</code>, <code>min</code> (highest resolution) or <code>max</code> (lowest resolution). <code>output_spacing</code> is also accepted</td>
+<td>Output pixel size: <code>native</code> (each level at the sources' own pixel sizes, never upsampled; written to zarr only, else <code>mean</code>), <code>mean</code>, <code>min</code> (highest resolution) or <code>max</code> (lowest resolution)</td>
+</tr>
+<tr>
+<td><code>format</code></td>
+<td>str</td>
+<td><code>ome.zarr</code></td>
+<td>Output format: <code>ome.zarr</code> or <code>ome.tiff</code> (or both: <code>ome.zarr, ome.tiff</code>)</td>
+</tr>
+<tr>
+<td><code>block_size</code></td>
+<td>list</td>
+<td></td>
+<td>Block size for the output <code>[x, y]</code> or <code>[x, y, z]</code>. Leave unset to size it automatically - see <a href="#block-size">Block size</a></td>
+</tr>
+<tr>
+<td><code>ome_version</code></td>
+<td>str</td>
+<td><code>'0.5'</code></td>
+<td>OME-Zarr version to write: <code>'0.4'</code> or <code>'0.5'</code></td>
+</tr>
+<tr>
+<td><code>compression</code></td>
+<td>str/list</td>
+<td></td>
+<td>Compression method(s)</td>
+</tr>
+<tr>
+<td><code>npyramid_add</code></td>
+<td>int</td>
+<td><code>0</code></td>
+<td>Number of pyramid levels to add</td>
+</tr>
+<tr>
+<td><code>pyramid_downsample</code></td>
+<td>int</td>
+<td><code>2</code></td>
+<td>Downsampling factor for pyramid</td>
+</tr>
+<tr>
+<td><code>preview</code></td>
+<td>str</td>
+<td></td>
+<td>Preview format; its scale is <code>input_output.preview_scale</code></td>
+</tr>
+<tr>
+<td><code>save_images</code></td>
+<td>bool</td>
+<td><code>True</code></td>
+<td>Write the fused image</td>
+</tr>
+<tr>
+<td><code>transition</code></td>
+<td>dict</td>
+<td></td>
+<td>A <code>transition</code> operation's video: <code>frames</code>, <code>fps</code>, <code>spacing</code>, <code>scale</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="block-size">Block size</h3>
-<p><code>general.output.block_size</code> (or an operation's own <code>output.block_size</code>) does double duty
-for a zarr export: it is the on-disk chunk shape <em>and</em> the block size the fusion is
-computed in. A small value therefore costs real time, because the fixed per-block
-overhead is paid once per block. For a TIFF export it is the TIFF tile size. The key
-was called <code>tile_size</code> before, which is still read.</p>
+<p><code>fusion.block_size</code> does double duty for a zarr export: it is the on-disk chunk shape
+<em>and</em> the block size the fusion is computed in. A small value therefore costs real time,
+because the fixed per-block overhead is paid once per block. For a TIFF export it is the
+TIFF tile size.</p>
 <p>Left unset, it is 4096. Every CPU fuses blocks, and the blocks share a quarter of the
 memory available to the process - the Slurm allocation or cgroup limit where there is
 one, not the size of the machine: each block reserves what it needs before it runs, so
@@ -1551,24 +1439,18 @@ A level shrinks its blocks only where one alone would not fit. This is the recom
 setting; give an explicit value only when the on-disk layout matters more than the
 export time. The napari plugin offers 1024, 2048, 4096 and 8192.</p>
 <p>The size actually used is written to the log, so a run can be checked after the fact.</p>
-<h4 id="output-configuration">Output Configuration</h4>
-<div class="highlight"><pre><span></span><code><span class="nt">output</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span><span class="w">    </span><span class="c1"># Output directory</span>
-</code></pre></div>
 <h2 id="complete-example-2d-stitching">Complete Example: 2D Stitching</h2>
 <div class="highlight"><pre><span></span><code><span class="nt">general</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 <span class="w">  </span><span class="nt">logging</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">verbose</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
-<span class="w">  </span><span class="nt">output</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
 
 <span class="nt">operations</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
-<span class="w">    </span><span class="nt">input</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span>
-<span class="w">      </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">input_output</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">data/S000/*.zarr</span>
+<span class="w">      </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span>
+<span class="w">      </span><span class="nt">overwrite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 <span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
 <span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span>
 <span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
 <span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sift</span>
@@ -1576,45 +1458,53 @@ export time. The napari plugin offers 1024, 2048, 4096 and 8192.</p>
 <span class="w">      </span><span class="nt">gaussian_sigma</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="w">      </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
 <span class="w">      </span><span class="nt">metrics</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ncc</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ssim</span><span class="p p-Indicator">]</span>
-<span class="w">    </span><span class="nt">output</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../output/stitched/</span>
+<span class="w">    </span><span class="nt">fusion</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
 </code></pre></div>
 <h2 id="advanced-examples">Advanced Examples</h2>
 <h3 id="multi-dataset-registration-with-matching">Multi-Dataset Registration with Matching</h3>
 <div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register match S</span>
-<span class="w">    </span><span class="nt">input</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/S???/*.tiff</span>
-<span class="w">    </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;scale&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;x&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&#39;y&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="nv">0.004</span><span class="p p-Indicator">},</span><span class="w"> </span><span class="s">&#39;position&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="s">&#39;y&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;fn[-3]*24&#39;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&#39;x&#39;</span><span class="p p-Indicator">:</span><span class="s">&#39;fn[-2]*24&#39;</span><span class="p p-Indicator">}}</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">input_output</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/S???/*.tiff</span>
+<span class="w">      </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../stitched/S{S}/</span>
+<span class="w">      </span><span class="nt">source_scale_x</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.004</span>
+<span class="w">      </span><span class="nt">source_scale_y</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.004</span>
+<span class="w">      </span><span class="nt">source_position_x</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fn[-2]*24</span>
+<span class="w">      </span><span class="nt">source_position_y</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fn[-3]*24</span>
 <span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span>
+<span class="w">      </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register match S</span>
+<span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span>
 <span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orthogonal</span>
 <span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">translation</span>
-<span class="w">    </span><span class="nt">output</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../stitched/S{S}/</span>
 </code></pre></div>
 <p>Registers files from multiple directories (S001, S002, etc.) separately, using <code>{S}</code> placeholder in output path.</p>
 <h3 id="stack-registration">Stack Registration</h3>
 <div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
-<span class="w">    </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stack</span>
-<span class="w">    </span><span class="nt">input</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./registered.ome.zarr</span>
-<span class="w">    </span><span class="nt">source_metadata</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">source</span>
-<span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span>
-<span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">input_output</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">input_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./registered.ome.zarr</span>
+<span class="w">      </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../aligned/</span>
+<span class="w">    </span><span class="nt">pre_processing</span><span class="p">:</span>
 <span class="w">      </span><span class="nt">scale</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
-<span class="w">    </span><span class="nt">output</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../../aligned/</span>
+<span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
+<span class="w">      </span><span class="nt">pairing</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stack</span>
+<span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">orb</span>
+<span class="w">      </span><span class="nt">transform_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rigid</span>
 </code></pre></div>
 <p>Registers slices as a z-stack, pairing them consecutively (N to N+1, N+1 to N+2, ...).</p>
 <h3 id="multi-channel-registration">Multi-Channel Registration</h3>
 <div class="highlight"><pre><span></span><code><span class="nt">operations</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
-<span class="w">    </span><span class="nt">input</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/channel0_registered.ome.zarr</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/channel1_registered.ome.zarr</span>
-<span class="w">    </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">individual</span>
-<span class="w">    </span><span class="nt">registration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ants</span>
-<span class="w">    </span><span class="nt">channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w">  </span><span class="c1"># Register using first channel</span>
-<span class="w">    </span><span class="nt">output</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/output/fused/</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">input_output</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">input_path</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/channel0_registered.ome.zarr</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/data/channel1_registered.ome.zarr</span>
+<span class="w">      </span><span class="nt">output_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/output/fused/</span>
+<span class="w">    </span><span class="nt">pre_processing</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">normalisation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">single</span>
+<span class="w">    </span><span class="nt">registration</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">operation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">register</span>
+<span class="w">      </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ants</span>
+<span class="w">      </span><span class="nt">channel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span><span class="w">  </span><span class="c1"># Register using first channel</span>
 </code></pre></div>
 <p>Combines multiple channels using registration from a specific channel.</p>
 <h2 id="running-the-pipeline">Running the Pipeline</h2>
@@ -1643,13 +1533,18 @@ The script's 64G is enough for a 34,000-tile project.</p>
 <p>After successful registration:
 - <code>registered.ome.zarr</code> - Registered &amp; fused output image (named after the operation)
 - <code>mappings.json</code> / <code>mappings.csv</code> - Final registration mappings
-- <code>pair_mappings.json</code> - Per-pair registration mappings
+- <code>pair_mappings.json</code> - Per-pair registration mappings; with split pairing also each group pair's, marked
+  <code>"kind": "split_group"</code>
 - <code>prereg_mappings.csv</code> - Pre-registration mappings
-- <code>metrics.json</code> - Calculated metrics
-- <code>positions_original.pdf</code>, <code>positions_registered.pdf</code> - Position visualizations</p>
+- <code>metrics.csv</code> - Each registered pair's metrics (quality, ncc, ssim, onmi) over its registered overlap; with
+  split pairing, then each group pair's (e.g. two channels'), on the fused groups binned by <code>split_binning</code>, with no
+  filenames
+- <code>residuals.csv</code> - Each pair's residual from the global solution (RMS distance, physical units)
+- <code>positions_original.pdf</code>, <code>positions_registered.pdf</code> - Position visualizations
+- <code>ro-crate-metadata.json</code>, <code>parameters.yaml</code> - The run's RO-Crate, and every setting it used</p>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <ul>
-<li><strong>No files matched</strong>: Check your <code>input.path</code> pattern and file extensions</li>
+<li><strong>No files matched</strong>: Check your <code>input_output.input_path</code> pattern and file extensions</li>
 <li><strong>No overlap found</strong>: Verify source metadata (position/scale) or adjust pairing strategy</li>
 <li><strong>Out of memory</strong>: Leave <code>block_size</code> unset so blocks are sized against available memory, or use <code>scale</code> to downsample</li>
 <li><strong>Poor registration</strong>: Try different <code>method</code>, increase <code>max_keypoints</code>, or adjust <code>normalisation</code></li>
@@ -1708,10 +1603,10 @@ The script's 64G is enough for a 34,000-tile project.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.e71a0d61.min.js"></script>
+      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
       
     
   </body>
