@@ -43,7 +43,7 @@ dependencies = [
     "ome-zarr",
     "ngff-zarr>=0.50.0,<0.52.0",
     "ome-zarr-models>=1.8.0rc2",
-    "fair-metadata-integration>=0.9.0",
+    "fair-metadata-integration>=0.9.1",
     "matplotlib",
     "tqdm",
     "multiview-stitcher>=0.1.56",
