@@ -91,6 +91,9 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **Docs: update the performance metrics on the technical page**
+      (https://ccp-volume-em.github.io/muvis-align/technical/) to match the newer description of muvis-align in
+      the guide repo (https://ccp-volume-em.github.io/guide/muvis-align/).
 - [ ] **Compose (OME-Zarr 0.6 scene) - left to check.** Writing, the plugin view and reopening are tested; the
       slides project (328 tiles, 5 sections) wrote a valid 30GB scene in 6.5 min. Not yet checked:
   - [x] napari-ome-zarr 0.11 (with ome-zarr 0.21; muvis-align-env has 0.10/0.18) loads `registered` by default,
