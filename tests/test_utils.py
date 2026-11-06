@@ -556,10 +556,14 @@ def test_convert_to_um_leaves_an_unknown_unit_unscaled_and_logs_only_a_named_one
       '/data/proj/subset/sample_r0005_t0002_s00400.ome.tif',
       '/data/proj/subset/sample_r0005_t0003_s00400.ome.tif'],
      ['ov000', 'r0005_t0002', 'r0005_t0003']),
-    # same basenames, no digits in the subdirectory names: the fallback is the relative path
+    # same basenames, no digits in the subdirectory names: just what differs in their paths
     ([f'/nemo/proj/EM04652_02_slice017/{subdir}/EM04652-02_slice17_ov000_s00400.ome.tif'
       for subdir in ['subset', 'tiles', 'stitched', 'stitched_hpc']],
-     [f'{subdir}/EM04652-02_slice17_ov000_s00400.ome.tif' for subdir in ['subset', 'tiles', 'stitched', 'stitched_hpc']]),
+     ['subset', 'tiles', 'stitched', 'stitched_hpc']),
+    # the same tile grid in two folders: the folder and the differing numbers of the file name
+    ([f'{folder}/tiles_1_MMStack_New Grid 1-Grid_{y}_{x}.ome.tiff' for folder in ['reflection', 'fluorescence']
+      for y, x in [(0, 0), (1, 10)]],
+     ['reflection_0_0', 'reflection_1_10', 'fluorescence_0_0', 'fluorescence_1_10']),
     # 's' first appears in the overview's label; it must not move ahead of 'r'/'t' in the tiles' own
     (['overviews/sample_ov000_s00025.ome.tif',
       'tiles/r0004/t0000/sample_r0004_t0000_s00823.ome.tif',

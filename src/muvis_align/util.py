@@ -453,6 +453,24 @@ def strip_common_path_prefix(filenames: list) -> list:
     return ['/'.join(parts[common_len:]) for parts in split]
 
 
+def differing_path_parts(paths: list) -> list:
+    """Each path reduced to what tells it apart, joined by '_': each folder level or file name that differs, as
+    just its differing letter and digit runs where all split into as many."""
+    split = [path.replace('\\', '/').split('/') for path in paths]
+    labels = [[] for _ in paths]
+    for level in range(max(len(parts) for parts in split)):
+        names = [parts[level] if level < len(parts) else '' for parts in split]
+        if len(set(names)) > 1:
+            tokens = [re.findall(r'[A-Za-z]+|\d+', name) for name in names]
+            columns = []
+            if len(set(len(name_tokens) for name_tokens in tokens)) == 1:
+                columns = [column for column in zip(*tokens) if len(set(column)) > 1]
+            parts = ['_'.join(row) for row in zip(*columns)] if columns else names
+            for label, part in zip(labels, parts):
+                label.append(part)
+    return ['_'.join(label) for label in labels]
+
+
 def get_unique_file_labels(filenames: list) -> list:
     file_labels = []
 
@@ -473,8 +491,9 @@ def get_unique_file_labels(filenames: list) -> list:
     elif full_num_ok:
         all_parts = parts_num_full
     else:
-        # no digit-based split told them apart - use the path relative to the shared root
-        all_parts = [{0: common_path} for common_path in common_paths]
+        # no digit-based split told them apart: what differs in their paths, else the whole relative path
+        labels = differing_path_parts(filenames)
+        all_parts = [{0: label} for label in (labels if len(set(labels)) == ntot else common_paths)]
 
     for parts in all_parts:
         file_label = '_'.join([key + part if isinstance(key, str) else part for key, part in parts.items()])
