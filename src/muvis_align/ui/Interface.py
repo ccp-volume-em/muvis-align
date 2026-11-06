@@ -1808,7 +1808,8 @@ class Interface:
                         Timer('global registration', verbose=self._timing_verbose()):
                     return self.reg.register_global(self.reg.pair_msims,
                                                     register_indices=self.reg.register_indices,
-                                                    params=self.params['registration'],
+                                                    params=self.params['registration']
+                                                    | {'metrics': self.metrics_methods},
                                                     progress_factory=worker_factory)
 
             # the transform is written onto the sources before the metrics: a cancel restores it

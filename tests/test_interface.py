@@ -188,6 +188,7 @@ def bare_interface():
     interface.enable_plugin_widget = None
     interface.extra_metadata = {}
     interface.params = {}
+    interface.metrics_methods = ['ncc', 'ssim', 'onmi']
     interface.param_widgets = {}
     interface.need_source_reinit = False
     interface._shape_layers = {}
@@ -1369,7 +1370,8 @@ def test_run_global_registration_persists_all_results(
     assert actual is results
     _, global_kwargs = bare_interface.reg.register_global.call_args
     assert global_kwargs["register_indices"] == [0]
-    assert global_kwargs["params"] == {"method": "phase"}
+    # the table's image metrics, as pair registration measures them
+    assert global_kwargs["params"] == {"method": "phase", "metrics": bare_interface.metrics_methods}
     # register_global() reports its own stage boundaries: most of it is one blocking call, so
     # without them the bar would not move until dask work near the end
     assert global_kwargs["progress_factory"] is not None
