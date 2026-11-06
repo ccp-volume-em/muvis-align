@@ -93,7 +93,7 @@ def _weak_view_click(interface_ref):
 
 
 def position_sort_key(position):
-    return position.get('z', 0), position.get('y', 0), position.get('x', 0)
+    return position.get('c', 0), position.get('z', 0), position.get('y', 0), position.get('x', 0)
 
 
 class Interface:
@@ -394,8 +394,10 @@ class Interface:
         self.need_source_reinit = True
 
     def registration_dimension(self, value):
-        # channels depend on the registration dimension, so they are built again
+        # channels depend on the registration dimension, so they are built again, as are the source positions
         self.extra_metadata.pop('channels', None)
+        self.reg.registration_dimension = value
+        self.need_source_reinit = True
 
     def channels_table(self, value):
         old_value = self.param_widgets.get('input_output.channels_table').get_value()
@@ -456,6 +458,8 @@ class Interface:
 
     def _init_sources(self, input_path, output, params):
         with self._operation_progress('Initialising sources', phases=1) as factory:
+            # init_data() places channels by it
+            self.reg.registration_dimension = self.params['input_output'].get('registration_dimension')
             ok = self.reg.init(input_path=eval_path(input_path),
                                output_path=output,
                                overwrite=params['overwrite'],
@@ -859,8 +863,12 @@ class Interface:
         for position, rotation in zip(positions, rotations):
             if rotation is not None:
                 position['r'] = rotation
+        if self.reg.is_channel_overlay(self.params.get('input_output', {}).get('registration_dimension'),
+                                      self.extra_metadata):
+            for position, channel in zip(positions, self.reg.channel_groups()):
+                position['c'] = channel
         order = sorted(range(len(positions)), key=lambda i: position_sort_key(positions[i]))
-        data = [[print_dict_simple(positions[i]), print_dict_simple(scales[i])] for i in order]
+        data = [[print_dict_simple(positions[i], dims='czyx'), print_dict_simple(scales[i])] for i in order]
         row_headers = [self.reg.file_labels[i] for i in order]
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((data, row_headers, properties))

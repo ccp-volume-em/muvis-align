@@ -760,6 +760,16 @@ class MVSRegistration:
         geometry_timer.record()
         geometry_timer.get_total_time()
 
+        dimension = getattr(self, 'registration_dimension', None) or self.input_output_params.get('registration_dimension')
+        if not is_3d and self.is_channel_overlay(dimension, extra_metadata):
+            # a z per channel is a focus offset, not stack planes: all channels on the first one's plane
+            channel_zs = {}
+            for group, translation in zip(self.channel_groups(), translations):
+                channel_zs.setdefault(group, set()).add(translation.get('z'))
+            if all(len(zs) == 1 for zs in channel_zs.values()) and 'z' in translations[0]:
+                for translation in translations:
+                    translation['z'] = translations[0]['z']
+
         if 'z' in output_order and z_scale is None:
             if len(delta_zs) > 0:
                 z_scale = np.min(delta_zs)

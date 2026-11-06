@@ -1062,6 +1062,19 @@ def test_a_channel_overlay_fuses_each_input_item_as_one_channel(tmp_path):
     assert np.array_equal(actual.values, expected.values)
 
 
+@pytest.mark.parametrize('dimension, expected_zs', [('c', [0, 0, 0, 0]), (None, [0, 0, 1, 1])])
+def test_channels_at_a_z_each_are_put_on_one_plane(tmp_path, dimension, expected_zs):
+    """Two input items whose tiles sit at a z each (a focus offset): one plane in a channel registration."""
+    source_metadata = {'position': {'z': 'fn[-3]'}, 'scale': {'y': '0.032', 'x': '0.032'}}
+    reg = MVSRegistration()
+    reg.registration_dimension = dimension
+    reg.init(operation='register', input_path=['data/S000/000_*_0.tiff', 'data/S000/001_*_0.tiff'],
+             output_path=tmp_path.as_posix() + '/', source_metadata=source_metadata)
+    reg.init_data(source_metadata=source_metadata)
+
+    assert [position['z'] for position in reg.positions] == expected_zs
+
+
 def test_a_stack_is_stored_2d_and_becomes_3d_only_when_fused(tmp_path):
     """A stack's sources carry no z of their own: fuse() promotes them, spacing the slices by index."""
     source_metadata = {'scale': {'y': '0.032', 'x': '0.032'}}

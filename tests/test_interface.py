@@ -2611,3 +2611,21 @@ def test_a_channel_registration_derives_one_output_channel_per_channel_group(bar
 
     assert bare_interface.extra_metadata['channels'] == [{'label': 'tiles', 'color': (0, 0, 1)},
                                                          {'label': 'overviews', 'color': (0, 1, 0)}]
+
+
+def test_the_metadata_table_shows_each_sources_channel_first_in_a_channel_overlay(bare_interface):
+    table = MagicMock()
+    bare_interface.param_widgets = {'input_output.metadata_table': table}
+    bare_interface.params = {'input_output': {'registration_dimension': 'c'}}
+    bare_interface.reg.positions = [{'y': 0.0, 'x': 0.0}, {'y': 0.0, 'x': 0.0}]
+    bare_interface.reg.scales = [{'y': 1.0, 'x': 1.0}] * 2
+    bare_interface.reg.rotations = [None, None]
+    bare_interface.reg.file_labels = ['fluorescence_0_0', 'reflection_0_0']
+    bare_interface.reg.is_channel_overlay.return_value = True
+    bare_interface.reg.channel_groups.return_value = [1, 0]
+
+    bare_interface.populate_metadata_table()
+
+    data, row_headers, _ = table.set_value.call_args.args[0]
+    assert row_headers == ['reflection_0_0', 'fluorescence_0_0']
+    assert [row[0] for row in data] == ['c: 0 y: 0 x: 0', 'c: 1 y: 0 x: 0']
