@@ -1701,8 +1701,8 @@ class MVSRegistration:
             # transform_type options include 'translation', 'rigid', 'affine', 'similarity'
             groupwise_resolution_kwargs['transform'] = transform_type
 
-        post_registration_quality_threshold = params.get('post_registration_quality_threshold')
-        post_registration_do_quality_filter = (post_registration_quality_threshold is not None)
+        quality_threshold = params.get('post_registration_quality_threshold')
+        quality_threshold = float(quality_threshold) if is_valid_value(quality_threshold) else 0.0
 
         n_parallel_pairwise_regs = params.get('n_parallel_pairwise_regs')
         # None or 0 is automatic; a yaml value may be a float
@@ -1712,24 +1712,16 @@ class MVSRegistration:
 
         # ******* start MVS registration functions
 
-        if post_registration_do_quality_filter:
-            # filter edges by quality
-            g_reg_computed = mv_graph.filter_edges(
-                g_reg_computed,
-                threshold=post_registration_quality_threshold,
-                weight_key="quality",
-            )
-
-        # a pair scored 0 or below (a failed method gives the identity with 0) holds no information: left out of the
-        # solve only, so a tile without other pairs keeps its metadata position rather than an unconstrained one's
+        # a pair scored at the threshold or below (a failed method gives the identity with 0) is left out of the solve
+        # only, so a tile without other pairs keeps its metadata position rather than an unconstrained one's
         failed_pairs = [edge for edge, quality in nx.get_edge_attributes(g_reg_computed, 'quality').items()
-                        if not np.nan_to_num(np.asarray(quality, dtype=float), nan=0.0).max() > 0]
+                        if not np.nan_to_num(np.asarray(quality, dtype=float), nan=0.0).max() > quality_threshold]
         resolve_graph = g_reg_computed
         if failed_pairs:
             resolve_graph = g_reg_computed.copy()
             resolve_graph.remove_edges_from(failed_pairs)
             logging.warning(f'Global registration: {len(failed_pairs)} of {g_reg_computed.number_of_edges()} pairs'
-                            f' left out, scored 0 or below')
+                            f' left out, scored {quality_threshold:g} or below')
             unregistered = sorted(node for node in resolve_graph.nodes
                                   if resolve_graph.degree(node) == 0 and g_reg_computed.degree(node) > 0)
             if unregistered:

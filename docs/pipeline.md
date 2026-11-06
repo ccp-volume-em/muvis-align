@@ -85,7 +85,7 @@ refused with an error naming the sections to use instead.
 A few settings have no field in the plugin. They go in the section they belong to, and
 the run's RO-Crate keeps them, with a warning that the project template lacks them:
 `input_output.labels`, `extra_metadata`, `source_metadata` and `n_set_workers`;
-`registration.metrics`, `overlap_threshold` and `post_registration_quality_threshold`;
+`registration.metrics` and `overlap_threshold`;
 `fusion.format`, `compression`, `npyramid_add`, `pyramid_downsample`, `preview`,
 `save_images` and `transition`.
 
@@ -182,7 +182,7 @@ registration:
   groupwise_resolution_method: global_optimization  # or other methods
 
   # Quality filtering
-  post_registration_quality_threshold: 0.5
+  post_registration_quality_threshold: 0.5  # pairs at this quality or below are left out of the global solve
   overlap_threshold: 0.5    # Minimum overall overlap required to proceed
 
   # Parallel processing

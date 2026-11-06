@@ -1391,20 +1391,27 @@ def test_a_pair_elastix_cannot_register_gets_the_identity_with_quality_0(monkeyp
         assert result is registered
 
 
-def test_pairs_scored_0_or_below_are_left_out_of_the_solve_and_their_tile_kept_in_place(monkeypatch, tmp_path,
-                                                                                         caplog):
-    """A failed pair (identity, quality 0) is no constraint: a tile whose pairs all failed keeps its metadata
-    position, while its pairs stay in the pairs graph (saved and shown) all the same."""
+@pytest.mark.parametrize('threshold, qualities', [
+    (None, (0.0, -0.2)),    # 0 as a failed method gives, and below 0 as a poor match can score
+    ('', (0.0, -0.2)),      # a blank plugin field
+    (0.05, (0.05, 0.03)),   # the minimum pair quality, at it or below
+])
+def test_pairs_at_the_minimum_quality_or_below_are_left_out_of_the_solve_and_their_tile_kept_in_place(
+        monkeypatch, tmp_path, caplog, threshold, qualities):
+    """A pair at the minimum quality or below (0 by default: a failed one, identity) is no constraint: a tile whose
+    pairs all are keeps its metadata position, while its pairs stay in the pairs graph (saved and shown) all the same."""
     import muvis_align.MVSRegistration as mvs_module
     reg = prepared_registration(S000_TILES, tmp_path)
     params = {'method': 'phase_correlation', 'pairing': 'orthogonal', 'transform_type': 'translation',
-              'groupwise_resolution_method': 'robust_linear'}
+              'groupwise_resolution_method': 'robust_linear', 'post_registration_quality_threshold': threshold}
     reg.register_pairs(reg.register_msims, params=params)
     tile = max(reg.pairs_graph.nodes)
     tile_pairs = list(reg.pairs_graph.edges(tile))
     for index, edge in enumerate(tile_pairs):
-        # 0 as a failed method gives, and below 0 as a poor match can score
-        reg.pairs_graph.edges[edge]['quality'] = 0.0 if index == 0 else -0.2
+        reg.pairs_graph.edges[edge]['quality'] = qualities[min(index, 1)]
+    # every other pair above the minimum, as the registration's own scores need not be
+    for edge in set(reg.pairs_graph.edges) - set(tile_pairs) - {tuple(reversed(pair)) for pair in tile_pairs}:
+        reg.pairs_graph.edges[edge]['quality'] = 1.0
     solved = []
     original = mvs_module.groupwise_resolution
 

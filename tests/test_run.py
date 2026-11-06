@@ -37,7 +37,7 @@ def test(resource_file, tmp_path):
 SKILL_EXAMPLES = sorted(glob.glob('skills/muvis-align/examples/*.yml'))
 PIPELINE_ONLY_SETTINGS = {
     'input_output.labels', 'input_output.extra_metadata', 'input_output.source_metadata', 'input_output.n_set_workers',
-    'registration.metrics', 'registration.overlap_threshold', 'registration.post_registration_quality_threshold',
+    'registration.metrics', 'registration.overlap_threshold',
     'fusion.format', 'fusion.compression', 'fusion.npyramid_add', 'fusion.pyramid_downsample', 'fusion.preview',
     'fusion.save_images', 'fusion.transition',
 }

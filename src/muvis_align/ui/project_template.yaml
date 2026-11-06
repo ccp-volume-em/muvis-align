@@ -458,6 +458,16 @@ parameters:
     optional: True
     section_id: "registration"
     mode: "beginner"
+  - name: post_registration_quality_threshold
+    type: float
+    label: "Minimum pair quality"
+    description: "Pairs registered at this quality or below are left out of the global registration; a tile left without pairs keeps its metadata position (blank for 0: only failed pairs)"
+    default:
+    cli_tag: "--post_registration_quality_threshold"
+    cli_order: 19
+    optional: True
+    section_id: "registration"
+    mode: "beginner"
 
   # fusion
   - name: method
