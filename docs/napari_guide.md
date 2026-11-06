@@ -127,7 +127,6 @@ original sources.
 | Flat-field quantiles | One or two quantiles for flat-field correction, e.g. `0.5` or `0.01,0.99`; empty for none |
 | Normalisation | **Single** (each tile on its own), **Global** (over all tiles) or **None** |
 | Gaussian sigma | Gaussian blur before registration; 0 or empty for none |
-| Filter foreground | Leave out tiles with little image signal, such as empty tiles |
 
 **Process** pre-processes the sources and shows the result in the view, then moves on to the
 registration tab. Running it is optional: registration pre-processes the sources itself

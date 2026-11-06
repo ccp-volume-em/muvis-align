@@ -192,6 +192,9 @@ class Interface:
             if 'tile_size' in fusion_params:
                 # the block size's name in projects saved before; written back as block_size
                 fusion_params.setdefault('block_size', fusion_params.pop('tile_size'))
+            # left out of the plugin: it drops the wrong tiles, and passed on it would filter unseen
+            if (project_params.get('pre_processing') or {}).pop('filter_foreground', False):
+                logging.warning('Foreground filtering is not available in the plugin: left out')
             unknown_params = get_unknown_params(self.template, project_params)
             if unknown_params:
                 # still written back unchanged, as scripted runs may read them (e.g. extra_metadata)

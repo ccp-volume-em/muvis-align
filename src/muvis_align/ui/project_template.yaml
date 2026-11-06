@@ -226,17 +226,6 @@ parameters:
     optional: True
     section_id: "pre_processing"
     mode: "beginner"
-  - name: filter_foreground
-    type: checkbox
-    label: "Filter foreground"
-    description: "If enabled, filter tile images with low image signal (e.g. empty tiles)"
-    default: False
-    cli_tag: "--filter_foreground"
-    cli_order: 5
-    optional: True
-    append_value: False
-    section_id: "pre_processing"
-    mode: "beginner"
 
     # registration / feature explorer
   - name: operation

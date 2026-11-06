@@ -706,7 +706,8 @@ def test_project_path_handles_existing_and_new_projects(
     )
     monkeypatch.setattr(interface_module, "get_unknown_params", lambda *_: [])
     monkeypatch.setattr(
-        interface_module, "read_params", lambda _: {"registration": {}}
+        interface_module, "read_params",
+        lambda _: {"registration": {}, "pre_processing": {"filter_foreground": True, "scale": 2}}
     )
     monkeypatch.setattr(
         interface_module,
@@ -718,6 +719,8 @@ def test_project_path_handles_existing_and_new_projects(
 
     bare_interface.reset.assert_called_once_with()
     assert bare_interface.params_path == "project.yml"
+    # not in the plugin: dropped on load, so a saved True does not filter unseen
+    assert bare_interface.params.get("pre_processing", {}) == ({"scale": 2} if exists else {})
     # for both: it shows the stored relative paths, which update_widgets() skips
     bare_interface.update_input_output_path.assert_called_once_with()
     bare_interface.resolve_output_settings.assert_called_once_with()

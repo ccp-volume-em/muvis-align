@@ -91,6 +91,10 @@ ESSENTIAL
 
 MINOR
 
+- [ ] **Foreground filtering: fix or remove from the pipeline too** (removed from the plugin).
+      `calc_foreground_map` keeps tiles unlike one median over all tiles, above the mean difference: with mostly
+      sample tiles it keeps the empty ones, across channels it drops a whole channel, and it always cuts a large
+      share. A fix needs a per-channel median and a threshold that does not cut a fixed share.
 - [ ] **Docs: update the performance metrics on the technical page**
       (https://ccp-volume-em.github.io/muvis-align/technical/) to match the newer description of muvis-align in
       the guide repo (https://ccp-volume-em.github.io/guide/muvis-align/).

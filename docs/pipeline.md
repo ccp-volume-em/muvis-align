@@ -234,7 +234,8 @@ pre_processing:
   flatfield_quantiles: [0.5, 0.95]  # Flat-field quantiles: one = light image, two = dark, light image
   gaussian_sigma: 1                  # Gaussian blur sigma (optional)
   normalisation: global              # Image normalization: single, global or none
-  filter_foreground: True            # Filter out empty/background images
+  filter_foreground: True            # Leave tiles unlike the median tile out of registration (pipeline only):
+                                     # suits one channel of mostly empty tiles, else drops the wrong ones
   scale: 4                           # Downsampling factor for processing, or a pixel size such as 1um
 ```
 
