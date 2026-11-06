@@ -1,0 +1,21 @@
+# Stitch a 2D tile grid. Runs on the repository's sample data: python run.py skills/muvis-align/examples/stitch_2d.yml
+general:
+  logging:
+    verbose: true
+operations:
+- input_output:
+    input_path: data/S000/*.zarr
+    output_path: ../../output/stitched/   # relative to the input directory
+    overwrite: true
+  registration:
+    operation: register
+    method: orb
+    gaussian_sigma: 2                      # smooth before detecting features
+    normalisation: true
+    transform_type: rigid
+    pairing: orthogonal
+    max_keypoints: 5000
+    metrics: [ncc, ssim]
+  fusion:
+    method: average
+    format: ome.zarr

@@ -1,0 +1,14 @@
+{
+  "name": "muvis-align",
+  "owner": {
+    "name": "Joost de Folter"
+  },
+  "description": "Agent skills for using muvis-align, microscopy image registration and fusion",
+  "plugins": [
+    {
+      "name": "muvis-align",
+      "source": "./",
+      "description": "Skill for registering and fusing microscopy tiles, stacks and channels with muvis-align (pipeline YAML and Python API)"
+    }
+  ]
+}

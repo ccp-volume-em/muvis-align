@@ -1,0 +1,11 @@
+# Fuse at the stage positions without registering: check the metadata layout before choosing a method.
+operations:
+- input_output:
+    input_path: /data/run1/*.ome.tif
+    output_path: merged/
+    overwrite: true
+    preview_scale: 1um
+  registration:
+    operation: merge
+  fusion:
+    format: ome.zarr

@@ -68,6 +68,18 @@ pip install "muvis-align[all]"
 The command-line script, example parameter files and notebooks are in this repository,
 not the pip package: see the [documentation](https://ccp-volume-em.github.io/muvis-align/).
 
+### For AI coding agents
+
+A skill teaches coding agents to use muvis-align: choosing settings, writing parameter files and calling it
+from Python. In Claude Code:
+
+```
+/plugin marketplace add ccp-volume-em/muvis-align
+/plugin install muvis-align@muvis-align
+```
+
+Other agents that read `SKILL.md` skills can use the [skills/muvis-align](skills/muvis-align) folder as it is.
+
 ## Contributing
 
 Contributions are very welcome. Tests can be run with [tox], please ensure

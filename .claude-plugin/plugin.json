@@ -1,0 +1,9 @@
+{
+  "name": "muvis-align",
+  "description": "Skill for registering and fusing microscopy tiles, stacks and channels with muvis-align (pipeline YAML and Python API)",
+  "author": {"name": "Joost de Folter"},
+  "homepage": "https://ccp-volume-em.github.io/muvis-align/",
+  "repository": "https://github.com/ccp-volume-em/muvis-align",
+  "license": "MIT",
+  "skills": ["./skills/muvis-align"]
+}

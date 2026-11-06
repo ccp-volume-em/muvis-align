@@ -1,0 +1,14 @@
+# Align consecutive sections into a z-stack (e.g. the per-section results of match_sets.yml).
+operations:
+- input_output:
+    input_path: /data/stitched/S*/registered.ome.zarr
+    output_path: /data/aligned/
+  pre_processing:
+    scale: 4
+  registration:
+    operation: register
+    pairing: stack
+    method: orb
+    transform_type: rigid
+  fusion:
+    format: ome.zarr

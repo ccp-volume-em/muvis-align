@@ -1,3 +1,4 @@
+import glob
 import json
 import os.path
 
@@ -7,9 +8,12 @@ import yaml
 from multiview_stitcher import msi_utils
 from multiview_stitcher import spatial_image_utils as si_utils
 
-from muvis_align.MVSRegistration import MVSRegistration, RegState
+from muvis_align.MVSRegistration import MVSRegistration, RegState, check_operation_layout
+from muvis_align.file.project_yaml import get_unknown_params
+from muvis_align.file.resources import get_project_template
 from muvis_align.Pipeline import Pipeline
 from muvis_align.image.util import get_msim_transform_keys, wrap_sims_as_msims
+from muvis_align.ui.bilayers_util import get_section_dict
 from muvis_align.util import operation_to_past_participle
 from tests.data_builders import registration_from_resource
 
@@ -28,6 +32,28 @@ def test(resource_file, tmp_path):
 
     pipeline = Pipeline(params)
     assert pipeline.run()
+
+
+SKILL_EXAMPLES = sorted(glob.glob('skills/muvis-align/examples/*.yml'))
+PIPELINE_ONLY_SETTINGS = {
+    'input_output.labels', 'input_output.extra_metadata', 'input_output.source_metadata', 'input_output.n_set_workers',
+    'registration.metrics', 'registration.overlap_threshold', 'registration.post_registration_quality_threshold',
+    'fusion.format', 'fusion.compression', 'fusion.npyramid_add', 'fusion.pyramid_downsample', 'fusion.preview',
+    'fusion.save_images', 'fusion.transition',
+}
+
+
+@pytest.mark.parametrize('example_file', SKILL_EXAMPLES, ids=os.path.basename)
+def test_skill_examples_use_only_known_settings(example_file):
+    # the published skill's examples are copied by users: a renamed setting must fail here, not silently there
+    template = get_section_dict(get_project_template(), ['inputs', 'parameters', 'display_only', 'outputs'])
+    with open(example_file, 'r', encoding='utf8') as file:
+        params = yaml.safe_load(file)
+
+    assert set(params) <= {'general', 'operations'}
+    for operation_params in params['operations']:
+        check_operation_layout(operation_params)
+        assert set(get_unknown_params(template, operation_params)) <= PIPELINE_ONLY_SETTINGS
 
 
 @pytest.mark.parametrize('outcomes, expected', [

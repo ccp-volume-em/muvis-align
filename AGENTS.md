@@ -21,6 +21,7 @@ Rules for working on muvis-align itself, distilled from recurring feedback acros
 
 ## Procedures
 - Longer task-specific how-tos are project skills in `.claude/skills/` (e.g. `napari-ui-capture`: drive the plugin from a script and screenshot it). Read the matching `SKILL.md` when the task calls for it.
+- `skills/muvis-align/` is the skill for people *using* muvis-align (pipeline YAML, Python API). Keep it in step with user-facing changes; it is not a guide for working on this repo.
 
 ## Code style
 - Avoid `continue` statements - restructure the loop body (e.g. invert the condition) instead.

@@ -1,0 +1,18 @@
+# One registration per folder S001, S002, ...; tiles without stage metadata placed from their filename numbers.
+general:
+  break_on_error: false
+operations:
+- input_output:
+    input_path: /data/S???/*.tiff
+    output_path: ../../stitched/S{S}/      # {S}: each group's number
+    source_scale_x: 0.004
+    source_scale_y: 0.004
+    source_position_x: fn[-2]*24
+    source_position_y: fn[-3]*24
+  pre_processing:
+    scale: 4                              # register on a 4x downscaled copy
+  registration:
+    operation: register match S
+    method: orb
+    transform_type: translation
+    pairing: orthogonal
