@@ -349,7 +349,13 @@ The plane-to-plane shifts then apply to every tile in a plane, on top of its wit
 ## Performance metrics
 
 
-The project calculates registration metrics such as NCC, SSIM, normalized mutual information, MSE-derived score, match rate, and distance-based feature metrics.
+`muvis-align` reports each registration's performance in three ways:
+
+* **image similarity metrics** of every registered pair's overlap (NCC, SSIM, ONMI by default; an MSE-derived score on
+  request), with the registration method's own **quality** score;
+* **residuals**: how far each pair's registration disagrees with the global solution;
+* **timing and memory** of each step in the log.
+
 ### Registration quality metrics
 
 `muvis-align` computes several complementary image similarity metrics to evaluate registration quality. Each metric captures a different aspect of alignment quality, making it useful to evaluate multiple metrics together rather than relying on a single score.
@@ -359,7 +365,11 @@ The project calculates registration metrics such as NCC, SSIM, normalized mutual
 | NCC     | Normalized Cross-Correlation              | Intensity correlation between images                 | -1 to 1 |
 | SSIM    | Structural Similarity Index Measure       | Similarity of local image structures                 | -1 to 1 |
 | ONMI    | Overlapping Normalized Mutual Information | Shared information between overlapping image regions | 0 to 1  |
+| MSE     | Inverse mean squared error (on request: `mse` in the pipeline's `registration.metrics`) | Pixel-wise intensity difference | 0 upwards |
 | Quality | The registration method's own score       | Spearman correlation of the overlap (phase correlation, Elastix, ANTs), or the share of matched points (feature methods, CPD) | -1 to 1, or 0 to 1 |
+
+For the feature methods and CPD the quality is the match rate: the share of feature points whose transformed position
+lies within the matching threshold of a point in the other image.
 
 The plugin colours each metric from red (poor) to green (good) over its own range: for a -1 to 1 metric, 0 (no
 correlation) is the middle of the scale.
@@ -369,10 +379,7 @@ The metrics are implemented in `metrics.py`:
 ```python
 all_metric_funcs = {
     'ncc': multiview_stitcher.metrics.normalized_cross_correlation,
-    'ssim': lambda im1, im2: structural_similarity(
-        np.nan_to_num(im1),
-        np.nan_to_num(im2),
-        data_range=data_range),
+    'ssim': partial(ssim_metric, data_range=data_range),
     'onmi': lambda im1, im2:
         normalized_mutual_information(
             np.nan_to_num(im1),
@@ -381,6 +388,9 @@ all_metric_funcs = {
         1 / mean_squared_error(im1, im2),
 }
 ```
+
+`ssim_metric` runs scikit-image's `structural_similarity` with its window narrowed to fit a thin overlap (a narrow
+strip between tiles); below 3 pixels it gives no value.
 
 Source: [`src/muvis_align/metrics.py`](https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/metrics.py)
 
@@ -432,6 +442,25 @@ Using NCC, SSIM, and ONMI together provides complementary measures of registrati
 * **ONMI** evaluates shared image information.
 
 This combination gives a more robust assessment of registration performance than any single metric alone.
+
+### Where the metrics are measured and reported
+
+Each pair is measured over its overlap only, as the two images lie after registration: the moving image is resampled
+onto the fixed image's pixels, and pixels outside the moving image count as missing. The metrics are computed
+twice, after pair registration (each pair under its own registered transform) and after global registration (under
+the final transforms); the saved values are the global ones.
+
+* `metrics.csv` holds each registered pair's metrics and quality, and the plugin's metrics table shows them, each
+  coloured over its range. Selecting a tile pair's row picks its two images for the registration preview.
+* With split pairing, the group pairs (consecutive z-planes or channels, registered as whole fused images) follow
+  in the same file and table, without filenames. They are measured on the two fused groups binned by
+  `split_binning`, only where both groups have tiles. A group pair's transform and quality are also in
+  `pair_mappings.json`.
+* `residuals.csv` and the log give each pair's residual: the RMS distance (in physical units) between where its own
+  registration and the global solution place it. A large residual marks a pair that disagrees with its neighbours,
+  usually a failed registration. The log lists them largest first, with their mean, median and maximum.
+* With `verbose` logging, the log times each step (`Time <step>: <seconds>`) with the process's memory (rss and
+  peak).
 
 ---
 
@@ -676,7 +705,7 @@ every start, in which case the sandbox `xpra-pull.sh` builds is the faster choic
 | Larger-than-memory data | Dask-backed TIFF and Zarr sources, chunked fusion, direct Zarr output       |
 | FAIR implementation     | package metadata, YAML configuration, RO-Crate generation, OME-Zarr outputs |
 | Persistent metadata     | OME metadata parsing, `xarray`/`MSIM` spatial transforms, positions, scales, channels; interoperable NGFF RFC 6 affine transforms |
-| Performance metrics     | NCC, SSIM, ONMI, MSE-derived score, match metrics, timing logs              |
+| Performance metrics     | NCC, SSIM, ONMI, MSE-derived score, registration quality (match rate), global residuals, timing logs |
 | Resumable workflow      | state machine, pair mappings, global mappings, metrics CSV                  |
 | Xpra interface          | Docker stage exposing browser-based napari over Xpra                        |
 
