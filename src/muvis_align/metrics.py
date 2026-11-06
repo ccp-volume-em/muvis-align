@@ -23,13 +23,22 @@ from muvis_align.util import (apply_transform, picklable, progress_phase, releas
                               rolling_map, worker_process_pool)
 
 
+def ssim_metric(image1, image2, data_range):
+    """SSIM of two single-channel crops, its window narrowed to a thin overlap; NaN (left out of summaries) below 3
+    pixels."""
+    # the largest odd window up to skimage's default 7
+    win_size = min(7, (min(np.shape(image1)) - 1) // 2 * 2 + 1)
+    if win_size < 3:
+        return np.nan
+    return structural_similarity(np.nan_to_num(image1), np.nan_to_num(image2), data_range=data_range,
+                                 win_size=win_size)
+
+
 def create_metric_methods(metric_methods, msim):
     data_range = np.iinfo(msim["scale0/image"].dtype).max
     all_metric_funcs = {
         'ncc': multiview_stitcher.metrics.normalized_cross_correlation,
-        # the crops are single-channel: no channel axis
-        'ssim': lambda im1, im2: structural_similarity(np.nan_to_num(im1), np.nan_to_num(im2),
-                                                       data_range=data_range),
+        'ssim': partial(ssim_metric, data_range=data_range),
         'onmi': lambda im1, im2: normalized_mutual_information(np.nan_to_num(im1), np.nan_to_num(im2)) - 1,
         'mse': lambda im1, im2: 1 / mean_squared_error(im1, im2),
     }

@@ -102,18 +102,23 @@ def test_with_no_metric_asked_for_no_pair_is_imaged_but_the_results_are_the_same
         assert skipped_result['summary'] == imaged_result['summary']
 
 
-def test_ssim_takes_the_crops_as_single_channel():
-    """The registration channel is a channel label or index, never an axis of the 2D crops SSIM gets."""
+@pytest.mark.parametrize('height, win_size', [(50, 7), (6, 5), (3, 3), (2, None)])
+def test_ssim_takes_the_crops_as_single_channel_narrowing_its_window_to_a_thin_overlap(height, win_size):
+    """The registration channel is a channel label or index, never an axis of the 2D crops SSIM gets. An overlap
+    thinner than the default window narrows it, and below 3 pixels gives no value."""
     from skimage.metrics import structural_similarity
     from muvis_align.metrics import create_metric_methods
 
     msim = {'scale0/image': np.zeros((1,), dtype=np.uint16)}
     rng = np.random.default_rng(0)
-    image1, image2 = rng.integers(0, 4000, (2, 50, 80)).astype(np.float32)
+    image1, image2 = rng.integers(0, 4000, (2, height, 80)).astype(np.float32)
 
-    ssim = create_metric_methods(['ssim'], msim)['ssim']
+    value = create_metric_methods(['ssim'], msim)['ssim'](image1, image2)
 
-    assert ssim(image1, image2) == structural_similarity(image1, image2, data_range=np.iinfo(np.uint16).max)
+    if win_size is None:
+        assert np.isnan(value)
+    else:
+        assert value == structural_similarity(image1, image2, data_range=np.iinfo(np.uint16).max, win_size=win_size)
 
 
 def test_global_metrics_measure_only_the_registered_pairs_as_the_overlap_mode_does(register_msims):
