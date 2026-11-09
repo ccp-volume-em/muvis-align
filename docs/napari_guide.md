@@ -123,10 +123,10 @@ original sources.
 
 | Parameter | Description |
 |-----------|-------------|
-| Downscale / pixel size | Resolution to register at: a downscale factor (e.g. `2`) or a pixel size with unit (e.g. `10um`). Usually the largest single speed-up |
-| Flat-field quantiles | One or two quantiles for flat-field correction, e.g. `0.5` or `0.01,0.99`; empty for none |
-| Normalisation | **Single** (each tile on its own), **Global** (over all tiles) or **None** |
-| Gaussian sigma | Gaussian blur before registration; 0 or empty for none |
+| Downscale / pixel size | Resolution to register at: a downscale factor (e.g. `2`) or a pixel size with unit (e.g. `10um`). Usually the largest single speed-up. Also on the Registration tab, to try the preview at different downscales |
+| Flat-field quantiles | One or two quantiles for flat-field correction, e.g. `0.5` or `0.01,0.99`; empty for none. A model per section, input path item and field of view (pixel size x image size); fewer than 5 such images are left uncorrected |
+| Normalisation | **Single** (each tile on its own), **Global** (over all tiles of each input path item) or **None** |
+| Gaussian sigma | Gaussian blur before registration, in pixels at the finest pixel size (the same physical blur in every image); 0 or empty for none |
 
 **Process** pre-processes the sources and shows the result in the view, then moves on to the
 registration tab. Running it is optional: registration pre-processes the sources itself

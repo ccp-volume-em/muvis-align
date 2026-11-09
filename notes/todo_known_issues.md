@@ -89,7 +89,8 @@ Branch `group-preprocessing`. Groups are input-path items (`input_groups`); one 
 2. [x] Gaussian sigma in pixels at the project's finest native pixel size, `sigma * finest / own` per level
    (same as before for one pixel size; drops the old cube-root rule).
 3. [x] Global normalisation per group, cached by (settings, group); preview reads only its pair's group(s).
-4. [ ] Tests (flatfield mixed pixel sizes; plumbing in test_mvs_registration_unit), meatballs check (clear output).
+4. [x] Tests, meatballs check (pair == full with flat-field, gaussian, global normalisation; each source built once).
+5. [ ] Merge into main once agreed.
 
 ## TODO
 
