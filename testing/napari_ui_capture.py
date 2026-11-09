@@ -59,6 +59,7 @@ def main():
                         help='once the action is done, save the plugin on each tab')
     parser.add_argument('--window', action='store_true', help='once the action is done, save the whole window')
     parser.add_argument('--window-tab', default=None, help='the plugin tab (label) the whole window shows')
+    parser.add_argument('--hide-shapes', action='store_true', help='hide the shapes layers in the window shot')
     parser.add_argument('--pair-offset', type=float, default=0,
                         help='modify_pair_registration: shift the moving image by this much in x (world units)')
     args = parser.parse_args()
@@ -168,6 +169,10 @@ def main():
                                                                       for layer in layers))
 
     def save_window():
+        if args.hide_shapes:
+            for layer in viewer.layers:
+                if isinstance(layer, napari.layers.Shapes):
+                    layer.visible = False
         if args.window_tab:
             widget.setCurrentIndex(widget.tab_labels.index(args.window_tab))
             QApplication.processEvents()
