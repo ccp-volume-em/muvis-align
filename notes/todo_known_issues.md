@@ -92,7 +92,8 @@ Branch `registration-preview-downscale`.
    pre-processing; else the two sources alone. Crop cache keyed by pair, channel, settings.
 4. [x] Mirror widget for `pre_processing.scale` on the Registration tab, built in code (`mirrored_params`).
 5. [x] Note in `skills/muvis-align/`.
-6. [ ] UI capture check (ask first), then merge.
+6. [x] UI capture check (data_subset: field on the Registration tab, preview at 8 then 2, no full run).
+7. [ ] Merge into main once agreed.
 
 ## TODO
 
