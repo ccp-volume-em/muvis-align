@@ -95,22 +95,25 @@ This is not the `general`/`operations` parameter file the
 
 | Parameter | Description |
 |-----------|-------------|
-| Input data | The sources: a file, a folder or a wildcard pattern such as `data/*/*.tiff` (TIFF, OME-TIFF, Zarr, OME-Zarr) |
+| Input data | The sources, as a list of items: each a file, a folder (its files; a `.zarr` folder is one image) or a wildcard pattern such as `data/*/*.tiff` (TIFF, OME-TIFF, Zarr, OME-Zarr). **Add files...** and **Add folder...** add a row, double-click a row to edit it, and **Remove**, **Up** and **Down** act on the selected row. Each item is a group: one channel when registering over **C**, and the unit pre-processing works per |
 | Source position Z / Y / X | Where each source's position comes from: `source` reads it from the file's metadata (`source invert` negates it; `source y` takes the source's y, for a camera whose axes are the stage's swapped), or an expression over the file name, such as `fn[-2]*24` (the second-last number in the name, times 24) |
 | Source scale Z / Y / X | The pixel size, in the same way: `source`, a number, or an expression |
 | Source rotation | The rotation, in the same way |
 | Normalise rotated positions | Turn a rotated layout straight: positions are turned back by the sources' rotation, or by the tile grid's own angle where the metadata gives none |
 | Preview downscale / pixel size | Resolution of the view: a downscale factor (e.g. `16`) or a pixel size with unit (e.g. `10um`) |
 | Select coordinate system | Which positions the metadata table shows: the sources' own (**Source metadata**), or the registered ones once there are any |
-| Metadata table | Read-only: each source's position and pixel size, ordered by (z, y, x) position |
-| Registration dimension | What the sources are spread over: **Space** (tiles side by side), **Z** (a stack of slices), **C** (channels of the same field) or **T** (time points) |
+| Metadata table | Read-only: each source's position and pixel size, ordered by (z, y, x) position; registering over **C**, each source's channel too, ordered by channel first |
+| Registration dimension | What the sources are spread over: **Space** (tiles side by side), **Z** (a stack of slices), **C** (channels of the same field, one per input data item) or **T** (time points) |
 | Channels table | Each channel's label and colour; click a colour cell to pick a colour |
 | Output data | The output folder, relative to the project file |
 | Overwrite output data | Overwrite any existing output |
 
 **Process** reads the sources' metadata and draws their layout in the view and the overview,
-without reading the image data in full. If the output folder holds a registration from an
-earlier run, it is loaded too, and the plugin carries on from where that run stopped. If
+without reading the image data in full. If some files lack a position or pixel size in their
+metadata, or all share one position, a single message says so: set **Source position** or
+**Source scale** for them. With flat-field quantiles set, the view shows the sources flat-field
+corrected, each section's model made when it is first shown. If the output folder holds a
+registration from an earlier run, it is loaded too, and the plugin carries on from where that run stopped. If
 that registration was made with different source position, scale or rotation settings, the
 plugin asks whether to **Reload** those settings or **Discard** the earlier output.
 
@@ -118,14 +121,15 @@ plugin asks whether to **Reload** those settings or **Discard** the earlier outp
 
 ![The pre processing tab](images/napari/pre_processing.png)
 
-These apply to the images used for registration only: the fused output is made from the
-original sources.
+These apply to the images used for registration; a step over several images (flat-field, global
+normalisation) keeps each input data item apart. Flat-field correction is the exception: it
+applies to the view and the fused output as well, with the same model.
 
 | Parameter | Description |
 |-----------|-------------|
 | Downscale / pixel size | Resolution to register at: a downscale factor (e.g. `2`) or a pixel size with unit (e.g. `10um`). Usually the largest single speed-up. Also on the Registration tab, to try the preview at different downscales |
-| Flat-field quantiles | One or two quantiles for flat-field correction, e.g. `0.5` or `0.01,0.99`; empty for none. A model per section, input path item and field of view (pixel size x image size); fewer than 5 such images are left uncorrected |
-| Normalisation | **Single** (each tile on its own), **Global** (over all tiles of each input path item) or **None** |
+| Flat-field quantiles | One or two quantiles for flat-field correction, e.g. `0.5` or `0.01,0.99`; empty for none. A model per section, input data item and field of view (pixel size x image size); fewer than 5 such images are left uncorrected |
+| Normalisation | **Single** (each tile on its own), **Global** (over all tiles of each input data item) or **None** |
 | Gaussian sigma | Gaussian blur before registration, in pixels at the finest pixel size (the same physical blur in every image); 0 or empty for none |
 
 **Process** pre-processes the sources and shows the result in the view, then moves on to the
@@ -151,6 +155,7 @@ Settings only some methods read are greyed out for the others.
 
 | Parameter | Description |
 |-----------|-------------|
+| Downscale / pixel size | The pre-processing setting, shown here too to try **Preview** at different downscales without switching tabs |
 | Operation | **Register**, **Merge** or **Convert**, as above |
 | Registration channel | The channel to register on |
 | Pairing | Which sources are registered against each other: **Default** (multiview-stitcher's own), **Orthogonal** (leaves out diagonal and very small overlaps), **Stack** (consecutive sources) or **Split: 2D x/y first** (each plane's or channel's tiles first, then the stitched planes or channels against each other) |
@@ -162,7 +167,7 @@ Settings only some methods read are greyed out for the others.
 | Inlier threshold factor | SIFT and ORB: RANSAC's inlier threshold, relative (0 to 1) |
 | Max RANSAC trials | SIFT and ORB: the most RANSAC trials |
 | RANSAC iterations | SIFT and ORB: the number of RANSAC runs |
-| Threads | Pair registrations run in parallel; 0 or empty to choose automatically |
+| Parallel pairs | Pairs registered at once, each in its own process; empty to choose automatically |
 | Registration preview image 1 / 2 | The pair that **Preview** and **Modify pair registration** work on |
 | Split binning | Split pairing only: the binning of the stitched planes or channels when registering them against each other (1 is the pre-processed pixel size) |
 | Metrics table | Read-only: each pair's registration quality, from source positions and once registered, ordered by position. The summary row is over all pairs. Each metric is coloured from red (poor) to green (good) over its own range: NCC, SSIM and phase correlation, Elastix or ANTs quality from -1 to 1, ONMI and feature-method quality from 0 to 1 |
@@ -171,9 +176,11 @@ Settings only some methods read are greyed out for the others.
 
 The buttons:
 
-- **Preview** registers just the selected pair and shows the two overlaps with their matches,
-  with the pair's metrics in the table. Much faster than a full run while trying out
-  parameters. To choose the pair, use the two dropdowns, click an overlap shape in the view,
+- **Preview** registers just the selected pair and shows the two overlaps, each outlined, with
+  their matches, and the pair's metrics in the table. Much faster than a full run while trying out
+  parameters: it pre-processes only the pair's two sources (global normalisation and flat-field
+  read their input data items), unless pre-processing has already run with the current settings.
+  To choose the pair, use the two dropdowns, click an overlap shape in the view,
   or click a pair's row in the metrics table.
 - **Pair registration** registers every pair.
 - **Modify pair registration** shows the selected pair in green and purple, to move one onto
