@@ -314,18 +314,21 @@ def test_preprocessing_two_sources_gives_their_pixels_of_a_full_run(params):
     import muvis_align.MVSRegistration as mvs_registration_module
 
     registration, msims, _, patches, _ = _flatfield_registration([0, 0, 1])
+    # two input items: global normalisation's stats are each item's own
+    registration.input_groups = [0, 0, 1]
     pair = [0, 2]
     with patches[0], patches[1], patches[2], \
             patch.object(mvs_registration_module, "select_msim_subpyramid_at_scale", _half_size_msims), \
             patch.object(mvs_registration_module, "get_level_from_scale", lambda source, scale: (0, {}, None)):
-        needs_full_before = registration.needs_full_preprocess(params)
-        full_msims, _, _ = registration.preprocess(msims, **params)
-        # another setting's full run in between: returning to the first needs none
-        registration.preprocess(msims, **{**params, "gaussian_sigma": 2})
         pair_msims = registration.preprocess_sources(pair, params)
+        # nothing the pair path computed reused: the full run makes its own models and stats
+        registration._flatfield_key = None
+        registration._global_normalise_stats.clear()
+        full_msims, _, _ = registration.preprocess(msims, **params)
 
-    assert needs_full_before == (params.get("normalisation") == "global")
     assert not registration.needs_full_preprocess(params)
+    if params.get("normalisation") == "global":
+        assert sorted(group for _, group in registration._global_normalise_stats) == [0, 1]
     for index, pair_msim in zip(pair, pair_msims):
         np.testing.assert_array_equal(np.asarray(get_msim_image0(pair_msim)),
                                       np.asarray(get_msim_image0(full_msims[index])))

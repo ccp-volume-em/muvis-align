@@ -360,7 +360,7 @@ class MVSRegistration:
         self._flatfield_key = None
         self._flatfield_models = {}
         self._flatfield_lock = threading.Lock()
-        # what register_msims were made with, and global normalisation's stats per pre-processing settings
+        # what register_msims were made with, and global normalisation's stats per (settings, source group)
         self.preprocessed_settings = None
         self._global_normalise_stats = {}
         # per source index: the registration's correction on top of the source transform; absent means identity
@@ -1065,9 +1065,9 @@ class MVSRegistration:
         do_normalisation = normalisation_enabled(normalisation)
         # a factor, as a number or the text of a text field, or a pixel size with its unit ('10um')
         scale = parse_scale(scale, default=None)
-        settings = self.preprocess_settings({'scale': scale, 'flatfield_quantiles': flatfield_quantiles,
-                                             'normalisation': normalisation, 'gaussian_sigma': gaussian_sigma,
-                                             'filter_foreground': filter_foreground})
+        params = {'scale': scale, 'flatfield_quantiles': flatfield_quantiles, 'normalisation': normalisation,
+                  'gaussian_sigma': gaussian_sigma, 'filter_foreground': filter_foreground}
+        settings = self.preprocess_settings(params)
 
         def count_progress_steps():
             n_steps = 0
@@ -1128,10 +1128,16 @@ class MVSRegistration:
                     logging.info('Normalising (global)...')
                 else:
                     logging.info('Normalising (individual)...')
-                norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=use_global)
                 if use_global:
-                    self._global_normalise_stats[settings] = (norm_stats[0], norm_dtype)
-                msims = self._normalised_msims(msims, norm_stats, norm_dtype)
+                    groups = self.source_groups()
+                    msims_of = dict(zip(source_indices, msims))
+                    group_stats = {group: self._global_normalise_stat(group, params, msims_of)
+                                   for group in set(groups)}
+                    norm_stats, norm_dtypes = zip(*(group_stats[groups[index]] for index in source_indices))
+                else:
+                    norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=False)
+                    norm_dtypes = [norm_dtype] * len(msims)
+                msims = self._normalised_msims(msims, norm_stats, norm_dtypes)
                 modified = True
                 update_progress()
 
@@ -1175,11 +1181,22 @@ class MVSRegistration:
         return self.register_msims is not None and self.preprocessed_settings == self.preprocess_settings(params)
 
     def needs_full_preprocess(self, params):
-        """Whether preprocess_sources() cannot give these settings' result: foreground filtering, or global
-        normalisation before a preprocess() at these settings has given its stats."""
-        settings = self.preprocess_settings(params)
-        filter_foreground, normalisation = settings[4], settings[2]
-        return filter_foreground or (normalisation == 'global' and settings not in self._global_normalise_stats)
+        """Whether preprocess_sources() cannot give these settings' result: it needs every source."""
+        return self.preprocess_settings(params)[4]
+
+    def _global_normalise_stat(self, group, params, msims_of=None):
+        """Group `group`'s global normalisation (mean, stddev) and dtype at these settings, over its sources as
+        pre-processed up to normalisation: from `msims_of` ({source index: msim}) or pre-processed for it."""
+        key = (self.preprocess_settings(params), group)
+        if key not in self._global_normalise_stats:
+            members = [index for index, member_group in enumerate(self.source_groups()) if member_group == group]
+            if msims_of is not None:
+                group_msims = [msims_of[index] for index in members]
+            else:
+                group_msims = self.preprocess_sources(members, {**params, 'normalisation': 'none'})
+            stats, dtype = calc_normalise_stats(group_msims, use_global=True)
+            self._global_normalise_stats[key] = (stats[0], dtype)
+        return self._global_normalise_stats[key]
 
     def preprocess_sources(self, indices, params):
         """Sources `indices` pre-processed as preprocess() makes them, reading no other source's pixels; only where
@@ -1194,11 +1211,12 @@ class MVSRegistration:
         if gaussian_sigma:
             msims = self._gaussian_filtered_msims(msims, gaussian_sigma)
         if normalisation == 'global':
-            norm_stat, norm_dtype = self._global_normalise_stats[settings]
-            msims = self._normalised_msims(msims, [norm_stat] * len(msims), norm_dtype)
+            groups = self.source_groups()
+            norm_stats, norm_dtypes = zip(*(self._global_normalise_stat(groups[index], params) for index in indices))
+            msims = self._normalised_msims(msims, norm_stats, norm_dtypes)
         elif normalisation:
             norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=False)
-            msims = self._normalised_msims(msims, norm_stats, norm_dtype)
+            msims = self._normalised_msims(msims, norm_stats, [norm_dtype] * len(msims))
         return msims
 
     def _gaussian_filtered_msims(self, msims, gaussian_sigma):
@@ -1213,11 +1231,11 @@ class MVSRegistration:
                                        gaussian_sigma * (np.mean(ratios) if ratios else 1))
         return [map_msim_levels(msim, level_func) for msim in msims]
 
-    def _normalised_msims(self, msims, norm_stats, norm_dtype):
+    def _normalised_msims(self, msims, norm_stats, norm_dtypes):
         normalised = []
-        for msim, (norm_min, norm_range) in zip(msims, norm_stats):
+        for msim, (norm_min, norm_range), norm_dtype in zip(msims, norm_stats, norm_dtypes):
             # the scale0 min/range at every level, so the whole pyramid is normalised alike
-            def level_func(level_sim, scale_key, norm_min=norm_min, norm_range=norm_range):
+            def level_func(level_sim, scale_key, norm_min=norm_min, norm_range=norm_range, norm_dtype=norm_dtype):
                 return normalise_sim(level_sim, self.source_transform_key, norm_min, norm_range, norm_dtype)
             normalised.append(map_msim_levels(msim, level_func))
         return normalised
