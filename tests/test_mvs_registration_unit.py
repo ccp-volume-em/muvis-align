@@ -344,6 +344,27 @@ def test_register_msims_are_current_only_for_the_settings_they_were_made_with():
     assert registration.needs_full_preprocess({"filter_foreground": True})
 
 
+def test_gaussian_sigma_is_in_pixels_at_the_finest_pixel_size():
+    # the same physical blur everywhere: a coarser image or level gets proportionally fewer pixels of sigma
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    registration = MVSRegistration()
+    registration.scales = [{"x": 0.5, "y": 0.5}, {"x": 2.0, "y": 2.0}]
+    registration.source_transform_key = "source_metadata"
+    msims = [make_msim(np.ones((16, 16), dtype=np.uint16), scale={"x": scale, "y": scale}, scale_factors=[2])
+             for scale in (0.5, 2.0)]
+    sigmas = []
+
+    def record_sigma(sim, transform_key, sigma):
+        sigmas.append((float(sim.x[1] - sim.x[0]), sigma))
+        return sim
+
+    with patch.object(mvs_registration_module, "gaussian_filter_sim", record_sigma):
+        registration.preprocess(msims, gaussian_sigma=4)
+
+    assert sorted(sigmas) == [(0.5, 4.0), (1.0, 2.0), (2.0, 1.0), (4.0, 0.5)]
+
+
 def test_preprocess_reports_an_option_it_does_not_recognise(caplog):
     """A project file may carry options preprocess() does not implement, so an unknown one is
     not fatal - but passing the whole section as one keyword (params=...) instead of expanding

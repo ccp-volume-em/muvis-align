@@ -86,7 +86,7 @@ Branch `group-preprocessing`. Groups are input-path items (`input_groups`); one 
 1. [x] Grouping function; flat-field per section x group x field of view (pixel size x image size); within a field
    of view, mixed pixel sizes resized to the finest for the model (and back on applying); fewer than 5 images: no
    model (logged), left uncorrected.
-2. [ ] Gaussian sigma in pixels at the project's finest native pixel size, `sigma * finest / own` per level
+2. [x] Gaussian sigma in pixels at the project's finest native pixel size, `sigma * finest / own` per level
    (same as before for one pixel size; drops the old cube-root rule).
 3. [ ] Global normalisation per group, cached by (settings, group); preview reads only its pair's group(s).
 4. [ ] Tests (flatfield mixed pixel sizes; plumbing in test_mvs_registration_unit), meatballs check (clear output).

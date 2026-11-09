@@ -1118,7 +1118,7 @@ class MVSRegistration:
 
             if gaussian_sigma:
                 logging.info('Applying Gaussian filtering...')
-                msims = self._gaussian_filtered_msims(msims, source_indices, gaussian_sigma)
+                msims = self._gaussian_filtered_msims(msims, gaussian_sigma)
                 modified = True
                 update_progress()
 
@@ -1192,7 +1192,7 @@ class MVSRegistration:
             msims = [apply_msim_flatfield_model(msim, model) if model is not None else msim
                      for msim, model in zip(msims, models)]
         if gaussian_sigma:
-            msims = self._gaussian_filtered_msims(msims, indices, gaussian_sigma)
+            msims = self._gaussian_filtered_msims(msims, gaussian_sigma)
         if normalisation == 'global':
             norm_stat, norm_dtype = self._global_normalise_stats[settings]
             msims = self._normalised_msims(msims, [norm_stat] * len(msims), norm_dtype)
@@ -1201,23 +1201,17 @@ class MVSRegistration:
             msims = self._normalised_msims(msims, norm_stats, norm_dtype)
         return msims
 
-    def _gaussian_filtered_msims(self, msims, indices, gaussian_sigma):
-        max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
-        filtered = []
-        for msim, index in zip(msims, indices):
-            scale0 = self.scales[index]
-            # a finer source than the coarsest gets a smaller sigma, as its pixels are smaller
-            rel_scale = np.mean(list(scale0.values())) / np.mean(list(max_scale.values()))
-            sigma0 = gaussian_sigma * (rel_scale ** (1 / 3))
+    def _gaussian_filtered_msims(self, msims, gaussian_sigma):
+        # sigma is in pixels at the finest native pixel size: every image and level gets the same physical blur
+        finest = {dim: min(scale[dim] for scale in self.scales if dim in scale)
+                  for dim in 'xy' if any(dim in scale for scale in self.scales)}
 
-            def level_func(level_sim, scale_key, scale0=scale0, sigma0=sigma0):
-                # the same physical blur radius at every resolution
-                level_scale = si_utils.get_spacing_from_sim(level_sim)
-                ratios = [scale0[dim] / level_scale[dim] for dim in scale0 if dim in level_scale]
-                return gaussian_filter_sim(level_sim, self.source_transform_key,
-                                           sigma0 * (np.mean(ratios) if ratios else 1))
-            filtered.append(map_msim_levels(msim, level_func))
-        return filtered
+        def level_func(level_sim, scale_key):
+            level_scale = si_utils.get_spacing_from_sim(level_sim)
+            ratios = [finest[dim] / level_scale[dim] for dim in finest if dim in level_scale]
+            return gaussian_filter_sim(level_sim, self.source_transform_key,
+                                       gaussian_sigma * (np.mean(ratios) if ratios else 1))
+        return [map_msim_levels(msim, level_func) for msim in msims]
 
     def _normalised_msims(self, msims, norm_stats, norm_dtype):
         normalised = []
