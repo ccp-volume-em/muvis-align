@@ -267,13 +267,15 @@ class MVSRegistration:
                 return True
         return self._msims is None
 
+    def _build_source_msim(self, index, from_level=0, ends_only=False):
+        return build_source_msim(self.sources[index], self._msim_output_order, self.positions[index],
+                                 self._msim_transforms[index], self.source_transform_key,
+                                 z_scale=self._msim_z_scale, from_level=from_level, ends_only=ends_only)
+
     def _build_msims(self, progress_factory=None, from_levels=None, store=True, weight=1, ends_only=False):
         # where each source's pixels are first opened: threads overlap network reads, each source's caches its own
         def build_msim(index):
-            return build_source_msim(self.sources[index], self._msim_output_order, self.positions[index],
-                                     self._msim_transforms[index], self.source_transform_key,
-                                     z_scale=self._msim_z_scale, from_level=from_levels[index] if from_levels else 0,
-                                     ends_only=ends_only)
+            return self._build_source_msim(index, from_levels[index] if from_levels else 0, ends_only)
 
         msims = pooled_map(build_msim, len(self.sources), default_msim_build_workers, progress_factory,
                            desc='Building sources', weight=weight,
@@ -281,6 +283,22 @@ class MVSRegistration:
         if store:
             self._apply_mappings(msims)
             self._msims = msims
+        return msims
+
+    def scaled_source_msims(self, indices, scale):
+        """Sources `indices` as pre-processing starts from them, without building the others: from the level `scale`
+        needs, binned down to it where the pyramid stops short."""
+        built = self._scaled_msims.get(self._scaled_msims_key(scale, ends_only=True))
+        if built is not None:
+            msims = [built[index] for index in indices]
+        else:
+            def build_msim(index):
+                from_level = get_level_from_scale(self.sources[index], scale)[0] if scale else 0
+                return self._build_source_msim(index, from_level, ends_only=True)
+            msims = thread_map(build_msim, indices, default_msim_build_workers)
+        if scale and scale != 1:
+            msims = select_msim_subpyramid_at_scale(msims, [self.sources[index] for index in indices], scale,
+                                                    bin_shortfall=True)
         return msims
 
     def _apply_mappings(self, msims):
@@ -342,6 +360,9 @@ class MVSRegistration:
         self._flatfield_key = None
         self._flatfield_models = {}
         self._flatfield_lock = threading.Lock()
+        # what register_msims were made with, and global normalisation's stats with the settings they belong to
+        self.preprocessed_settings = None
+        self._global_normalise_stats = None
         # per source index: the registration's correction on top of the source transform; absent means identity
         self.mappings = None
         self.input_output_params = {}
@@ -1044,6 +1065,9 @@ class MVSRegistration:
         do_normalisation = normalisation_enabled(normalisation)
         # a factor, as a number or the text of a text field, or a pixel size with its unit ('10um')
         scale = parse_scale(scale, default=None)
+        settings = self.preprocess_settings({'scale': scale, 'flatfield_quantiles': flatfield_quantiles,
+                                             'normalisation': normalisation, 'gaussian_sigma': gaussian_sigma,
+                                             'filter_foreground': filter_foreground})
 
         def count_progress_steps():
             n_steps = 0
@@ -1068,9 +1092,7 @@ class MVSRegistration:
 
         with progress_context as pbar:
             modified = False
-            # normalise pixel size: take max pixel size
-            max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
-            scales0 = self.scales
+            source_indices = range(len(msims))
 
             if scale and scale != 1:
                 # native levels where the pyramid reaches the scale, binned down to it where it does not
@@ -1096,24 +1118,7 @@ class MVSRegistration:
 
             if gaussian_sigma:
                 logging.info('Applying Gaussian filtering...')
-
-                def sigma_for_level(level_sim, scale0, sigma0):
-                    # the same physical blur radius at every resolution
-                    level_scale = si_utils.get_spacing_from_sim(level_sim)
-                    ratios = [scale0[dim] / level_scale[dim] for dim in scale0 if dim in level_scale]
-                    return sigma0 * (np.mean(ratios) if ratios else 1)
-
-                new_msims = []
-                for msim, scale0 in zip(msims, scales0):
-                    # factor in original pixel size for gaussian sigma value
-                    rel_scale = np.mean(list(scale0.values())) / np.mean(list(max_scale.values()))
-                    sigma0 = gaussian_sigma * (rel_scale ** (1 / 3))
-
-                    def level_func(level_sim, scale_key, scale0=scale0, sigma0=sigma0):
-                        sigma = sigma_for_level(level_sim, scale0, sigma0)
-                        return gaussian_filter_sim(level_sim, self.source_transform_key, sigma)
-                    new_msims.append(map_msim_levels(msim, level_func))
-                msims = new_msims
+                msims = self._gaussian_filtered_msims(msims, source_indices, gaussian_sigma)
                 modified = True
                 update_progress()
 
@@ -1124,13 +1129,9 @@ class MVSRegistration:
                 else:
                     logging.info('Normalising (individual)...')
                 norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=use_global)
-                new_msims = []
-                for msim, (norm_min, norm_range) in zip(msims, norm_stats):
-                    # the scale0 min/range at every level, so the whole pyramid is normalised alike
-                    def level_func(level_sim, scale_key, norm_min=norm_min, norm_range=norm_range):
-                        return normalise_sim(level_sim, self.source_transform_key, norm_min, norm_range, norm_dtype)
-                    new_msims.append(map_msim_levels(msim, level_func))
-                msims = new_msims
+                if use_global:
+                    self._global_normalise_stats = (settings, norm_stats[0], norm_dtype)
+                msims = self._normalised_msims(msims, norm_stats, norm_dtype)
                 modified = True
                 update_progress()
 
@@ -1153,7 +1154,78 @@ class MVSRegistration:
 
         self.register_msims = msims
         self.register_indices = indices
+        self.preprocessed_settings = settings
         return msims, indices, modified
+
+    @staticmethod
+    def preprocess_settings(params):
+        """Pre-processing params, parsed: equal for settings that give the same pixels, however they were written."""
+        quantiles, scale, filter_foreground = MVSRegistration.flatfield_settings(params)
+        normalisation = params.get('normalisation')
+        if normalisation_enabled(normalisation):
+            normalisation = 'global' if 'global' in str(normalisation).lower() else 'individual'
+        else:
+            normalisation = None
+        gaussian_sigma = params.get('gaussian_sigma')
+        return (quantiles, scale if scale != 1 else None, normalisation,
+                float(gaussian_sigma) if gaussian_sigma else None, filter_foreground)
+
+    def register_msims_current(self, params):
+        """Whether register_msims were made with these pre-processing settings."""
+        return self.register_msims is not None and self.preprocessed_settings == self.preprocess_settings(params)
+
+    def needs_full_preprocess(self, params):
+        """Whether preprocess_sources() cannot give these settings' result: foreground filtering, or global
+        normalisation before a preprocess() at these settings has given its stats."""
+        settings = self.preprocess_settings(params)
+        filter_foreground, normalisation = settings[4], settings[2]
+        return filter_foreground or (normalisation == 'global' and (self._global_normalise_stats is None
+                                                                    or self._global_normalise_stats[0] != settings))
+
+    def preprocess_sources(self, indices, params):
+        """Sources `indices` pre-processed as preprocess() makes them, reading no other source's pixels; only where
+        needs_full_preprocess() is False."""
+        quantiles, scale, normalisation, gaussian_sigma, _ = self.preprocess_settings(params)
+        msims = self.scaled_source_msims(indices, scale)
+        if quantiles:
+            msims = [apply_msim_flatfield_model(msim, self.flatfield_model(index, params))
+                     for msim, index in zip(msims, indices)]
+        if gaussian_sigma:
+            msims = self._gaussian_filtered_msims(msims, indices, gaussian_sigma)
+        if normalisation == 'global':
+            _, norm_stat, norm_dtype = self._global_normalise_stats
+            msims = self._normalised_msims(msims, [norm_stat] * len(msims), norm_dtype)
+        elif normalisation:
+            norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=False)
+            msims = self._normalised_msims(msims, norm_stats, norm_dtype)
+        return msims
+
+    def _gaussian_filtered_msims(self, msims, indices, gaussian_sigma):
+        max_scale = {dim: max(scale.get(dim, 1) for scale in self.scales) for dim in 'xy'}
+        filtered = []
+        for msim, index in zip(msims, indices):
+            scale0 = self.scales[index]
+            # a finer source than the coarsest gets a smaller sigma, as its pixels are smaller
+            rel_scale = np.mean(list(scale0.values())) / np.mean(list(max_scale.values()))
+            sigma0 = gaussian_sigma * (rel_scale ** (1 / 3))
+
+            def level_func(level_sim, scale_key, scale0=scale0, sigma0=sigma0):
+                # the same physical blur radius at every resolution
+                level_scale = si_utils.get_spacing_from_sim(level_sim)
+                ratios = [scale0[dim] / level_scale[dim] for dim in scale0 if dim in level_scale]
+                return gaussian_filter_sim(level_sim, self.source_transform_key,
+                                           sigma0 * (np.mean(ratios) if ratios else 1))
+            filtered.append(map_msim_levels(msim, level_func))
+        return filtered
+
+    def _normalised_msims(self, msims, norm_stats, norm_dtype):
+        normalised = []
+        for msim, (norm_min, norm_range) in zip(msims, norm_stats):
+            # the scale0 min/range at every level, so the whole pyramid is normalised alike
+            def level_func(level_sim, scale_key, norm_min=norm_min, norm_range=norm_range):
+                return normalise_sim(level_sim, self.source_transform_key, norm_min, norm_range, norm_dtype)
+            normalised.append(map_msim_levels(msim, level_func))
+        return normalised
 
     @staticmethod
     def flatfield_settings(params):
@@ -1182,16 +1254,7 @@ class MVSRegistration:
         quantiles, scale, filter_foreground = settings
         indices = [index for section in sections for index in self._flatfield_sections[section]]
         if msims is None:
-            def build_msim(index):
-                from_level = get_level_from_scale(self.sources[index], scale)[0] if scale else 0
-                return build_source_msim(self.sources[index], self._msim_output_order, self.positions[index],
-                                         self._msim_transforms[index], self.source_transform_key,
-                                         z_scale=self._msim_z_scale, from_level=from_level, ends_only=True)
-            built = thread_map(build_msim, indices, default_msim_build_workers)
-            if scale and scale != 1:
-                built = select_msim_subpyramid_at_scale(built, [self.sources[index] for index in indices], scale,
-                                                        bin_shortfall=True)
-            msims = dict(zip(indices, built))
+            msims = dict(zip(indices, self.scaled_source_msims(indices, scale)))
         if filter_foreground and foreground_map is None:
             # the tiles kept out of the quantiles are chosen over every source: sections are then computed all at once
             foreground_map = calc_foreground_map([msims[index] for index in range(len(self.sources))])

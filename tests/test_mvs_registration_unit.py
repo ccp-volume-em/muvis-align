@@ -274,6 +274,49 @@ def test_fusion_flatfield_corrects_every_source_with_the_pre_processing_model():
     assert model_calls == [(3, (0.5,), [True, False, True]), (3, (0.9,), [True, False, True])]
 
 
+def _half_size_msims(msims, sources, scale, bin_shortfall=False):
+    # per source alone, as the real downscale is: what each path gives a source cannot depend on the others
+    return [make_msim(np.asarray(get_msim_image0(msim)).squeeze()[::scale, ::scale]) for msim in msims]
+
+
+@pytest.mark.parametrize("params", [
+    {"scale": "2"},
+    {"flatfield_quantiles": "0.5", "gaussian_sigma": 1, "normalisation": "single"},
+    {"flatfield_quantiles": "0.5", "normalisation": "global"},
+], ids=["downscale", "flatfield-gaussian-individual", "global-normalisation"])
+def test_preprocessing_two_sources_gives_their_pixels_of_a_full_run(params):
+    # the registration preview pre-processes its pair alone: the result must be the full run's for those sources
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    registration, msims, _, patches, _ = _flatfield_registration([0, 0, 1])
+    pair = [0, 2]
+    with patches[0], patches[1], \
+            patch.object(mvs_registration_module, "select_msim_subpyramid_at_scale", _half_size_msims), \
+            patch.object(mvs_registration_module, "get_level_from_scale", lambda source, scale: (0, {}, None)):
+        needs_full_before = registration.needs_full_preprocess(params)
+        full_msims, _, _ = registration.preprocess(msims, **params)
+        pair_msims = registration.preprocess_sources(pair, params)
+
+    assert needs_full_before == (params.get("normalisation") == "global")
+    assert not registration.needs_full_preprocess(params)
+    for index, pair_msim in zip(pair, pair_msims):
+        np.testing.assert_array_equal(np.asarray(get_msim_image0(pair_msim)),
+                                      np.asarray(get_msim_image0(full_msims[index])))
+
+
+def test_register_msims_are_current_only_for_the_settings_they_were_made_with():
+    registration = MVSRegistration()
+    registration.scales = [{"x": 1.0, "y": 1.0}]
+    registration.source_transform_key = "source_metadata"
+    registration.preprocess(_make_msims(), scale="1", gaussian_sigma="", normalisation="none")
+
+    # written differently, the same pixels
+    assert registration.register_msims_current({"scale": None, "gaussian_sigma": 0, "normalisation": False})
+    assert not registration.register_msims_current({"scale": "2"})
+    assert not registration.register_msims_current({"normalisation": "single"})
+    assert registration.needs_full_preprocess({"filter_foreground": True})
+
+
 def test_preprocess_reports_an_option_it_does_not_recognise(caplog):
     """A project file may carry options preprocess() does not implement, so an unknown one is
     not fatal - but passing the whole section as one keyword (params=...) instead of expanding

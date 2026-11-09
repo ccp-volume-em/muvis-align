@@ -81,7 +81,17 @@ quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB 
 
 ## In progress
 
-Nothing.
+### Downscaling in the registration preview
+Goal: the preview pre-processes only its pair (downscale first, as in pre-processing), and the downscale field is
+also on the Registration tab. Project YAML/template unchanged (value stays `pre_processing.scale`).
+1. [ ] Drop `register_msims` + preview crop cache when a `pre_processing.*` setting changes.
+2. [ ] Split `preprocess()`: stats over all sources (flat-field models, global normalisation, kept with the settings
+   they were made with) + a per-source chain; `preprocess()` records its settings. Test: pair path == full path.
+3. [ ] Preview: reuse `register_msims` if settings match; global normalisation without matching stats -> full
+   pre-processing; else build and pre-process the two sources. Crop cache keyed by pair, channel, settings.
+4. [ ] Mirror widget for `pre_processing.scale` on the Registration tab, built in code (not a template entry, which
+   would add a default to every project): `update_widgets()` uses `param_name`; `change_param()` syncs siblings.
+5. [ ] Note in `skills/muvis-align/`.
 
 ## TODO
 
