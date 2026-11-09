@@ -90,21 +90,31 @@ def create_project_widget(interface, function):
                                     connect_changed=False, function=function, add_button=False)
 
 
+# settings also shown on another tab, as a second widget of the one stored value: {tab: [(section, name)]}
+mirrored_params = {'registration': [('pre_processing', 'scale')]}
+
+
 def create_template_widgets(interface):
     widgets = {}
     for section_id, section_items in interface.template.items():
-        widgets[section_id] = create_section_container(section_id, section_items, interface)
+        mirrored = mirrored_params.get(section_id, [])
+        mirrored_items = [item for stored_section, name in mirrored
+                          for item in interface.template.get(stored_section, []) if item['name'] == name]
+        stored_sections = {name: stored_section for stored_section, name in mirrored}
+        widgets[section_id] = create_section_container(section_id, mirrored_items + section_items, interface,
+                                                       stored_sections=stored_sections)
     return widgets
 
 
 def create_section_container(section_id, section_template, interface,
-                             connect_changed=True, function=None, add_button=True):
+                             connect_changed=True, function=None, add_button=True, stored_sections=None):
     # https://pyapp-kit.github.io/magicgui/widgets/
     # https://pyapp-kit.github.io/magicgui/api/widgets/create_widget/
     widgets = []
     for template in section_template:
         try:
-            section_params = interface.params.get(section_id, {})
+            stored_section = (stored_sections or {}).get(template['name'], section_id)
+            section_params = interface.params.get(stored_section, {})
             spec = bilayers_to_magicgui_field(
                 template,
                 section_id=section_id,
@@ -121,8 +131,8 @@ def create_section_container(section_id, section_template, interface,
             if is_path_list:
                 widget_type = 'muvis_align.ui.PathList.PathList'
             full_name = section_id + '.' + spec.param_name
-            param_widget = ParamWidget(full_name, None, interface, to_str=spec.is_file_type,
-                                       number_type=spec.number_type)
+            param_widget = ParamWidget(stored_section + '.' + spec.param_name, None, interface,
+                                       to_str=spec.is_file_type, number_type=spec.number_type)
 
             options = {}
             if spec.widget_type == 'Dropdown' and spec.choices:
@@ -163,6 +173,8 @@ def create_section_container(section_id, section_template, interface,
             param_widget.widget = widget
             if spec.description:
                 widget.tooltip = spec.description
+            if stored_section != section_id:
+                widget.tooltip = f'{widget.tooltip or ""}\n(the {stored_section.replace("_", "-")} setting)'.strip()
             if function is not None:
                 widget.changed.connect(function)
             interface_function = interface.get_function(spec.param_name)

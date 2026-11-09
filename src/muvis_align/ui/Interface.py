@@ -215,7 +215,9 @@ class Interface:
         # a dropdown filled later (channels, preview images) is empty until then: only fixed ones map old values
         fixed_choices = {f'{section_id}.{item["name"]}' for section_id, items in self.template.items()
                          for item in items if item.get('options')}
-        for param_name, param_widget in self.param_widgets.items():
+        for param_widget in self.param_widgets.values():
+            # a mirrored widget's key is its tab's; param_name is where its value is stored
+            param_name = param_widget.param_name
             # path widgets are set by update_input_output_path(), relative to the project directory
             if param_name not in ('input_output.input_path', 'input_output.output_path'):
                 keys = param_name.split('.')
@@ -334,6 +336,14 @@ class Interface:
                 value = relativize_to_project_dir(value, self.get_project_dir())
         self.params[keys[0]][keys[1]] = value
         self.write_params()
+        same_setting = [param_widget for param_widget in self.param_widgets.values()
+                        if param_widget.param_name == param_name]
+        if len(same_setting) > 1:
+            # the same setting shown on another tab follows, without reporting the change again
+            for param_widget in same_setting:
+                if param_widget.get_value() != value:
+                    with param_widget.widget.changed.blocked():
+                        param_widget.set_value(value)
         if param_name == 'registration.operation':
             self.update_fusion_preview_enabled()
         if param_name == 'registration.method':

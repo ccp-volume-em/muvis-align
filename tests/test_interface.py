@@ -95,6 +95,33 @@ def test_project_config_loading(make_napari_viewer, project_config, tmp_path):
     close_fault_log()
 
 
+def test_the_registration_tabs_downscale_is_the_pre_processing_setting(make_napari_viewer, tmp_path):
+    viewer = make_napari_viewer()
+    with patch('muvis_align._widget.ViewerWidget'), patch.object(viewer.window, 'add_dock_widget'):
+        interface = MainWidget(viewer).interface
+    project = tmp_path / 'project.yml'
+    project.write_text(yaml.safe_dump({'pre_processing': {'scale': '2'}}))
+    interface.project_path(str(project))
+    registration_widget = interface.param_widgets['registration.scale']
+    pre_processing_widget = interface.param_widgets['pre_processing.scale']
+
+    loaded = registration_widget.get_value()
+    registration_widget.widget.value = '4'
+    after_registration_edit = pre_processing_widget.get_value()
+    pre_processing_widget.widget.value = '8um'
+
+    assert loaded == '2'
+    assert after_registration_edit == '4'
+    assert registration_widget.get_value() == '8um'
+    stored = yaml.safe_load(project.read_text())
+    assert stored['pre_processing']['scale'] == '8um'
+    assert 'scale' not in stored['registration']
+    for handler in logging.getLogger().handlers[:]:
+        handler.close()
+        logging.getLogger().removeHandler(handler)
+    close_fault_log()
+
+
 def test_project_configs_hold_only_template_settings(config_data):
     from muvis_align.file.project_yaml import get_unknown_params
     from muvis_align.file.resources import get_project_template
@@ -1772,7 +1799,7 @@ def test_fusion_preview_enabled_only_with_something_to_fuse(
     bare_interface.params = {"registration": {"operation": "register"}}
     bare_interface.write_params = MagicMock()
     bare_interface.reg.is_global_registered.return_value = global_registered
-    preview = SimpleNamespace(widget=SimpleNamespace(enabled=None))
+    preview = SimpleNamespace(param_name="fusion.preview_fusion", widget=SimpleNamespace(enabled=None))
     bare_interface.param_widgets = {"fusion.preview_fusion": preview}
 
     bare_interface.change_param("registration.operation", operation)
@@ -1794,10 +1821,12 @@ def test_method_params_enabled_only_for_the_methods_reading_them(bare_interface,
     bare_interface.params = {"registration": {}}
     bare_interface.write_params = MagicMock()
     bare_interface.param_widgets = {
-        f"registration.{param_name}": SimpleNamespace(widget=SimpleNamespace(enabled=None))
+        f"registration.{param_name}": SimpleNamespace(param_name=f"registration.{param_name}",
+                                                      widget=SimpleNamespace(enabled=None))
         for param_name in interface_module.registration_method_params
     }
-    bare_interface.param_widgets["registration.method"] = SimpleNamespace(get_value=lambda: method)
+    bare_interface.param_widgets["registration.method"] = SimpleNamespace(param_name="registration.method",
+                                                                          get_value=lambda: method)
 
     bare_interface.change_param("registration.method", method)
 
