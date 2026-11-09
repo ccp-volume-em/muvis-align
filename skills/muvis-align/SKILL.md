@@ -86,7 +86,8 @@ ok = Pipeline(params).run()     # True if no operation raised; runs in the calli
 - **Pairing**: keep `orthogonal` for a tile grid - default pairing adds corner-only diagonal pairs where a
   feature method can fit a wild rotation. Use `pairing: stack` (not an operation) for z-sections.
 - **Large data**: `pre_processing.scale` (e.g. `4` or `1um`) registers on a downscaled copy; fusion stays at
-  full resolution. Leave `fusion.block_size` unset - it is sized against the available memory.
+  full resolution. Leave `fusion.block_size` unset - it is sized against the available memory. In the plugin
+  the setting is also on the Registration tab, so its preview registration can be tried at different downscales.
 - **Several sections/folders in one run**: `operation: register match S` groups files by a path part made of `S` and a
   number (e.g. a folder `S001`), and `{S}` in `output_path` names each group's output.
 
