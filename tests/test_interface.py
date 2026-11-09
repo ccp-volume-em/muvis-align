@@ -15,7 +15,7 @@ from muvis_align._widget import MainWidget
 from muvis_align.logging import close_fault_log
 from muvis_align.ui.Interface import Interface, ViewMode
 import muvis_align.ui.Interface as interface_module
-from muvis_align.MVSRegistration import RegState
+from muvis_align.MVSRegistration import MVSRegistration, RegState
 from tests.data_builders import DATA_DIR, TIFF_FILES, ZARR_FILES, prepared_registration
 
 
@@ -1307,10 +1307,11 @@ def test_run_pair_registration_saves_the_pairs_with_their_metrics(
     bare_interface, monkeypatch, mocked_activity_contexts
 ):
     bare_interface.viewer = MagicMock()
-    bare_interface.params = {"registration": {"method": "phase"}}
+    bare_interface.params = {"registration": {"method": "phase"}, "pre_processing": {}}
     bare_interface.metrics_methods = ["ncc"]
     bare_interface.get_all_widgets = MagicMock(return_value={})
     bare_interface.reg.register_msims = ["register-msim"]
+    bare_interface.reg.register_msims_current.return_value = True
     bare_interface.reg.pairs_graph = object()
     results = {
         "pair_mappings": {(0, 1): "mapping"},
@@ -1417,28 +1418,58 @@ def _stub_preview_registration_deps(bare_interface, monkeypatch, label1="image-0
     bare_interface.reg.select_pair_overlap.return_value = (overlap1, overlap2, "pixel-space")
     bare_interface.reg.register_overlap.return_value = ("transform", 0.5, {"fixed_points": []})
     monkeypatch.setattr(interface_module, "calc_msims_metrics", lambda *a, **k: {"metrics": True})
-    bare_interface.params = {"registration": {"method": "orb"}}
+    bare_interface.params = {"registration": {"method": "orb"}, "pre_processing": {}}
+    bare_interface.reg.preprocess_settings = MVSRegistration.preprocess_settings
+    bare_interface.reg.register_msims_current.return_value = True
+    bare_interface.reg.needs_full_preprocess.return_value = False
+    bare_interface.reg.preprocess_sources.return_value = ["pair-msim-0", "pair-msim-1"]
+    bare_interface.run_pre_processing = MagicMock(return_value=True)
 
 
-@pytest.mark.parametrize(("change", "selections"), [("method", 1), ("pair", 2), ("register_msims", 2)])
+@pytest.mark.parametrize(("change", "selections"), [("method", 1), ("pair", 2), ("pre_processing", 2)])
 def test_run_preview_registration_reuses_the_overlap_until_its_data_or_pair_changes(
     bare_interface, monkeypatch, mocked_activity_contexts, change, selections
 ):
-    """The overlap crop depends only on the source data (a new register_msims list whenever
-    pre-processing changes something) and the selected pair, never on the registration method."""
+    """The overlap crop depends only on the pre-processing settings and the selected pair, never on the
+    registration method."""
     _stub_preview_registration_deps(bare_interface, monkeypatch)
     assert bare_interface.run_preview_registration() is not None
 
     if change == "method":
-        bare_interface.params = {"registration": {"method": "sift"}}
+        bare_interface.params["registration"] = {"method": "sift"}
     elif change == "pair":
         bare_interface.param_widgets["registration.reg_preview_image2"] = SimpleNamespace(get_value=lambda: "image-2")
     else:
-        bare_interface.reg.register_msims = ["msim-0-reprocessed", "msim-1-reprocessed", "msim-2-reprocessed"]
+        bare_interface.params["pre_processing"] = {"scale": "2"}
     assert bare_interface.run_preview_registration() is not None
 
     assert bare_interface.reg.select_pair_overlap.call_count == selections
     assert bare_interface.reg.register_overlap.call_count == 2
+
+
+@pytest.mark.parametrize(("current", "needs_full", "pair_msims"), [
+    (True, False, ("msim-0", "msim-1")),
+    (False, False, ("pair-msim-0", "pair-msim-1")),
+    (False, True, ("msim-0", "msim-1")),
+], ids=["pre-processed", "pair-alone", "needs-every-source"])
+def test_run_preview_registration_pre_processes_only_its_pair_unless_a_step_needs_every_source(
+    bare_interface, monkeypatch, mocked_activity_contexts, current, needs_full, pair_msims
+):
+    _stub_preview_registration_deps(bare_interface, monkeypatch)
+    bare_interface.params["pre_processing"] = {"scale": "2"}
+    # a full run makes register_msims current
+    bare_interface.reg.register_msims_current.side_effect = (
+        lambda params: current or bare_interface.run_pre_processing.called)
+    bare_interface.reg.needs_full_preprocess.return_value = needs_full
+
+    assert bare_interface.run_preview_registration() is not None
+
+    assert bare_interface.run_pre_processing.called is needs_full
+    if current or needs_full:
+        bare_interface.reg.preprocess_sources.assert_not_called()
+    else:
+        bare_interface.reg.preprocess_sources.assert_called_once_with((0, 1), {"scale": "2"})
+    assert bare_interface.reg.select_pair_overlap.call_args.args[:2] == pair_msims
 
 
 @pytest.mark.parametrize("overlaps", [True, False], ids=["failure", "no-overlap"])

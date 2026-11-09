@@ -1592,8 +1592,10 @@ class Interface:
         index1 = self.reg.file_labels.index(label1)
         index2 = self.reg.file_labels.index(label2)
 
-        # as in run_pair_registration(): pre-processing gets its own bar, before this one
-        if not self.reg.register_msims:
+        pre_processing_params = self.params['pre_processing']
+        # only the pair is pre-processed, unless a step needs every source; that gets its own bar, before this one
+        if (not self.reg.register_msims_current(pre_processing_params)
+                and self.reg.needs_full_preprocess(pre_processing_params)):
             if not self.run_pre_processing(progress_factory=progress_factory):
                 return None
 
@@ -1604,20 +1606,23 @@ class Interface:
                                         desc='Preview registration'):
                     registration_params = self.params['registration']
                     channel = registration_params.get('channel')
+                    cache_key = (index1, index2, channel, self.reg.preprocess_settings(pre_processing_params))
                     cache = self._preview_overlap_cache
-                    # the crop depends only on register_msims and the pair/channel, so parameter changes reuse it
-                    if (cache is not None and cache['register_msims'] is self.reg.register_msims
-                            and cache['index1'] == index1 and cache['index2'] == index2
-                            and cache['channel'] == channel):
+                    # the crop depends only on the pair, channel and pre-processing, so method changes reuse it
+                    if cache is not None and cache['key'] == cache_key:
+                        msim1, msim2 = cache['msims']
                         overlap1, overlap2, sims_pixel_space = cache['overlap1'], cache['overlap2'], cache['sims_pixel_space']
                     else:
-                        msim1, msim2 = self.reg.register_msims[index1], self.reg.register_msims[index2]
+                        if self.reg.register_msims_current(pre_processing_params):
+                            msim1, msim2 = self.reg.register_msims[index1], self.reg.register_msims[index2]
+                        else:
+                            with Timer('preview_registration: pre-process the pair', verbose=self._timing_verbose()):
+                                msim1, msim2 = self.reg.preprocess_sources((index1, index2), pre_processing_params)
                         overlap1, overlap2, sims_pixel_space = self.reg.select_pair_overlap(
                             msim1, msim2, params=registration_params)
                         overlap1, overlap2 = overlap1.compute(), overlap2.compute()
                         self._preview_overlap_cache = {
-                            'register_msims': self.reg.register_msims,
-                            'index1': index1, 'index2': index2, 'channel': channel,
+                            'key': cache_key, 'msims': (msim1, msim2),
                             'overlap1': overlap1, 'overlap2': overlap2, 'sims_pixel_space': sims_pixel_space,
                         }
 
@@ -1625,7 +1630,6 @@ class Interface:
                         transform, quality, results = self.reg.register_overlap(
                             overlap1, overlap2, sims_pixel_space, params=registration_params)
 
-                    msim1, msim2 = self.reg.register_msims[index1], self.reg.register_msims[index2]
                     transforms = {(0, 1): transform}
                     qualities = {(0, 1): quality}
                     with Timer('preview_registration: pair metrics', verbose=self._timing_verbose()):
@@ -1786,8 +1790,8 @@ class Interface:
 
     @catch_run_errors
     def run_pair_registration(self, progress_factory=None):
-        # pre-processing reports its own bar, before the registration's
-        if not self.reg.register_msims:
+        # pre-processing reports its own bar, before the registration's; again if its settings changed since
+        if not self.reg.register_msims_current(self.params['pre_processing']):
             if not self.run_pre_processing(progress_factory=progress_factory):
                 return None
 
