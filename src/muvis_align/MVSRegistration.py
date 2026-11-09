@@ -295,7 +295,11 @@ class MVSRegistration:
             def build_msim(index):
                 from_level = get_level_from_scale(self.sources[index], scale)[0] if scale else 0
                 return self._build_source_msim(index, from_level, ends_only=True)
-            msims = thread_map(build_msim, indices, default_msim_build_workers)
+            # kept per scale: flat-field models and normalisation stats each read a group's sources
+            source_msims = self._scaled_source_msims.setdefault(scale, {})
+            missing = [index for index in indices if index not in source_msims]
+            source_msims.update(zip(missing, thread_map(build_msim, missing, default_msim_build_workers)))
+            msims = [source_msims[index] for index in indices]
         if scale and scale != 1:
             msims = select_msim_subpyramid_at_scale(msims, [self.sources[index] for index in indices], scale,
                                                     bin_shortfall=True)
@@ -350,6 +354,7 @@ class MVSRegistration:
         self.pairs = []
         self.pairs_graph = None
         self._scaled_msims = {}
+        self._scaled_source_msims = {}
         self.sources = []
         # set on each source read, cleared once shown
         self.missing_metadata_summary = ''
@@ -869,6 +874,7 @@ class MVSRegistration:
             self._msims = None
             # the geometry was re-resolved, so the per-scale builds are stale too
             self._scaled_msims = {}
+            self._scaled_source_msims = {}
             return None
 
         return msims
