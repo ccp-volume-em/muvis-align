@@ -119,6 +119,8 @@ def _source_init_worker_ceiling(default=64):
 default_source_init_workers = min(_source_init_worker_ceiling(), _available_cpus * 8)
 # msim building is GIL-bound xarray work plus a slow header read: more threads only add contention
 default_msim_build_workers = min(default_source_init_workers, 32)
+# a flat-field quantile over fewer images is mostly the images themselves: such a group is left uncorrected
+flatfield_min_images = 5
 # zarr v3 routes all I/O through one process-wide pool, which would otherwise bottleneck our workers;
 # set globally so it holds for the life of the process
 zarr.config.set({'threading.max_workers': default_source_init_workers})

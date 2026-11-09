@@ -20,9 +20,7 @@ def noise_msim(seed):
 @pytest.fixture
 def quantile_images():
     # manually built quantile "images" matching a 16x16 (t,c,y,x) sim's shape, standing in for
-    # calc_flatfield_images' real output - avoids depending on da.quantile, which the installed
-    # dask/numpy combination in this environment doesn't support (a pre-existing, unrelated bug:
-    # da.quantile forwards a now-removed 'interpolation' kwarg to numpy internally)
+    # calc_flatfield_images' real output
     rng = np.random.RandomState(42)
     shape = (1, 1, 16, 16)
     q_low = da.from_array((rng.random(shape) * 0.3 + 0.05).astype(np.float32))
@@ -78,6 +76,26 @@ def test_single_quantile_divides_every_tile_by_one_shared_light_image(monkeypatc
         expected = float2int_image(expected_float.clip(0, 1), np.dtype(np.uint16))
         corrected = msi_utils.get_sim_from_msim(corrected_msim, scale='scale0').data[0, 0]
         np.testing.assert_array_equal(np.asarray(corrected), np.asarray(expected))
+
+
+def test_one_field_at_two_pixel_sizes_is_modelled_at_the_finest(quantile_images):
+    # the coarser images resampled to the finer's shape for the quantiles; the model is applied resized back
+    from skimage.transform import resize
+    fine = [noise_msim(seed) for seed in range(3)]
+    coarse = [make_msim(np.random.default_rng(seed).integers(1000, 60000, (8, 8)).astype(np.uint16), scale={'y': 2, 'x': 2})
+              for seed in range(3, 5)]
+    sims = [msi_utils.get_sim_from_msim(msim, scale='scale0') for msim in fine + coarse]
+
+    images = flatfield.calc_flatfield_images(sims, [0.5])
+    model = flatfield.calc_msims_flatfield_model(fine + coarse, [0.5])
+    corrected = flatfield.apply_msim_flatfield_model(coarse[0], model)
+
+    stack = [np.asarray(sim) for sim in sims[:3]] + [resize(np.asarray(sim), (1, 1, 16, 16), preserve_range=True)
+                                                      .astype(np.uint16) for sim in sims[3:]]
+    expected = np.quantile(np.stack(stack), 0.5, axis=0).astype(np.float32) / np.float32(65535)
+    np.testing.assert_allclose(np.asarray(images[0]), expected, rtol=1e-6)
+    assert model['bright_dark_range'].shape == (1, 16, 16)
+    assert msi_utils.get_sim_from_msim(corrected, scale='scale0').shape == (1, 1, 8, 8)
 
 
 def test_flatfield_correction_is_msims_in_msims_out(monkeypatch, quantile_images):

@@ -210,7 +210,7 @@ def _flatfield_registration(z_positions):
     registration.positions = [{"x": index * 8.0, "y": 0.0, "z": z} for index, z in enumerate(z_positions)]
     msims = [make_msim(np.random.default_rng(index).integers(1000, 60000, (8, 8)).astype(np.uint16))
              for index in range(count)]
-    registration.sources = [SimpleNamespace(index=index) for index in range(count)]
+    registration.sources = [SimpleNamespace(index=index, get_size=lambda: {"y": 8, "x": 8}) for index in range(count)]
     registration._msim_output_order, registration._msim_z_scale = 'yx', None
     registration._msim_transforms = [None] * count
     light = (np.random.default_rng(9).random((1, 1, 8, 8)) * 0.3 + 0.6).astype(np.float32)
@@ -223,7 +223,9 @@ def _flatfield_registration(z_positions):
 
     patches = (patch.object(mvs_registration_module, "calc_msims_flatfield_model", stub_model),
                patch.object(mvs_registration_module, "build_source_msim",
-                            lambda source, *args, **kwargs: msims[source.index]))
+                            lambda source, *args, **kwargs: msims[source.index]),
+               # sections of a few tiles each: every one modelled
+               patch.object(mvs_registration_module, "flatfield_min_images", 1))
     return registration, msims, model_calls, patches, model
 
 
@@ -231,7 +233,7 @@ def test_the_view_computes_a_sections_flatfield_model_from_its_own_tiles_only():
     # two tiles at z 0, one at z 1: viewing the second section reads its one tile; fusion adds only the first
     registration, msims, model_calls, patches, model = _flatfield_registration([0, 0, 1])
     params = {"flatfield_quantiles": "0.5"}
-    with patches[0], patches[1]:
+    with patches[0], patches[1], patches[2]:
         viewed = registration.flatfield_model(2, params)
         viewed_again = registration.flatfield_model(2, params)
         calls_after_view = list(model_calls)
@@ -245,6 +247,29 @@ def test_the_view_computes_a_sections_flatfield_model_from_its_own_tiles_only():
         np.testing.assert_array_equal(np.asarray(get_msim_image0(fuse_msim)), np.asarray(expected))
 
 
+def test_flatfield_models_are_per_input_group_and_field_of_view():
+    # one section: a field at two pixel sizes, a larger field alone (too few), and a second input item
+    import muvis_align.MVSRegistration as mvs_registration_module
+
+    registration, msims, model_calls, patches, model = _flatfield_registration([0] * 5)
+    sizes = [8, 16, 16, 8, 8]
+    registration.scales = [{"x": scale, "y": scale} for scale in [1.0, 0.5, 1.0, 1.0, 1.0]]
+    registration.sources = [SimpleNamespace(index=index, get_size=lambda size=size: {"y": size, "x": size})
+                            for index, size in enumerate(sizes)]
+    registration.input_groups = [0, 0, 0, 1, 1]
+    registration.file_labels = [f"tile-{index}" for index in range(5)]
+    with patches[0], patches[1], patch.object(mvs_registration_module, "flatfield_min_images", 2):
+        groups = registration.flatfield_groups()
+        corrected = registration.flatfield_corrected_msims(msims, {"flatfield_quantiles": "0.5"})
+
+    assert groups == [[0, 1], [2], [3, 4]]
+    assert model_calls == [(2, (0.5,), None), (2, (0.5,), None)]
+    assert corrected[2] is msims[2]
+    for index in (0, 1, 3, 4):
+        np.testing.assert_array_equal(np.asarray(get_msim_image0(corrected[index])),
+                                      np.asarray(get_msim_image0(apply_msim_flatfield_model(msims[index], model))))
+
+
 def test_fusion_flatfield_corrects_every_source_with_the_pre_processing_model():
     # a foreground-filtered source is left out of registration, never out of fusion; only the flat-field applies
     import muvis_align.MVSRegistration as mvs_registration_module
@@ -252,7 +277,7 @@ def test_fusion_flatfield_corrects_every_source_with_the_pre_processing_model():
 
     registration, msims, model_calls, patches, model = _flatfield_registration([0, 0, 0])
     params = {"flatfield_quantiles": "0.5", "filter_foreground": True, "gaussian_sigma": 2, "normalisation": "global"}
-    with patches[0], patches[1], \
+    with patches[0], patches[1], patches[2], \
             patch.object(mvs_registration_module, "calc_foreground_map", lambda items: [True, False, True]):
         # with foreground filtering the view gets no model of its own: its tile selection needs every tile
         viewed_before = registration.flatfield_model(0, params)
@@ -290,7 +315,7 @@ def test_preprocessing_two_sources_gives_their_pixels_of_a_full_run(params):
 
     registration, msims, _, patches, _ = _flatfield_registration([0, 0, 1])
     pair = [0, 2]
-    with patches[0], patches[1], \
+    with patches[0], patches[1], patches[2], \
             patch.object(mvs_registration_module, "select_msim_subpyramid_at_scale", _half_size_msims), \
             patch.object(mvs_registration_module, "get_level_from_scale", lambda source, scale: (0, {}, None)):
         needs_full_before = registration.needs_full_preprocess(params)

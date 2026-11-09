@@ -1188,8 +1188,9 @@ class MVSRegistration:
         quantiles, scale, normalisation, gaussian_sigma, _ = settings
         msims = self.scaled_source_msims(indices, scale)
         if quantiles:
-            msims = [apply_msim_flatfield_model(msim, self.flatfield_model(index, params))
-                     for msim, index in zip(msims, indices)]
+            models = [self.flatfield_model(index, params) for index in indices]
+            msims = [apply_msim_flatfield_model(msim, model) if model is not None else msim
+                     for msim, model in zip(msims, models)]
         if gaussian_sigma:
             msims = self._gaussian_filtered_msims(msims, indices, gaussian_sigma)
         if normalisation == 'global':
@@ -1238,44 +1239,68 @@ class MVSRegistration:
         return (tuple(float(quantile) for quantile in quantiles), parse_scale(params.get('scale'), default=None),
                 bool(params.get('filter_foreground')))
 
-    def _flatfield_section_of(self, settings):
-        """{source index: section (z-set)} the models are kept by, emptied when the settings or sources change."""
+    def source_groups(self):
+        """Each source's pre-processing group: the input path item it came from (one item: a single group)."""
+        input_groups = getattr(self, 'input_groups', None)
+        return list(input_groups) if input_groups is not None else [0] * len(self.sources)
+
+    def flatfield_groups(self):
+        """Source indices per flat-field model: a section's sources of one group that cover the same field (pixel size
+        x image size), as images of a different field share no shading."""
+        section_of = {index: section for section, indices in enumerate(group_sims_by_z(self.positions, self.positions))
+                      for index in indices}
+        groups = {}
+        for index, (group, source, scale) in enumerate(zip(self.source_groups(), self.sources, self.scales)):
+            size = source.get_size()
+            field = tuple(float(f'{size[dim] * scale[dim]:.4g}') for dim in 'yx' if dim in size and dim in scale)
+            groups.setdefault((section_of.get(index), group, field), []).append(index)
+        return list(groups.values())
+
+    def _flatfield_group_of(self, settings):
+        """{source index: flat-field group} the models are kept by, emptied when the settings or sources change."""
         key = (settings, id(self.positions))
         if self._flatfield_key != key:
             self._flatfield_key, self._flatfield_models = key, {}
-            self._flatfield_sections = group_sims_by_z(self.positions, self.positions)
-            self._flatfield_section_index = {index: section for section, indices in enumerate(self._flatfield_sections)
-                                             for index in indices}
-        return self._flatfield_section_index
+            self._flatfield_groups = self.flatfield_groups()
+            self._flatfield_group_index = {index: group for group, indices in enumerate(self._flatfield_groups)
+                                           for index in indices}
+        return self._flatfield_group_index
 
-    def _calc_flatfield_sections(self, sections, settings, msims=None, foreground_map=None):
-        """Models of `sections`, from `msims` (every source at the pre-processing scale) or their own tiles built at
-        that scale as pre-processing builds them."""
+    def _calc_flatfield_groups(self, groups, settings, msims=None, foreground_map=None):
+        """Models of flat-field `groups`, from `msims` (every source at the pre-processing scale) or their own tiles
+        built at that scale as pre-processing builds them; None for a group of too few images."""
         quantiles, scale, filter_foreground = settings
-        indices = [index for section in sections for index in self._flatfield_sections[section]]
+        indices = [index for group in groups for index in self._flatfield_groups[group]]
         if msims is None:
             msims = dict(zip(indices, self.scaled_source_msims(indices, scale)))
         if filter_foreground and foreground_map is None:
-            # the tiles kept out of the quantiles are chosen over every source: sections are then computed all at once
+            # the tiles kept out of the quantiles are chosen over every source: groups are then computed all at once
             foreground_map = calc_foreground_map([msims[index] for index in range(len(self.sources))])
-        for section in sections:
-            section_indices = self._flatfield_sections[section]
-            self._flatfield_models[section] = calc_msims_flatfield_model(
-                [msims[index] for index in section_indices], quantiles,
-                foreground_map=[foreground_map[index] for index in section_indices] if foreground_map is not None
-                else None)
+        for group in groups:
+            group_indices = self._flatfield_groups[group]
+            if len(group_indices) < flatfield_min_images:
+                logging.warning(f'No flat-field correction for {len(group_indices)} image(s) of one field'
+                                f' (at least {flatfield_min_images} needed):'
+                                f' {", ".join(self.file_labels[index] for index in group_indices[:5])}')
+                self._flatfield_models[group] = None
+            else:
+                self._flatfield_models[group] = calc_msims_flatfield_model(
+                    [msims[index] for index in group_indices], quantiles,
+                    foreground_map=[foreground_map[index] for index in group_indices] if foreground_map is not None
+                    else None)
 
     def flatfield_model(self, index, params):
-        """Source `index`'s flat-field model, its section's computed from that section's tiles alone when first asked:
-        None without quantiles, and with foreground filtering until flatfield_models() has computed every section."""
+        """Source `index`'s flat-field model, its group's computed from that group's tiles alone when first asked:
+        None without quantiles or for too few images, and with foreground filtering until flatfield_models() has
+        computed every group."""
         settings = self.flatfield_settings(params)
         if not settings[0]:
             return None
         with self._flatfield_lock:
-            section = self._flatfield_section_of(settings)[index]
-            if section not in self._flatfield_models and not settings[2]:
-                self._calc_flatfield_sections([section], settings)
-            return self._flatfield_models.get(section)
+            group = self._flatfield_group_of(settings)[index]
+            if group not in self._flatfield_models and not settings[2]:
+                self._calc_flatfield_groups([group], settings)
+            return self._flatfield_models.get(group)
 
     def flatfield_models(self, params, msims=None, foreground_map=None):
         """Every source's flat-field model (None without quantiles), the sections not computed yet computed together:
@@ -1284,24 +1309,25 @@ class MVSRegistration:
         if not settings[0]:
             return None
         with self._flatfield_lock:
-            section_of = self._flatfield_section_of(settings)
-            missing = [section for section in range(len(self._flatfield_sections))
-                       if section not in self._flatfield_models]
+            group_of = self._flatfield_group_of(settings)
+            missing = [group for group in range(len(self._flatfield_groups))
+                       if group not in self._flatfield_models]
             if missing and settings[2]:
-                missing = list(range(len(self._flatfield_sections)))
+                missing = list(range(len(self._flatfield_groups)))
             if missing:
-                logging.info(f'Flat-field model of {len(missing)} section(s)...')
+                logging.info(f'Flat-field model of {len(missing)} group(s)...')
                 if msims is not None:
                     msims = dict(enumerate(msims))
-                self._calc_flatfield_sections(missing, settings, msims, foreground_map)
-            return [self._flatfield_models[section_of[index]] for index in range(len(self.sources))]
+                self._calc_flatfield_groups(missing, settings, msims, foreground_map)
+            return [self._flatfield_models[group_of[index]] for index in range(len(self.sources))]
 
     def flatfield_corrected_msims(self, msims, params):
         """msims (every source, in source order) flat-field corrected by flatfield_models(); unchanged without one."""
         models = self.flatfield_models(params)
         if models is None:
             return msims
-        return [apply_msim_flatfield_model(msim, model) for msim, model in zip(msims, models)]
+        return [apply_msim_flatfield_model(msim, model) if model is not None else msim
+                for msim, model in zip(msims, models)]
 
     def create_registration_method(self, sim0, params={}, method=''):
         registration_method = None

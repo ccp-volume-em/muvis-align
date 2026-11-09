@@ -81,19 +81,15 @@ quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB 
 
 ## In progress
 
-### Downscaling in the registration preview
-Goal: the preview pre-processes only its pair (downscale first, as in pre-processing), and the downscale field is
-also on the Registration tab. Project YAML/template unchanged (value stays `pre_processing.scale`).
-Branch `registration-preview-downscale`.
-1. [x] Stale `register_msims` detected by the settings `preprocess()` recorded (not dropped on change: global
-   registration and pair modify keep the msims the pairs were registered on); pair registration re-pre-processes.
-2. [x] Split `preprocess()`: per-source steps shared with `preprocess_sources()`. Test: pair path == full path.
-3. [x] Preview: reuse `register_msims` if current; global normalisation without matching stats -> full
-   pre-processing; else the two sources alone. Crop cache keyed by pair, channel, settings.
-4. [x] Mirror widget for `pre_processing.scale` on the Registration tab, built in code (`mirrored_params`).
-5. [x] Note in `skills/muvis-align/`.
-6. [x] UI capture check (data_subset: field on the Registration tab, preview at 8 then 2, no full run).
-7. [ ] Merge into main once agreed.
+### Pre-processing per source group
+Branch `group-preprocessing`. Groups are input-path items (`input_groups`); one item is one group, as before.
+1. [x] Grouping function; flat-field per section x group x field of view (pixel size x image size); within a field
+   of view, mixed pixel sizes resized to the finest for the model (and back on applying); fewer than 5 images: no
+   model (logged), left uncorrected.
+2. [ ] Gaussian sigma in pixels at the project's finest native pixel size, `sigma * finest / own` per level
+   (same as before for one pixel size; drops the old cube-root rule).
+3. [ ] Global normalisation per group, cached by (settings, group); preview reads only its pair's group(s).
+4. [ ] Tests (flatfield mixed pixel sizes; plumbing in test_mvs_registration_unit), meatballs check (clear output).
 
 ## TODO
 

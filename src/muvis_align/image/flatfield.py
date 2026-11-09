@@ -28,8 +28,17 @@ def calc_flatfield_images(sims, quantiles, foreground_map=None):
         back_sims = sims
     dtype = sims[0].dtype
     maxval = 2 ** (8 * dtype.itemsize) - 1
+    shapes = {sim.shape for sim in back_sims}
+    if len(shapes) > 1:
+        # one field at several pixel sizes: each image resampled to the finest (largest) before the quantiles
+        shape = max(shapes, key=np.prod)
+        stack = da.stack([sim.data if sim.shape == shape
+                          else da.from_array(resize(np.asarray(sim), shape, preserve_range=True).astype(dtype))
+                          for sim in back_sims])
+    else:
+        stack = da.asarray(back_sims)
     flatfield_images = [image.astype(np.float32) / np.float32(maxval)
-                        for image in da.quantile(da.asarray(back_sims), quantiles, axis=0)]
+                        for image in da.quantile(stack, quantiles, axis=0)]
     return flatfield_images
 
 
