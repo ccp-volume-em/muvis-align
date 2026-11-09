@@ -23,7 +23,7 @@ registration:
   operation: register
   pairing: orthogonal
   transform_type: rigid
-  method: sift
+  method: phase_correlation
   normalisation: true
   max_keypoints: 5000
   inlier_threshold_factor: 0.05
@@ -38,6 +38,7 @@ registration:
   preview_registration: false
   reg_preview_image1: S000_000_000
   reg_preview_image2: S000_000_001
+  channel: '0'
 fusion:
   method: average
   spacing: mean
