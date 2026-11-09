@@ -188,14 +188,17 @@ def main():
 
     def finish():
         state['done'] = True
-        if args.window:
-            save_window()
-        if args.tabs:
-            save_tabs()
-            log_layers('after tabs')
-        # still alive two minutes after closing: show every thread's stack
-        faulthandler.dump_traceback_later(120)
-        QTimer.singleShot(1000, viewer.close)
+        try:
+            if args.window:
+                save_window()
+            if args.tabs:
+                save_tabs()
+                log_layers('after tabs')
+        finally:
+            # closed even when a screenshot fails: a scripted run must never leave the window to the user
+            # still alive two minutes after closing: show every thread's stack
+            faulthandler.dump_traceback_later(120)
+            QTimer.singleShot(1000, viewer.close)
 
     QTimer.singleShot(3000, run)
     napari.run()
