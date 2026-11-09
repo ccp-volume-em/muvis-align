@@ -295,6 +295,8 @@ def test_preprocessing_two_sources_gives_their_pixels_of_a_full_run(params):
             patch.object(mvs_registration_module, "get_level_from_scale", lambda source, scale: (0, {}, None)):
         needs_full_before = registration.needs_full_preprocess(params)
         full_msims, _, _ = registration.preprocess(msims, **params)
+        # another setting's full run in between: returning to the first needs none
+        registration.preprocess(msims, **{**params, "gaussian_sigma": 2})
         pair_msims = registration.preprocess_sources(pair, params)
 
     assert needs_full_before == (params.get("normalisation") == "global")

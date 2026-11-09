@@ -360,9 +360,9 @@ class MVSRegistration:
         self._flatfield_key = None
         self._flatfield_models = {}
         self._flatfield_lock = threading.Lock()
-        # what register_msims were made with, and global normalisation's stats with the settings they belong to
+        # what register_msims were made with, and global normalisation's stats per pre-processing settings
         self.preprocessed_settings = None
-        self._global_normalise_stats = None
+        self._global_normalise_stats = {}
         # per source index: the registration's correction on top of the source transform; absent means identity
         self.mappings = None
         self.input_output_params = {}
@@ -1130,7 +1130,7 @@ class MVSRegistration:
                     logging.info('Normalising (individual)...')
                 norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=use_global)
                 if use_global:
-                    self._global_normalise_stats = (settings, norm_stats[0], norm_dtype)
+                    self._global_normalise_stats[settings] = (norm_stats[0], norm_dtype)
                 msims = self._normalised_msims(msims, norm_stats, norm_dtype)
                 modified = True
                 update_progress()
@@ -1179,13 +1179,13 @@ class MVSRegistration:
         normalisation before a preprocess() at these settings has given its stats."""
         settings = self.preprocess_settings(params)
         filter_foreground, normalisation = settings[4], settings[2]
-        return filter_foreground or (normalisation == 'global' and (self._global_normalise_stats is None
-                                                                    or self._global_normalise_stats[0] != settings))
+        return filter_foreground or (normalisation == 'global' and settings not in self._global_normalise_stats)
 
     def preprocess_sources(self, indices, params):
         """Sources `indices` pre-processed as preprocess() makes them, reading no other source's pixels; only where
         needs_full_preprocess() is False."""
-        quantiles, scale, normalisation, gaussian_sigma, _ = self.preprocess_settings(params)
+        settings = self.preprocess_settings(params)
+        quantiles, scale, normalisation, gaussian_sigma, _ = settings
         msims = self.scaled_source_msims(indices, scale)
         if quantiles:
             msims = [apply_msim_flatfield_model(msim, self.flatfield_model(index, params))
@@ -1193,7 +1193,7 @@ class MVSRegistration:
         if gaussian_sigma:
             msims = self._gaussian_filtered_msims(msims, indices, gaussian_sigma)
         if normalisation == 'global':
-            _, norm_stat, norm_dtype = self._global_normalise_stats
+            norm_stat, norm_dtype = self._global_normalise_stats[settings]
             msims = self._normalised_msims(msims, [norm_stat] * len(msims), norm_dtype)
         elif normalisation:
             norm_stats, norm_dtype = calc_normalise_stats(msims, use_global=False)
