@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -892,7 +892,7 @@ left it. It has one section per tab, with paths relative to the project file's f
 <tbody>
 <tr>
 <td>Input data</td>
-<td>The sources: a file, a folder or a wildcard pattern such as <code>data/*/*.tiff</code> (TIFF, OME-TIFF, Zarr, OME-Zarr)</td>
+<td>The sources, as a list of items: each a file, a folder (its files; a <code>.zarr</code> folder is one image) or a wildcard pattern such as <code>data/*/*.tiff</code> (TIFF, OME-TIFF, Zarr, OME-Zarr). <strong>Add files...</strong> and <strong>Add folder...</strong> add a row, double-click a row to edit it, and <strong>Remove</strong>, <strong>Up</strong> and <strong>Down</strong> act on the selected row. Each item is a group: one channel when registering over <strong>C</strong>, and the unit pre-processing works per</td>
 </tr>
 <tr>
 <td>Source position Z / Y / X</td>
@@ -920,11 +920,11 @@ left it. It has one section per tab, with paths relative to the project file's f
 </tr>
 <tr>
 <td>Metadata table</td>
-<td>Read-only: each source's position and pixel size, ordered by (z, y, x) position</td>
+<td>Read-only: each source's position and pixel size, ordered by (z, y, x) position; registering over <strong>C</strong>, each source's channel too, ordered by channel first</td>
 </tr>
 <tr>
 <td>Registration dimension</td>
-<td>What the sources are spread over: <strong>Space</strong> (tiles side by side), <strong>Z</strong> (a stack of slices), <strong>C</strong> (channels of the same field) or <strong>T</strong> (time points)</td>
+<td>What the sources are spread over: <strong>Space</strong> (tiles side by side), <strong>Z</strong> (a stack of slices), <strong>C</strong> (channels of the same field, one per input data item) or <strong>T</strong> (time points)</td>
 </tr>
 <tr>
 <td>Channels table</td>
@@ -941,14 +941,18 @@ left it. It has one section per tab, with paths relative to the project file's f
 </tbody>
 </table>
 <p><strong>Process</strong> reads the sources' metadata and draws their layout in the view and the overview,
-without reading the image data in full. If the output folder holds a registration from an
-earlier run, it is loaded too, and the plugin carries on from where that run stopped. If
+without reading the image data in full. If some files lack a position or pixel size in their
+metadata, or all share one position, a single message says so: set <strong>Source position</strong> or
+<strong>Source scale</strong> for them. With flat-field quantiles set, the view shows the sources flat-field
+corrected, each section's model made when it is first shown. If the output folder holds a
+registration from an earlier run, it is loaded too, and the plugin carries on from where that run stopped. If
 that registration was made with different source position, scale or rotation settings, the
 plugin asks whether to <strong>Reload</strong> those settings or <strong>Discard</strong> the earlier output.</p>
 <h2 id="3-pre-processing">3. Pre processing</h2>
 <p><img alt="The pre processing tab" src="../images/napari/pre_processing.png" /></p>
-<p>These apply to the images used for registration only: the fused output is made from the
-original sources.</p>
+<p>These apply to the images used for registration; a step over several images (flat-field, global
+normalisation) keeps each input data item apart. Flat-field correction is the exception: it
+applies to the view and the fused output as well, with the same model.</p>
 <table>
 <thead>
 <tr>
@@ -959,19 +963,19 @@ original sources.</p>
 <tbody>
 <tr>
 <td>Downscale / pixel size</td>
-<td>Resolution to register at: a downscale factor (e.g. <code>2</code>) or a pixel size with unit (e.g. <code>10um</code>). Usually the largest single speed-up</td>
+<td>Resolution to register at: a downscale factor (e.g. <code>2</code>) or a pixel size with unit (e.g. <code>10um</code>). Usually the largest single speed-up. Also on the Registration tab, to try the preview at different downscales</td>
 </tr>
 <tr>
 <td>Flat-field quantiles</td>
-<td>One or two quantiles for flat-field correction, e.g. <code>0.5</code> or <code>0.01,0.99</code>; empty for none</td>
+<td>One or two quantiles for flat-field correction, e.g. <code>0.5</code> or <code>0.01,0.99</code>; empty for none. A model per section, input data item and field of view (pixel size x image size); fewer than 5 such images are left uncorrected</td>
 </tr>
 <tr>
 <td>Normalisation</td>
-<td><strong>Single</strong> (each tile on its own), <strong>Global</strong> (over all tiles) or <strong>None</strong></td>
+<td><strong>Single</strong> (each tile on its own), <strong>Global</strong> (over all tiles of each input data item) or <strong>None</strong></td>
 </tr>
 <tr>
 <td>Gaussian sigma</td>
-<td>Gaussian blur before registration; 0 or empty for none</td>
+<td>Gaussian blur before registration, in pixels at the finest pixel size (the same physical blur in every image); 0 or empty for none</td>
 </tr>
 </tbody>
 </table>
@@ -1000,6 +1004,10 @@ out of date, as it was made from the previous images.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>Downscale / pixel size</td>
+<td>The pre-processing setting, shown here too to try <strong>Preview</strong> at different downscales without switching tabs</td>
+</tr>
 <tr>
 <td>Operation</td>
 <td><strong>Register</strong>, <strong>Merge</strong> or <strong>Convert</strong>, as above</td>
@@ -1045,8 +1053,8 @@ out of date, as it was made from the previous images.</p>
 <td>SIFT and ORB: the number of RANSAC runs</td>
 </tr>
 <tr>
-<td>Threads</td>
-<td>Pair registrations run in parallel; 0 or empty to choose automatically</td>
+<td>Parallel pairs</td>
+<td>Pairs registered at once, each in its own process; empty to choose automatically</td>
 </tr>
 <tr>
 <td>Registration preview image 1 / 2</td>
@@ -1072,9 +1080,11 @@ out of date, as it was made from the previous images.</p>
 </table>
 <p>The buttons:</p>
 <ul>
-<li><strong>Preview</strong> registers just the selected pair and shows the two overlaps with their matches,
-  with the pair's metrics in the table. Much faster than a full run while trying out
-  parameters. To choose the pair, use the two dropdowns, click an overlap shape in the view,
+<li><strong>Preview</strong> registers just the selected pair and shows the two overlaps, each outlined, with
+  their matches, and the pair's metrics in the table. Much faster than a full run while trying out
+  parameters: it pre-processes only the pair's two sources (global normalisation and flat-field
+  read their input data items), unless pre-processing has already run with the current settings.
+  To choose the pair, use the two dropdowns, click an overlap shape in the view,
   or click a pair's row in the metrics table.</li>
 <li><strong>Pair registration</strong> registers every pair.</li>
 <li><strong>Modify pair registration</strong> shows the selected pair in green and purple, to move one onto
@@ -1142,8 +1152,8 @@ again to store it.</p>
 <h2 id="the-registered-result">The registered result</h2>
 <p>After <strong>Process</strong> on the registration tab, the sources sit at their registered positions. Each
 overlap, in the view, the overview and the metrics table, is coloured by its pair's
-registration quality, from red (poor) to green (good). Here the sample's settings (SIFT,
-rigid) give each pair a good quality.</p>
+registration quality, from red (poor) to green (good). Here the sample's settings (phase
+correlation, rigid) give each pair a good quality.</p>
 <p><img alt="The registered sample" src="../images/napari/registered.png" /></p>
 <h2 id="the-fused-result">The fused result</h2>
 <p>After <strong>Process</strong> on the fusion tab, the view shows the fused export from the output folder,
@@ -1202,7 +1212,7 @@ fused image without the overlap outlines.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.c21346df.min.js"></script>
+      <script src="../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>
