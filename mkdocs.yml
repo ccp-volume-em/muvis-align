@@ -38,6 +38,7 @@ nav:
   - notebooks.md
   - Technical overview: technical.md
   - poster.md
+  - pre_poster.md
   - references.md
 
 theme:
