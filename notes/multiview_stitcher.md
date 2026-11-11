@@ -92,7 +92,7 @@ reweighting `linear_two_pass` fits better at close to `linear_two_pass`'s cost. 
   `weight_mode='quality'`). Stop once the 99th percentile of the residuals' change in a round is within 1% of the
   scale: on a large graph a few edges flip every round, so a stop on the largest change never triggers.
 - **muvis-align:** `robust_resolution.groupwise_resolution_robust_linear`, registered as `robust_linear`.
-- **Post:** new issue, referencing #101 (global resolution does not scale). Title: *linear_two_pass: an iteratively
+- **Posted:** PR #196 (2026-11-11). Was: new issue, referencing #101 (global resolution does not scale). Title: *linear_two_pass: an iteratively
   reweighted (robust) option*. Offer a PR.
 
 #### 1b. `linear_two_pass`: the cost is building the parameters, not solving
