@@ -137,7 +137,7 @@ reweighting `linear_two_pass` fits better at close to `linear_two_pass`'s cost. 
 - **Suggestion:** remove several edges per pass (e.g. all above a residual threshold, keeping connectivity) and avoid
   the per-candidate deep copies - or point large graphs to the robust linear method (1a).
 - **muvis-align:** uses `robust_linear` (1a) for translation and rigid.
-- **Post:** comment on #101, linking 1a's issue.
+- **Posted:** comment on #101 (2026-11-11), linking #196-#198; the bridges idea left as a suggestion there, no PR.
 
 ### 2. View adjacency graph: exact box intersections when nothing is rotated
 
