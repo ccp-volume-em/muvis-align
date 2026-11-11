@@ -130,8 +130,10 @@ reweighting `linear_two_pass` fits better at close to `linear_two_pass`'s cost. 
 
 - **Problem:** it removes one edge per outer pass, re-running the inner loop (up to 500 iterations) and deep-copying
   the graph for each removal candidate.
-- **Measured:** 967 passes locally (354-406s); on the HPC pass 1 took ~2h (323 iterations), then ~3 min a pass, 146
-  passes in 10h with the max residual stuck at ~69.6. It would not finish.
+- **Measured:** locally on the 831 orthogonal pairs 83.7s (1a); on the earlier 1764 overlapping pairs (diagonals
+  included) 967 passes, 354-406s, median residual 0.117um, p90 0.503um, where `linear_two_pass` took 2.0s (0.211 /
+  0.894um) and reweighted 6.5s (0.134 / 0.434um). On the HPC pass 1 took ~2h (323 iterations), then ~3 min a pass,
+  146 passes in 10h with the max residual stuck at ~69.6. It would not finish.
 - **Suggestion:** remove several edges per pass (e.g. all above a residual threshold, keeping connectivity) and avoid
   the per-candidate deep copies - or point large graphs to the robust linear method (1a).
 - **muvis-align:** uses `robust_linear` (1a) for translation and rigid.
