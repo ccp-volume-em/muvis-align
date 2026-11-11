@@ -109,7 +109,7 @@ reweighting `linear_two_pass` fits better at close to `linear_two_pass`'s cost. 
 - **muvis-align:** `robust_resolution._numpy_internals` swaps `_build_params_from_templates` and `_edge_residuals` in
   while its own rounds run. Transforms and residuals identical; a round 8x faster (3600 tiles, 3 rounds
   24.8 -> 3.1s); 34k tiles / 230k edges ~31s a round on one thread.
-- **Post:** new issue, referencing #139 (xarray overhead, judged within limits as once per tile: here it is per tile
+- **Posted:** PR #198 (2026-11-11, stacked on #196). Was: new issue, referencing #139 (xarray overhead, judged within limits as once per tile: here it is per tile
   per call). Title: *linear_two_pass: most of a call is building xarray transforms, and pass 2 repeats pass 1 when
   nothing is pruned*.
 
