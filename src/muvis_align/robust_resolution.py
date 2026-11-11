@@ -48,7 +48,8 @@ def voxel_diagonal(graph):
                for node in graph.nodes)
 
 
-def _build_params_from_templates(nodes, translations, rotations, scales, transform, ndim, x_in=None, x_out=None):
+def _build_params_from_templates(nodes, translations, rotations, scales, transform, ndim, x_in=None, x_out=None,
+                                 as_numpy=False):
     """linear_two_pass._build_params_from_components with each transform a copy of a cached xarray: building them
     from scratch, twice a solve, is most of a round's time."""
     params = {}
@@ -62,12 +63,15 @@ def _build_params_from_templates(nodes, translations, rotations, scales, transfo
         matrix = np.eye(ndim + 1)
         matrix[:ndim, :ndim] = linear
         matrix[:ndim, ndim] = translations[node]
-        xparams = xaffine_from_matrix(matrix)
-        if reorder is None:
-            reorder = (x_in is not None and x_out is not None
-                       and not (np.array_equal(xparams.coords['x_in'], x_in)
-                                and np.array_equal(xparams.coords['x_out'], x_out)))
-        params[node] = xparams.sel(x_in=x_in, x_out=x_out) if reorder else xparams
+        if as_numpy:
+            params[node] = matrix
+        else:
+            xparams = xaffine_from_matrix(matrix)
+            if reorder is None:
+                reorder = (x_in is not None and x_out is not None
+                           and not (np.array_equal(xparams.coords['x_in'], x_in)
+                                    and np.array_equal(xparams.coords['x_out'], x_out)))
+            params[node] = xparams.sel(x_in=x_in, x_out=x_out) if reorder else xparams
     return params
 
 
@@ -91,14 +95,18 @@ def _edge_residuals(g_reg, params, ndim=None):
 
 @contextmanager
 def _numpy_internals():
-    # only while our own solves run: the originals stay for any other caller
-    originals = linear_two_pass._build_params_from_components, linear_two_pass.compute_edge_residuals
-    linear_two_pass._build_params_from_components = _build_params_from_templates
-    linear_two_pass.compute_edge_residuals = _edge_residuals
+    # only while our own solves run: the originals stay for any other caller. Newer multiview-stitcher
+    # computes residuals on numpy itself and no longer has compute_edge_residuals in linear_two_pass
+    replacements = {'_build_params_from_components': _build_params_from_templates,
+                    'compute_edge_residuals': _edge_residuals}
+    originals = {name: getattr(linear_two_pass, name) for name in replacements if hasattr(linear_two_pass, name)}
+    for name in originals:
+        setattr(linear_two_pass, name, replacements[name])
     try:
         yield
     finally:
-        linear_two_pass._build_params_from_components, linear_two_pass.compute_edge_residuals = originals
+        for name, original in originals.items():
+            setattr(linear_two_pass, name, original)
 
 
 def groupwise_resolution_robust_linear(g_reg_component_tp, reference_view=None, transform='rigid', scale=None,
