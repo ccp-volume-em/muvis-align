@@ -123,7 +123,7 @@ reweighting `linear_two_pass` fits better at close to `linear_two_pass`'s cost. 
 - **Suggestion:** accumulate each node's weight sum in a single pass over the edges; same node chosen (3ms locally
   against 57-267ms).
 - **muvis-align:** `robust_resolution.find_reference_view`; `register_global` passes it when the graph is connected.
-- **Post:** new issue. Title: *get_node_with_maximal_edge_weight_sum_from_graph scans every edge once per node*.
+- **Posted:** PR #197 (2026-11-11). Was: new issue. Title: *get_node_with_maximal_edge_weight_sum_from_graph scans every edge once per node*.
   Include the few lines of `find_reference_view`; offer a PR.
 
 #### 1d. `global_optimization` at scale

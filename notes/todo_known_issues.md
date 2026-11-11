@@ -85,7 +85,7 @@ quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB 
   `robust_rounds`/`robust_scale`/`robust_tolerance` options on `linear_two_pass`, reweighting inside the solver on
   numpy components (xarray built once). Committed (3605dc0) and pushed to the fork; matches `robust_linear` (rounds =
   robust_rounds + 1) to <3e-5. PR: multiview-stitcher #196. Next: once released, shrink `robust_resolution.py` to
-  `find_reference_view` + a call with `robust_rounds` (cancel/progress via its per-round log).
+  a call with `robust_rounds` (cancel/progress via its per-round log); `find_reference_view` too once #197 is released.
 
 ## TODO
 
