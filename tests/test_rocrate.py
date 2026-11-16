@@ -71,15 +71,16 @@ def test_write_ro_crates_passes_the_run_to_fair_metadata_integration(tmp_path, m
     assert run_kwargs['license'] == zarr_kwargs['license'] == 'https://spdx.org/licenses/CC0-1.0'
 
 
-def test_license_choices_are_the_common_licenses_fair_metadata_integration_names():
+def test_license_choices_are_fair_metadata_integrations():
     import importlib.resources
-    from fair_metadata_integration import COMMON_LICENSES
+    from fair_metadata_integration import license_entry
     from muvis_align.constants import NAPARI_PROJECT_TEMPLATE
     template = importlib.resources.files('muvis_align').joinpath(NAPARI_PROJECT_TEMPLATE)
     [entry] = [entry for entry in yaml.safe_load(template.read_text(encoding='utf-8'))['parameters']
                if entry['name'] == 'license']
-    assert [option['value'] for option in entry['options']] == [license['url'] for license in COMMON_LICENSES]
-    assert entry['default'] == COMMON_LICENSES[0]['url']
+    expected = license_entry(section='fusion')
+    assert {key: entry[key] for key in ('type', 'options', 'default', 'section_id')} == \
+           {key: expected[key] for key in ('type', 'options', 'default', 'section_id')}
 
 
 def test_project_parameters_fit_the_template(tmp_path):
@@ -98,7 +99,7 @@ def test_project_parameters_fit_the_template(tmp_path):
         graph = {entity['@id']: entity for entity in json.load(file)['@graph']}
     assert graph['./']['mainEntity'] == {'@id': 'project_template.yaml'}
     assert graph['parameters.yaml']['about'] == {'@id': '#run'}
-    assert graph['#run']['object'] == [{'@id': tmp_path.resolve().as_uri() + '/'}]
+    assert graph['#run']['object'] == {'@id': tmp_path.resolve().as_uri() + '/'}
     assert graph[tmp_path.resolve().as_uri() + '/']['name'] == 'Source images'
     assert graph['source-images.csv']['about'] == {'@id': tmp_path.resolve().as_uri() + '/'}
     assert (output_dir / 'registered.ome.zarr' / 'ro-crate-metadata.json').exists()
