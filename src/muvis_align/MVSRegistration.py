@@ -2376,7 +2376,8 @@ class MVSRegistration:
         return fused_sim
 
     def save(self, output_filename, data, format=zarr_extension, transform_key=None, translations0=None, channels=[],
-             block_size=None, compression=None, pyramid_downsample=2, npyramid_add=4, ome_version=default_ome_zarr_version):
+             block_size=None, compression=None, pyramid_downsample=2, npyramid_add=4, ome_version=default_ome_zarr_version,
+             progress_factory=None):
         if output_filename is not None:
             output_filename = self.output + output_filename
         if isinstance(self.extra_metadata, dict) and self.extra_metadata:
@@ -2386,7 +2387,7 @@ class MVSRegistration:
                    block_size=block_size, compression=compression,
                    pyramid_downsample=pyramid_downsample, npyramid_add=npyramid_add,
                    ome_version=ome_version,
-                   verbose=self.verbose)
+                   verbose=self.verbose, progress_factory=progress_factory)
 
     def save_native_levels(self, output_filename, msim, position=None, channels=None, min_length=128,
                            compression=None, ome_version=default_ome_zarr_version):

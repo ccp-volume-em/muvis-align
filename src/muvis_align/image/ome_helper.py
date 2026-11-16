@@ -8,7 +8,7 @@ def save_image(filename, data, output_format=zarr_extension,
                transform_key=None, channels=None, translations0=None,
                block_size=None, compression=None, pyramid_downsample=2, npyramid_add=0,
                ome_version=default_ome_zarr_version,
-               verbose=False):
+               verbose=False, progress_factory=None):
     if isinstance(data, list):
         data0 = data[0]
         positions = []
@@ -49,7 +49,7 @@ def save_image(filename, data, output_format=zarr_extension,
         if 'zar' in output_format:
             save_ome_zarr(str(filename) + zarr_extension, data, dimension_order, pixel_size,
                           channels, positions, rotations, compression=compression, ome_version=ome_version,
-                          pyramid_downsample=pyramid_downsample)
+                          pyramid_downsample=pyramid_downsample, progress_factory=progress_factory)
         if 'tif' in output_format:
             save_ome_tiff(str(filename) + tiff_extension, data.data, dimension_order, pixel_size,
                           channels, positions, rotation, tile_size=block_size, compression=compression,

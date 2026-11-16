@@ -1,21 +1,24 @@
 from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, NgffMultiscales, NgffScene, \
     Omero, OmeroChannel, OmeroWindow
+from ngff_zarr.rich_dask_progress import NgffProgressCallback
 from ngff_zarr.v06.zarr_metadata import Metadata, Affine, Translation, CoordinateSystem, CoordinateSystemIdentifier
+from contextlib import nullcontext
 import json
 import numpy as np
 import os
 import ome_zarr.format
+import re
 import zarr
 
 from muvis_align.image.color_conversion import rgba_to_hexrgb
-from muvis_align.util import create_chunk_dict
+from muvis_align.util import create_chunk_dict, progress_phase
 from muvis_align.constants import default_ome_zarr_version, default_chunk_size
 from muvis_align.image.util import calc_pyramid_level_factors, create_compression_filter
 from muvis_align.image.ome_zarr_util import get_channel_window
 
 
 def save_ome_zarr(filename, datas, dim_order, pixel_size, channels, translations, rotations, pyramid_downsample=None,
-                  compression=None, ome_version=default_ome_zarr_version):
+                  compression=None, ome_version=default_ome_zarr_version, progress_factory=None):
     # experimental: if list of images, store as series of images in ome-zarr format
     is_series = isinstance(datas, list)
     if not is_series:
@@ -35,7 +38,7 @@ def save_ome_zarr(filename, datas, dim_order, pixel_size, channels, translations
             path = filename
         metadata = save_ome_image(data, path=path, dim_order=dim_order, pixel_size=pixel_size, channels=channels,
                                   translation=translation, rotation=rotation, pyramid_downsample=pyramid_downsample,
-                                  compression=compression, ome_version=ome_version)
+                                  compression=compression, ome_version=ome_version, progress_factory=progress_factory)
 
         if is_series:
             multi_metadata.append(metadata)
@@ -48,8 +51,10 @@ def save_ome_zarr(filename, datas, dim_order, pixel_size, channels, translations
 
 
 def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rotation,
-                   pyramid_downsample=None, compression=None, ome_version=default_ome_zarr_version):
-
+                   pyramid_downsample=None, compression=None, ome_version=default_ome_zarr_version,
+                   progress_factory=None):
+    """Write `data` with its pyramid; a lazy `data` is computed as it is written, reported as one phase of
+    `progress_factory`."""
     storage_options = get_storage_options(compression)
 
     axes_units = {dim: 'micrometer' for dim in dim_order if dim in 'xyz'}
@@ -61,9 +66,56 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
 
     chunks_per_shard = None
 
-    to_ngff_zarr(path, multiscales, chunks_per_shard=chunks_per_shard, version=ome_version, **storage_options)
+    with progress_phase(progress_factory, total=NgffWriteProgress.ticks, desc='Writing') as phase:
+        progress = NgffWriteProgress(phase, [level.data.shape for level in multiscales.images]) \
+            if phase is not None else None
+        with progress or nullcontext():
+            to_ngff_zarr(path, multiscales, chunks_per_shard=chunks_per_shard, version=ome_version,
+                         progress=progress, **storage_options)
 
     return multiscales.metadata
+
+
+class NgffWriteProgress(NgffProgressCallback):
+    """ngff_zarr's write progress moving one progress phase: each level weighted by its voxels, its regions in turn.
+
+    It is also the stand-in for the rich progress ngff_zarr reports into, which names each write task
+    'Writing scale i of n[, region j of m]' and updates it with its dask task counts."""
+    ticks = 1000
+    task_pattern = re.compile(r'scale (\d+) of \d+(?:, region (\d+) of (\d+))?')
+
+    def __init__(self, phase, level_shapes):
+        super().__init__(rich_progress=self)
+        self.phase = phase
+        weights = np.array([float(np.prod(shape)) for shape in level_shapes])
+        self.level_shares = weights / weights.sum()
+        self.level_starts = np.cumsum(self.level_shares) - self.level_shares
+        self.write_task = None
+        self.write_span = (0.0, 0.0)
+        self.position = 0
+
+    def add_task(self, description, **_):
+        match = self.task_pattern.search(description)
+        if match:
+            level = int(match[1]) - 1
+            region, regions = (int(match[2]) - 1, int(match[3])) if match[2] else (0, 1)
+            share = self.level_shares[level] / regions
+            self.write_task = description
+            self.write_span = (self.level_starts[level] + share * region, share)
+            self.move_to(self.write_span[0])
+        return description
+
+    def update(self, task, total=None, completed=None, **_):
+        # the 'Writing scales' task only counts levels started: the write tasks' counts say more
+        if task == self.write_task and total and completed is not None:
+            start, share = self.write_span
+            self.move_to(start + share * min(completed / total, 1.0))
+
+    def move_to(self, fraction):
+        position = int(fraction * self.ticks)
+        if position > self.position:
+            self.phase.update(position - self.position)
+            self.position = position
 
 
 def get_padding_scale_factors(shape, dim_order, **kwargs):

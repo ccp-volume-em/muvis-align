@@ -95,3 +95,32 @@ def test_a_version_ome_zarr_py_cannot_write_is_refused_not_relabelled():
     assert get_ome_zarr_format('0.5')[1].version == '0.5'
     with pytest.raises(ValueError, match='0.6'):
         get_ome_zarr_format('0.6')
+
+
+def test_writing_a_lazy_image_moves_one_progress_phase_in_steps_to_its_end(tmp_path):
+    import dask.array
+    from muvis_align.image.ome_zarr_helper import NgffWriteProgress, save_ome_image
+
+    totals, moves = [], []
+
+    class Phase:
+        def __init__(self, total=None, **_):
+            totals.append(total)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def update(self, n=1):
+            moves.append(n)
+
+    data = dask.array.ones((2048, 2048), dtype='uint16', chunks=256)
+    save_ome_image(data, str(tmp_path / 'lazy.ome.zarr'), 'yx', {'y': 1.0, 'x': 1.0}, [], {'y': 0.0, 'x': 0.0},
+                   None, pyramid_downsample=2, progress_factory=Phase)
+
+    assert totals == [NgffWriteProgress.ticks]
+    assert len(moves) > 2 and all(move > 0 for move in moves)
+    # each level's share ends where the next starts; only float rounding may leave the last tick
+    assert sum(moves) >= NgffWriteProgress.ticks - 1

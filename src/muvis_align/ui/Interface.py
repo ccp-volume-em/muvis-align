@@ -2145,16 +2145,16 @@ class Interface:
         # the saves below are on-disk layout only, with no per-block cost, so they always get blocks
         save_block_size = block_size or default_chunk_size
 
-        # written straight to zarr, the fusion is the whole export: a second phase would hold its bar at half
         fuses_to_zarr = self.reg.fuses_to_zarr(self.params['fusion']['method'],
                                                self.params['input_output']['registration_dimension'],
                                                self.extra_metadata)
         # used once: settings or registration may change before another fusion
         estimate, self._fusion_estimate = getattr(self, '_fusion_estimate', None), None
         nested = (progress_factory or getattr(self, '_running_operation', None)) is not None
-        with self._operation_progress('Fusion', progress_factory, phases=1 if fuses_to_zarr else 2) as factory:
-            if fuses_to_zarr and not nested:
-                # the levels' one bar is the whole export: the last level fills it, not the close after it
+        # one phase is the whole export: the fusion written to zarr, or the save computing a lazy fusion
+        with self._operation_progress('Fusion', progress_factory, phases=1) as factory:
+            if not nested:
+                # the export's phase fills the bar, not the close after it
                 factory.last_phase_share = 1.0
             def fuse(worker_factory):
                 level_estimate = estimate if estimate is not None or not fuses_to_zarr else self._estimate_fusion_size()
@@ -2180,7 +2180,8 @@ class Interface:
                                       translations0=self.reg.positions,
                                       channels=self.extra_metadata.get('channels', []),
                                       block_size=save_block_size,
-                                      ome_version=self.params['fusion']['ome_version'])
+                                      ome_version=self.params['fusion']['ome_version'],
+                                      progress_factory=worker_factory)
                     image_filenames = [path[len(self.reg.output):] for path in self._output_paths(output_filename)
                                        if os.path.exists(path)]
                     self.reg.write_ro_crates(image_filenames, self.params)
