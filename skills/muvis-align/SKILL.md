@@ -113,6 +113,8 @@ The output folder holds, next to the image:
 - `residuals.csv` - each pair's disagreement with the global solution; a large one is a pair to distrust.
 - `positions_*.pdf` - the tile layout, to spot a source that moved far from its stage position.
 - `mappings.json`/`.csv` - the final transform per source; `parameters.yaml` + `ro-crate-metadata.json` -
-  every setting used, for reproducing the run.
+  every setting used, for reproducing the run; `source-images.csv` lists the sources. The crate (RO-Crate 1.3)
+  records `fusion.license`, a licence URL: CC BY 4.0 by default, or another Creative Commons / Open Data Commons
+  licence from the plugin's dropdown.
 - The log (`general.logging.filename`, default `log/muvis-align.log`) reports skipped operations, matched file
   counts and errors. `Pipeline.run()` returning False means an operation raised.

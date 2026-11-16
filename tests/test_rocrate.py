@@ -38,7 +38,8 @@ def test_write_ro_crates_passes_the_run_to_fair_metadata_integration(tmp_path, m
     monkeypatch.setattr(registration_module, 'create_ro_crate',
                         lambda *args, **kwargs: calls.setdefault('run', []).append((args, kwargs)))
     reg, output_dir = make_registration(tmp_path, metrics={'ncc': 0.75})
-    params = {'general': {'verbose': True}, 'registration': {'method': 'orb'}}
+    params = {'general': {'verbose': True}, 'registration': {'method': 'orb'},
+              'fusion': {'license': 'https://spdx.org/licenses/CC0-1.0'}}
 
     reg.write_ro_crates(['registered.ome.zarr', 'registered.ome.tiff'], params)
 
@@ -67,6 +68,18 @@ def test_write_ro_crates_passes_the_run_to_fair_metadata_integration(tmp_path, m
     assert run_kwargs['name'] == 'muvis-align run: output'
     assert run_kwargs['end_time'] == derivation['end_time']
     assert run_kwargs['software'] == derivation['software']
+    assert run_kwargs['license'] == zarr_kwargs['license'] == 'https://spdx.org/licenses/CC0-1.0'
+
+
+def test_license_choices_are_the_common_licenses_fair_metadata_integration_names():
+    import importlib.resources
+    from fair_metadata_integration import COMMON_LICENSES
+    from muvis_align.constants import NAPARI_PROJECT_TEMPLATE
+    template = importlib.resources.files('muvis_align').joinpath(NAPARI_PROJECT_TEMPLATE)
+    [entry] = [entry for entry in yaml.safe_load(template.read_text(encoding='utf-8'))['parameters']
+               if entry['name'] == 'license']
+    assert [option['value'] for option in entry['options']] == [license['url'] for license in COMMON_LICENSES]
+    assert entry['default'] == COMMON_LICENSES[0]['url']
 
 
 def test_project_parameters_fit_the_template(tmp_path):

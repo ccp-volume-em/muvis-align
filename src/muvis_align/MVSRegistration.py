@@ -663,6 +663,8 @@ class MVSRegistration:
                         for name, value in self.summary_metrics().items()}
         sources = {'name': 'Source images', 'paths': self.filenames, 'list_file': 'source-images.csv',
                    'description': f'The {len(self.filenames)} source images registered by muvis-align'}
+        # empty: fair-metadata-integration's default
+        license = params.get('fusion', {}).get('license') or None
         for filename in image_filenames:
             if filename.endswith(zarr_extension):
                 # the first and last sources stand for the acquisition: reading every source's metadata is too slow
@@ -672,14 +674,17 @@ class MVSRegistration:
                                      description=f'OME-Zarr image fused by muvis-align from {len(self.filenames)} '
                                                  f'sources',
                                      derivation={'name': 'Fusion to OME-Zarr', 'software': software,
-                                                 'end_time': end_time})
+                                                 'end_time': end_time},
+                                     license=license)
         result_paths = [self.output + filename for filename in image_filenames] + sorted(self.saved_progress_paths())
         template = importlib.resources.files('muvis_align').joinpath(NAPARI_PROJECT_TEMPLATE)
         with importlib.resources.as_file(template) as template_path:
             create_ro_crate(output_dir, str(template_path), [sources], result_paths, parameters=params,
                             name=f'muvis-align run: {get_filetitle(os.path.normpath(output_dir))}',
+                            description=f'Registration and fusion of {len(self.filenames)} source images by '
+                                        f'muvis-align, with its settings and results',
                             run_name='muvis-align run', start_time=self.start_time, end_time=end_time,
-                            software=software)
+                            software=software, license=license)
 
     def middle_section_indices(self):
         """The files of the middle section, by section number (a label as S000 or SBEMimage's s00538), else by folder;

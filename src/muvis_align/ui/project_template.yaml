@@ -549,11 +549,42 @@ parameters:
     optional: True
     section_id: "fusion"
     mode: "advanced"
+  - name: license
+    type: dropdown
+    label: "License"
+    description: "License of the output, recorded in its RO-Crate metadata"
+    options:
+      - label: "CC BY 4.0"
+        value: "https://creativecommons.org/licenses/by/4.0/"
+      - label: "CC BY-SA 4.0"
+        value: "https://creativecommons.org/licenses/by-sa/4.0/"
+      - label: "CC BY-NC 4.0"
+        value: "https://creativecommons.org/licenses/by-nc/4.0/"
+      - label: "CC BY-NC-SA 4.0"
+        value: "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      - label: "CC BY-ND 4.0"
+        value: "https://creativecommons.org/licenses/by-nd/4.0/"
+      - label: "CC BY-NC-ND 4.0"
+        value: "https://creativecommons.org/licenses/by-nc-nd/4.0/"
+      - label: "CC0 1.0 (public domain)"
+        value: "https://creativecommons.org/publicdomain/zero/1.0/"
+      - label: "ODC-By 1.0"
+        value: "https://opendatacommons.org/licenses/by/1-0/"
+      - label: "ODbL 1.0"
+        value: "https://opendatacommons.org/licenses/odbl/1-0/"
+      - label: "PDDL 1.0 (public domain)"
+        value: "https://opendatacommons.org/licenses/pddl/1-0/"
+    default: "https://creativecommons.org/licenses/by/4.0/"
+    cli_tag: "--license"
+    cli_order: 4
+    optional: True
+    section_id: "fusion"
+    mode: "advanced"
   - name: preview_fusion
     type: pushbutton
     label: "Preview"
     description: "Preview fused result"
-    cli_order: 4
+    cli_order: 5
     section_id: "fusion"
     mode: "beginner"
 

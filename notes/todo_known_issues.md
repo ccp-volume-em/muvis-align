@@ -86,6 +86,8 @@ quarter of the job's memory), so the peak scales with the job: 33.3GB on a 64GB 
   numpy components (xarray built once). Committed (3605dc0) and pushed to the fork; matches `robust_linear` (rounds =
   robust_rounds + 1) to <3e-5. PRs: multiview-stitcher #196, #198 (1b, stacked on #196: rebase once #196 is merged). Next: once released, shrink `robust_resolution.py` to
   a call with `robust_rounds` (cancel/progress via its per-round log); `find_reference_view` too once #197 is released.
+- **RO-Crate validation**: done and committed (FMI 85deb13, muvis-align license dropdown); both crates pass
+  roc-validator 0.14 REQUIRED. Left: push both, release FMI 0.12.0, pin muvis-align to it.
 
 ## TODO
 
