@@ -93,7 +93,8 @@ def _weak_view_click(interface_ref):
 
 
 def position_sort_key(position):
-    return position.get('c', 0), position.get('z', 0), position.get('y', 0), position.get('x', 0)
+    return (position.get('t', 0), position.get('c', 0), position.get('z', 0), position.get('y', 0),
+            position.get('x', 0))
 
 
 class Interface:
@@ -873,19 +874,30 @@ class Interface:
                 scales.append({dim: size * transform_scale if dim in affine_dims else size
                                for dim, size in scale0.items()})
                 rotations.append(get_rotation_from_transform(affine))
+        positions = self.channel_positions(positions)
         for position, rotation in zip(positions, rotations):
             if rotation is not None:
                 position['r'] = rotation
-        if self.reg.is_channel_overlay(self.params.get('input_output', {}).get('registration_dimension'),
-                                      self.extra_metadata):
-            for position, channel in zip(positions, self.reg.channel_groups()):
-                position['c'] = channel
-        order = sorted(range(len(positions)), key=lambda i: position_sort_key(positions[i]))
+        order = sorted(range(len(positions)), key=lambda index: position_sort_key(positions[index]))
         data = [[print_dict_simple(positions[i], dims='czyx'), print_dict_simple(scales[i])] for i in order]
         row_headers = [self.reg.file_labels[i] for i in order]
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
         table_widget.set_value((data, row_headers, properties))
         table_widget.set_table_column_resize_mode()
+
+    def channel_positions(self, positions):
+        """Copies of positions, with each source's channel group as 'c' in a channel overlay."""
+        positions = [dict(position) for position in positions]
+        if self.reg.is_channel_overlay(self.params.get('input_output', {}).get('registration_dimension'),
+                                      self.extra_metadata):
+            for position, channel in zip(positions, self.reg.channel_groups()):
+                position['c'] = channel
+        return positions
+
+    def source_order(self):
+        """Source indices in the metadata table's (t, c, z, y, x) order, by their metadata positions."""
+        positions = self.channel_positions(self.reg.positions)
+        return sorted(range(len(positions)), key=lambda index: position_sort_key(positions[index]))
 
     def update_output_channels(self):
         channels = self.extra_metadata.get('channels')
@@ -935,11 +947,9 @@ class Interface:
 
     def populate_image_selection(self):
         labels = list(self.reg.file_labels)
-        positions = self.reg.positions
         # the metadata and metrics tables' order
-        if len(positions) == len(labels):
-            labels = [labels[index] for index in sorted(range(len(labels)),
-                                                        key=lambda index: position_sort_key(positions[index]))]
+        if len(self.reg.positions) == len(labels):
+            labels = [labels[index] for index in self.source_order()]
         widget1 = self.param_widgets.get('registration.reg_preview_image1')
         widget1.set_value(labels[0], choices=labels)
 
@@ -1700,10 +1710,10 @@ class Interface:
                         metric_keys.append(metric_key)
         pairs_metrics = metrics_dict.get('pairs')
         if pairs_metrics:
-            file_rank = {file_index: rank for rank, file_index in
-                        enumerate(sorted(range(len(self.reg.positions)),
-                                         key=lambda i: position_sort_key(self.reg.positions[i])))}
-            pairs_metrics = dict(sorted(pairs_metrics.items(),
+            file_rank = {file_index: rank for rank, file_index in enumerate(self.source_order())}
+            # each pair reads in table order too: its earlier source first
+            pairs_metrics = dict(sorted(((tuple(sorted(indices, key=file_rank.get)), value)
+                                         for indices, value in pairs_metrics.items()),
                                         key=lambda item: (file_rank[item[0][0]], file_rank[item[0][1]])))
         # a selected row picks its pair's preview images (metrics_table_selected)
         self.metrics_row_pairs = {self.reg.file_labels[indices[0]] + ' - ' + self.reg.file_labels[indices[1]]: indices

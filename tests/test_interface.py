@@ -2285,6 +2285,24 @@ def test_metrics_table_lists_split_group_pairs_after_the_tile_pairs(bare_interfa
     assert values[2] == [0.3, None]
 
 
+def test_metrics_table_orders_pairs_as_the_metadata_table_does(bare_interface):
+    """Channel first in a channel overlay, then position; each pair's earlier source first."""
+    bare_interface.params = {'input_output': {'registration_dimension': 'c'}}
+    bare_interface.reg.is_channel_overlay.return_value = True
+    bare_interface.reg.channel_groups.return_value = [1, 1, 0, 0]
+    bare_interface.reg.file_labels = ['fl_0', 'fl_1', 'refl_0', 'refl_1']
+    bare_interface.reg.positions = [{'y': 0, 'x': 0}, {'y': 0, 'x': 1}, {'y': 0, 'x': 0}, {'y': 0, 'x': 1}]
+    table = MagicMock()
+    bare_interface.param_widgets = {'registration.metrics_table': table}
+    pair_metrics = {'registered': {'quality': 0.9}}
+
+    bare_interface.populate_metrics_table({'pairs': {(1, 0): pair_metrics, (3, 1): pair_metrics,
+                                                     (3, 2): pair_metrics}})
+
+    _, rows, _ = table.set_value.call_args[0][0]
+    assert rows == ['refl_0 - refl_1', 'refl_1 - fl_1', 'fl_0 - fl_1']
+
+
 @pytest.mark.parametrize(("method", "quality_zero_fraction"), [("phase_correlation", 0.5), ("sift", 0.0)])
 def test_metrics_table_colours_each_metric_over_its_own_range(bare_interface, method, quality_zero_fraction):
     """ncc and ssim run -1..1, onmi 0..1, quality as the registration method scores it: 0 is mid-scale only for -1..1."""
@@ -2330,7 +2348,7 @@ def test_metrics_table_has_a_column_only_for_a_transform_with_values(bare_interf
     assert values[0] == summary_row
 
 
-@pytest.mark.parametrize(("row", "selected"), [(0, None), (1, ('S000_001', 'S000_000')), (2, None), (-1, None)],
+@pytest.mark.parametrize(("row", "selected"), [(0, None), (1, ('S000_000', 'S000_001')), (2, None), (-1, None)],
                          ids=["summary", "tile-pair", "group-pair", "none"])
 def test_selecting_a_metrics_row_picks_its_pair_for_preview(bare_interface, row, selected):
     """Only a tile pair row names two images; the summary and section pair rows leave the selection."""
