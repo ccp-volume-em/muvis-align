@@ -45,7 +45,7 @@ def test_write_ro_crates_passes_the_run_to_fair_metadata_integration(tmp_path, m
     # only the zarr gets its own crate
     [(zarr_path, zarr_kwargs)] = calls['zarr']
     assert zarr_path == reg.output + 'registered.ome.zarr'
-    sources = {'name': 'Source images', 'paths': reg.filenames,
+    sources = {'name': 'Source images', 'paths': reg.filenames, 'list_file': 'source-images.csv',
                'description': 'The 3 source images registered by muvis-align'}
     assert zarr_kwargs['source_paths'] == [sources]
     assert zarr_kwargs['acquisition_metadata'] == [{'index': 0}, {'index': 2}]
@@ -87,4 +87,5 @@ def test_project_parameters_fit_the_template(tmp_path):
     assert graph['parameters.yaml']['about'] == {'@id': '#run'}
     assert graph['#run']['object'] == [{'@id': tmp_path.resolve().as_uri() + '/'}]
     assert graph[tmp_path.resolve().as_uri() + '/']['name'] == 'Source images'
+    assert graph['source-images.csv']['about'] == {'@id': tmp_path.resolve().as_uri() + '/'}
     assert (output_dir / 'registered.ome.zarr' / 'ro-crate-metadata.json').exists()

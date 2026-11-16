@@ -219,7 +219,7 @@ The package creates a Workflow Run RO-Crate for each run, and one inside each fu
 
 The run crate in the output folder links the project template (the Bilayers workflow), the run's parameter
 values (`parameters.yaml`, nested by section as the template is), the source images and the results. The source
-images are one `Dataset`, named "Source images", with each image as a part. The crate
+images are one `Dataset`, named "Source images", whose files are listed in `source-images.csv` in the crate. The crate
 in an OME-Zarr records where the image came from: the source images it is based on, their acquisition
 (instrument and times, from the first and last source's metadata), the fusion by muvis-align, and the
 registration metrics.
@@ -227,7 +227,7 @@ registration metrics.
 Source: [`MVSRegistration.write_ro_crates`](https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py)
 
 ```python
-sources = {'name': 'Source images', 'paths': self.filenames,
+sources = {'name': 'Source images', 'paths': self.filenames, 'list_file': 'source-images.csv',
            'description': f'The {len(self.filenames)} source images registered by muvis-align'}
 ...
 create_zarr_ro_crate(self.output + filename, source_paths=[sources],

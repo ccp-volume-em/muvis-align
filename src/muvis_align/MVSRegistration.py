@@ -661,7 +661,7 @@ class MVSRegistration:
         measurements = {name: {'value': value, 'description': f'Registration {name}, over the overlaps of all '
                                                               f'registered pairs'}
                         for name, value in self.summary_metrics().items()}
-        sources = {'name': 'Source images', 'paths': self.filenames,
+        sources = {'name': 'Source images', 'paths': self.filenames, 'list_file': 'source-images.csv',
                    'description': f'The {len(self.filenames)} source images registered by muvis-align'}
         for filename in image_filenames:
             if filename.endswith(zarr_extension):
