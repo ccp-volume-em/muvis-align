@@ -218,7 +218,8 @@ The package creates a Workflow Run RO-Crate for each run, and one inside each fu
 [fair-metadata-integration](https://github.com/NL-BioImaging/fair-metadata-integration).
 
 The run crate in the output folder links the project template (the Bilayers workflow), the run's parameter
-values (`parameters.yaml`, nested by section as the template is), the source images and the results. The crate
+values (`parameters.yaml`, nested by section as the template is), the source images and the results. The source
+images are one `Dataset`, named "Source images", with each image as a part. The crate
 in an OME-Zarr records where the image came from: the source images it is based on, their acquisition
 (instrument and times, from the first and last source's metadata), the fusion by muvis-align, and the
 registration metrics.
@@ -226,12 +227,15 @@ registration metrics.
 Source: [`MVSRegistration.write_ro_crates`](https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py)
 
 ```python
-create_zarr_ro_crate(self.output + filename, source_paths=self.filenames,
+sources = {'name': 'Source images', 'paths': self.filenames,
+           'description': f'The {len(self.filenames)} source images registered by muvis-align'}
+...
+create_zarr_ro_crate(self.output + filename, source_paths=[sources],
                      acquisition_metadata=acquisition_metadata, measurements=measurements,
                      description=f'OME-Zarr image fused by muvis-align from {len(self.filenames)} sources',
                      derivation={'name': 'Fusion to OME-Zarr', 'software': software, 'end_time': end_time})
 ...
-create_ro_crate(output_dir, str(template_path), self.filenames, result_paths, parameters=params,
+create_ro_crate(output_dir, str(template_path), [sources], result_paths, parameters=params,
                 name=f'muvis-align run: {get_filetitle(os.path.normpath(output_dir))}',
                 run_name='muvis-align run', start_time=self.start_time, end_time=end_time, software=software)
 ```

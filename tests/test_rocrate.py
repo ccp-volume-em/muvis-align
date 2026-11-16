@@ -45,7 +45,9 @@ def test_write_ro_crates_passes_the_run_to_fair_metadata_integration(tmp_path, m
     # only the zarr gets its own crate
     [(zarr_path, zarr_kwargs)] = calls['zarr']
     assert zarr_path == reg.output + 'registered.ome.zarr'
-    assert zarr_kwargs['source_paths'] == reg.filenames
+    sources = {'name': 'Source images', 'paths': reg.filenames,
+               'description': 'The 3 source images registered by muvis-align'}
+    assert zarr_kwargs['source_paths'] == [sources]
     assert zarr_kwargs['acquisition_metadata'] == [{'index': 0}, {'index': 2}]
     assert zarr_kwargs['measurements'] == {'ncc': {
         'value': 0.75, 'description': 'Registration ncc, over the overlaps of all registered pairs'}}
@@ -58,7 +60,7 @@ def test_write_ro_crates_passes_the_run_to_fair_metadata_integration(tmp_path, m
     dest, template_path, input_paths, result_paths = run_args
     assert dest == str(output_dir)
     assert template_path.endswith('project_template.yaml')
-    assert input_paths == reg.filenames
+    assert input_paths == [sources]
     assert result_paths == [reg.output + 'registered.ome.zarr', reg.output + 'registered.ome.tiff',
                             reg.output + 'mappings.json']
     assert run_kwargs['parameters'] is params
@@ -83,4 +85,6 @@ def test_project_parameters_fit_the_template(tmp_path):
         graph = {entity['@id']: entity for entity in json.load(file)['@graph']}
     assert graph['./']['mainEntity'] == {'@id': 'project_template.yaml'}
     assert graph['parameters.yaml']['about'] == {'@id': '#run'}
+    assert graph['#run']['object'] == [{'@id': tmp_path.resolve().as_uri() + '/'}]
+    assert graph[tmp_path.resolve().as_uri() + '/']['name'] == 'Source images'
     assert (output_dir / 'registered.ome.zarr' / 'ro-crate-metadata.json').exists()

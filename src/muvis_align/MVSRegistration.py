@@ -661,10 +661,12 @@ class MVSRegistration:
         measurements = {name: {'value': value, 'description': f'Registration {name}, over the overlaps of all '
                                                               f'registered pairs'}
                         for name, value in self.summary_metrics().items()}
+        sources = {'name': 'Source images', 'paths': self.filenames,
+                   'description': f'The {len(self.filenames)} source images registered by muvis-align'}
         for filename in image_filenames:
             if filename.endswith(zarr_extension):
                 # the first and last sources stand for the acquisition: reading every source's metadata is too slow
-                create_zarr_ro_crate(self.output + filename, source_paths=self.filenames,
+                create_zarr_ro_crate(self.output + filename, source_paths=[sources],
                                      acquisition_metadata=[self.sources[0].metadata, self.sources[-1].metadata],
                                      measurements=measurements,
                                      description=f'OME-Zarr image fused by muvis-align from {len(self.filenames)} '
@@ -674,7 +676,7 @@ class MVSRegistration:
         result_paths = [self.output + filename for filename in image_filenames] + sorted(self.saved_progress_paths())
         template = importlib.resources.files('muvis_align').joinpath(NAPARI_PROJECT_TEMPLATE)
         with importlib.resources.as_file(template) as template_path:
-            create_ro_crate(output_dir, str(template_path), self.filenames, result_paths, parameters=params,
+            create_ro_crate(output_dir, str(template_path), [sources], result_paths, parameters=params,
                             name=f'muvis-align run: {get_filetitle(os.path.normpath(output_dir))}',
                             run_name='muvis-align run', start_time=self.start_time, end_time=end_time,
                             software=software)
