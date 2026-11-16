@@ -878,7 +878,8 @@ class Interface:
         for position, rotation in zip(positions, rotations):
             if rotation is not None:
                 position['r'] = rotation
-        order = sorted(range(len(positions)), key=lambda index: position_sort_key(positions[index]))
+        # metadata order in every coordinate system, so rows stay put when it changes
+        order = self.source_order()
         data = [[print_dict_simple(positions[i], dims='czyx'), print_dict_simple(scales[i])] for i in order]
         row_headers = [self.reg.file_labels[i] for i in order]
         # Table: tuple-of-values : ([values], [row_headers], [column_headers])
