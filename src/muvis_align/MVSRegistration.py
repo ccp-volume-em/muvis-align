@@ -2036,16 +2036,17 @@ class MVSRegistration:
     def estimate_fusion_size(self, fusion_method=None, output_spacing=None, transform_key=None, dimension=None,
                              block_size=None, extra_metadata=None):
         """Uncompressed bytes per level of the OME-Zarr fuse() would write, from source geometry alone (no msims):
-        {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}, or None for an export fuse() does not write.
-        Only the blocks some source reaches are written - exactly these."""
+        {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}, or None for a compose export.
+        Only the blocks some source reaches are written - exactly these; a channel overlay is saved whole."""
         if extra_metadata is None:
             extra_metadata = self.extra_metadata
-        if not self.sources or not self.fuses_to_zarr(fusion_method, dimension, extra_metadata):
+        is_channel_overlay = self.is_channel_overlay(dimension, extra_metadata)
+        if not self.sources or ('compos' in (fusion_method or '') and not is_channel_overlay):
             return None
         if transform_key is None:
             transform_key = self.reg_transform_key
         z_scale, num_z_positions, promote_z = self._fusion_z_geometry(extra_metadata)
-        is_native, spacing_method = self._output_spacing_method(output_spacing, True)
+        is_native, spacing_method = self._output_spacing_method(output_spacing, not is_channel_overlay)
         dtype = np.dtype(self.sources[0].dtype)
         nonspatial = int(np.prod([size for dim, size in self.sources[0].get_size().items() if dim not in 'zyx']))
         voxel_bytes = nonspatial * dtype.itemsize
@@ -2064,6 +2065,8 @@ class MVSRegistration:
 
         views0 = [(stack(index, 0), matrix) for index, matrix in enumerate(matrices)]
         level0 = calc_output_properties_from_views(views0, output_spacing_method=spacing_method, z_scale=z_scale)
+        if is_channel_overlay:
+            return self._channel_overlay_size(level0, voxel_bytes * len(set(self.channel_groups())))
         levels = []
         source_spacings = [min(view[0]['spacing'][dim] for dim in 'yx') for view in views0]
         scaled_dims = ['y', 'x'] + (['z'] if views0[0][0]['shape'].get('z', 1) > 1 else [])
@@ -2082,6 +2085,24 @@ class MVSRegistration:
             levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],
                            'bytes': written_voxels(groups, output_properties, chunk) * voxel_bytes})
         return {'levels': levels, 'bytes': sum(level['bytes'] for level in levels), 'native': is_native}
+
+    @staticmethod
+    def _channel_overlay_size(level0, voxel_bytes):
+        """estimate_fusion_size()'s for the bounding box that save() writes whole, with its yx pyramid."""
+        shape = dict(level0['shape'])
+        spacing = min(level0['spacing'][dim] for dim in 'yx')
+        levels = [{'spacing': float(spacing), 'shape': dict(shape)}]
+        # ngff_zarr's rule: a level while a dim spans two chunks, halving each that keeps a chunk and is not
+        # already at most half the longest
+        while any(shape[dim] >= 2 * default_chunk_size for dim in 'yx'):
+            longest = max(shape[dim] for dim in 'yx')
+            shape = {dim: int(size / 2) if dim in 'yx' and default_chunk_size <= size / 2 and size > longest / 2
+                     else size for dim, size in shape.items()}
+            spacing *= 2
+            levels.append({'spacing': float(spacing), 'shape': dict(shape)})
+        for level in levels:
+            level['bytes'] = int(np.prod(list(level['shape'].values()))) * voxel_bytes
+        return {'levels': levels, 'bytes': sum(level['bytes'] for level in levels), 'native': False}
 
     def fuse(self, msims, fusion_method=None, output_spacing=None, transform_key=None,
              dimension=None, output_filename=None,

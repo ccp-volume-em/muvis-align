@@ -1258,10 +1258,12 @@ def test_init_progress_loads_a_pair_registration_without_building_msims(monkeypa
     assert graphs == [(['stack-props-0'], [])]
 
 
-@pytest.mark.parametrize('spacing, registered', [('native', False), ('native', True), ('mean', False)],
-                         ids=['native', 'native-registered', 'dense'])
-def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, spacing, registered):
-    """From source geometry alone: native fusion's written blocks level by level, or the dense pyramid's shapes."""
+@pytest.mark.parametrize('spacing, registered, dimension', [('native', False, None), ('native', True, None),
+                                                            ('mean', False, None), ('native', False, 'c')],
+                         ids=['native', 'native-registered', 'dense', 'channel-overlay'])
+def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, spacing, registered, dimension):
+    """From source geometry alone: native fusion's written blocks level by level, or the dense pyramid's shapes;
+    a channel overlay's whole bounding box per channel, as save() writes it."""
     from multiview_stitcher import msi_utils, param_utils
     from muvis_align import fusion_blocks
     from muvis_align.image.util import get_msim_image0
@@ -1288,13 +1290,19 @@ def test_the_fusion_size_estimate_is_what_fusion_writes(tmp_path, monkeypatch, s
 
     monkeypatch.setattr(fusion_blocks, 'level_blocks', recording)
 
-    estimate = reg.estimate_fusion_size('average', spacing, transform_key=transform_key)
-    fused, _ = reg.fuse(reg.msims, fusion_method='average', output_spacing=spacing, transform_key=transform_key,
-                        output_filename='fused', ome_version='0.5')
+    estimate = reg.estimate_fusion_size('average', spacing, transform_key=transform_key, dimension=dimension)
+    fused, is_saved = reg.fuse(reg.msims, fusion_method='average', output_spacing=spacing,
+                               transform_key=transform_key, dimension=dimension, output_filename='fused',
+                               ome_version='0.5')
 
     image = get_msim_image0(reg.msims[0])
     voxel_bytes = image.sizes['c'] * image.sizes.get('t', 1) * image.dtype.itemsize
-    if spacing == 'native':
+    if dimension == 'c':
+        assert not is_saved and not estimate['native']
+        fused0 = get_msim_image0(fused)
+        assert estimate['levels'][0]['shape'] == {dim: size for dim, size in fused0.sizes.items() if dim in 'zyx'}
+        assert estimate['levels'][0]['bytes'] == int(np.prod(list(fused0.shape))) * fused0.dtype.itemsize
+    elif spacing == 'native':
         assert estimate['native']
         assert [level['bytes'] for level in estimate['levels']] == [voxels * voxel_bytes for voxels in written]
     else:
