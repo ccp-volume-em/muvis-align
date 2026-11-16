@@ -2151,17 +2151,22 @@ class Interface:
         # used once: settings or registration may change before another fusion
         estimate, self._fusion_estimate = getattr(self, '_fusion_estimate', None), None
         nested = (progress_factory or getattr(self, '_running_operation', None)) is not None
-        # one phase is the whole export: the fusion written to zarr, or the save computing a lazy fusion
-        with self._operation_progress('Fusion', progress_factory, phases=1) as factory:
+        pre_processing = self.params.get('pre_processing', {})
+        # building the sources and their flat-field model report a phase each, when they run; the export, the
+        # fusion written to zarr or the save computing a lazy fusion, is the last and takes the rest
+        early_phases = int(self.reg.msims_build_pending()) + int(self.reg.flatfield_pending(pre_processing))
+        with self._operation_progress('Fusion', progress_factory, phases=early_phases + 1) as factory:
             if not nested:
                 # the export's phase fills the bar, not the close after it
                 factory.last_phase_share = 1.0
             def fuse(worker_factory):
                 level_estimate = estimate if estimate is not None or not fuses_to_zarr else self._estimate_fusion_size()
+                msims = self.reg.flatfield_corrected_msims(self.reg.ensure_msims(progress_factory=worker_factory),
+                                                           pre_processing, progress_factory=worker_factory)
                 with NapariMVSProgress(tqdm_class=worker_factory.tqdm_class, patch_fusion=True), \
                         Timer('fusion', verbose=self._timing_verbose()):
                     fused_image, is_saved = self.reg.fuse(
-                        self.reg.flatfield_corrected_msims(self.reg.msims, self.params.get('pre_processing', {})),
+                        msims,
                         fusion_method=self.params['fusion']['method'],
                         # fuse()'s default reg_transform_key does not exist for a merge
                         transform_key=self.get_best_transform_key(),

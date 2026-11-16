@@ -2,11 +2,12 @@ import glob
 import threading
 import logging
 import time
+from contextlib import nullcontext
 import numpy as np
 import pytest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from muvis_align.constants import default_fusion_memory_pool, default_fusion_workers
 from muvis_align.MVSRegistration import MVSRegistration, RegState
@@ -233,12 +234,21 @@ def test_the_view_computes_a_sections_flatfield_model_from_its_own_tiles_only():
     # two tiles at z 0, one at z 1: viewing the second section reads its one tile; fusion adds only the first
     registration, msims, model_calls, patches, model = _flatfield_registration([0, 0, 1])
     params = {"flatfield_quantiles": "0.5"}
+    phases = []
     with patches[0], patches[1], patches[2]:
+        pending = [registration.flatfield_pending(params)]
         viewed = registration.flatfield_model(2, params)
         viewed_again = registration.flatfield_model(2, params)
         calls_after_view = list(model_calls)
-        fuse_msims = registration.flatfield_corrected_msims(msims, params)
+        pending.append(registration.flatfield_pending(params))
+        fuse_msims = registration.flatfield_corrected_msims(
+            msims, params, progress_factory=lambda **kwargs: phases.append(kwargs) or nullcontext(MagicMock()))
+        pending.append(registration.flatfield_pending(params))
+        registration.flatfield_corrected_msims(msims, params, progress_factory=lambda **kwargs: phases.append(kwargs))
 
+    # the first section is still missing after the view; fusion computes it, as one phase, and then none is
+    assert pending == [True, True, False]
+    assert [phase["desc"] for phase in phases] == ["Flat-field model"]
     assert viewed is model and viewed_again is model
     assert calls_after_view == [(1, (0.5,), None)]
     assert model_calls == [(1, (0.5,), None), (2, (0.5,), None)]

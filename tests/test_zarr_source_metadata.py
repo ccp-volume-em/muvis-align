@@ -98,10 +98,22 @@ def test_a_version_ome_zarr_py_cannot_write_is_refused_not_relabelled():
 
 
 def test_writing_a_lazy_image_moves_one_progress_phase_in_steps_to_its_end(tmp_path):
+    import collections
+    import threading
+
     import dask.array
-    from muvis_align.image.ome_zarr_helper import NgffWriteProgress, save_ome_image
+    from ngff_zarr import from_ngff_zarr, to_multiscales, to_ngff_image
+    from muvis_align.constants import default_chunk_size
+    from muvis_align.image.ome_zarr_helper import NgffWriteProgress, make_omero, save_ome_image
+    from muvis_align.util import create_chunk_dict
 
     totals, moves = [], []
+    computed, lock = collections.Counter(), threading.Lock()
+
+    def count_block(chunk, block_info=None):
+        with lock:
+            computed[tuple(block_info[0]['chunk-location'])] += 1
+        return chunk
 
     class Phase:
         def __init__(self, total=None, **_):
@@ -116,11 +128,19 @@ def test_writing_a_lazy_image_moves_one_progress_phase_in_steps_to_its_end(tmp_p
         def update(self, n=1):
             moves.append(n)
 
-    data = dask.array.ones((2048, 2048), dtype='uint16', chunks=256)
-    save_ome_image(data, str(tmp_path / 'lazy.ome.zarr'), 'yx', {'y': 1.0, 'x': 1.0}, [], {'y': 0.0, 'x': 0.0},
-                   None, pyramid_downsample=2, progress_factory=Phase)
+    values = dask.array.random.default_rng(0).integers(0, 60000, (2, 2048, 2048), dtype='uint16', chunks=(1, 256, 256))
+    channels = [{'label': 'reflection'}, {'label': 'fluorescence'}]
+    path = str(tmp_path / 'lazy.ome.zarr')
+    save_ome_image(values.map_blocks(count_block, dtype='uint16'), path, 'cyx', {'y': 1.0, 'x': 1.0}, channels,
+                   {'y': 0.0, 'x': 0.0}, None, pyramid_downsample=2, progress_factory=Phase)
 
     assert totals == [NgffWriteProgress.ticks]
     assert len(moves) > 2 and all(move > 0 for move in moves)
     # each level's share ends where the next starts; only float rounding may leave the last tick
     assert sum(moves) >= NgffWriteProgress.ticks - 1
+    # only the reported write computes the image: the channel windows are read back from the store
+    assert set(computed.values()) == {1} and len(computed) == values.npartitions
+    # the windows the lazy coarsest level gave, before writing
+    lazy = to_multiscales(to_ngff_image(values, dims='cyx'), scale_factors=2,
+                          chunks=create_chunk_dict(default_chunk_size, 'cyx'))
+    assert from_ngff_zarr(path).metadata.omero == make_omero(channels, lazy.images[-1].data, 'cyx')

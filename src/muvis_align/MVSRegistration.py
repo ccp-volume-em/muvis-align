@@ -1327,28 +1327,42 @@ class MVSRegistration:
                 self._calc_flatfield_groups([group], settings)
             return self._flatfield_models.get(group)
 
-    def flatfield_models(self, params, msims=None, foreground_map=None):
-        """Every source's flat-field model (None without quantiles), the sections not computed yet computed together:
-        from `msims` (every source at the pre-processing scale) if given, else from their tiles."""
+    def flatfield_models(self, params, msims=None, foreground_map=None, progress_factory=None):
+        """Every source's flat-field model (None without quantiles), the sections not computed yet computed together,
+        as a progress phase: from `msims` (every source at the pre-processing scale) if given, else from their tiles."""
         settings = self.flatfield_settings(params)
         if not settings[0]:
             return None
         with self._flatfield_lock:
             group_of = self._flatfield_group_of(settings)
-            missing = [group for group in range(len(self._flatfield_groups))
-                       if group not in self._flatfield_models]
-            if missing and settings[2]:
-                missing = list(range(len(self._flatfield_groups)))
+            missing = self._missing_flatfield_groups(settings)
             if missing:
                 logging.info(f'Flat-field model of {len(missing)} group(s)...')
                 if msims is not None:
                     msims = dict(enumerate(msims))
-                self._calc_flatfield_groups(missing, settings, msims, foreground_map)
+                with progress_phase(progress_factory, total=1, desc='Flat-field model') as pbar:
+                    self._calc_flatfield_groups(missing, settings, msims, foreground_map)
+                    if pbar is not None:
+                        pbar.update(1)
             return [self._flatfield_models[group_of[index]] for index in range(len(self.sources))]
 
-    def flatfield_corrected_msims(self, msims, params):
+    def flatfield_pending(self, params):
+        """Whether flatfield_models() would compute a model, and so report a progress phase of its own."""
+        settings = self.flatfield_settings(params)
+        if not settings[0]:
+            return False
+        with self._flatfield_lock:
+            self._flatfield_group_of(settings)
+            return bool(self._missing_flatfield_groups(settings))
+
+    def _missing_flatfield_groups(self, settings):
+        missing = [group for group in range(len(self._flatfield_groups)) if group not in self._flatfield_models]
+        # foreground filtering chooses its tiles over every source, so all groups are computed together
+        return list(range(len(self._flatfield_groups))) if missing and settings[2] else missing
+
+    def flatfield_corrected_msims(self, msims, params, progress_factory=None):
         """msims (every source, in source order) flat-field corrected by flatfield_models(); unchanged without one."""
-        models = self.flatfield_models(params)
+        models = self.flatfield_models(params, progress_factory=progress_factory)
         if models is None:
             return msims
         return [apply_msim_flatfield_model(msim, model) if model is not None else msim

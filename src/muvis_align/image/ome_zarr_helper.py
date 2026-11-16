@@ -1,4 +1,4 @@
-from ngff_zarr import to_ngff_image, to_multiscales, to_ngff_zarr, NgffMultiscales, NgffScene, \
+from ngff_zarr import from_ngff_zarr, to_ngff_image, to_multiscales, to_ngff_zarr, NgffMultiscales, NgffScene, \
     Omero, OmeroChannel, OmeroWindow
 from ngff_zarr.rich_dask_progress import NgffProgressCallback
 from ngff_zarr.v06.zarr_metadata import Metadata, Affine, Translation, CoordinateSystem, CoordinateSystemIdentifier
@@ -61,9 +61,6 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
     image = to_ngff_image(data, dims=dim_order, scale=pixel_size, translation=translation, axes_units=axes_units)
     multiscales = to_multiscales(image, scale_factors=pyramid_downsample, chunks=create_chunk_dict(default_chunk_size, dim_order))
 
-    if channels:
-        multiscales.metadata.omero = make_omero(channels, multiscales.images[-1].data, dim_order)
-
     chunks_per_shard = None
 
     with progress_phase(progress_factory, total=NgffWriteProgress.ticks, desc='Writing') as phase:
@@ -73,7 +70,21 @@ def save_ome_image(data, path, dim_order, pixel_size, channels, translation, rot
             to_ngff_zarr(path, multiscales, chunks_per_shard=chunks_per_shard, version=ome_version,
                          progress=progress, **storage_options)
 
+    if channels:
+        return write_omero(path, channels, dim_order, ome_version, storage_options)
     return multiscales.metadata
+
+
+def write_omero(path, channels, dim_order, ome_version, storage_options):
+    """Add the OMERO channel metadata to the written store at `path`, each window from its coarsest level; returns the
+    store's metadata. Read back, as on a lazy image each window would compute the whole image again."""
+    written = from_ngff_zarr(path)
+    # ngff_zarr only rewrites metadata with a level: the coarsest, identical, held in memory while it is replaced
+    written.images[-1].data = written.images[-1].data.persist()
+    written.metadata.omero = make_omero(channels, written.images[-1].data, dim_order)
+    to_ngff_zarr(path, written, version=ome_version, overwrite=False, start_level=len(written.images) - 1,
+                 **storage_options)
+    return written.metadata
 
 
 class NgffWriteProgress(NgffProgressCallback):
