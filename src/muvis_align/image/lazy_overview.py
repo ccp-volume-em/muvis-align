@@ -133,7 +133,10 @@ class SectionPlanes:
         datas = thread_map(self._source_plane, entries, self.workers)
         # in source order: a later source covers an earlier one
         for entry, data in zip(entries, datas):
-            _paste(plane, data, entry['edge'], entry['spacing'], self.spacing)
+            if 'matrix' in entry:
+                _paste_affine(plane, data, entry['matrix'], entry['window'])
+            else:
+                _paste(plane, data, entry['edge'], entry['spacing'], self.spacing)
         return plane
 
 
@@ -216,6 +219,36 @@ def _paste(plane, data, edge, spacing, plane_spacing):
         plane[target] = data[:, rows[:, np.newaxis], cols]
 
 
+def _paste_affine(plane, data, matrix, window):
+    """`data` (c, y, x) sampled nearest-neighbour onto `plane` (c, y, x) through `matrix` (2x3: a plane pixel's (row,
+    col, 1) to its fractional source pixel), within `window` (row and column ranges); only pixels inside the source."""
+    (first_row, end_row), (first_col, end_col) = window
+    rows, cols = np.meshgrid(np.arange(first_row, end_row), np.arange(first_col, end_col), indexing='ij')
+    source_rows = np.floor(matrix[0, 0] * rows + matrix[0, 1] * cols + matrix[0, 2] + 1e-9).astype(int)
+    source_cols = np.floor(matrix[1, 0] * rows + matrix[1, 1] * cols + matrix[1, 2] + 1e-9).astype(int)
+    inside = (source_rows >= 0) & (source_rows < data.shape[1]) & (source_cols >= 0) & (source_cols < data.shape[2])
+    plane[:, rows[inside], cols[inside]] = data[:, source_rows[inside], source_cols[inside]]
+
+
+def _rotated_entry(props, affine, level_spacing, lower, plane_spacing, plane_shape):
+    """The plane-to-source matrix and plane window (see _paste_affine) of a source under an in-plane `affine` (z, y, x
+    homogeneous), its level's pixels `level_spacing` (y, x) counted from the outer edge of its level 0."""
+    linear, offset = affine[1:3, 1:3], affine[1:3, 3]
+    inverse = np.linalg.inv(linear)
+    outer = np.array([props['origin'][dim] - props['spacing'][dim] / 2 for dim in 'yx'])
+    steps = np.array([plane_spacing[dim] for dim in 'yx'])
+    to_level = np.diag(1 / np.asarray(level_spacing))
+    matrix = np.hstack([to_level @ inverse @ np.diag(steps),
+                        (to_level @ (inverse @ (np.asarray(lower) - offset) - outer))[:, np.newaxis]])
+    extent = np.array([props['shape'][dim] * props['spacing'][dim] for dim in 'yx'])
+    corners = np.array([outer + extent * np.array(corner) for corner in [(0, 0), (0, 1), (1, 0), (1, 1)]])
+    plane_corners = ((corners @ linear.T + offset) - np.asarray(lower)) / steps
+    sizes = [plane_shape['y'], plane_shape['x']]
+    window = [(int(np.clip(np.floor(plane_corners[:, axis].min()), 0, size)),
+               int(np.clip(np.ceil(plane_corners[:, axis].max()) + 1, 0, size))) for axis, size in enumerate(sizes)]
+    return matrix, window
+
+
 def _plane_spacing(preview_scale, level0_spacing):
     """The plane's pixel size: `preview_scale` as a pixel size with its unit, else as a factor of the sources' own."""
     scale = parse_scale(preview_scale, default=default_interactive_preview_scale)
@@ -230,7 +263,7 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
                           workers=default_plane_readers):
     """The overview msim (c, z, y, x) of the sources, each z-plane computed on demand at `preview_scale`: 2D sources
     a plane per section, volumes a plane per z at the finest z spacing read. None for anything it cannot place
-    faithfully: a rotated transform, 2D and 3D sources together, or sources with differing channels.
+    faithfully: a transform mixing z with y/x, 2D and 3D sources together, or sources with differing channels.
     `readers` (one a source, None to leave it out) give the pixels instead of the sources, at the sources' place.
     `channel_labels` (one a channel) make the sources channels on the same grid, as fuse() does: each source its own,
     or the channel index `channel_groups` gives it. attrs['contrast_limits'] holds each channel's display range, the dtype's where it has no pixels to set one;
@@ -253,16 +286,18 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
         props = build_source_stack_props(source, output_order, translation, transform, transform_key,
                                          z_scale=z_scale, promote_z=True)
         affine = np.asarray(props['transform'].squeeze()) if 'transform' in props else np.eye(4)
-        if not np.allclose(affine[:-1, :-1], np.eye(affine.shape[0] - 1), atol=1e-6):
-            logging.info(f'{label}: source transforms are not translations only - no lazy overview')
+        # each plane is resampled in y/x only: z must map to itself
+        if not (np.allclose(affine[0, :3], [1, 0, 0], atol=1e-6) and np.allclose(affine[1:3, 0], 0, atol=1e-6)):
+            logging.info(f'{label}: source transforms mix z with y/x - no lazy overview')
             return None
         vertices = mv_graph.get_vertices_from_stack_props(props)
-        geometry.append((reader, props, vertices.min(axis=0), vertices.max(axis=0)))
+        geometry.append((reader, props, vertices.min(axis=0), vertices.max(axis=0), affine))
 
     dims = ['z', 'y', 'x']
-    lower = np.min([low for *_, low, _ in geometry], axis=0)
-    upper = np.max([high for *_, high in geometry], axis=0)
-    level0_spacing = {dim: float(np.median([props['spacing'][dim] for _, props, _, _ in geometry])) for dim in 'yx'}
+    lower = np.min([low for _, _, low, _, _ in geometry], axis=0)
+    upper = np.max([high for _, _, _, high, _ in geometry], axis=0)
+    level0_spacing = {dim: float(np.median([props['spacing'][dim] for _, props, _, _, _ in geometry]))
+                      for dim in 'yx'}
     spacing = _plane_spacing(preview_scale, level0_spacing)
     dtype = next(reader.dtype for reader in readers if reader is not None)
     itemsize = np.dtype(dtype).itemsize
@@ -271,7 +306,8 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
     max_plane_bytes //= nchannels
 
     def plane_shape_at(spacing):
-        return {dim: int(np.ceil((upper[axis] - lower[axis]) / spacing[dim])) + 1
+        # the tolerance keeps a rotation's rounding error from adding an empty row or column
+        return {dim: int(np.ceil((upper[axis] - lower[axis]) / spacing[dim] - 1e-9)) + 1
                 for axis, dim in enumerate(dims) if dim != 'z'}
 
     shape = plane_shape_at(spacing)
@@ -279,26 +315,34 @@ def lazy_section_overview(sources, translations, transforms, output_order, trans
         spacing = {dim: value * 2 for dim, value in spacing.items()}
         shape = plane_shape_at(spacing)
 
-    placed = [(source_index, reader, props, low, coarsest_level_within(reader.pixel_sizes, spacing))
-              for source_index, (reader, props, low, _) in enumerate(geometry) if reader is not None]
+    placed = []
+    for source_index, (reader, props, low, _, affine) in enumerate(geometry):
+        if reader is not None:
+            # a scaling transform shows each source pixel that much larger on the plane
+            scale = float(np.sqrt(abs(np.linalg.det(affine[1:3, 1:3]))))
+            level = coarsest_level_within(reader.pixel_sizes, {dim: value / scale for dim, value in spacing.items()})
+            placed.append((source_index, reader, props, low, level, affine))
     if is_volume:
         z_spacing = min(float(reader.pixel_sizes[level].get('z', props['spacing']['z']))
-                        for _, reader, props, _, level in placed)
+                        for _, reader, props, _, level, _ in placed)
         nplanes = int(np.ceil((upper[0] - lower[0]) / z_spacing)) + 1
         z_origin = float(lower[0])
     else:
-        z_values = sorted({round(float(low[0]), 9) for *_, low, _ in geometry})
+        z_values = sorted({round(float(low[0]), 9) for _, _, low, _, _ in geometry})
         z_spacing = float(np.min(np.diff(z_values))) if len(z_values) > 1 else float(z_scale or 1)
         nplanes = len(z_values)
         z_origin = z_values[0]
 
     channel_entries = [{} for _ in range(len(channel_labels) if channel_labels else 1)]
-    for source_index, reader, props, low, level in placed:
+    for source_index, reader, props, low, level, affine in placed:
         level_spacing = reader.pixel_sizes[level]
         # vertices are pixel centres of the source's level 0: its outer edge is half a pixel before the first
         edge = {dim: float(low[axis] - lower[axis] - props['spacing'][dim] / 2) for axis, dim in enumerate(dims)}
         entry = {'reader': reader, 'level': level, 'edge': (edge['y'], edge['x']),
                  'spacing': tuple(float(level_spacing.get(dim, props['spacing'][dim])) for dim in 'yx')}
+        if not np.allclose(affine[1:3, 1:3], np.eye(2), atol=1e-6):
+            entry['matrix'], entry['window'] = _rotated_entry(props, affine, entry['spacing'], lower[1:], spacing,
+                                                              shape)
         entries = channel_entries[channel_groups[source_index] if channel_labels else 0]
         if is_volume:
             # built once here for its z size, then shared by the volume's planes

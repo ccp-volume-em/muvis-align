@@ -127,8 +127,71 @@ def test_kept_sections_stay_within_their_budget_the_least_recently_viewed_droppe
     assert list(planes._planes) == [1]
 
 
-def test_rotated_sources_get_no_lazy_overview(tmp_path):
-    assert overview(registration(tmp_path, rotation=30)) is None
+def overview_with_transforms(reg, transforms, preview_scale=1, **kwargs):
+    return lazy_section_overview(reg.sources, reg.positions, transforms, reg._msim_output_order,
+                                 reg.source_transform_key, z_scale=reg._msim_z_scale, preview_scale=preview_scale,
+                                 **kwargs)
+
+
+def rotation_transform(degrees, translation=(0, 0)):
+    angle = np.deg2rad(degrees)
+    return np.array([[np.cos(angle), -np.sin(angle), translation[0]],
+                     [np.sin(angle), np.cos(angle), translation[1]],
+                     [0, 0, 1]])
+
+
+def test_a_quarter_turned_source_shows_its_pixels_turned(tmp_path):
+    tile = np.arange(32, dtype=np.uint8).reshape(4, 8)
+    reg = placed_sources(tmp_path, [tile], [{'x': 0, 'y': 0}], 'YX', {'x': 1, 'y': 1})
+
+    data = np.asarray(msi_utils.get_sim_from_msim(
+        overview_with_transforms(reg, [rotation_transform(90)])).data).squeeze()
+
+    assert np.array_equal(data, np.rot90(tile))
+
+
+def test_slightly_rotated_sources_each_fill_their_own_area_without_blanking_a_neighbour(tmp_path):
+    reg = placed_sources(tmp_path, [np.full((32, 32), 10, np.uint8), np.full((32, 32), 20, np.uint8)],
+                         [{'x': 0, 'y': 0}, {'x': 32, 'y': 0}], 'YX', {'x': 1, 'y': 1})
+    transform = rotation_transform(2, translation=(1, 0))
+
+    msim = overview_with_transforms(reg, [transform, transform])
+    data = np.asarray(msi_utils.get_sim_from_msim(msim).data).squeeze()
+
+    # columns well inside each tile, rows clear of the tilted top and bottom edges
+    assert np.all(data[4:-4, 3:28] == 10) and np.all(data[4:-4, 35:60] == 20)
+    # where the pair ends: corners outside both rotated tiles stay empty
+    assert data[-1, 0] == 0 and data[0, -1] == 0
+
+
+def test_a_scaling_transform_reads_the_level_its_enlarged_pixels_match(tmp_path):
+    reg = placed_sources(tmp_path, [np.zeros((16, 16), np.uint8)], [{'x': 0, 'y': 0}], 'YX', {'x': 1, 'y': 1})
+    requested = []
+
+    def level_data(level):
+        requested.append(level)
+        return np.full((16 // 2 ** level,) * 2, 5 + level, dtype=np.uint8)
+
+    readers = [SimpleNamespace(pixel_sizes=[{'y': 1.0, 'x': 1.0}, {'y': 2.0, 'x': 2.0}], dtype=np.uint8,
+                               level_data=level_data)]
+    scaled = np.diag([2.0, 2.0, 1.0]) @ rotation_transform(90)
+
+    msim = overview_with_transforms(reg, [scaled], readers=readers)
+    requested.clear()
+    data = np.asarray(msi_utils.get_sim_from_msim(msim).data).squeeze()
+
+    # each source pixel shows 2x larger: a 1um plane still needs level 0, a 4um plane only level 1
+    assert requested == [0] and np.all(data == 5)
+    assert np.asarray(msi_utils.get_sim_from_msim(
+        overview_with_transforms(reg, [scaled], readers=readers, preview_scale=4)).data).max() == 6
+
+
+def test_a_transform_mixing_z_with_y_or_x_gets_no_lazy_overview(tmp_path):
+    reg = placed_sources(tmp_path, [np.zeros((8, 8), np.uint8)], [{'x': 0, 'y': 0}], 'YX', {'x': 1, 'y': 1})
+    tilted = np.eye(4)
+    tilted[1, 0] = 0.5
+
+    assert overview_with_transforms(reg, [tilted]) is None
 
 
 def test_multichannel_sources_keep_their_channels_in_each_plane(tmp_path):
