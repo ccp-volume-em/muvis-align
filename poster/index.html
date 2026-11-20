@@ -16,18 +16,18 @@
         <link rel="prev" href="../technical/">
       
       
-        <link rel="next" href="../references/">
+        <link rel="next" href="../pre_poster/">
       
       
         
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
-        <title>muvis-align: building a registration pipeline for large data & next gen file format - muvis-align</title>
+        <title>MuViS-ALIGN next generation image registration - muvis-align</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#muvis-align-building-a-registration-pipeline-for-large-data-next-gen-file-format" class="md-skip">
+        <a href="#muvis-align-next-generation-image-registration" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              muvis-align: building a registration pipeline for large data &amp; next gen file format
+              MuViS-ALIGN next generation image registration
             
           </span>
         </div>
@@ -423,7 +423,7 @@
   <span class="md-ellipsis">
     
   
-    muvis-align: building a registration pipeline for large data &amp; next gen file format
+    MuViS-ALIGN next generation image registration
   
 
     
@@ -441,7 +441,7 @@
   <span class="md-ellipsis">
     
   
-    muvis-align: building a registration pipeline for large data &amp; next gen file format
+    MuViS-ALIGN next generation image registration
   
 
     
@@ -477,21 +477,37 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#fair" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        FAIR
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pre_poster/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    muvis-align: building a registration pipeline for large data &amp; next gen file format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -560,17 +576,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#fair" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        FAIR
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -591,133 +596,70 @@
   
 
 
-<h1 id="muvis-align-building-a-registration-pipeline-for-large-data-next-gen-file-format">muvis-align: building a registration pipeline for large data &amp; next gen file format</h1>
+<h1 id="muvis-align-next-generation-image-registration">MuViS-ALIGN <br>next generation image registration</h1>
 <h2 id="joost-de-folter-francis-crick-institute-london-marvin-albert-eth-zurich">Joost de Folter (Francis Crick Institute, London), Marvin Albert (ETH, Zurich)</h2>
-<p>We present a new registration pipeline called <strong>muvis-align</strong>, which is based on the <strong>multiview-stitcher</strong> toolbox. Multiview-stitcher is an open-source modular toolbox developed for distributed and tiled stitching of 2-3D data. This modular, powerful toolbox is used to develop a flexible registration pipeline including pre- and post-processing steps as well as custom functions allowing x-y stitching and z reconstruction, for different image modalities. Importantly muvis-align overcomes limitations in existing tools used commonly, in particular handling large datasets (TBs) and fully supports the <strong>Next Generation File Format</strong> <strong>Ome-zarr</strong>. Preliminary registration tests show results of various LM and EM datasets equal or better compared to existing tools using affine transformations. This tool is further being developed with a napari user interface allowing easy configuration, exploring responsive dynamic configuration and providing visual feedback on preliminary and final results.</p>
+<p>Large-volume microscopy datasets present significant challenges for existing image registration and stitching workflows. Commonly used tools often assume that data fit into memory, rely on monolithic image formats, or lack support for emerging standards such as OME-Zarr, an implementation of the OME Next-Generation File Format (NGFF) designed for scalable access to large imaging data. These limitations become increasingly restrictive as microscopy datasets grow in size and complexity.</p>
+<p>Here, we present muvis-align, a scalable workflow for alignment and stitching of large imaging datasets across microscopy modalities. Building on multiview-stitcher, muvis-align provides a streamlined pipeline designed for straightforward deployment on high-performance computing (HPC) infrastructure. Operating directly on chunked, multiscale OME-Zarr data enables processing of larger-than-memory datasets while supporting interoperability with the wider bioimaging software ecosystem. Emphasis is placed on usability, reproducible deployment, and preservation of image metadata throughout processing.</p>
+<p>By combining scalable computation with standardized data representation and metadata handling, muvis-align promotes FAIR data principles and reproducible processing. It provides a practical route from large microscopy acquisitions to aligned datasets suitable for downstream visualization and quantitative analysis.</p>
+<p>INPUT:
+- 2D / 3D tiles
+- Multi-channel
+- Multi-modal</p>
+<p>OUTPUT:
+- 2D / 3D OME-Zarr
+- Transforms
+- Quality metrics
+- RO-Crate packaged</p>
+<ol>
+<li>Scalable, interoperable data handling</li>
+<li>Modality-independent: EM and LM</li>
+<li>Input formats: TIFF, OME-TIFF, Zarr, OME-Zarr</li>
+<li>NGFF support: Multiscale OME-Zarr input/output</li>
+<li>Large-volume handling: Lazy loading and chunking</li>
+<li>Sparse output: Native-resolution tiles and pyramids (Compose)</li>
+<li>
+<p>Flexible export: Fused and sparse OME-Zarr, OME-TIFF</p>
+</li>
+<li>
+<p>Reproducible, FAIR workflows</p>
+</li>
+<li>Configuration: YAML and napari projects</li>
+<li>Provenance: RO-Crate metadata</li>
+<li>Transform preservation: Pairwise and global mappings</li>
+<li>Interoperability: NGFF coordinate transformations</li>
+<li>Metadata: Acquisition and processing information</li>
+<li>Output packaging: Images, transforms and metrics</li>
+<li>
+<p>Resumability: Recovery of previous results</p>
+</li>
+<li>
+<p>Performance and resource efficiency</p>
+</li>
+<li>Larger-than-memory: Lazy loading and blockwise fusion</li>
+<li>Memory efficiency: Adaptive block sizing</li>
+<li>Multicore processing: Parallel registration and fusion</li>
+<li>Multiscale registration: Downsampled alignment</li>
+<li>Quality metrics: NCC, SSIM, ONMI, residuals</li>
+<li>Performance monitoring: Runtime and memory usage</li>
+<li>
+<p>HPC support: Slurm and containers</p>
+</li>
+<li>
+<p>Interactive alignment and curation</p>
+</li>
+<li>Napari interface: Interactive workflow execution</li>
+<li>Dataset inspection: Tile positions and overlaps</li>
+<li>Registration preview: Pairwise alignment and features</li>
+<li>Visual feedback: Quality metrics and colour-coded overlaps</li>
+<li>Manual curation: Interactive transformation correction</li>
+<li>Global optimization: Alignment inspection and filtering</li>
+<li>Fusion preview: Review before export</li>
+<li>Remote access: Browser-based HPC interaction</li>
+</ol>
 <p><a href="https://github.com/ccp-volume-em/muvis-align">github.com/ccp-volume-em/muvis-align</a></p>
 <p><a href="https://github.com/multiview-stitcher/multiview-stitcher">github.com/multiview-stitcher/multiview-stitcher</a></p>
-<h2 id="fair">FAIR</h2>
-<ul>
-<li><strong>F</strong>indable: Searchable good metadata</li>
-<li><strong>A</strong>ccessible: Online &amp; open</li>
-<li><strong>I</strong>nteroperable: Compatible format</li>
-<li><strong>R</strong>eusable: Record method</li>
-</ul>
-<p><strong>General</strong>: Unambiguously descriptive, follow standards, persistent</p>
-<p><strong>FAIR 2.0</strong>: Use standard vocabularies, include level of confidence</p>
-<pre class="mermaid"><code>---
-config:
-  themeVariables:
-    fontSize: 20px
----
-flowchart LR
-    subgraph sub_input["Input"]
-        ome("OME/NGFF data&lt;br&gt;(OME-Tiff/&lt;br&gt;OME-Zarr)"):::io
-        params("Params&lt;br&gt;(.yaml)"):::io
-    end
-
-    subgraph sub_init["Init"]
-        direction TB
-        load("Import OME"):::core
-        init("To Spatial Image&lt;br&gt;(SIM)"):::core
-    end
-
-    subgraph sub_preprocessing["Pre-processing"]
-        direction TB
-        flatfield("flatfield correction"):::core
-        normalise("Normalisation"):::core
-        filter("Foreground filter"):::core
-    end
-
-    subgraph sub_reg["Registration"]
-        direction TB
-        reg_method("Method selection"):::core
-        pairing("Pairing"):::core
-        reg("Registration&lt;br&gt;&lt;b&gt;(Multiview-stitcher)"):::ext
-    end
-
-    subgraph sub_fusion["Fusion"]
-        direction TB
-        fusion_stack("Fusion stack calculation"):::core
-        fuse("Fuse&lt;br&gt;&lt;b&gt;(Multiview-stitcher)"):::ext
-    end
-
-    subgraph sub_export["Export"]
-        direction LR
-        write_reg("Registration&lt;br&gt;(.json + .csv)"):::io
-        write_metrics("Metrics&lt;br&gt;(.json)"):::io
-        write_report("Report&lt;br&gt;(.pdf)"):::io
-        write("OME/NGFF data&lt;br&gt;(OME-Tiff/&lt;br&gt;OME-Zarr)"):::io
-    end
-
-    ome --&gt;|image data| sub_init
-    ome --&gt;|metadata| sub_init
-    params --&gt; sub_init
-    load ==&gt;|image data &amp; metadata| init
-
-    sub_init ==&gt; sub_preprocessing
-    flatfield ==&gt; normalise ==&gt; filter
-
-    sub_preprocessing ==&gt; sub_reg
-    reg_method ==&gt; pairing ==&gt; reg
-
-    sub_reg --&gt;|transforms| write_reg
-    sub_reg --&gt;|metrics| write_metrics
-    sub_reg --&gt;|overview/metrics| write_report
-    sub_reg ==&gt; sub_fusion
-    fusion_stack ==&gt; fuse
-    sub_fusion ==&gt;|SIMs &amp; transforms| write
-
-    %% Styles
-    %% classDef default font-size:20
-    classDef core fill:#e0f7fa,stroke:#006064,color:#006064
-    classDef io fill:#fff5e9,stroke:#5e4e20,color:#5e4e20
-    classDef plugin fill:#fff3e0,stroke:#e65100,color:#e65100
-    classDef ext fill:#eceff1,stroke:#37474f,color:#37474f
-
-    linkStyle 0 stroke:#006064
-    linkStyle 1 stroke:#ddbb00
-
-    linkStyle 3 stroke:green,stroke-width:8
-    linkStyle 4 stroke:green,stroke-width:8
-    linkStyle 5 stroke:green,stroke-width:8
-    linkStyle 6 stroke:green,stroke-width:8
-    linkStyle 7 stroke:green,stroke-width:8
-    linkStyle 8 stroke:green,stroke-width:8
-    linkStyle 9 stroke:green,stroke-width:8
-    linkStyle 13 stroke:green,stroke-width:8
-    linkStyle 14 stroke:green,stroke-width:8
-    linkStyle 15 stroke:green,stroke-width:8</code></pre>
-<pre class="mermaid"><code>---
-config:
-  themeVariables:
-    fontSize: 20px
----
-flowchart LR
-    subgraph data_layers["Persistent&amp;nbsp;metadata"]
-        direction TB
-        layers("Multiscale Spatial-image&lt;hr&gt;&lt;b&gt;Spatial-image
-&lt;hr&gt;Xarray&lt;hr&gt;Dask array&lt;hr&gt;File store"):::green
-        image("Image data&lt;br&gt;(voxels)"):::blue --&gt; layers
-        size("Pixel size&lt;br&gt;(w,h,d)"):::yellow --&gt; layers
-        coords("Coordinates&lt;br&gt;(x,y,z)"):::yellow --&gt; layers
-        transforms("Transforms&lt;br&gt;[]"):::yellow --&gt; layers
-    end
-
-    %% Styles
-    %% classDef default font-size:20
-    classDef blue fill:#e0f7fa,stroke:#006064,color:#006064
-    classDef yellow fill:#fff5e9,stroke:#5e4e20,color:#5e4e20
-    classDef green fill:#e8f5e9,stroke:#1b5e20,color:#1b5e20
-
-    linkStyle 0 stroke:#006064
-    linkStyle 1 stroke:#ddbb00
-    linkStyle 2 stroke:#ddbb00
-    linkStyle 3 stroke:#ddbb00</code></pre>
-<p><img alt="EMPAIR12193overlay.png" src="../images/EMPAIR12193overlay.png" />
-FAST-EM array tomography (EMPIAR 12193)</p>
-<p><strong>CCP-volumeEM</strong>: Martin Jones, Lucy Collinson, Michele Darrow, Matthew Hartley, Leandro Lemgruber, Helen Spiers, Amy Strange, Paul Verkade, Martyn Winn</p>
-<p>https://zenodo.org/records/20917913</p>
+<p><strong>CCP-volume-EM</strong>: Martin Jones, Lucy Collinson, Michele Darrow, Matthew Hartley, Leandro Lemgruber, Helen Spiers, Amy Strange, Paul Verkade, Martyn Winn</p>
+<p>https://zenodo.org/records/24397785</p>
 
 
 

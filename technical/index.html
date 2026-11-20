@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -424,6 +424,33 @@
   <span class="md-ellipsis">
     
   
+    MuViS-ALIGN next generation image registration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pre_poster/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
     muvis-align: building a registration pipeline for large data &amp; next gen file format
   
 
@@ -682,17 +709,21 @@ Bilayers schemas are represented as a <a href="https://docs.pydantic.dev/">Pydan
 <p>The package creates a Workflow Run RO-Crate for each run, and one inside each fused OME-Zarr, with
 <a href="https://github.com/NL-BioImaging/fair-metadata-integration">fair-metadata-integration</a>.</p>
 <p>The run crate in the output folder links the project template (the Bilayers workflow), the run's parameter
-values (<code>parameters.yaml</code>, nested by section as the template is), the source images and the results. The crate
+values (<code>parameters.yaml</code>, nested by section as the template is), the source images and the results. The source
+images are one <code>Dataset</code>, named "Source images", whose files are listed in <code>source-images.csv</code> in the crate. The crate
 in an OME-Zarr records where the image came from: the source images it is based on, their acquisition
 (instrument and times, from the first and last source's metadata), the fusion by muvis-align, and the
 registration metrics.</p>
 <p>Source: <a href="https://github.com/ccp-volume-em/muvis-align/blob/main/src/muvis_align/MVSRegistration.py"><code>MVSRegistration.write_ro_crates</code></a></p>
-<div class="highlight"><pre><span></span><code><span class="n">create_zarr_ro_crate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">+</span> <span class="n">filename</span><span class="p">,</span> <span class="n">source_paths</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">filenames</span><span class="p">,</span>
+<div class="highlight"><pre><span></span><code><span class="n">sources</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'name'</span><span class="p">:</span> <span class="s1">'Source images'</span><span class="p">,</span> <span class="s1">'paths'</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span><span class="p">,</span> <span class="s1">'list_file'</span><span class="p">:</span> <span class="s1">'source-images.csv'</span><span class="p">,</span>
+           <span class="s1">'description'</span><span class="p">:</span> <span class="sa">f</span><span class="s1">'The </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filenames</span><span class="p">)</span><span class="si">}</span><span class="s1"> source images registered by muvis-align'</span><span class="p">}</span>
+<span class="o">...</span>
+<span class="n">create_zarr_ro_crate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output</span> <span class="o">+</span> <span class="n">filename</span><span class="p">,</span> <span class="n">source_paths</span><span class="o">=</span><span class="p">[</span><span class="n">sources</span><span class="p">],</span>
                      <span class="n">acquisition_metadata</span><span class="o">=</span><span class="n">acquisition_metadata</span><span class="p">,</span> <span class="n">measurements</span><span class="o">=</span><span class="n">measurements</span><span class="p">,</span>
                      <span class="n">description</span><span class="o">=</span><span class="sa">f</span><span class="s1">'OME-Zarr image fused by muvis-align from </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">filenames</span><span class="p">)</span><span class="si">}</span><span class="s1"> sources'</span><span class="p">,</span>
                      <span class="n">derivation</span><span class="o">=</span><span class="p">{</span><span class="s1">'name'</span><span class="p">:</span> <span class="s1">'Fusion to OME-Zarr'</span><span class="p">,</span> <span class="s1">'software'</span><span class="p">:</span> <span class="n">software</span><span class="p">,</span> <span class="s1">'end_time'</span><span class="p">:</span> <span class="n">end_time</span><span class="p">})</span>
 <span class="o">...</span>
-<span class="n">create_ro_crate</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">template_path</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">filenames</span><span class="p">,</span> <span class="n">result_paths</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">params</span><span class="p">,</span>
+<span class="n">create_ro_crate</span><span class="p">(</span><span class="n">output_dir</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">template_path</span><span class="p">),</span> <span class="p">[</span><span class="n">sources</span><span class="p">],</span> <span class="n">result_paths</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">params</span><span class="p">,</span>
                 <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s1">'muvis-align run: </span><span class="si">{</span><span class="n">get_filetitle</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">normpath</span><span class="p">(</span><span class="n">output_dir</span><span class="p">))</span><span class="si">}</span><span class="s1">'</span><span class="p">,</span>
                 <span class="n">run_name</span><span class="o">=</span><span class="s1">'muvis-align run'</span><span class="p">,</span> <span class="n">start_time</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">start_time</span><span class="p">,</span> <span class="n">end_time</span><span class="o">=</span><span class="n">end_time</span><span class="p">,</span> <span class="n">software</span><span class="o">=</span><span class="n">software</span><span class="p">)</span>
 </code></pre></div>
