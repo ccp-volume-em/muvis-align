@@ -1099,11 +1099,18 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
         registered = source.copy(data=np.asarray(source) @ correction)
         msi_utils.set_affine_transform(msim, registered, transform_key=reg.reg_transform_key)
 
+    estimate = reg.estimate_fusion_size('compose')
     # a channel the UI has no colour for
     _, saved = reg.fuse(reg.msims, fusion_method='compose', output_filename='composed', ome_version='0.6',
                         extra_metadata={'channels': [{'label': 'grey', 'color': None}]})
 
     assert saved
+    written_bytes = 0
+    for label in reg.file_labels:
+        group = zarr.open_group(str(tmp_path / 'composed.ome.zarr' / label), mode='r')
+        written_bytes += sum(group[dataset['path']].nbytes
+                             for dataset in group.attrs['ome']['multiscales'][0]['datasets'])
+    assert estimate['bytes'] == written_bytes
     scene = json.loads((tmp_path / 'composed.ome.zarr' / 'zarr.json').read_text())['attributes']['ome']['scene']
     assert [system['name'] for system in scene['coordinateSystems']] == ['registered', 'source_metadata']
     for label, msim in zip(reg.file_labels, reg.msims):

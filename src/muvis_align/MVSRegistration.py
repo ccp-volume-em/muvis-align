@@ -2057,13 +2057,15 @@ class MVSRegistration:
     def estimate_fusion_size(self, fusion_method=None, output_spacing=None, transform_key=None, dimension=None,
                              block_size=None, extra_metadata=None):
         """Uncompressed bytes per level of the OME-Zarr fuse() would write, from source geometry alone (no msims):
-        {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}, or None for a compose export.
+        {'levels': [{'spacing', 'shape', 'bytes'}], 'bytes', 'native'}.
         Only the blocks some source reaches are written - exactly these; a channel overlay is saved whole."""
         if extra_metadata is None:
             extra_metadata = self.extra_metadata
         is_channel_overlay = self.is_channel_overlay(dimension, extra_metadata)
-        if not self.sources or ('compos' in (fusion_method or '') and not is_channel_overlay):
+        if not self.sources:
             return None
+        if 'compos' in (fusion_method or '') and not is_channel_overlay:
+            return self._composed_size()
         if transform_key is None:
             transform_key = self.reg_transform_key
         z_scale, num_z_positions, promote_z = self._fusion_z_geometry(extra_metadata)
@@ -2106,6 +2108,30 @@ class MVSRegistration:
             levels.append({'spacing': float(level_spacing), 'shape': output_properties['shape'],
                            'bytes': written_voxels(groups, output_properties, chunk) * voxel_bytes})
         return {'levels': levels, 'bytes': sum(level['bytes'] for level in levels), 'native': is_native}
+
+    def _composed_size(self, min_length=128):
+        """estimate_fusion_size()'s for save_composed(): each source's own levels, padded as
+        make_ome_multiscale_levels() pads them; a level's shape and spacing are its finest source's."""
+        levels = []
+        for source in self.sources:
+            dtype_bytes = np.dtype(source.dtype).itemsize
+            source_levels = [(source.get_size(level), source.get_pixel_size(level))
+                             for level in range(len(source.shapes))]
+            coarsest_size, coarsest_spacing = source_levels[-1]
+            spatial_size = {dim: size for dim, size in coarsest_size.items() if dim in 'xyz'}
+            for factors in calc_pyramid_level_factors(spatial_size, min_size=min_length):
+                source_levels.append(({dim: ceil(size / factors.get(dim, 1)) for dim, size in coarsest_size.items()},
+                                      {dim: spacing * factors.get(dim, 1) for dim, spacing in coarsest_spacing.items()}))
+            for index, (size, pixel_size) in enumerate(source_levels):
+                spacing = float(min(pixel_size[dim] for dim in 'yx'))
+                level_bytes = int(np.prod(list(size.values()))) * dtype_bytes
+                if index == len(levels):
+                    levels.append({'spacing': spacing, 'shape': {dim: size[dim] for dim in size if dim in 'zyx'},
+                                   'bytes': 0})
+                elif spacing < levels[index]['spacing']:
+                    levels[index].update(spacing=spacing, shape={dim: size[dim] for dim in size if dim in 'zyx'})
+                levels[index]['bytes'] += level_bytes
+        return {'levels': levels, 'bytes': sum(level['bytes'] for level in levels), 'native': True}
 
     @staticmethod
     def _channel_overlay_size(level0, voxel_bytes):

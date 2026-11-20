@@ -2217,14 +2217,19 @@ class Interface:
         self.prepare_action()
         needs_registration = (not self.reg.is_global_registered()
                               and 'merge' not in self.params['registration']['operation'])
+        # a channel overlay fuses each channel even in compose mode
+        is_composed = ('compos' in (self.params['fusion']['method'] or '')
+                       and not self.reg.is_channel_overlay(self.params['input_output']['registration_dimension'],
+                                                           self.extra_metadata))
+        export = 'export composed data' if is_composed else 'export fused data'
         if self.reg.is_fused():
-            message = 'Fusion was already performed. Export fused data?'
+            message = f'{"Composition" if is_composed else "Fusion"} was already performed. {export.capitalize()}?'
         elif needs_registration and self.reg.is_pairs_registered():
-            message = 'Global registration not performed yet. Run global registration and export fused data?'
+            message = f'Global registration not performed yet. Run global registration and {export}?'
         elif needs_registration:
-            message = 'Registration not performed yet. Run pair and global registration, and export fused data?'
+            message = f'Registration not performed yet. Run pair and global registration, and {export}?'
         else:
-            message = 'Export fused data?'
+            message = f'{export.capitalize()}?'
         reply = QMessageBox.question(None, 'muvis-align', message + self._fusion_size_text(),
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:

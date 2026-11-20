@@ -1731,20 +1731,23 @@ def test_fusion_process_parses_block_size_and_updates_state(
 
 
 @pytest.mark.parametrize(
-    ("operation", "pairs_registered", "global_registered", "prefix", "run_pair", "run_global"),
+    ("operation", "method", "pairs_registered", "global_registered", "prefix", "run_pair", "run_global"),
     [
-        ("register", False, False, "Registration not performed yet. ", True, True),
-        ("register", True, False, "Global registration not performed yet. ", False, True),
-        ("register", True, True, "", False, False),
-        ("merge", False, False, "", False, False),
+        ("register", "average", False, False, "Registration not performed yet. ", True, True),
+        ("register", "average", True, False, "Global registration not performed yet. ", False, True),
+        ("register", "average", True, True, "", False, False),
+        ("register", "compose", True, True, "", False, False),
+        ("merge", "average", False, False, "", False, False),
     ],
 )
 def test_fusion_process_runs_missing_registration_first(
     bare_interface, monkeypatch, mocked_activity_contexts,
-    operation, pairs_registered, global_registered, prefix, run_pair, run_global,
+    operation, method, pairs_registered, global_registered, prefix, run_pair, run_global,
 ):
     bare_interface.viewer = MagicMock()
-    bare_interface.params = {"registration": {"operation": operation}}
+    bare_interface.params = {"registration": {"operation": operation}, "fusion": {"method": method},
+                             "input_output": {"registration_dimension": None}}
+    bare_interface.reg.is_channel_overlay.return_value = False
     bare_interface.reg.is_fused.return_value = False
     bare_interface.reg.is_pairs_registered.return_value = pairs_registered
     bare_interface.reg.is_global_registered.return_value = global_registered
@@ -1767,11 +1770,13 @@ def test_fusion_process_runs_missing_registration_first(
     bare_interface.fusion_process()
 
     assert messages[0].startswith(prefix)
+    assert ("composed data" if method == "compose" else "fused data") in messages[0]
     assert calls == ["pair"] * run_pair + ["global"] * run_global + ["fusion"]
 
 
 def test_fusion_process_stops_when_registration_fails(bare_interface, monkeypatch):
-    bare_interface.params = {"registration": {"operation": "register"}}
+    bare_interface.params = {"registration": {"operation": "register"}, "fusion": {"method": "average"},
+                             "input_output": {"registration_dimension": None}}
     bare_interface.reg.is_fused.return_value = False
     bare_interface.reg.is_pairs_registered.return_value = False
     bare_interface.reg.is_global_registered.return_value = False
