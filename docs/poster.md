@@ -61,4 +61,4 @@ OUTPUT:
 
 **CCP-volume-EM**: Martin Jones, Lucy Collinson, Michele Darrow, Matthew Hartley, Leandro Lemgruber, Helen Spiers, Amy Strange, Paul Verkade, Martyn Winn
 
-https://zenodo.org/records/...
+https://zenodo.org/records/24397785
