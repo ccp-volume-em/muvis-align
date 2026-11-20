@@ -1072,8 +1072,7 @@ class Interface:
                 self._refresh_view_shapes(transform_key, shapes, progress_factory=factory)
         self.view_mode = ViewMode.OVERVIEW
 
-    def _create_lazy_overview(self, transform_key, show_preprocessed=False, readers=None, label='Overview'):
-        """`readers` (one a source) give the pixels instead of the sources, as the pre-processed overview's do."""
+    def _create_lazy_overview(self, transform_key, show_preprocessed=False):
         reg = self.reg
         transforms, output_order = getattr(reg, '_msim_transforms', None), getattr(reg, '_msim_output_order', None)
         if transforms is None or output_order is None:
@@ -1081,13 +1080,14 @@ class Interface:
         if transform_key == reg.reg_transform_key:
             # from source geometry and the mappings, as the shapes: no msim built for them
             transforms = [np.asarray(props['transform'], dtype=float) for props in reg.source_geometry(transform_key)[1]]
-        if readers is None and show_preprocessed and reg.register_msims is not None:
+        readers, label = None, 'Overview'
+        if show_preprocessed and reg.register_msims is not None:
             # a source pre-processing dropped (filter_foreground) is left out, not shown raw
             readers = [None] * len(reg.sources)
             for index, msim in zip(reg.register_indices, reg.register_msims):
                 readers[index] = MsimLevels(msim)
             label = 'Pre-processed overview'
-        elif readers is None:
+        else:
             pre_processing = self.params.get('pre_processing', {})
             if reg.flatfield_settings(pre_processing)[0]:
                 # each section's model computed from its own tiles when its plane is first built, not every tile's
@@ -2053,7 +2053,8 @@ class Interface:
              Timer('show fused output', verbose=self._timing_verbose()):
             scene = read_ome_zarr_scene(path)
             if scene:
-                fused = self._composed_view(read_composed_msims(path, scene, transform_key), transform_key)
+                # a layer per source, each its own pyramid at full resolution: nothing combined to view it
+                fused = read_composed_msims(path, scene, transform_key)
             else:
                 fused = ngff_utils.read_msim_from_ome_zarr(path, transform_key=transform_key, array_backend='dask')
             self._show_view_image(self.viewer, fused, 'Fused')
@@ -2062,15 +2063,6 @@ class Interface:
                 pbar.update(1)
         logging.info(f'Fused output shown from {path}')
         self._refresh_view_shapes(transform_key, progress_factory=progress_factory)
-
-    def _composed_view(self, composed, transform_key):
-        """A compose result's sources as one layer per channel, as the overview; as they are where it cannot place
-        them."""
-        view = None
-        if len(composed) == len(self.reg.sources):
-            view = self._create_lazy_overview(transform_key, readers=[MsimLevels(msim) for msim in composed],
-                                              label='Composed')
-        return composed if view is None else view
 
     def preview_fusion(self, progress_factory=None):
         # a merge has no registered transform, so this falls back to the source positions
@@ -2258,8 +2250,8 @@ class Interface:
                         composed_path = self._output_paths(
                             operation_to_past_participle(self.params['registration']['operation']))[0]
                         transform_key = self.get_best_transform_key()
-                        fused_image = self._composed_view(read_composed_msims(
-                            composed_path, read_ome_zarr_scene(composed_path), transform_key), transform_key)
+                        fused_image = read_composed_msims(composed_path, read_ome_zarr_scene(composed_path),
+                                                          transform_key)
                     self._show_view_image(self.viewer, fused_image, 'Fused')
                 # registration may have run straight into the fusion, with no view of its geometry
                 self._refresh_view_shapes(self.get_best_transform_key(), progress_factory=factory)

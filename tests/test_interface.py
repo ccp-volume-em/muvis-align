@@ -1757,10 +1757,9 @@ def test_fusion_process_runs_missing_registration_first(
     calls = []
     bare_interface.run_pair_registration = MagicMock(side_effect=lambda: calls.append("pair") or {"pairs": 1})
     bare_interface.run_global_registration = MagicMock(side_effect=lambda: calls.append("global") or {"global": 1})
-    # compose returns its sources, shown as the composed view
+    # compose returns its sources, shown as read back from the file
     fused = ["source0", "source1"] if method == "compose" else "fused"
     bare_interface.run_fusion = MagicMock(side_effect=lambda: calls.append("fusion") or fused)
-    bare_interface._composed_view = MagicMock(return_value="composed-view")
     bare_interface.reg.output = "output/"
     read = MagicMock(return_value=["read0", "read1"])
     monkeypatch.setattr(interface_module, "read_composed_msims", read)
@@ -1779,10 +1778,9 @@ def test_fusion_process_runs_missing_registration_first(
     assert messages[0].startswith(prefix)
     assert ("composed data" if method == "compose" else "fused data") in messages[0]
     shown = bare_interface._show_view_image.call_args.args[1]
-    assert shown == ("composed-view" if method == "compose" else "fused")
+    assert shown == (["read0", "read1"] if method == "compose" else "fused")
     if method == "compose":
         assert read.call_args.args[0] == "output/registered.ome.zarr"
-        assert bare_interface._composed_view.call_args.args[0] == ["read0", "read1"]
     assert calls == ["pair"] * run_pair + ["global"] * run_global + ["fusion"]
 
 
@@ -1913,8 +1911,9 @@ def test_the_fused_output_is_read_and_shown_as_after_an_export(bare_interface, m
     bare_interface._refresh_view_shapes.assert_called_once_with("registered", progress_factory=None)
 
 
-def test_a_composed_output_is_shown_as_one_overview_of_the_written_sources(tmp_path):
-    """The scene's sources read back and placed as the sources' own overview places them: the same pixels."""
+def test_a_composed_output_is_shown_as_its_sources_at_full_resolution(tmp_path):
+    """Each source read back from the scene with every level written, its finest the source's own pixels."""
+    from multiview_stitcher import msi_utils
     from muvis_align.image.util import get_msim_image0
     reg = prepared_registration([(DATA_DIR / name).as_posix() for name in ZARR_FILES[:2]], tmp_path,
                                 preprocess=False)
@@ -1923,9 +1922,6 @@ def test_a_composed_output_is_shown_as_one_overview_of_the_written_sources(tmp_p
              ome_version='0.6')
     interface = Interface.__new__(Interface)
     interface.reg = reg
-    # level 0, written as it is: coarser levels the file adds are resampled, not the sources' own
-    interface.params = {'input_output': {'registration_dimension': 'all', 'preview_scale': 1}}
-    interface.extra_metadata = {}
     interface.viewer = MagicMock()
     interface.get_best_transform_key = lambda: transform_key
     interface._timing_verbose = lambda: False
@@ -1935,9 +1931,10 @@ def test_a_composed_output_is_shown_as_one_overview_of_the_written_sources(tmp_p
     interface._show_fused_output(str(tmp_path / 'composed.ome.zarr'))
 
     shown = interface._show_view_image.call_args.args[1]
-    expected = interface._create_lazy_overview(transform_key)
-    assert not isinstance(shown, list)
-    assert np.array_equal(np.asarray(get_msim_image0(shown).data), np.asarray(get_msim_image0(expected).data))
+    assert len(shown) == len(reg.msims)
+    for read, msim in zip(shown, reg.msims):
+        assert len(msi_utils.get_sorted_scale_keys(read)) >= len(msi_utils.get_sorted_scale_keys(msim))
+        assert np.array_equal(np.asarray(get_msim_image0(read).data), np.asarray(get_msim_image0(msim).data))
 
 
 def test_build_view_msims_downscales_large_single_resolution_source():
