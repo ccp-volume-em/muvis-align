@@ -27,7 +27,7 @@
     
     
       
-        <title>MuViS-ALIGN next generation image registration - muvis-align</title>
+        <title>muvis-align next generation image registration - muvis-align</title>
       
     
     
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              MuViS-ALIGN next generation image registration
+              muvis-align next generation image registration
             
           </span>
         </div>
@@ -423,7 +423,7 @@
   <span class="md-ellipsis">
     
   
-    MuViS-ALIGN next generation image registration
+    muvis-align next generation image registration
   
 
     
@@ -441,7 +441,7 @@
   <span class="md-ellipsis">
     
   
-    MuViS-ALIGN next generation image registration
+    muvis-align next generation image registration
   
 
     
@@ -596,23 +596,31 @@
   
 
 
-<h1 id="muvis-align-next-generation-image-registration">MuViS-ALIGN <br>next generation image registration</h1>
+<h1 id="muvis-align-next-generation-image-registration">muvis-align <br>next generation image registration</h1>
 <h2 id="joost-de-folter-francis-crick-institute-london-marvin-albert-eth-zurich">Joost de Folter (Francis Crick Institute, London), Marvin Albert (ETH, Zurich)</h2>
 <p>Large-volume microscopy datasets present significant challenges for existing image registration and stitching workflows. Commonly used tools often assume that data fit into memory, rely on monolithic image formats, or lack support for emerging standards such as OME-Zarr, an implementation of the OME Next-Generation File Format (NGFF) designed for scalable access to large imaging data. These limitations become increasingly restrictive as microscopy datasets grow in size and complexity.</p>
 <p>Here, we present muvis-align, a scalable workflow for alignment and stitching of large imaging datasets across microscopy modalities. Building on multiview-stitcher, muvis-align provides a streamlined pipeline designed for straightforward deployment on high-performance computing (HPC) infrastructure. Operating directly on chunked, multiscale OME-Zarr data enables processing of larger-than-memory datasets while supporting interoperability with the wider bioimaging software ecosystem. Emphasis is placed on usability, reproducible deployment, and preservation of image metadata throughout processing.</p>
 <p>By combining scalable computation with standardized data representation and metadata handling, muvis-align promotes FAIR data principles and reproducible processing. It provides a practical route from large microscopy acquisitions to aligned datasets suitable for downstream visualization and quantitative analysis.</p>
-<p>INPUT:
-- 2D / 3D tiles
-- Multi-channel
-- Multi-modal</p>
-<p>OUTPUT:
-- 2D / 3D OME-Zarr
-- Transforms
-- Quality metrics
-- RO-Crate packaged</p>
-<ol>
-<li>Scalable, interoperable data handling</li>
-<li>Modality-independent: EM and LM</li>
+<p>INPUT:</p>
+<ul>
+<li>2D / 3D tiles</li>
+<li>Multi-channel</li>
+<li>Multi-modal</li>
+</ul>
+<p>OUTPUT:</p>
+<ul>
+<li>2D / 3D OME-Zarr</li>
+<li>Transforms</li>
+<li>Quality metrics</li>
+<li>
+<p>RO-Crate packaged</p>
+</li>
+<li>
+<p>Scalable, interoperable data handling</p>
+</li>
+<li>
+<p>Modality-independent: EM and LM</p>
+</li>
 <li>Input formats: TIFF, OME-TIFF, Zarr, OME-Zarr</li>
 <li>NGFF support: Multiscale OME-Zarr input/output</li>
 <li>Large-volume handling: Lazy loading and chunking</li>
@@ -623,7 +631,9 @@
 <li>
 <p>Reproducible, FAIR workflows</p>
 </li>
-<li>Configuration: YAML and napari projects</li>
+<li>
+<p>Configuration: YAML and napari projects</p>
+</li>
 <li>Provenance: RO-Crate metadata</li>
 <li>Transform preservation: Pairwise and global mappings</li>
 <li>Interoperability: NGFF coordinate transformations</li>
@@ -635,7 +645,9 @@
 <li>
 <p>Performance and resource efficiency</p>
 </li>
-<li>Larger-than-memory: Lazy loading and blockwise fusion</li>
+<li>
+<p>Larger-than-memory: Lazy loading and blockwise fusion</p>
+</li>
 <li>Memory efficiency: Adaptive block sizing</li>
 <li>Multicore processing: Parallel registration and fusion</li>
 <li>Multiscale registration: Downsampled alignment</li>
@@ -647,7 +659,9 @@
 <li>
 <p>Interactive alignment and curation</p>
 </li>
-<li>Napari interface: Interactive workflow execution</li>
+<li>
+<p>Napari interface: Interactive workflow execution</p>
+</li>
 <li>Dataset inspection: Tile positions and overlaps</li>
 <li>Registration preview: Pairwise alignment and features</li>
 <li>Visual feedback: Quality metrics and colour-coded overlaps</li>
@@ -655,7 +669,7 @@
 <li>Global optimization: Alignment inspection and filtering</li>
 <li>Fusion preview: Review before export</li>
 <li>Remote access: Browser-based HPC interaction</li>
-</ol>
+</ul>
 <p><a href="https://github.com/ccp-volume-em/muvis-align">github.com/ccp-volume-em/muvis-align</a></p>
 <p><a href="https://github.com/multiview-stitcher/multiview-stitcher">github.com/multiview-stitcher/multiview-stitcher</a></p>
 <p><strong>CCP-volume-EM</strong>: Martin Jones, Lucy Collinson, Michele Darrow, Matthew Hartley, Leandro Lemgruber, Helen Spiers, Amy Strange, Paul Verkade, Martyn Winn</p>
