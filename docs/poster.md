@@ -23,6 +23,8 @@ OUTPUT:
 
 1. Scalable, interoperable data handling
 
+![chunked.png](images/chunked.png)
+
 - Modality-independent: EM and LM
 - Input formats: TIFF, OME-TIFF, Zarr, OME-Zarr
 - NGFF support: Multiscale OME-Zarr input/output
@@ -31,6 +33,8 @@ OUTPUT:
 - Flexible export: Fused and sparse OME-Zarr, OME-TIFF
 
 2. Reproducible, FAIR workflows
+
+![FAIR.png](images/FAIR.png)
 
 - Configuration: YAML and napari projects
 - Provenance: RO-Crate metadata
@@ -42,6 +46,8 @@ OUTPUT:
 
 3. Performance and resource efficiency
 
+![ram.png](images/ram.png)
+
 - Larger-than-memory: Lazy loading and blockwise fusion
 - Memory efficiency: Adaptive block sizing
 - Multicore processing: Parallel registration and fusion
@@ -51,6 +57,8 @@ OUTPUT:
 - HPC support: Slurm and containers
 
 4. Interactive alignment and curation
+
+![muvis-align-modify-pair-reg.png](images/muvis-align-modify-pair-reg.png)
 
 - Napari interface: Interactive workflow execution
 - Dataset inspection: Tile positions and overlaps
