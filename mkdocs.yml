@@ -24,6 +24,8 @@ plugins:
             show_if_no_docstring: true
 
 markdown_extensions:
+  # a numbered list next to a bulleted one stays its own list, starting at its own number
+  - sane_lists
   - admonition
   - pymdownx.superfences:
       custom_fences:
@@ -37,8 +39,8 @@ nav:
   - napari_guide.md
   - notebooks.md
   - Technical overview: technical.md
-  - poster.md
   - pre_poster.md
+  - poster.md
   - references.md
 
 theme:
