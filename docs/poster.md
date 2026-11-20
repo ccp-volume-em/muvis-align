@@ -1,4 +1,4 @@
-# MuViS-ALIGN <br>next generation image registration
+# muvis-align <br>next generation image registration
 
 ## Joost de Folter (Francis Crick Institute, London), Marvin Albert (ETH, Zurich)
 
@@ -9,17 +9,20 @@ Here, we present muvis-align, a scalable workflow for alignment and stitching of
 By combining scalable computation with standardized data representation and metadata handling, muvis-align promotes FAIR data principles and reproducible processing. It provides a practical route from large microscopy acquisitions to aligned datasets suitable for downstream visualization and quantitative analysis.
 
 INPUT:
+
 - 2D / 3D tiles
 - Multi-channel
 - Multi-modal
 
 OUTPUT:
+
 - 2D / 3D OME-Zarr
 - Transforms
 - Quality metrics
 - RO-Crate packaged
 
 1. Scalable, interoperable data handling
+
 - Modality-independent: EM and LM
 - Input formats: TIFF, OME-TIFF, Zarr, OME-Zarr
 - NGFF support: Multiscale OME-Zarr input/output
@@ -28,6 +31,7 @@ OUTPUT:
 - Flexible export: Fused and sparse OME-Zarr, OME-TIFF
 
 2. Reproducible, FAIR workflows
+
 - Configuration: YAML and napari projects
 - Provenance: RO-Crate metadata
 - Transform preservation: Pairwise and global mappings
@@ -37,6 +41,7 @@ OUTPUT:
 - Resumability: Recovery of previous results
 
 3. Performance and resource efficiency
+
 - Larger-than-memory: Lazy loading and blockwise fusion
 - Memory efficiency: Adaptive block sizing
 - Multicore processing: Parallel registration and fusion
@@ -46,6 +51,7 @@ OUTPUT:
 - HPC support: Slurm and containers
 
 4. Interactive alignment and curation
+
 - Napari interface: Interactive workflow execution
 - Dataset inspection: Tile positions and overlaps
 - Registration preview: Pairwise alignment and features
