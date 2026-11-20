@@ -2053,14 +2053,7 @@ class Interface:
              Timer('show fused output', verbose=self._timing_verbose()):
             scene = read_ome_zarr_scene(path)
             if scene:
-                composed = read_composed_msims(path, scene, transform_key)
-                fused = None
-                if len(composed) == len(self.reg.sources):
-                    # one layer per channel, as the overview; a layer per source where it cannot place them
-                    fused = self._create_lazy_overview(transform_key, readers=[MsimLevels(msim) for msim in composed],
-                                                       label='Composed')
-                if fused is None:
-                    fused = composed
+                fused = self._composed_view(read_composed_msims(path, scene, transform_key), transform_key)
             else:
                 fused = ngff_utils.read_msim_from_ome_zarr(path, transform_key=transform_key, array_backend='dask')
             self._show_view_image(self.viewer, fused, 'Fused')
@@ -2069,6 +2062,15 @@ class Interface:
                 pbar.update(1)
         logging.info(f'Fused output shown from {path}')
         self._refresh_view_shapes(transform_key, progress_factory=progress_factory)
+
+    def _composed_view(self, composed, transform_key):
+        """A compose result's sources as one layer per channel, as the overview; as they are where it cannot place
+        them."""
+        view = None
+        if len(composed) == len(self.reg.sources):
+            view = self._create_lazy_overview(transform_key, readers=[MsimLevels(msim) for msim in composed],
+                                              label='Composed')
+        return composed if view is None else view
 
     def preview_fusion(self, progress_factory=None):
         # a merge has no registered transform, so this falls back to the source positions
@@ -2251,6 +2253,8 @@ class Interface:
             # the export reported its own bar; drawing the result reports a second one
             with self._operation_progress('Refreshing view', phases=2 + self.shapes_weight) as factory:
                 with factory(total=1):
+                    if isinstance(fused_image, list):
+                        fused_image = self._composed_view(fused_image, self.get_best_transform_key())
                     self._show_view_image(self.viewer, fused_image, 'Fused')
                 # registration may have run straight into the fusion, with no view of its geometry
                 self._refresh_view_shapes(self.get_best_transform_key(), progress_factory=factory)

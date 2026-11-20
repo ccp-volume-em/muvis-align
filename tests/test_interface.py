@@ -1757,7 +1757,10 @@ def test_fusion_process_runs_missing_registration_first(
     calls = []
     bare_interface.run_pair_registration = MagicMock(side_effect=lambda: calls.append("pair") or {"pairs": 1})
     bare_interface.run_global_registration = MagicMock(side_effect=lambda: calls.append("global") or {"global": 1})
-    bare_interface.run_fusion = MagicMock(side_effect=lambda: calls.append("fusion") or "fused")
+    # compose returns its sources, shown as the composed view
+    fused = ["source0", "source1"] if method == "compose" else "fused"
+    bare_interface.run_fusion = MagicMock(side_effect=lambda: calls.append("fusion") or fused)
+    bare_interface._composed_view = MagicMock(return_value="composed-view")
     messages = []
 
     def question(_parent, _title, message, *_):
@@ -1771,6 +1774,8 @@ def test_fusion_process_runs_missing_registration_first(
 
     assert messages[0].startswith(prefix)
     assert ("composed data" if method == "compose" else "fused data") in messages[0]
+    shown = bare_interface._show_view_image.call_args.args[1]
+    assert shown == ("composed-view" if method == "compose" else "fused")
     assert calls == ["pair"] * run_pair + ["global"] * run_global + ["fusion"]
 
 
