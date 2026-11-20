@@ -1901,6 +1901,33 @@ def test_the_fused_output_is_read_and_shown_as_after_an_export(bare_interface, m
     bare_interface._refresh_view_shapes.assert_called_once_with("registered", progress_factory=None)
 
 
+def test_a_composed_output_is_shown_as_one_overview_of_the_written_sources(tmp_path):
+    """The scene's sources read back and placed as the sources' own overview places them: the same pixels."""
+    from muvis_align.image.util import get_msim_image0
+    reg = prepared_registration([(DATA_DIR / name).as_posix() for name in ZARR_FILES[:2]], tmp_path,
+                                preprocess=False)
+    transform_key = reg.source_transform_key
+    reg.fuse(reg.msims, fusion_method='compose', transform_key=transform_key, output_filename='composed',
+             ome_version='0.6')
+    interface = Interface.__new__(Interface)
+    interface.reg = reg
+    # level 0, written as it is: coarser levels the file adds are resampled, not the sources' own
+    interface.params = {'input_output': {'registration_dimension': 'all', 'preview_scale': 1}}
+    interface.extra_metadata = {}
+    interface.viewer = MagicMock()
+    interface.get_best_transform_key = lambda: transform_key
+    interface._timing_verbose = lambda: False
+    interface._show_view_image = MagicMock()
+    interface._refresh_view_shapes = MagicMock()
+
+    interface._show_fused_output(str(tmp_path / 'composed.ome.zarr'))
+
+    shown = interface._show_view_image.call_args.args[1]
+    expected = interface._create_lazy_overview(transform_key)
+    assert not isinstance(shown, list)
+    assert np.array_equal(np.asarray(get_msim_image0(shown).data), np.asarray(get_msim_image0(expected).data))
+
+
 def test_build_view_msims_downscales_large_single_resolution_source():
     """A single-resolution source (no native pyramid to pick a coarser level from) larger than
     1000px on its largest spatial dimension must be downscaled by one constant factor so that

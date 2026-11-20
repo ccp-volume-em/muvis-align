@@ -1072,7 +1072,8 @@ class Interface:
                 self._refresh_view_shapes(transform_key, shapes, progress_factory=factory)
         self.view_mode = ViewMode.OVERVIEW
 
-    def _create_lazy_overview(self, transform_key, show_preprocessed=False):
+    def _create_lazy_overview(self, transform_key, show_preprocessed=False, readers=None, label='Overview'):
+        """`readers` (one a source) give the pixels instead of the sources, as the pre-processed overview's do."""
         reg = self.reg
         transforms, output_order = getattr(reg, '_msim_transforms', None), getattr(reg, '_msim_output_order', None)
         if transforms is None or output_order is None:
@@ -1080,14 +1081,13 @@ class Interface:
         if transform_key == reg.reg_transform_key:
             # from source geometry and the mappings, as the shapes: no msim built for them
             transforms = [np.asarray(props['transform'], dtype=float) for props in reg.source_geometry(transform_key)[1]]
-        readers, label = None, 'Overview'
-        if show_preprocessed and reg.register_msims is not None:
+        if readers is None and show_preprocessed and reg.register_msims is not None:
             # a source pre-processing dropped (filter_foreground) is left out, not shown raw
             readers = [None] * len(reg.sources)
             for index, msim in zip(reg.register_indices, reg.register_msims):
                 readers[index] = MsimLevels(msim)
             label = 'Pre-processed overview'
-        else:
+        elif readers is None:
             pre_processing = self.params.get('pre_processing', {})
             if reg.flatfield_settings(pre_processing)[0]:
                 # each section's model computed from its own tiles when its plane is first built, not every tile's
@@ -2053,7 +2053,14 @@ class Interface:
              Timer('show fused output', verbose=self._timing_verbose()):
             scene = read_ome_zarr_scene(path)
             if scene:
-                fused = read_composed_msims(path, scene, transform_key)
+                composed = read_composed_msims(path, scene, transform_key)
+                fused = None
+                if len(composed) == len(self.reg.sources):
+                    # one layer per channel, as the overview; a layer per source where it cannot place them
+                    fused = self._create_lazy_overview(transform_key, readers=[MsimLevels(msim) for msim in composed],
+                                                       label='Composed')
+                if fused is None:
+                    fused = composed
             else:
                 fused = ngff_utils.read_msim_from_ome_zarr(path, transform_key=transform_key, array_backend='dask')
             self._show_view_image(self.viewer, fused, 'Fused')
