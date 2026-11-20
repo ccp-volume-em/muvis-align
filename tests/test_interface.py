@@ -1761,6 +1761,10 @@ def test_fusion_process_runs_missing_registration_first(
     fused = ["source0", "source1"] if method == "compose" else "fused"
     bare_interface.run_fusion = MagicMock(side_effect=lambda: calls.append("fusion") or fused)
     bare_interface._composed_view = MagicMock(return_value="composed-view")
+    bare_interface.reg.output = "output/"
+    read = MagicMock(return_value=["read0", "read1"])
+    monkeypatch.setattr(interface_module, "read_composed_msims", read)
+    monkeypatch.setattr(interface_module, "read_ome_zarr_scene", MagicMock(return_value="scene"))
     messages = []
 
     def question(_parent, _title, message, *_):
@@ -1776,6 +1780,9 @@ def test_fusion_process_runs_missing_registration_first(
     assert ("composed data" if method == "compose" else "fused data") in messages[0]
     shown = bare_interface._show_view_image.call_args.args[1]
     assert shown == ("composed-view" if method == "compose" else "fused")
+    if method == "compose":
+        assert read.call_args.args[0] == "output/registered.ome.zarr"
+        assert bare_interface._composed_view.call_args.args[0] == ["read0", "read1"]
     assert calls == ["pair"] * run_pair + ["global"] * run_global + ["fusion"]
 
 

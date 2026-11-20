@@ -2254,7 +2254,12 @@ class Interface:
             with self._operation_progress('Refreshing view', phases=2 + self.shapes_weight) as factory:
                 with factory(total=1):
                     if isinstance(fused_image, list):
-                        fused_image = self._composed_view(fused_image, self.get_best_transform_key())
+                        # read back from the file, as reloading it shows it: the file adds its own coarse levels
+                        composed_path = self._output_paths(
+                            operation_to_past_participle(self.params['registration']['operation']))[0]
+                        transform_key = self.get_best_transform_key()
+                        fused_image = self._composed_view(read_composed_msims(
+                            composed_path, read_ome_zarr_scene(composed_path), transform_key), transform_key)
                     self._show_view_image(self.viewer, fused_image, 'Fused')
                 # registration may have run straight into the fusion, with no view of its geometry
                 self._refresh_view_shapes(self.get_best_transform_key(), progress_factory=factory)
