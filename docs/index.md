@@ -56,6 +56,71 @@ The command-line script (`run.py`), the example parameter files (`resources/`) a
 notebooks (`notebooks/`) are in the [source repository](https://github.com/ccp-volume-em/muvis-align),
 not the pip package, so clone it to use those.
 
+## Where the napari plugin runs
+
+### On your own machine
+
+In [napari](https://napari.org/), open **Plugins → Install/Uninstall Plugins...**, search for `muvis-align` and
+install it from the [napari hub](https://napari-hub.org/plugins/muvis-align). napari, the plugin and your data are all
+on your own machine.
+
+```mermaid
+flowchart LR
+    hub["napari hub"] -- "install plugin" --> napari
+    subgraph local["Your machine"]
+        data[("Data")] --> napari["napari<br>+ muvis-align"]
+    end
+```
+
+### In a container on your own machine
+
+With [Docker](https://www.docker.com/), the Xpra image runs napari with the plugin in a container and shows it in
+your browser, without installing Python. Mount your data folder at `/data`:
+
+```bash
+docker run --rm -p 9876:9876 -v "<data folder>:/data" quay.io/ccp-volume-em/muvis-align-xpra:latest
+```
+
+Then open `http://localhost:9876/` in a new browser tab, and open your data from `/data`. Closing napari stops the
+container. See [the Xpra container](technical.md#interactive-interface-with-xpra-container) for how the image is
+built.
+
+```mermaid
+flowchart LR
+    subgraph local["Your machine"]
+        direction LR
+        data[("Data")] -- "mounted at /data" --> napari
+        subgraph container["Docker container"]
+            napari["napari + muvis-align<br>Xpra server"]
+        end
+        napari -- "port 9876" --> browser["Browser<br>localhost:9876"]
+    end
+```
+
+### In a container on a cluster
+
+On a Slurm cluster with Apptainer, `xpra-connect.sh` on your own machine builds the container on the cluster,
+starts it in a job and opens napari in your browser through an ssh tunnel; your data stays on the cluster's storage.
+See the [quick start](#quick-start-in-your-browser).
+
+```mermaid
+flowchart LR
+    subgraph local["Your machine"]
+        script["xpra-connect.sh"]
+        browser["Browser<br>localhost:9876"]
+    end
+    subgraph hpc["Cluster"]
+        login["Login node<br>Slurm"]
+        subgraph container["Apptainer container<br>(compute node)"]
+            napari["napari + muvis-align<br>Xpra server"]
+        end
+        data[("Cluster storage")] --> napari
+    end
+    script -- "ssh: build, submit job" --> login
+    login -- "starts job" --> napari
+    napari -- "ssh tunnel" --> browser
+```
+
 ## Three ways to run it
 
 | | |
@@ -67,9 +132,8 @@ not the pip package, so clone it to use those.
 The plugin and the pipeline keep separate configuration files, so a project set up in
 the plugin is not directly a pipeline parameter file.
 
-The plugin can also run in a container, in the browser through Xpra: on a cluster with the
-[quick start](#quick-start-in-your-browser), elsewhere with the
-[Dockerfile](technical.md#interactive-interface-with-xpra-container).
+The plugin can also run in a container, shown in the browser through Xpra: see
+[where the napari plugin runs](#where-the-napari-plugin-runs).
 
 ## Getting started
 
