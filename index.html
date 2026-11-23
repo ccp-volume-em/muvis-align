@@ -20,7 +20,7 @@
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="images/muvis-align-logo32.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
@@ -96,8 +96,7 @@
   <nav class="md-header__inner md-grid" aria-label="Header">
     <a href="." title="muvis-align" class="md-header__button md-logo" aria-label="muvis-align" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="images/muvis-align-logo256.png" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -242,8 +241,7 @@
   <label class="md-nav__title" for="__drawer">
     <a href="." title="muvis-align" class="md-nav__button md-logo" aria-label="muvis-align" data-md-component="logo">
       
-  
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+  <img src="images/muvis-align-logo256.png" alt="logo">
 
     </a>
     muvis-align
@@ -348,6 +346,56 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-napari-plugin-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the napari plugin runs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where the napari plugin runs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-your-own-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On your own machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-a-container-on-your-own-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a container on your own machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-a-container-on-a-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a container on a cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -641,6 +689,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#where-the-napari-plugin-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the napari plugin runs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Where the napari plugin runs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#on-your-own-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        On your own machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-a-container-on-your-own-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a container on your own machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#in-a-container-on-a-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        In a container on a cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#three-ways-to-run-it" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -705,6 +803,7 @@
 
 
 <h1 id="muvis-align">muvis-align</h1>
+<p><img src="images/muvis-align-logo.png" alt="muvis-align logo" width="160" align="right"></p>
 <p>Image registration pipeline for large volume EM and LM datasets, built on
 <a href="https://github.com/multiview-stitcher/multiview-stitcher">multiview-stitcher</a>, with
 a napari plugin.</p>
@@ -744,6 +843,52 @@ Your cluster's support team can tell you the login node's name and whether Appta
 <p>The command-line script (<code>run.py</code>), the example parameter files (<code>resources/</code>) and the
 notebooks (<code>notebooks/</code>) are in the <a href="https://github.com/ccp-volume-em/muvis-align">source repository</a>,
 not the pip package, so clone it to use those.</p>
+<h2 id="where-the-napari-plugin-runs">Where the napari plugin runs</h2>
+<h3 id="on-your-own-machine">On your own machine</h3>
+<p>In <a href="https://napari.org/">napari</a>, open <strong>Plugins → Install/Uninstall Plugins...</strong>, search for <code>muvis-align</code> and
+install it from the <a href="https://napari-hub.org/plugins/muvis-align">napari hub</a>. napari, the plugin and your data are all
+on your own machine.</p>
+<pre class="mermaid"><code>flowchart LR
+    hub["napari hub"] -- "install plugin" --&gt; napari
+    subgraph local["Your machine"]
+        data[("Data")] --&gt; napari["napari&lt;br&gt;+ muvis-align"]
+    end</code></pre>
+<h3 id="in-a-container-on-your-own-machine">In a container on your own machine</h3>
+<p>With <a href="https://www.docker.com/">Docker</a>, the Xpra image runs napari with the plugin in a container and shows it in
+your browser, without installing Python. Mount your data folder at <code>/data</code>:</p>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>-p<span class="w"> </span><span class="m">9876</span>:9876<span class="w"> </span>-v<span class="w"> </span><span class="s2">"&lt;data folder&gt;:/data"</span><span class="w"> </span>quay.io/ccp-volume-em/muvis-align-xpra:latest
+</code></pre></div>
+<p>Then open <code>http://localhost:9876/</code> in a new browser tab, and open your data from <code>/data</code>. Closing napari stops the
+container. See <a href="technical/#interactive-interface-with-xpra-container">the Xpra container</a> for how the image is
+built.</p>
+<pre class="mermaid"><code>flowchart LR
+    subgraph local["Your machine"]
+        direction LR
+        data[("Data")] -- "mounted at /data" --&gt; napari
+        subgraph container["Docker container"]
+            napari["napari + muvis-align&lt;br&gt;Xpra server"]
+        end
+        napari -- "port 9876" --&gt; browser["Browser&lt;br&gt;localhost:9876"]
+    end</code></pre>
+<h3 id="in-a-container-on-a-cluster">In a container on a cluster</h3>
+<p>On a Slurm cluster with Apptainer, <code>xpra-connect.sh</code> on your own machine builds the container on the cluster,
+starts it in a job and opens napari in your browser through an ssh tunnel; your data stays on the cluster's storage.
+See the <a href="#quick-start-in-your-browser">quick start</a>.</p>
+<pre class="mermaid"><code>flowchart LR
+    subgraph local["Your machine"]
+        script["xpra-connect.sh"]
+        browser["Browser&lt;br&gt;localhost:9876"]
+    end
+    subgraph hpc["Cluster"]
+        login["Login node&lt;br&gt;Slurm"]
+        subgraph container["Apptainer container&lt;br&gt;(compute node)"]
+            napari["napari + muvis-align&lt;br&gt;Xpra server"]
+        end
+        data[("Cluster storage")] --&gt; napari
+    end
+    script -- "ssh: build, submit job" --&gt; login
+    login -- "starts job" --&gt; napari
+    napari -- "ssh tunnel" --&gt; browser</code></pre>
 <h2 id="three-ways-to-run-it">Three ways to run it</h2>
 <table>
 <thead>
@@ -769,9 +914,8 @@ not the pip package, so clone it to use those.</p>
 </table>
 <p>The plugin and the pipeline keep separate configuration files, so a project set up in
 the plugin is not directly a pipeline parameter file.</p>
-<p>The plugin can also run in a container, in the browser through Xpra: on a cluster with the
-<a href="#quick-start-in-your-browser">quick start</a>, elsewhere with the
-<a href="technical/#interactive-interface-with-xpra-container">Dockerfile</a>.</p>
+<p>The plugin can also run in a container, shown in the browser through Xpra: see
+<a href="#where-the-napari-plugin-runs">where the napari plugin runs</a>.</p>
 <h2 id="getting-started">Getting started</h2>
 <ol>
 <li>Install as above, or without Python use the <a href="#quick-start-in-your-browser">quick start</a> on a cluster.</li>
