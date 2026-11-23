@@ -1,5 +1,7 @@
 # muvis-align
 
+<img src="https://raw.githubusercontent.com/ccp-volume-em/muvis-align/main/docs/images/muvis-align-logo.png" alt="muvis-align logo" width="160" align="right">
+
 [![License MIT](https://img.shields.io/github/license/ccp-volume-em/muvis-align?color=green)](https://github.com/ccp-volume-em/muvis-align/raw/main/LICENSE.md)
 [![PyPI](https://img.shields.io/pypi/v/muvis-align.svg?color=green)](https://pypi.org/project/muvis-align)
 [![Python Version](https://img.shields.io/pypi/pyversions/muvis-align.svg?color=green)](https://python.org)

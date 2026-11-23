@@ -2,6 +2,7 @@ name: muvis-align
 display_name: muvis-align
 # use 'hidden' to remove plugin from napari hub search results
 visibility: hidden    # public
+icon: muvis_align:muvis-align-logo256.png
 # see https://napari.org/stable/plugins/technical_references/manifest.html#fields for valid categories
 categories: ["Registration"]
 contributions:

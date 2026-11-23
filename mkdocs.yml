@@ -45,6 +45,8 @@ nav:
 
 theme:
   name: material
+  logo: images/muvis-align-logo256.png
+  favicon: images/muvis-align-logo32.png
   palette:
     # 'auto' with a toggle: follow the OS by default, let the reader override it
     - media: "(prefers-color-scheme)"

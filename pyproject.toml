@@ -98,7 +98,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["*.yaml"]
+"*" = ["*.yaml", "*.png"]
 
 [tool.setuptools_scm]
 version_file = "src/muvis_align/_version.py"

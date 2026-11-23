@@ -1,5 +1,7 @@
 # muvis-align
 
+<img src="images/muvis-align-logo.png" alt="muvis-align logo" width="160" align="right">
+
 Image registration pipeline for large volume EM and LM datasets, built on
 [multiview-stitcher](https://github.com/multiview-stitcher/multiview-stitcher), with
 a napari plugin.
