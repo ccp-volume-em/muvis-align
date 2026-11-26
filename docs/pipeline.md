@@ -98,6 +98,7 @@ The operation is `registration.operation`.
 Registers (aligns) images using feature matching or phase correlation.
 
 **Variants:**
+
 - `register` - Basic registration
 - `register match LABEL` - Group files by matching a label in filenames, then register each group
 - `transition` - Register using a transition transform between filesets
@@ -140,6 +141,7 @@ input_output:
 
 **Source position, scale and rotation** (`source_position_x/y/z`, `source_scale_x/y/z`,
 `source_rotation`), as in the plugin:
+
 - `source` - the source file's own value
 - `source invert` - the source's own value, inverted
 - `source y` - the source's value of another axis
@@ -193,6 +195,7 @@ registration:
 ```
 
 **Registration Methods:**
+
 - `phase_correlation` - Phase correlation (default)
 - `sift` - Scale-Invariant Feature Transform (scikit-image)
 - `orb` - Oriented FAST and Rotated BRIEF (OpenCV)
@@ -204,12 +207,14 @@ registration:
 The packages of these last three are installed with `muvis-align[all]`.
 
 **Transform Types:**
+
 - `translation` - Only translation
 - `rigid` - Translation + rotation
 - `affine` - Full affine transformation
 - `similarity` - Rigid + uniform scaling
 
 **Pairing Strategies:**
+
 - `orthogonal` - Pair orthogonal tiles (X-Y grid), avoiding diagonal / very small overlaps
 - `stack` - Treat the sources as a z-stack: pair consecutive views, and promote them to
   3D where the rest of the pipeline needs it
@@ -223,6 +228,7 @@ alternative to `orthogonal`, not a modifier on it: a stack is never paired
 orthogonally. It max-projects z to register the pairs in 2D.
 
 **Metrics:**
+
 - `ncc` - Normalized Cross Correlation
 - `ssim` - Structural Similarity Index
 - `onmi` - Overlapping Normalized Mutual Information
@@ -257,6 +263,7 @@ fusion:
 ```
 
 **Fusion Methods:**
+
 - `average` (default) - Average overlapping pixels
 - `exclusive` - Show only single tile data where overlapping
 - `additive` - Sum overlapping regions
@@ -408,6 +415,7 @@ The script's 64G is enough for a 34,000-tile project.
 ## Output Structure
 
 After successful registration:
+
 - `registered.ome.zarr` - Registered & fused output image (named after the operation)
 - `mappings.json` / `mappings.csv` - Final registration mappings
 - `pair_mappings.json` - Per-pair registration mappings; with split pairing also each group pair's, marked
@@ -430,6 +438,7 @@ After successful registration:
 ## Parameter Resolution
 
 Parameters can use placeholders based on filename:
+
 - `{S}` - Matches numeric values from filename (e.g., from S001)
 - `fn[-3]` - Access filename elements by position
 - Custom metadata patterns for position/scale resolution

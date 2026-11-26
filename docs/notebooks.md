@@ -73,6 +73,7 @@ fused_sim = reg.fuse(sims, fusion_params)
 **Best for:** Quick prototyping and understanding basic registration
 
 **Key Differences from pipeline.ipynb:**
+
 - Combines operations into fewer, more focused cells
 - Emphasizes the core registration workflow
 - Includes quality reporting
@@ -157,14 +158,15 @@ register_params = {
 ```
 
 **Interactive Exploration:**
+
 - Modify `name` parameter to use different feature detectors:
-  - `'sift'` - Scale-Invariant Feature Transform (more robust, slower)
-  - `'orb'` - Oriented FAST and Rotated BRIEF (faster, less robust)
+    - `'sift'` - Scale-Invariant Feature Transform (more robust, slower)
+    - `'orb'` - Oriented FAST and Rotated BRIEF (faster, less robust)
 - Adjust `gaussian_sigma` to smooth the image before feature detection
 - Change `transform_type` to test different transformation models:
-  - `'translation'` - Only translation
-  - `'euclidean'` - Translation + rotation
-  - `'affine'` - Full affine
+    - `'translation'` - Only translation
+    - `'euclidean'` - Translation + rotation
+    - `'affine'` - Full affine
 
 **Output:** Visual overlays of keypoints and feature matches between tiles
 
@@ -206,6 +208,7 @@ register_params = { /* ... */ }
 ```
 
 **Metrics Computed:**
+
 - **NCC** (Normalized Cross Correlation) - -1 to 1, higher is better
 - **SSIM** (Structural Similarity Index) - -1 to 1, higher is better  
 - **ONMI** (Overlapping Normalized Mutual Information) - 0 to 1, higher is better
@@ -249,6 +252,7 @@ overlap1, overlap2, sims_pixel_space = get_overlap_images(norm_sims[0], norm_sim
 ```
 
 **Use Case:** 
+
 - Verify if pre-computed registrations are correct
 - Inspect specific problematic tile pairs
 - Validate transformation matrices from previous runs
@@ -292,6 +296,7 @@ pair_metrics = results['metrics']
 ```
 
 **Output Analysis:**
+
 - Edge weights represent registration quality
 - Visualize the registration graph with matplotlib
 - Export metrics to CSV for further analysis
@@ -336,6 +341,7 @@ transforms = global_results['transforms']
 ```
 
 **Advanced Features:**
+
 - Quality-based edge filtering: `post_registration_quality_threshold`
 - Different groupwise resolution methods: `groupwise_resolution_method`
 - Manual pair selection instead of automatic pairing
@@ -383,12 +389,14 @@ for label, sim in zip(reg.file_labels, sims):
 ```
 
 **napari Features:**
+
 - Multiple image layers for side-by-side comparison
 - Zoom and pan to inspect details
 - Measure distances and angles
 - Export visualizations as images
 
 **Workflow:**
+
 1. Inspect individual tiles for quality
 2. View fused result to verify stitching
 3. Identify problem areas for further debugging
