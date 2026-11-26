@@ -1233,11 +1233,13 @@ the run's RO-Crate keeps them, with a warning that the project template lacks th
 <p>The operation is <code>registration.operation</code>.</p>
 <h3 id="register-image-registration"><code>register</code> - Image Registration</h3>
 <p>Registers (aligns) images using feature matching or phase correlation.</p>
-<p><strong>Variants:</strong>
-- <code>register</code> - Basic registration
-- <code>register match LABEL</code> - Group files by matching a label in filenames, then register each group
-- <code>transition</code> - Register using a transition transform between filesets
-- <code>fuse</code> / <code>merge</code> - Fuse without registering, using the source metadata positions as they are</p>
+<p><strong>Variants:</strong></p>
+<ul>
+<li><code>register</code> - Basic registration</li>
+<li><code>register match LABEL</code> - Group files by matching a label in filenames, then register each group</li>
+<li><code>transition</code> - Register using a transition transform between filesets</li>
+<li><code>fuse</code> / <code>merge</code> - Fuse without registering, using the source metadata positions as they are</li>
+</ul>
 <p>The operation name also names the output: the verb is written in the past tense, so
 <code>register</code> writes <code>registered.ome.zarr</code> and <code>fuse</code> writes <code>fused.ome.zarr</code>.</p>
 <p>3D registration is not a separate variant - it follows from the data. Sources with a
@@ -1269,11 +1271,13 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 <span class="w">  </span><span class="nt">n_set_workers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">                    </span><span class="c1"># File sets of a `match` operation run at once</span>
 </code></pre></div>
 <p><strong>Source position, scale and rotation</strong> (<code>source_position_x/y/z</code>, <code>source_scale_x/y/z</code>,
-<code>source_rotation</code>), as in the plugin:
-- <code>source</code> - the source file's own value
-- <code>source invert</code> - the source's own value, inverted
-- <code>source y</code> - the source's value of another axis
-- a value or expression, e.g. <code>fn[-3]*24</code> (see <a href="#parameter-resolution">Parameter Resolution</a>)</p>
+<code>source_rotation</code>), as in the plugin:</p>
+<ul>
+<li><code>source</code> - the source file's own value</li>
+<li><code>source invert</code> - the source's own value, inverted</li>
+<li><code>source y</code> - the source's value of another axis</li>
+<li>a value or expression, e.g. <code>fn[-3]*24</code> (see <a href="#parameter-resolution">Parameter Resolution</a>)</li>
+</ul>
 <p><code>normalise_rotated_positions</code> straightens a rotated tile grid.</p>
 <p>What no field holds goes in <code>input_output.source_metadata</code>: flags such as <code>global center</code>
 (the centre over all file sets of a <code>match</code> operation; <code>global</code> also needs
@@ -1316,34 +1320,42 @@ it neither registers nor writes converted output. Use the plugin for this.</p>
 <span class="w">  </span><span class="c1"># Output metrics</span>
 <span class="w">  </span><span class="nt">metrics</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ncc</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ssim</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">onmi</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Metrics to compute</span>
 </code></pre></div>
-<p><strong>Registration Methods:</strong>
-- <code>phase_correlation</code> - Phase correlation (default)
-- <code>sift</code> - Scale-Invariant Feature Transform (scikit-image)
-- <code>orb</code> - Oriented FAST and Rotated BRIEF (OpenCV)
-- <code>feature</code> - Generic feature-based registration
-- <code>cpd</code> - Coherent Point Drift (requires <code>probreg</code>, not available for Windows or Python 3.13+)
-- <code>elastix</code> - Elastix registration (requires <code>itk-elastix</code>)
-- <code>ants</code> - Advanced Normalization Tools (requires <code>antspyx</code>)</p>
+<p><strong>Registration Methods:</strong></p>
+<ul>
+<li><code>phase_correlation</code> - Phase correlation (default)</li>
+<li><code>sift</code> - Scale-Invariant Feature Transform (scikit-image)</li>
+<li><code>orb</code> - Oriented FAST and Rotated BRIEF (OpenCV)</li>
+<li><code>feature</code> - Generic feature-based registration</li>
+<li><code>cpd</code> - Coherent Point Drift (requires <code>probreg</code>, not available for Windows or Python 3.13+)</li>
+<li><code>elastix</code> - Elastix registration (requires <code>itk-elastix</code>)</li>
+<li><code>ants</code> - Advanced Normalization Tools (requires <code>antspyx</code>)</li>
+</ul>
 <p>The packages of these last three are installed with <code>muvis-align[all]</code>.</p>
-<p><strong>Transform Types:</strong>
-- <code>translation</code> - Only translation
-- <code>rigid</code> - Translation + rotation
-- <code>affine</code> - Full affine transformation
-- <code>similarity</code> - Rigid + uniform scaling</p>
-<p><strong>Pairing Strategies:</strong>
-- <code>orthogonal</code> - Pair orthogonal tiles (X-Y grid), avoiding diagonal / very small overlaps
-- <code>stack</code> - Treat the sources as a z-stack: pair consecutive views, and promote them to
-  3D where the rest of the pipeline needs it
-- unset - Use multiview-stitcher's own default pairing</p>
+<p><strong>Transform Types:</strong></p>
+<ul>
+<li><code>translation</code> - Only translation</li>
+<li><code>rigid</code> - Translation + rotation</li>
+<li><code>affine</code> - Full affine transformation</li>
+<li><code>similarity</code> - Rigid + uniform scaling</li>
+</ul>
+<p><strong>Pairing Strategies:</strong></p>
+<ul>
+<li><code>orthogonal</code> - Pair orthogonal tiles (X-Y grid), avoiding diagonal / very small overlaps</li>
+<li><code>stack</code> - Treat the sources as a z-stack: pair consecutive views, and promote them to
+  3D where the rest of the pipeline needs it</li>
+<li>unset - Use multiview-stitcher's own default pairing</li>
+</ul>
 <p>The plugin preselects <code>orthogonal</code>: multiview-stitcher's own pairing adds corner-only diagonal pairs, on which a
 feature method such as SIFT can fit an arbitrary rotation that throws tiles far off in the global registration.</p>
 <p><code>stack</code> pairs consecutive views - N to N+1, N+1 to N+2, and so on - so it is an
 alternative to <code>orthogonal</code>, not a modifier on it: a stack is never paired
 orthogonally. It max-projects z to register the pairs in 2D.</p>
-<p><strong>Metrics:</strong>
-- <code>ncc</code> - Normalized Cross Correlation
-- <code>ssim</code> - Structural Similarity Index
-- <code>onmi</code> - Overlapping Normalized Mutual Information</p>
+<p><strong>Metrics:</strong></p>
+<ul>
+<li><code>ncc</code> - Normalized Cross Correlation</li>
+<li><code>ssim</code> - Structural Similarity Index</li>
+<li><code>onmi</code> - Overlapping Normalized Mutual Information</li>
+</ul>
 <h4 id="preprocessing-options">Preprocessing Options</h4>
 <div class="highlight"><pre><span></span><code><span class="nt">pre_processing</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">flatfield_quantiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.5</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.95</span><span class="p p-Indicator">]</span><span class="w">  </span><span class="c1"># Flat-field quantiles: one = light image, two = dark, light image</span>
@@ -1366,12 +1378,14 @@ orthogonally. It max-projects z to register the pairs in 2D.</p>
 <span class="w">  </span><span class="nt">pyramid_downsample</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
 <span class="w">  </span><span class="nt">preview</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ome.zarr</span>
 </code></pre></div>
-<p><strong>Fusion Methods:</strong>
-- <code>average</code> (default) - Average overlapping pixels
-- <code>exclusive</code> - Show only single tile data where overlapping
-- <code>additive</code> - Sum overlapping regions
-- <code>compose</code> - No fusion: each source keeps its own pyramid, written as one OME-Zarr 0.6 scene with a
-  <code>registered</code> and a <code>source_metadata</code> coordinate system (<code>registered</code> is the default view). Always OME-Zarr 0.6, whatever <code>ome_version</code> is set</p>
+<p><strong>Fusion Methods:</strong></p>
+<ul>
+<li><code>average</code> (default) - Average overlapping pixels</li>
+<li><code>exclusive</code> - Show only single tile data where overlapping</li>
+<li><code>additive</code> - Sum overlapping regions</li>
+<li><code>compose</code> - No fusion: each source keeps its own pyramid, written as one OME-Zarr 0.6 scene with a
+  <code>registered</code> and a <code>source_metadata</code> coordinate system (<code>registered</code> is the default view). Always OME-Zarr 0.6, whatever <code>ome_version</code> is set</li>
+</ul>
 <p><strong>Fusion Options:</strong></p>
 <table>
 <thead>
@@ -1555,18 +1569,20 @@ load one cluster's Python environment, so adapt them to yours. Fusion runs on ev
 sharing a quarter of the job's memory (<code>--mem</code>), so a smaller allocation makes busy blocks wait rather than run out.
 The script's 64G is enough for a 34,000-tile project.</p>
 <h2 id="output-structure">Output Structure</h2>
-<p>After successful registration:
-- <code>registered.ome.zarr</code> - Registered &amp; fused output image (named after the operation)
-- <code>mappings.json</code> / <code>mappings.csv</code> - Final registration mappings
-- <code>pair_mappings.json</code> - Per-pair registration mappings; with split pairing also each group pair's, marked
-  <code>"kind": "split_group"</code>
-- <code>prereg_mappings.csv</code> - Pre-registration mappings
-- <code>metrics.csv</code> - Each registered pair's metrics (quality, ncc, ssim, onmi) over its registered overlap; with
+<p>After successful registration:</p>
+<ul>
+<li><code>registered.ome.zarr</code> - Registered &amp; fused output image (named after the operation)</li>
+<li><code>mappings.json</code> / <code>mappings.csv</code> - Final registration mappings</li>
+<li><code>pair_mappings.json</code> - Per-pair registration mappings; with split pairing also each group pair's, marked
+  <code>"kind": "split_group"</code></li>
+<li><code>prereg_mappings.csv</code> - Pre-registration mappings</li>
+<li><code>metrics.csv</code> - Each registered pair's metrics (quality, ncc, ssim, onmi) over its registered overlap; with
   split pairing, then each group pair's (e.g. two channels'), on the fused groups binned by <code>split_binning</code>, with no
-  filenames
-- <code>residuals.csv</code> - Each pair's residual from the global solution (RMS distance, physical units)
-- <code>positions_original.pdf</code>, <code>positions_registered.pdf</code> - Position visualizations
-- <code>ro-crate-metadata.json</code>, <code>parameters.yaml</code> - The run's RO-Crate, and every setting it used</p>
+  filenames</li>
+<li><code>residuals.csv</code> - Each pair's residual from the global solution (RMS distance, physical units)</li>
+<li><code>positions_original.pdf</code>, <code>positions_registered.pdf</code> - Position visualizations</li>
+<li><code>ro-crate-metadata.json</code>, <code>parameters.yaml</code> - The run's RO-Crate, and every setting it used</li>
+</ul>
 <h2 id="troubleshooting">Troubleshooting</h2>
 <ul>
 <li><strong>No files matched</strong>: Check your <code>input_output.input_path</code> pattern and file extensions</li>
@@ -1575,10 +1591,12 @@ The script's 64G is enough for a 34,000-tile project.</p>
 <li><strong>Poor registration</strong>: Try different <code>method</code>, increase <code>max_keypoints</code>, or adjust <code>normalisation</code></li>
 </ul>
 <h2 id="parameter-resolution">Parameter Resolution</h2>
-<p>Parameters can use placeholders based on filename:
-- <code>{S}</code> - Matches numeric values from filename (e.g., from S001)
-- <code>fn[-3]</code> - Access filename elements by position
-- Custom metadata patterns for position/scale resolution</p>
+<p>Parameters can use placeholders based on filename:</p>
+<ul>
+<li><code>{S}</code> - Matches numeric values from filename (e.g., from S001)</li>
+<li><code>fn[-3]</code> - Access filename elements by position</li>
+<li>Custom metadata patterns for position/scale resolution</li>
+</ul>
 
 
 

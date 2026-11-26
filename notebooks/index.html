@@ -1134,10 +1134,12 @@
 <h2 id="stitching2dipynb">stitching2d.ipynb</h2>
 <p><strong>Purpose:</strong> Streamlined example focusing on the essential 2D stitching workflow</p>
 <p><strong>Best for:</strong> Quick prototyping and understanding basic registration</p>
-<p><strong>Key Differences from pipeline.ipynb:</strong>
-- Combines operations into fewer, more focused cells
-- Emphasizes the core registration workflow
-- Includes quality reporting</p>
+<p><strong>Key Differences from pipeline.ipynb:</strong></p>
+<ul>
+<li>Combines operations into fewer, more focused cells</li>
+<li>Emphasizes the core registration workflow</li>
+<li>Includes quality reporting</li>
+</ul>
 <p><strong>Main Operations:</strong></p>
 <div class="highlight"><pre><span></span><code><span class="c1"># One-step initialization, preprocessing, and registration</span>
 <span class="n">reg</span> <span class="o">=</span> <span class="n">MVSRegistration</span><span class="p">(</span><span class="n">operation</span><span class="o">=</span><span class="s1">'register'</span><span class="p">,</span> 
@@ -1205,15 +1207,21 @@
     <span class="s1">'ransac_iterations'</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
 <span class="p">}</span>
 </code></pre></div>
-<p><strong>Interactive Exploration:</strong>
-- Modify <code>name</code> parameter to use different feature detectors:
-  - <code>'sift'</code> - Scale-Invariant Feature Transform (more robust, slower)
-  - <code>'orb'</code> - Oriented FAST and Rotated BRIEF (faster, less robust)
-- Adjust <code>gaussian_sigma</code> to smooth the image before feature detection
-- Change <code>transform_type</code> to test different transformation models:
-  - <code>'translation'</code> - Only translation
-  - <code>'euclidean'</code> - Translation + rotation
-  - <code>'affine'</code> - Full affine</p>
+<p><strong>Interactive Exploration:</strong></p>
+<ul>
+<li>Modify <code>name</code> parameter to use different feature detectors:<ul>
+<li><code>'sift'</code> - Scale-Invariant Feature Transform (more robust, slower)</li>
+<li><code>'orb'</code> - Oriented FAST and Rotated BRIEF (faster, less robust)</li>
+</ul>
+</li>
+<li>Adjust <code>gaussian_sigma</code> to smooth the image before feature detection</li>
+<li>Change <code>transform_type</code> to test different transformation models:<ul>
+<li><code>'translation'</code> - Only translation</li>
+<li><code>'euclidean'</code> - Translation + rotation</li>
+<li><code>'affine'</code> - Full affine</li>
+</ul>
+</li>
+</ul>
 <p><strong>Output:</strong> Visual overlays of keypoints and feature matches between tiles</p>
 <hr />
 <h2 id="feature_matching_metricsipynb">feature_matching_metrics.ipynb</h2>
@@ -1245,10 +1253,12 @@
 <span class="n">register_params</span> <span class="o">=</span> <span class="p">{</span> <span class="o">/*</span> <span class="o">...</span> <span class="o">*/</span> <span class="p">}</span>
 <span class="c1"># Run registration and get results</span>
 </code></pre></div>
-<p><strong>Metrics Computed:</strong>
-- <strong>NCC</strong> (Normalized Cross Correlation) - -1 to 1, higher is better
-- <strong>SSIM</strong> (Structural Similarity Index) - -1 to 1, higher is better<br />
-- <strong>ONMI</strong> (Overlapping Normalized Mutual Information) - 0 to 1, higher is better</p>
+<p><strong>Metrics Computed:</strong></p>
+<ul>
+<li><strong>NCC</strong> (Normalized Cross Correlation) - -1 to 1, higher is better</li>
+<li><strong>SSIM</strong> (Structural Similarity Index) - -1 to 1, higher is better  </li>
+<li><strong>ONMI</strong> (Overlapping Normalized Mutual Information) - 0 to 1, higher is better</li>
+</ul>
 <p><strong>Use Case:</strong> Parameter tuning by iteratively adjusting parameters and checking improvement in metrics</p>
 <hr />
 <h2 id="feature_matching_overlayipynb">feature_matching_overlay.ipynb</h2>
@@ -1279,10 +1289,12 @@
 <span class="n">overlap1</span><span class="p">,</span> <span class="n">overlap2</span><span class="p">,</span> <span class="n">sims_pixel_space</span> <span class="o">=</span> <span class="n">get_overlap_images</span><span class="p">(</span><span class="n">norm_sims</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">norm_sims</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> 
                                                            <span class="n">reg</span><span class="o">.</span><span class="n">source_transform_key</span><span class="p">)</span>
 </code></pre></div>
-<p><strong>Use Case:</strong> 
-- Verify if pre-computed registrations are correct
-- Inspect specific problematic tile pairs
-- Validate transformation matrices from previous runs</p>
+<p><strong>Use Case:</strong> </p>
+<ul>
+<li>Verify if pre-computed registrations are correct</li>
+<li>Inspect specific problematic tile pairs</li>
+<li>Validate transformation matrices from previous runs</li>
+</ul>
 <hr />
 <h2 id="stitching2d_metricsipynb">stitching2d_metrics.ipynb</h2>
 <p><strong>Purpose:</strong> Complete 2D stitching with detailed metrics reporting</p>
@@ -1314,10 +1326,12 @@
 <span class="n">pair_metrics</span> <span class="o">=</span> <span class="n">results</span><span class="p">[</span><span class="s1">'metrics'</span><span class="p">]</span>
 <span class="c1"># Analyze quality by examining the graph structure</span>
 </code></pre></div>
-<p><strong>Output Analysis:</strong>
-- Edge weights represent registration quality
-- Visualize the registration graph with matplotlib
-- Export metrics to CSV for further analysis</p>
+<p><strong>Output Analysis:</strong></p>
+<ul>
+<li>Edge weights represent registration quality</li>
+<li>Visualize the registration graph with matplotlib</li>
+<li>Export metrics to CSV for further analysis</li>
+</ul>
 <hr />
 <h2 id="stitching2d_split_registrationipynb">stitching2d_split_registration.ipynb</h2>
 <p><strong>Purpose:</strong> Advanced registration with detailed control and multi-step workflow</p>
@@ -1350,11 +1364,13 @@
 <span class="n">transforms</span> <span class="o">=</span> <span class="n">global_results</span><span class="p">[</span><span class="s1">'transforms'</span><span class="p">]</span>
 <span class="c1"># ... further analysis or visualization</span>
 </code></pre></div>
-<p><strong>Advanced Features:</strong>
-- Quality-based edge filtering: <code>post_registration_quality_threshold</code>
-- Different groupwise resolution methods: <code>groupwise_resolution_method</code>
-- Manual pair selection instead of automatic pairing
-- Debug visualization of the registration graph</p>
+<p><strong>Advanced Features:</strong></p>
+<ul>
+<li>Quality-based edge filtering: <code>post_registration_quality_threshold</code></li>
+<li>Different groupwise resolution methods: <code>groupwise_resolution_method</code></li>
+<li>Manual pair selection instead of automatic pairing</li>
+<li>Debug visualization of the registration graph</li>
+</ul>
 <p><strong>Use Case:</strong> Parameter optimization by isolating and testing individual registration components</p>
 <hr />
 <h2 id="tile_staging_napariipynb">tile_staging_napari.ipynb</h2>
@@ -1388,16 +1404,20 @@
 <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">sim</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">reg</span><span class="o">.</span><span class="n">file_labels</span><span class="p">,</span> <span class="n">sims</span><span class="p">):</span>
     <span class="n">viewer</span><span class="o">.</span><span class="n">add_image</span><span class="p">(</span><span class="n">sim</span><span class="o">.</span><span class="n">data</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">label</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">si_utils</span><span class="o">.</span><span class="n">get_spacing_from_sim</span><span class="p">(</span><span class="n">sim</span><span class="p">))</span>
 </code></pre></div>
-<p><strong>napari Features:</strong>
-- Multiple image layers for side-by-side comparison
-- Zoom and pan to inspect details
-- Measure distances and angles
-- Export visualizations as images</p>
-<p><strong>Workflow:</strong>
-1. Inspect individual tiles for quality
-2. View fused result to verify stitching
-3. Identify problem areas for further debugging
-4. Export screenshots for reports/documentation</p>
+<p><strong>napari Features:</strong></p>
+<ul>
+<li>Multiple image layers for side-by-side comparison</li>
+<li>Zoom and pan to inspect details</li>
+<li>Measure distances and angles</li>
+<li>Export visualizations as images</li>
+</ul>
+<p><strong>Workflow:</strong></p>
+<ol>
+<li>Inspect individual tiles for quality</li>
+<li>View fused result to verify stitching</li>
+<li>Identify problem areas for further debugging</li>
+<li>Export screenshots for reports/documentation</li>
+</ol>
 <hr />
 <h2 id="general-tips-for-all-notebooks">General Tips for All Notebooks</h2>
 <h3 id="setting-up-your-data">Setting Up Your Data</h3>
