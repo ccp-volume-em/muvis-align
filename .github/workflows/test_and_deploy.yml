@@ -83,9 +83,9 @@ jobs:
       # mkdocstrings reference into a failure, so the docs cannot drift silently
       - name: Build with mkdocs
         run: mkdocs build --strict
-      # GitHub Pages serves the gh-pages branch, so a release tag pushes the built site there
+      # GitHub Pages serves the gh-pages branch; deploying from main keeps the site in step with doc fixes
       - name: Deploy to GitHub Pages
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
