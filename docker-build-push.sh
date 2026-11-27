@@ -30,7 +30,9 @@ if [ -z "$VERSION" ]; then
 fi
 
 echo "Building ${IMAGE}:${VERSION} (target: ${TARGET}) ..."
-docker build --target "$TARGET" -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" .
+# the package states the release's version (v0.7.0 -> 0.7.0): the image holds only part of the work tree
+docker build --target "$TARGET" --build-arg "MUVIS_ALIGN_VERSION=${VERSION#v}" \
+    -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" .
 
 echo "Pushing ${IMAGE}:${VERSION} and ${IMAGE}:latest ..."
 # only the tags built here: --all-tags would also push any stale local tag of the image
