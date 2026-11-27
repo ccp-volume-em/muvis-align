@@ -1,9 +1,25 @@
-multiview-stitcher>=0.1.56
-dask>=2024.8.0
-ngff-zarr>=0.50.0
+numpy
 pydantic>=2
+qtpy
+scipy
+scikit-image
+scikit-learn
+threadpoolctl
+dask>=2024.8.0
+tifffile>=2023.9.26
+napari-meta-tiff>=0.2.0
+imagecodecs
+zarr
+ome-zarr
+ngff-zarr>=0.50.0
+ome-zarr-models>=1.9.0
+fair-metadata-integration>=0.12.0
+matplotlib
+tqdm
+multiview-stitcher>=0.1.56
 opencv-python-headless
 spatial-image
 magic-class
-fair-metadata-integration>=0.9.1
-probreg
+platformdirs
+# from the [all] extra: CPD registration
+probreg; python_version < '3.13' and sys_platform != 'win32'
