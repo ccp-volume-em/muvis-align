@@ -1113,6 +1113,10 @@ def test_compose_writes_each_source_unresampled_in_a_registered_and_a_source_sce
     assert estimate['bytes'] == written_bytes
     scene = json.loads((tmp_path / 'composed.ome.zarr' / 'zarr.json').read_text())['attributes']['ome']['scene']
     assert [system['name'] for system in scene['coordinateSystems']] == ['registered', 'source_metadata']
+    # inline, as napari-ome-zarr reads it, with no matrix array left behind
+    assert all(transform['type'] in transform and 'path' not in transform
+               for transform in scene['coordinateTransformations'])
+    assert not (tmp_path / 'composed.ome.zarr' / 'coordinateTransformations').exists()
     for label, msim in zip(reg.file_labels, reg.msims):
         types = {transform['output']['name']: transform['type']
                  for transform in scene['coordinateTransformations'] if transform['input']['path'] == label}

@@ -109,10 +109,11 @@ MINOR
   - [ ] Not Compose: the slides project's registered layout is tilted a few degrees (0 rotation per tile, shifts
         growing along rows/columns, up to 22um). The 24um step (fn*24, 25.6um tiles) has nothing in the FastEM
         tiffs to check it against.
-- [ ] **multiview-stitcher's ngff-zarr cap** - its latest (0.1.62) requires `ngff-zarr<0.44`, muvis-align
-      `>=0.50,<0.52` (for OME-Zarr scenes), so pip installs multiview-stitcher 0.1.60, the last without the cap.
-      muvis-align-env runs 0.1.62 with ngff-zarr 0.51 anyway (`pip check` reports it). Needs the cap lifted upstream;
-      then require `multiview-stitcher>=0.1.62`.
+- [ ] **multiview-stitcher's ngff-zarr cap** - its latest (0.1.64) requires `ngff-zarr<0.44`, muvis-align
+      `>=0.50` (for OME-Zarr scenes), so pip installs multiview-stitcher 0.1.60, the last without the cap.
+      muvis-align-env runs 0.1.64 with ngff-zarr 0.53 anyway (`pip check` reports it). Needs the cap lifted upstream;
+      then require `multiview-stitcher>=0.1.64` and replace FusionMethodExclusive with its `first_view_fusion`
+      (identical output: MVS turns NaN into 0 after any fusion function), dropping that class and its unit test.
 - [ ] **antspyx holds numpy and scipy back** - antspyx 0.6.3 (in `[all]`) requires `numpy<2.4` and `scipy<1.16`,
       so `pip install "muvis-align[all]"` downgrades both (2.5.2 -> 2.3.5, 1.18.1 -> 1.15.3 locally). Kept in `[all]`;
       muvis-align-env stays without antspyx/itk-elastix to keep the latest. Revisit once antspyx relaxes these.

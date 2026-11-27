@@ -8,6 +8,7 @@ import numpy as np
 import os
 import ome_zarr.format
 import re
+import warnings
 import zarr
 
 from muvis_align.image.color_conversion import rgba_to_hexrgb
@@ -248,6 +249,26 @@ def save_ome_zarr_scene(path, sources, coordinate_system_names, channels, min_le
     coordinate_systems = [CoordinateSystem(name=name, axes=axes) for name in coordinate_system_names]
     scene = NgffScene(images=images, coordinateTransformations=transforms, coordinateSystems=coordinate_systems)
     scene.to_ome_zarr(path, version='0.6', **get_storage_options(compression))
+    # ngff-zarr 0.52+ stores each matrix as an array, which napari-ome-zarr cannot read: moved back inline
+    group = zarr.open_group(path, mode='r+', use_consolidated=False)
+    ome = group.attrs.asdict()['ome']
+    stored = [transform for transform in ome['scene']['coordinateTransformations']
+              if 'path' in transform and transform['type'] not in transform]
+    if stored:
+        parents = set()
+        for transform in stored:
+            matrix_path = transform.pop('path')
+            transform[transform['type']] = group[matrix_path][...].tolist()
+            del group[matrix_path]
+            parents.add(os.path.dirname(matrix_path))
+        for parent in sorted(parents - {''}, reverse=True):
+            if not list(group[parent].keys()):
+                del group[parent]
+        group.attrs['ome'] = ome
+        with warnings.catch_warnings():
+            # ngff-zarr consolidated it already; this only refreshes it
+            warnings.filterwarnings('ignore', message='Consolidated metadata', category=UserWarning)
+            zarr.consolidate_metadata(path)
 
 
 def read_ome_zarr_scene(path):
@@ -259,13 +280,16 @@ def read_ome_zarr_scene(path):
         return json.load(file).get('attributes', {}).get('ome', {}).get('scene')
 
 
-def spatial_affine(transform, axes, spatial_dims):
+def spatial_affine(transform, axes, spatial_dims, scene_path):
     """A scene's translation or affine transform (as written by save_ome_zarr_scene()) over axes, as the
     homogeneous affine over spatial_dims."""
     if transform['type'] == 'translation':
         matrix = np.hstack([np.eye(len(axes)), np.array(transform['translation'], dtype=float)[:, None]])
-    else:
+    elif 'affine' in transform:
         matrix = np.asarray(transform['affine'])
+    else:
+        # ngff-zarr 0.52+ stores the matrix as an array at `path`, below the scene group
+        matrix = zarr.open_array(os.path.join(scene_path, transform['path']), mode='r')[...]
     indices = [axes.index(dim) for dim in spatial_dims]
     affine = np.eye(len(indices) + 1)
     affine[:-1, :-1] = matrix[np.ix_(indices, indices)]
