@@ -7,7 +7,7 @@ scikit-learn
 threadpoolctl
 dask>=2024.8.0
 tifffile>=2023.9.26
-napari-meta-tiff>=0.2.0
+napari-meta-tiff>=0.2.1
 imagecodecs
 zarr
 ome-zarr
