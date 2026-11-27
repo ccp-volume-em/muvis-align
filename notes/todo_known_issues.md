@@ -109,6 +109,13 @@ MINOR
   - [ ] Not Compose: the slides project's registered layout is tilted a few degrees (0 rotation per tile, shifts
         growing along rows/columns, up to 22um). The 24um step (fn*24, 25.6um tiles) has nothing in the FastEM
         tiffs to check it against.
+- [ ] **Drop `_numpy_fusion_plan` once multiview-stitcher #205 is required** - #205 (on main after 0.1.64) plans
+      fusion on numpy itself, with new signatures for the three planner functions we swap in, and removes
+      `_is_grid_aligned`. The patch now applies only while `_is_grid_aligned` exists; on main the full suite passes
+      without it. Once the minimum multiview-stitcher has #205: delete `_numpy_fusion_plan`, its three helpers and
+      `test_the_numpy_plan_checks_match_multiview_stitchers` in fusion_blocks, and check level fusion time on
+      data_subset against the patched 0.1.64 path. #206 (same release) fixes a sub-pixel offset of rotated
+      zarr-backed tiles.
 - [ ] **multiview-stitcher's ngff-zarr cap** - its latest (0.1.64) requires `ngff-zarr<0.44`, muvis-align
       `>=0.50` (for OME-Zarr scenes), so pip installs multiview-stitcher 0.1.60, the last without the cap.
       muvis-align-env runs 0.1.64 with ngff-zarr 0.53 anyway (`pip check` reports it). Needs the cap lifted upstream;

@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pytest
 from multiview_stitcher import msi_utils
+import multiview_stitcher.fusion._core as fusion_core
 from multiview_stitcher import spatial_image_utils as si_utils
 
 from muvis_align.fusion_blocks import (export_levels, fuse_levels_to_ome_zarr, native_level_spacings,
@@ -203,8 +204,9 @@ def test_the_fusion_plan_checks_on_numpy_fuse_what_multiview_stitcher_does(tmp_p
     # x only translated: y is not axis-aligned, x is
     [np.array([[1.0, 0.0, 0.0], [0.2, 1.0, 0.5], [0.0, 0.0, 1.0]])],
 ])
+@pytest.mark.skipif(not hasattr(fusion_core, '_is_grid_aligned'),
+                    reason="multiview-stitcher's own planner is on numpy since #205")
 def test_the_numpy_plan_checks_match_multiview_stitchers(matrices):
-    import multiview_stitcher.fusion._core as fusion_core
     from multiview_stitcher import param_utils
     from muvis_align.fusion_blocks import (_axis_aligned_translation_dims, _axis_aligned_translation_overlap,
                                           _grid_aligned_translation_dims)

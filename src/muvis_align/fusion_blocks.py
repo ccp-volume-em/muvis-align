@@ -537,6 +537,10 @@ def _axis_aligned_translation_overlap(target_bb, query_bb, param, sdims, additio
 @contextmanager
 def _numpy_fusion_plan():
     # each block's fusion plan checks every source's affine: through xarray, that is most of a small level's time
+    if not hasattr(fusion_core, '_is_grid_aligned'):
+        # multiview-stitcher's planner since #205 works on numpy itself, with other signatures
+        yield
+        return
     patched = {'_get_axis_aligned_translation_dims': _axis_aligned_translation_dims,
                '_get_grid_aligned_translation_dims': _grid_aligned_translation_dims,
                '_get_axis_aligned_translation_overlap': _axis_aligned_translation_overlap}
