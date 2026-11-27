@@ -29233,11 +29233,7 @@ over all levels, each its share of the square root of <code>level_weights</code>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/muvis_align/fusion_blocks.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">553</span>
-<span class="normal">554</span>
-<span class="normal">555</span>
-<span class="normal">556</span>
-<span class="normal">557</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">557</span>
 <span class="normal">558</span>
 <span class="normal">559</span>
 <span class="normal">560</span>
@@ -29293,7 +29289,11 @@ over all levels, each its share of the square root of <code>level_weights</code>
 <span class="normal">610</span>
 <span class="normal">611</span>
 <span class="normal">612</span>
-<span class="normal">613</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fuse_levels_to_ome_zarr</span><span class="p">(</span><span class="n">msims</span><span class="p">,</span> <span class="n">levels</span><span class="p">,</span> <span class="n">output_zarr_url</span><span class="p">,</span> <span class="n">transform_key</span><span class="p">,</span> <span class="n">level0_properties</span><span class="p">,</span> <span class="n">output_chunksize</span><span class="p">,</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">fuse_levels_to_ome_zarr</span><span class="p">(</span><span class="n">msims</span><span class="p">,</span> <span class="n">levels</span><span class="p">,</span> <span class="n">output_zarr_url</span><span class="p">,</span> <span class="n">transform_key</span><span class="p">,</span> <span class="n">level0_properties</span><span class="p">,</span> <span class="n">output_chunksize</span><span class="p">,</span>
                             <span class="n">fusion_func</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">zarr_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">batch_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">interpolation_order</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
                             <span class="n">ranks</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">average_levels</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">level_weights</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""An OME-Zarr multiscale image of `levels` (export_levels), each fused at its own pixel size from its sources at</span>
