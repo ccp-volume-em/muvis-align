@@ -4,7 +4,7 @@ from xml.etree import ElementTree
 
 import dask.array as da
 from dask.base import tokenize
-from napari_meta_tiff.metadata import get_extra_metadata, get_pixel_size_um, get_position_um, get_rotation_deg
+from napari_meta_tiff.metadata import get_extra_metadata, get_spatial_metadata
 import zarr
 from ome_zarr.scale import Scaler
 from tifffile import TiffWriter, tifffile
@@ -110,10 +110,8 @@ def read_tiff_source_metadata(filename):
                if tif.is_ome and tif.ome_metadata is not None else None)
         if ome is None:
             # no OME: the pixel size and stage position wherever a vendor wrote them, in um, and its rotation
-            vendor_metadata = get_extra_metadata(tif)
-            ome = {'scale': get_pixel_size_um(tif, vendor_metadata, dict(zip(axes.lower(), series.shape))),
-                   'position': get_position_um(vendor_metadata),
-                   'rotation': get_rotation_deg(vendor_metadata)}
+            spatial = get_spatial_metadata(tif, get_extra_metadata(tif), dict(zip(axes.lower(), series.shape)))
+            ome = {'scale': spatial['pixel_size'], 'position': spatial['position'], 'rotation': spatial['rotation']}
 
     dims, _, _, _ = map_tiff_axes_to_ngff(axes, series.shape)
     shapes = [map_tiff_axes_to_ngff(axes, shape)[1] for shape in level_shapes]

@@ -328,7 +328,8 @@ def test_a_vendor_tiff_gives_its_own_pixel_size_and_stage_position(tmp_path):
     source = create_image_source(path)
 
     assert source.pixel_size == pytest.approx({'y': 2e-3, 'x': 2e-3})
-    assert source.position == {'x': 10.5, 'y': -3.5}
+    # a stage written as Fibics does points y up: inverted to the image's y
+    assert source.position == {'x': 10.5, 'y': 3.5}
     # the scan rotation as written
     assert source.rotation == -30.0
     assert 'Vendor' in str(source.metadata)

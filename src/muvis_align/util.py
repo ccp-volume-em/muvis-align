@@ -13,7 +13,6 @@ import json
 import logging
 import math
 import multiprocessing
-from napari_meta_tiff.metadata import UM_CONVERSIONS
 import numpy as np
 import pickle
 import os.path
@@ -589,8 +588,17 @@ def eval_context(data, key, default_value, context):
 
 
 
-# napari-meta-tiff's table, plus the cased spellings OME writes
-um_conversions = UM_CONVERSIONS | {'Å': 1e-4, 'A': 1e-4}
+# lower-case spellings, plus the cased ones OME writes for angstrom
+um_conversions = {
+    'a': 1e-4, 'å': 1e-4, 'Å': 1e-4, 'A': 1e-4, 'angstrom': 1e-4,
+    'pm': 1e-6, 'picometer': 1e-6, 'picometre': 1e-6,
+    'nm': 1e-3, 'nanometer': 1e-3, 'nanometre': 1e-3,
+    'um': 1, 'µm': 1, 'micrometer': 1, 'micrometre': 1, 'micron': 1,
+    'mm': 1e3, 'millimeter': 1e3, 'millimetre': 1e3,
+    'cm': 1e4, 'centimeter': 1e4, 'centimetre': 1e4,
+    'm': 1e6, 'meter': 1e6, 'metre': 1e6,
+    'inch': 25400, 'in': 25400,
+}
 
 
 def format_phase_timing(wall_time, item_times, item_cpu_times, max_workers, process_cpu_time=None,
