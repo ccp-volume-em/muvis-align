@@ -33,6 +33,8 @@ echo "Building ${IMAGE}:${VERSION} (target: ${TARGET}) ..."
 docker build --target "$TARGET" -t "${IMAGE}:${VERSION}" -t "${IMAGE}:latest" .
 
 echo "Pushing ${IMAGE}:${VERSION} and ${IMAGE}:latest ..."
-docker push --all-tags "$IMAGE"
+# only the tags built here: --all-tags would also push any stale local tag of the image
+docker push "${IMAGE}:${VERSION}"
+docker push "${IMAGE}:latest"
 
 echo "Done: ${IMAGE}:${VERSION} (also tagged latest)"
