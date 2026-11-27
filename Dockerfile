@@ -57,7 +57,11 @@ COPY run.py .
 COPY pyproject.toml .
 COPY src/ src/
 
+# The version comes from git, but only part of the work tree is copied in, so setuptools-scm would see the
+# rest as deleted and make a dev version: a release build states its version instead (docker-build-push.sh).
+ARG MUVIS_ALIGN_VERSION=""
 RUN --mount=type=bind,source=.git,target=/app/.git \
+    if [ -n "$MUVIS_ALIGN_VERSION" ]; then export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MUVIS_ALIGN="$MUVIS_ALIGN_VERSION"; fi && \
     pip install .
 
 ENTRYPOINT ["python3", "-m", "napari", "--plugin", "muvis-align"]
